@@ -1,12 +1,12 @@
-//! Storage adapters — persist and retrieve pipeline [`StorageRecord`]s.
+//! Storage adapters — persist and retrieve pipeline [`StorageRecord`](crate::ports::storage::StorageRecord)s.
 //!
 //! # Adapters
 //!
 //! | Adapter | Availability | Backing store |
 //! |---------|--------------|---------------|
-//! | [`NullStorage`] | always | no-op (tests / dry-run) |
-//! | [`FileStorage`] | always | `.jsonl` files on local disk |
-//! | [`PostgresStorage`] | `feature = "postgres"` | PostgreSQL via sqlx |
+//! | [`NullStorage`](storage::NullStorage) | always | no-op (tests / dry-run) |
+//! | [`FileStorage`](storage::FileStorage) | always | `.jsonl` files on local disk |
+//! | [`PostgresStorage`](storage::PostgresStorage) | `feature = "postgres"` | PostgreSQL via sqlx |
 
 use crate::domain::error::{MyceliumError, Result, ServiceError};
 use crate::ports::storage::{StoragePort, StorageRecord};

@@ -1,4 +1,4 @@
-//! GraphQL API adapter — a generic [`ScrapingService`] for any spec-compliant
+//! GraphQL API adapter — a generic [`ScrapingService`](crate::ports::ScrapingService) for any spec-compliant
 //! GraphQL endpoint.
 //!
 //! Handles the full request/response lifecycle: query execution, variable
@@ -7,7 +7,7 @@
 //!
 //! Target-specific knowledge (endpoint URL, version headers, default auth) is
 //! supplied by a [`GraphQlTargetPlugin`](crate::ports::graphql_plugin::GraphQlTargetPlugin)
-//! resolved from an optional [`GraphQlPluginRegistry`].
+//! resolved from an optional [`GraphQlPluginRegistry`](crate::application::graphql_plugin_registry::GraphQlPluginRegistry).
 
 use std::collections::HashMap;
 use std::sync::Arc;

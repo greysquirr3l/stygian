@@ -1,7 +1,7 @@
 //! Distributed execution adapters
 //!
-//! Provides [`LocalWorkQueue`] (in-process, for single-node and testing) and
-//! [`DistributedDagExecutor`] (wraps any [`WorkQueuePort`] to distribute DAG
+//! Provides [`LocalWorkQueue`](distributed::LocalWorkQueue) (in-process, for single-node and testing) and
+//! [`DistributedDagExecutor`](distributed::DistributedDagExecutor) (wraps any [`WorkQueuePort`](crate::ports::work_queue::WorkQueuePort) to distribute DAG
 //! waves across workers).
 //!
 //! # Design

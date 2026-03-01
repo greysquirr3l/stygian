@@ -1,6 +1,6 @@
 //! Prometheus metrics for mycelium pipelines.
 //!
-//! Provides a process-wide [`MetricsRegistry`] that tracks:
+//! Provides a process-wide [`MetricsRegistry`](metrics::MetricsRegistry) that tracks:
 //!
 //! - **Counters**: requests, errors, cache hits/misses
 //! - **Histograms**: request duration, pipeline execution time

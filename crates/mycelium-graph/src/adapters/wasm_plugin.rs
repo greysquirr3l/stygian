@@ -1,8 +1,8 @@
 //! WASM plugin adapter
 //!
-//! Implements [`WasmPluginPort`] using `wasmtime` (feature = `"wasm-plugins"`).
+//! Implements [`WasmPluginPort`](crate::ports::wasm_plugin::WasmPluginPort) using `wasmtime` (feature = `"wasm-plugins"`).
 //!
-//! When the feature is *disabled*, only [`MockWasmPlugin`] is compiled — a
+//! When the feature is *disabled*, only [`MockWasmPlugin`](wasm_plugin::MockWasmPlugin) is compiled — a
 //! no-wasmtime stand-in that returns canned output, useful for tests.
 //!
 //! # Feature gate

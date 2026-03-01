@@ -1,6 +1,6 @@
 //! Output format helpers — CSV, JSONL, JSON.
 //!
-//! Implements [`OutputFormatter`] for the three formats defined in
+//! Implements [`OutputFormatter`](crate::ports::storage::OutputFormatter) for the three formats defined in
 //! [`crate::ports::storage::OutputFormat`].
 
 use crate::domain::error::{MyceliumError, Result, ServiceError};

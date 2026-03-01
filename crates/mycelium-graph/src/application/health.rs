@@ -1,7 +1,7 @@
 //! Health check reporting for Kubernetes liveness and readiness probes.
 //!
-//! Provides structured health-check types and a [`HealthReporter`] for aggregating
-//! component-level health into an overall [`HealthReport`].
+//! Provides structured health-check types and a [`HealthReporter`](health::HealthReporter) for aggregating
+//! component-level health into an overall [`HealthReport`](health::HealthReport).
 //!
 //! # Example
 //!

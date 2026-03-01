@@ -7,6 +7,6 @@
 //!
 //! | Module | Target | Env var |
 //! |--------|--------|---------|
-//! | [`jobber`] | Jobber field-service management | `JOBBER_ACCESS_TOKEN` |
+//! | [`jobber`](graphql_plugins::jobber) | Jobber field-service management | `JOBBER_ACCESS_TOKEN` |
 
 pub mod jobber;

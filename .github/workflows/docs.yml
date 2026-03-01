@@ -54,7 +54,7 @@ jobs:
       - name: Build rustdoc
         run: cargo doc --workspace --no-deps --all-features
         env:
-          RUSTDOCFLAGS: "-Dwarnings --cfg docsrs"
+          RUSTDOCFLAGS: "-Dwarnings"
 
       - name: Merge rustdoc into book output
         run: |

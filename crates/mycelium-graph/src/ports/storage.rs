@@ -1,6 +1,6 @@
 //! Storage port — persist and retrieve pipeline results.
 //!
-//! Defines the generic [`StoragePort`] trait plus the [`OutputFormatter`] helper
+//! Defines the generic [`StoragePort`](storage::StoragePort) trait plus the [`OutputFormatter`](storage::OutputFormatter) helper
 //! that serialises pipeline outputs to CSV, JSONL, or JSON.
 //!
 //! # Architecture
