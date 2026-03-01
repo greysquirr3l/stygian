@@ -31,7 +31,7 @@ jobs:
         with:
           results_file: results.sarif
           results_format: sarif
-          publish_results: false
+          publish_results: true
 
       - name: Upload SARIF artifact
         uses: actions/upload-artifact@v4
