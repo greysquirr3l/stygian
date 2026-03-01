@@ -1,0 +1,90 @@
+# anti-bot.toml
+#
+# Advanced anti-detection configuration for scraping bot-protected sites.
+# Combines User-Agent rotation, realistic browser headers, residential proxy
+# support, and a circuit breaker to back off when blocks are detected.
+#
+# Run:
+#   PROXY_URL=http://user:pass@proxy:8080 mycelium run examples/anti-bot.toml
+
+[[services]]
+name = "http-stealth"
+kind = "http"
+
+# Rotate through a pool of realistic User-Agent strings
+[services.user_agent]
+strategy = "rotate"
+pool     = [
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15",
+  "Mozilla/5.0 (X11; Linux x86_64; rv:134.0) Gecko/20100101 Firefox/134.0",
+]
+
+# Add realistic browser-like request headers
+[services.headers]
+Accept            = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+Accept-Language   = "en-US,en;q=0.5"
+Accept-Encoding   = "gzip, deflate, br"
+DNT               = "1"
+Upgrade-Insecure-Requests = "1"
+Sec-Fetch-Dest    = "document"
+Sec-Fetch-Mode    = "navigate"
+Sec-Fetch-Site    = "none"
+Sec-Fetch-User    = "?1"
+
+# Persist cookies across requests (same session)
+[services.cookies]
+enabled      = true
+jar_strategy = "per-domain"
+
+# Residential proxy rotation
+[services.proxy]
+url      = "${PROXY_URL}"   # resolved from environment variable at runtime
+rotation = "per-request"
+
+# Exponential back-off retry with jitter
+[services.retry]
+max_attempts = 5
+base_delay_ms = 500
+max_delay_ms  = 30_000
+jitter        = true
+
+# Circuit breaker — open after 3 consecutive 429/403 responses
+[services.circuit_breaker]
+failure_threshold  = 3
+recovery_timeout_s = 120
+
+[[services]]
+name  = "claude"
+kind  = "claude"
+model = "claude-haiku-4-5"
+
+# ── Step 1: fetch with stealth profile ───────────────────────────────────────
+
+[[nodes]]
+name    = "fetch"
+service = "http-stealth"
+url     = "https://www.example-protected-site.com/products"
+
+# Add a human-like delay between requests (ms range)
+[nodes.params]
+think_time_ms_min = 800
+think_time_ms_max = 3_000
+
+# ── Step 2: extract product data ─────────────────────────────────────────────
+
+[[nodes]]
+name       = "extract"
+service    = "claude"
+depends_on = ["fetch"]
+
+[nodes.prompt]
+user = "Extract all product names, prices, and SKUs from this HTML."
+
+[nodes.schema]
+type = "object"
+properties.products.type = "array"
+properties.products.items.type = "object"
+properties.products.items.properties.name.type  = "string"
+properties.products.items.properties.price.type = "number"
+properties.products.items.properties.sku.type   = "string"

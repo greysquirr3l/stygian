@@ -1,0 +1,60 @@
+# pdf-extraction.toml
+#
+# Downloads a PDF (as binary via HTTP) and extracts structured tabular data
+# from it using the multimodal extraction adapter. Gemini is used here because
+# it supports inline PDF base64 blobs via its Files API.
+#
+# Run:
+#   GEMINI_API_KEY=... mycelium run examples/pdf-extraction.toml
+
+[[services]]
+name  = "http"
+kind  = "http"
+
+[[services]]
+name  = "gemini"
+kind  = "gemini"
+model = "gemini-2.0-flash"
+
+[[services]]
+name  = "multimodal"
+kind  = "multimodal"
+
+# ── Step 1: download the PDF ──────────────────────────────────────────────────
+
+[[nodes]]
+name    = "download-pdf"
+service = "http"
+url     = "https://www.w3.org/WAI/WCAG21/wcag21-techs.pdf"
+
+[nodes.params]
+response_type = "binary"
+
+# ── Step 2: extract tables from the PDF ──────────────────────────────────────
+
+[[nodes]]
+name       = "extract-tables"
+service    = "gemini"
+depends_on = ["download-pdf"]
+
+[nodes.prompt]
+user = """
+This is a PDF document. Extract every table you find, returning each table as a
+JSON array of objects where keys are column headers.
+"""
+
+[nodes.schema]
+type = "object"
+properties.tables.type = "array"
+properties.tables.items.type = "array"
+properties.tables.items.items.type = "object"
+
+# ── Step 3: normalise and deduplicate ─────────────────────────────────────────
+
+[[nodes]]
+name       = "normalise"
+service    = "multimodal"
+depends_on = ["extract-tables"]
+
+[nodes.params]
+operation = "deduplicate-rows"

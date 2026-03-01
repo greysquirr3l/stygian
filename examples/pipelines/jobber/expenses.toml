@@ -1,0 +1,36 @@
+[[services]]
+name   = "jobber"
+kind   = "graphql"
+plugin = "jobber"
+
+[[nodes]]
+name    = "fetch_expenses"
+service = "jobber"
+
+[nodes.params]
+operation_name = "ListExpenses"
+query = """
+query ListExpenses($first: Int, $after: String) {
+  expenses(first: $first, after: $after) {
+    edges {
+      node {
+        id
+        title
+        total
+        date
+        entryType
+        taxable
+        reimbursableTo { id name }
+        job { id title }
+        createdAt
+      }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}
+"""
+
+[nodes.params.pagination]
+strategy       = "cursor"
+page_info_path = "data.expenses.pageInfo"
+edges_path     = "data.expenses.edges"

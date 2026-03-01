@@ -1,0 +1,36 @@
+[[services]]
+name   = "jobber"
+kind   = "graphql"
+plugin = "jobber"
+
+[[nodes]]
+name    = "fetch_visits"
+service = "jobber"
+
+[nodes.params]
+operation_name = "ListVisits"
+query = """
+query ListVisits($first: Int, $after: String) {
+  visits(first: $first, after: $after) {
+    edges {
+      node {
+        id
+        title
+        startAt
+        endAt
+        completedAt
+        allDay
+        job { id title }
+        isDefaultTitle
+        createdAt
+      }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}
+"""
+
+[nodes.params.pagination]
+strategy       = "cursor"
+page_info_path = "data.visits.pageInfo"
+edges_path     = "data.visits.edges"

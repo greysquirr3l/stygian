@@ -1,0 +1,74 @@
+# complex-graph.toml
+#
+# A multi-stage ETL pipeline demonstrating a diamond dependency graph:
+#
+#           fetch-index
+#          /            \
+#   fetch-category-a  fetch-category-b
+#          \            /
+#           transform
+#               |
+#             store
+#
+# Run:
+#   ANTHROPIC_API_KEY=sk-... mycelium run examples/complex-graph.toml
+
+[[services]]
+name  = "http"
+kind  = "http"
+
+[[services]]
+name  = "claude"
+kind  = "claude"
+model = "claude-haiku-4-5"
+
+# ── Wave 0: fetch the index page ──────────────────────────────────────────────
+
+[[nodes]]
+name    = "fetch-index"
+service = "http"
+url     = "https://news.ycombinator.com"
+
+# ── Wave 1: two parallel category fetches (diamond fan-out) ──────────────────
+
+[[nodes]]
+name       = "fetch-top-stories"
+service    = "http"
+url        = "https://hacker-news.firebaseio.com/v0/topstories.json"
+depends_on = ["fetch-index"]
+
+[[nodes]]
+name       = "fetch-new-stories"
+service    = "http"
+url        = "https://hacker-news.firebaseio.com/v0/newstories.json"
+depends_on = ["fetch-index"]
+
+# ── Wave 2: transform (diamond fan-in) ───────────────────────────────────────
+
+[[nodes]]
+name       = "transform"
+service    = "claude"
+depends_on = ["fetch-top-stories", "fetch-new-stories"]
+
+[nodes.prompt]
+user = """
+Given the IDs from both top-stories and new-stories, identify the 10 IDs that
+appear in both lists. Return a JSON array of integers.
+"""
+
+[nodes.schema]
+type = "object"
+properties.overlap_ids.type = "array"
+properties.overlap_ids.items.type = "integer"
+
+# ── Wave 3: store / emit result ───────────────────────────────────────────────
+
+[[nodes]]
+name       = "store"
+service    = "http"
+depends_on = ["transform"]
+
+[nodes.params]
+# In a real pipeline, this would POST to a webhook or write to object storage.
+method = "POST"
+url    = "https://httpbin.org/post"

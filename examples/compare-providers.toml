@@ -1,0 +1,102 @@
+# compare-providers.toml
+#
+# Runs the same extraction task against all five AI providers simultaneously so
+# you can compare cost, latency, and quality for your specific workload.
+#
+# Required environment variables:
+#   ANTHROPIC_API_KEY     — Claude
+#   OPENAI_API_KEY        — OpenAI
+#   GEMINI_API_KEY        — Google Gemini
+#   GITHUB_TOKEN          — GitHub Copilot
+#   OLLAMA_BASE_URL       — Ollama (default: http://localhost:11434)
+#
+# Run:
+#   mycelium run examples/compare-providers.toml
+
+[[services]]
+name  = "http"
+kind  = "http"
+
+[[services]]
+name  = "claude"
+kind  = "claude"
+model = "claude-haiku-4-5"
+
+[[services]]
+name  = "openai"
+kind  = "openai"
+model = "gpt-4o-mini"
+
+[[services]]
+name  = "gemini"
+kind  = "gemini"
+model = "gemini-2.0-flash"
+
+[[services]]
+name  = "copilot"
+kind  = "copilot"
+
+[[services]]
+name     = "ollama"
+kind     = "ollama"
+model    = "llama3.2"
+base_url = "http://localhost:11434"
+
+# ── Step 1: fetch content (shared input) ─────────────────────────────────────
+
+[[nodes]]
+name    = "fetch"
+service = "http"
+url     = "https://en.wikipedia.org/wiki/Directed_acyclic_graph"
+
+# ── Step 2: all five providers in parallel ────────────────────────────────────
+
+[[nodes]]
+name       = "extract-claude"
+service    = "claude"
+depends_on = ["fetch"]
+[nodes.prompt]
+user = "Define 'directed acyclic graph' in exactly two sentences for a developer audience."
+
+[[nodes]]
+name       = "extract-openai"
+service    = "openai"
+depends_on = ["fetch"]
+[nodes.prompt]
+user = "Define 'directed acyclic graph' in exactly two sentences for a developer audience."
+
+[[nodes]]
+name       = "extract-gemini"
+service    = "gemini"
+depends_on = ["fetch"]
+[nodes.prompt]
+user = "Define 'directed acyclic graph' in exactly two sentences for a developer audience."
+
+[[nodes]]
+name       = "extract-copilot"
+service    = "copilot"
+depends_on = ["fetch"]
+[nodes.prompt]
+user = "Define 'directed acyclic graph' in exactly two sentences for a developer audience."
+
+[[nodes]]
+name       = "extract-ollama"
+service    = "ollama"
+depends_on = ["fetch"]
+[nodes.prompt]
+user = "Define 'directed acyclic graph' in exactly two sentences for a developer audience."
+
+# ── Step 3: collect all results ───────────────────────────────────────────────
+
+[[nodes]]
+name       = "compare"
+service    = "http"
+depends_on = [
+  "extract-claude",
+  "extract-openai",
+  "extract-gemini",
+  "extract-copilot",
+  "extract-ollama",
+]
+[nodes.params]
+strategy = "collect-all"

@@ -1,0 +1,51 @@
+[[services]]
+name   = "jobber"
+kind   = "graphql"
+plugin = "jobber"
+
+[[nodes]]
+name    = "fetch_invoices"
+service = "jobber"
+
+[nodes.params]
+operation_name = "ListInvoices"
+query = """
+query ListInvoices($first: Int, $after: String) {
+  invoices(first: $first, after: $after) {
+    edges {
+      node {
+        id
+        invoiceNumber
+        subject
+        invoiceStatus
+        client { id name }
+        total
+        balance
+        depositAmount
+        issuedDate
+        dueDate
+        jobberWebUri
+        lineItems {
+          edges {
+            node {
+              id
+              name
+              description
+              quantity
+              unitCost
+              total
+            }
+          }
+        }
+        createdAt
+      }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}
+"""
+
+[nodes.params.pagination]
+strategy       = "cursor"
+page_info_path = "data.invoices.pageInfo"
+edges_path     = "data.invoices.edges"

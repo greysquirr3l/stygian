@@ -1,0 +1,102 @@
+# distributed.toml
+#
+# Scrapes multiple domains concurrently with independent per-domain rate limits.
+# Each domain gets its own HTTP service declaration so rate limiting, retry
+# budgets, and circuit breakers are isolated — a failure on domain A does not
+# affect domain B.
+#
+# Run:
+#   ANTHROPIC_API_KEY=sk-... mycelium run examples/distributed.toml
+
+# ── Service declarations (one per domain) ─────────────────────────────────────
+
+[[services]]
+name = "hn"
+kind = "http"
+
+[services.rate_limit]
+requests_per_second = 2
+burst               = 5
+
+[[services]]
+name = "reddit"
+kind = "http"
+
+[services.rate_limit]
+requests_per_second = 1
+burst               = 3
+
+[[services]]
+name = "lobsters"
+kind = "http"
+
+[services.rate_limit]
+requests_per_second = 1
+burst               = 2
+
+[[services]]
+name  = "claude"
+kind  = "claude"
+model = "claude-haiku-4-5"
+
+# ── Wave 0: three simultaneous domain fetches ─────────────────────────────────
+
+[[nodes]]
+name    = "fetch-hn"
+service = "hn"
+url     = "https://news.ycombinator.com"
+
+[[nodes]]
+name    = "fetch-reddit"
+service = "reddit"
+url     = "https://www.reddit.com/r/rust/.json?limit=25"
+
+[[nodes]]
+name    = "fetch-lobsters"
+service = "lobsters"
+url     = "https://lobste.rs/newest.json"
+
+# ── Wave 1: three independent extractions in parallel ────────────────────────
+
+[[nodes]]
+name       = "extract-hn"
+service    = "claude"
+depends_on = ["fetch-hn"]
+[nodes.prompt]
+user = "Extract the top 10 story titles and scores from this Hacker News HTML."
+
+[[nodes]]
+name       = "extract-reddit"
+service    = "claude"
+depends_on = ["fetch-reddit"]
+[nodes.prompt]
+user = "Extract post titles and upvote counts from this Reddit JSON."
+
+[[nodes]]
+name       = "extract-lobsters"
+service    = "claude"
+depends_on = ["fetch-lobsters"]
+[nodes.prompt]
+user = "Extract story titles and scores from this Lobsters JSON."
+
+# ── Wave 2: merge & rank across all sources ───────────────────────────────────
+
+[[nodes]]
+name       = "rank"
+service    = "claude"
+depends_on = ["extract-hn", "extract-reddit", "extract-lobsters"]
+
+[nodes.prompt]
+user = """
+You have story lists from three sources: Hacker News, Reddit /r/rust, and Lobsters.
+Produce a single merged ranking of the top 10 most interesting Rust-related stories
+by relevance and engagement. Include source attribution.
+"""
+
+[nodes.schema]
+type = "object"
+properties.stories.type = "array"
+properties.stories.items.type = "object"
+properties.stories.items.properties.title.type  = "string"
+properties.stories.items.properties.source.type = "string"
+properties.stories.items.properties.score.type  = "integer"

@@ -1,0 +1,57 @@
+# javascript-rendering.toml
+#
+# Scrapes a JavaScript-heavy SPA using the headless browser adapter (chromiumoxide).
+# The browser adapter waits for the desired selector to appear in the DOM before
+# returning the rendered HTML, ensuring dynamic content is captured.
+#
+# Prerequisites:
+#   - Chrome / Chromium must be installed and discoverable
+#   - mycelium-browser feature enabled
+#
+# Run:
+#   ANTHROPIC_API_KEY=sk-... mycelium run examples/javascript-rendering.toml
+
+[[services]]
+name  = "browser"
+kind  = "browser"
+
+# Browser stealth / anti-detection profile
+[services.stealth]
+enabled        = true
+spoof_webgl    = true
+spoof_canvas   = true
+randomize_size = true
+
+[[services]]
+name  = "claude"
+kind  = "claude"
+model = "claude-haiku-4-5"
+
+# ── Step 1: render the SPA with the headless browser ─────────────────────────
+
+[[nodes]]
+name    = "render"
+service = "browser"
+url     = "https://angular.io/docs"
+
+[nodes.params]
+# Wait for the sidebar navigation to finish loading before capturing HTML
+wait_for_selector = "nav.sidenav-content"
+timeout_ms        = 10_000
+
+# ── Step 2: extract structured documentation index ───────────────────────────
+
+[[nodes]]
+name       = "extract"
+service    = "claude"
+depends_on = ["render"]
+
+[nodes.prompt]
+user = "Extract all documentation section titles and their anchor links from this Angular docs page."
+
+[nodes.schema]
+type = "object"
+properties.sections.type = "array"
+properties.sections.items.type = "object"
+properties.sections.items.properties.title.type = "string"
+properties.sections.items.properties.href.type  = "string"

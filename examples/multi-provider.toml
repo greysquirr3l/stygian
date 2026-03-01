@@ -1,0 +1,66 @@
+# multi-provider.toml
+#
+# Demonstrates provider fallback: try Claude first; if unavailable or rate-limited,
+# fall back to the locally-running Ollama instance. This is useful when API quotas
+# are tight or when offline operation is required.
+#
+# Run:
+#   ANTHROPIC_API_KEY=sk-... mycelium run examples/multi-provider.toml
+
+[[services]]
+name  = "http"
+kind  = "http"
+
+# Primary provider — Anthropic Claude
+[[services]]
+name  = "claude"
+kind  = "claude"
+model = "claude-haiku-4-5"
+
+# Fallback provider — local Ollama
+[[services]]
+name     = "ollama"
+kind     = "ollama"
+model    = "llama3.2"
+base_url = "http://localhost:11434"
+
+# ── Step 1: fetch the page ────────────────────────────────────────────────────
+
+[[nodes]]
+name    = "fetch"
+service = "http"
+url     = "https://example.com/blog/latest"
+
+# ── Step 2a: try Claude first (primary) ──────────────────────────────────────
+
+[[nodes]]
+name       = "extract-claude"
+service    = "claude"
+depends_on = ["fetch"]
+
+[nodes.prompt]
+user = "Summarise the key points of this blog post in 3 bullet points."
+
+# ── Step 2b: local Ollama fallback ───────────────────────────────────────────
+#
+# Only runs if extract-claude explicitly fails (orchestrated by the application
+# layer retry / fallback logic configured below).
+
+[[nodes]]
+name       = "extract-ollama"
+service    = "ollama"
+depends_on = ["fetch"]
+
+[nodes.prompt]
+user = "Summarise the key points of this blog post in 3 bullet points."
+
+# ── Step 3: merge results ─────────────────────────────────────────────────────
+
+[[nodes]]
+name       = "merge"
+service    = "http"
+depends_on = ["extract-claude", "extract-ollama"]
+
+[nodes.params]
+# Take whichever extraction succeeded
+strategy = "first-success"

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mycelium/schemas/jobber/job.schema.json",
+  "title": "Job",
+  "description": "A Jobber job record",
+  "type": "object",
+  "required": ["id", "title"],
+  "properties": {
+    "id": { "type": "string" },
+    "title": { "type": "string" },
+    "jobStatus": {
+      "type": "string",
+      "enum": [
+        "DRAFT",
+        "AWAITING_PAYMENT",
+        "ACTIVE",
+        "COMPLETED",
+        "LATE",
+        "ARCHIVED",
+        "REQUIRES_INVOICING"
+      ]
+    },
+    "client": {
+      "type": "object",
+      "properties": { "id": { "type": "string" }, "name": { "type": "string" } }
+    },
+    "assignedTo": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" }
+        }
+      }
+    },
+    "startAt": { "type": "string", "format": "date-time" },
+    "endAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "total": { "type": "number" },
+    "createdAt": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

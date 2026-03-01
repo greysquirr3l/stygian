@@ -1,0 +1,42 @@
+# basic-scrape.toml
+#
+# Simplest possible pipeline: fetch a page with the HTTP adapter, then extract
+# structured data from the HTML using Claude.
+#
+# Run:
+#   ANTHROPIC_API_KEY=sk-... mycelium run examples/basic-scrape.toml
+
+[[services]]
+name  = "http"
+kind  = "http"
+
+[[services]]
+name  = "claude"
+kind  = "claude"
+model = "claude-opus-4-5"
+
+# ── Step 1: fetch the page ────────────────────────────────────────────────────
+
+[[nodes]]
+name    = "fetch"
+service = "http"
+url     = "https://news.ycombinator.com"
+
+# ── Step 2: extract article list from the HTML ───────────────────────────────
+
+[[nodes]]
+name       = "extract"
+service    = "claude"
+depends_on = ["fetch"]
+
+[nodes.prompt]
+system = "You are a data extraction assistant. Extract data exactly as specified."
+user   = "Extract all article titles and URLs from this Hacker News HTML page."
+
+[nodes.schema]
+type = "object"
+properties.articles.type = "array"
+properties.articles.items.type = "object"
+properties.articles.items.properties.title.type  = "string"
+properties.articles.items.properties.url.type    = "string"
+properties.articles.items.properties.points.type = "integer"

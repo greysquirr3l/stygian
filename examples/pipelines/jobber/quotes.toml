@@ -1,0 +1,35 @@
+[[services]]
+name   = "jobber"
+kind   = "graphql"
+plugin = "jobber"
+
+[[nodes]]
+name    = "fetch_quotes"
+service = "jobber"
+
+[nodes.params]
+operation_name = "ListQuotes"
+query = """
+query ListQuotes($first: Int, $after: String) {
+  quotes(first: $first, after: $after) {
+    edges {
+      node {
+        id
+        title
+        quoteStatus
+        client { id name }
+        total
+        depositAmount
+        quoteNumber
+        createdAt
+      }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}
+"""
+
+[nodes.params.pagination]
+strategy       = "cursor"
+page_info_path = "data.quotes.pageInfo"
+edges_path     = "data.quotes.edges"

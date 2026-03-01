@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mycelium/schemas/jobber/invoice.schema.json",
+  "title": "Invoice",
+  "description": "A Jobber invoice record",
+  "type": "object",
+  "required": ["id", "invoiceNumber"],
+  "properties": {
+    "id": { "type": "string" },
+    "invoiceNumber": { "type": "integer" },
+    "subject": { "type": "string" },
+    "invoiceStatus": {
+      "type": "string",
+      "enum": ["DRAFT", "AWAITING_PAYMENT", "PAID", "BAD_DEBT", "VOID"]
+    },
+    "client": {
+      "type": "object",
+      "properties": { "id": { "type": "string" }, "name": { "type": "string" } }
+    },
+    "total": { "type": "number" },
+    "balance": { "type": "number" },
+    "depositAmount": { "type": "number" },
+    "issuedDate": { "type": "string", "format": "date" },
+    "dueDate": { "type": "string", "format": "date" },
+    "jobberWebUri": { "type": "string", "format": "uri" },
+    "lineItems": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "quantity": { "type": "number" },
+          "unitCost": { "type": "number" },
+          "total": { "type": "number" }
+        }
+      }
+    },
+    "createdAt": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

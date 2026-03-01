@@ -1,0 +1,83 @@
+# =============================================================================
+# Rust build output
+# =============================================================================
+/target
+debug/
+**/*.rs.bk
+*.pdb
+
+# Cargo.lock committed for workspace (contains both lib and potential bin crates)
+# This ensures reproducible builds across development machines.
+# For library-only crates, crates.io ignores Cargo.lock anyway.
+
+# =============================================================================
+# macOS
+# =============================================================================
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# =============================================================================
+# Project planning & orchestration artefacts
+# =============================================================================
+tasks/
+plan*.toml
+IMPLEMENTATION_PLAN*.md
+PROGRESS*.md
+
+# =============================================================================
+# Coraline — code-intelligence index (regenerated on demand)
+# =============================================================================
+.coraline/
+
+# =============================================================================
+# Environment & secrets
+# =============================================================================
+.env
+.env.*
+!.env.example
+
+# =============================================================================
+# macOS
+# =============================================================================
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# =============================================================================
+# Editor scratch files
+# (.vscode/ is intentionally tracked — workspace rust-analyzer settings live there)
+# =============================================================================
+*.log
+*.bak
+*.orig
+*.swp
+*.swo
+*~
+
+tasks/
+.vscode/
+
+reference_materials/

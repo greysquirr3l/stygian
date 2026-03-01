@@ -1,0 +1,46 @@
+# Git attributes for mycelium workspace
+
+# Auto-detect text files and normalize line endings to LF
+* text=auto eol=lf
+
+# Rust source files
+*.rs text diff=rust
+*.toml text
+
+# Documentation
+*.md text
+*.txt text
+
+# Scripts
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Cargo lock should use LF
+Cargo.lock text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.pdf binary
+
+# Archives
+*.zip binary
+*.tar binary
+*.gz binary
+*.bz2 binary
+*.xz binary
+
+# Linguist language detection
+docs/** linguist-documentation
+examples/** linguist-documentation
+reference_materials/** linguist-documentation
+tasks/** linguist-documentation
+*.md linguist-documentation
