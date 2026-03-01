@@ -265,4 +265,51 @@ mod tests {
         assert_eq!(val.get("name").and_then(Value::as_str), Some("Alice"));
         Ok(())
     }
+
+    #[test]
+    fn test_parse_response_no_candidates() {
+        let resp = json!({"promptFeedback": {}});
+        assert!(GeminiProvider::parse_response(&resp).is_err());
+    }
+
+    #[test]
+    fn test_parse_response_invalid_json_text() {
+        let resp = json!({
+            "candidates": [{
+                "content": {"parts": [{"text": "not json at all"}]}
+            }]
+        });
+        assert!(GeminiProvider::parse_response(&resp).is_err());
+    }
+
+    #[test]
+    fn test_map_http_error_api_key() {
+        let err = GeminiProvider::map_http_error(400, "Invalid API_KEY provided");
+        assert!(matches!(
+            err,
+            MyceliumError::Provider(ProviderError::InvalidCredentials)
+        ));
+    }
+
+    #[test]
+    fn test_map_http_error_429() {
+        let err = GeminiProvider::map_http_error(429, "quota exceeded");
+        assert!(
+            matches!(err, MyceliumError::Provider(ProviderError::ApiError(ref msg)) if msg.contains("rate limited"))
+        );
+    }
+
+    #[test]
+    fn test_map_http_error_server_error() {
+        let err = GeminiProvider::map_http_error(503, "unavailable");
+        assert!(
+            matches!(err, MyceliumError::Provider(ProviderError::ApiError(ref msg)) if msg.contains("503"))
+        );
+    }
+
+    #[test]
+    fn test_config_with_model() {
+        let cfg = GeminiConfig::new("AIza".to_string()).with_model("gemini-1.5-pro");
+        assert_eq!(cfg.model, "gemini-1.5-pro");
+    }
 }

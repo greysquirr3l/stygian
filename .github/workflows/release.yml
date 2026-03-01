@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate tag vs Cargo versions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify workspace versions match tag
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          for crate in mycelium-graph mycelium-browser; do
+            CARGO_VERSION=$(cargo metadata --no-deps --format-version 1 \
+              | jq -r --arg name "$crate" '.packages[] | select(.name == $name) | .version')
+            if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
+              echo "Version mismatch in $crate: Cargo.toml has $CARGO_VERSION, tag is v$TAG_VERSION"
+              exit 1
+            fi
+          done
+          echo "All crate versions match tag v$TAG_VERSION ✓"
+
+  publish:
+    name: Publish crates to crates.io
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-publish-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-publish-
+
+      - name: Publish mycelium-browser
+        run: |
+          VERSION=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "mycelium-browser") | .version')
+          if cargo search mycelium-browser --limit 1 2>/dev/null | grep -q "^mycelium-browser = \"$VERSION\""; then
+            echo "mycelium-browser@$VERSION already published, skipping"
+          else
+            cargo publish -p mycelium-browser
+          fi
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Wait for crates.io index propagation
+        run: sleep 30
+
+      - name: Publish mycelium-graph
+        run: |
+          VERSION=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "mycelium-graph") | .version')
+          if cargo search mycelium-graph --limit 1 2>/dev/null | grep -q "^mycelium-graph = \"$VERSION\""; then
+            echo "mycelium-graph@$VERSION already published, skipping"
+          else
+            cargo publish -p mycelium-graph --all-features
+          fi
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: publish
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          if [ -f CHANGELOG.md ]; then
+            NOTES=$(awk "/^## \[?$VERSION\]?/{flag=1; next} /^## /{flag=0} flag" CHANGELOG.md)
+          else
+            NOTES="Release $VERSION"
+          fi
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ steps.changelog.outputs.notes }}
+          draft: false
+          prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}

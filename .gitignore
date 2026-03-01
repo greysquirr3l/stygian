@@ -37,6 +37,11 @@ IMPLEMENTATION_PLAN*.md
 PROGRESS*.md
 
 # =============================================================================
+# mdBook — generated book output (built from book/src/ via `mdbook build book`)
+# =============================================================================
+book/book/
+
+# =============================================================================
 # Coraline — code-intelligence index (regenerated on demand)
 # =============================================================================
 .coraline/

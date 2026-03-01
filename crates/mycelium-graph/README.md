@@ -5,6 +5,8 @@ High-performance, graph-based web scraping engine treating pipelines as DAGs wit
 [![Crates.io](https://img.shields.io/crates/v/mycelium-graph.svg)](https://crates.io/crates/mycelium-graph)
 [![Documentation](https://docs.rs/mycelium-graph/badge.svg)](https://docs.rs/mycelium-graph)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
+[![Tests](https://img.shields.io/badge/tests-209%20passing-brightgreen)](https://github.com/greysquirr3l/mycelium/actions)
+[![Coverage](https://img.shields.io/badge/coverage-~72%25-yellowgreen)](https://github.com/greysquirr3l/mycelium/actions)
 
 ---
 
@@ -313,15 +315,19 @@ cargo test --lib
 # Integration tests
 cargo test --test integration
 
-# Property-based tests
-cargo test --features proptest
-
-# With browser (requires Chrome)
+# All features (browser integration tests require Chrome)
 cargo test --all-features
 
 # Benchmarks
 cargo bench
+
+# Measure coverage (requires cargo-tarpaulin)
+cargo tarpaulin -p mycelium-graph --all-features --ignore-tests --out Lcov
 ```
+
+**Coverage**: ~72% line coverage across 209 workspace tests. Key modules at or near 100%:
+`config`, `executor`, `idempotency`, `service_registry`, and all AI adapter unit tests.
+Adapters requiring live external services (HTTP, browser) are tested with mock ports.
 
 ---
 

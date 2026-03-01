@@ -74,11 +74,11 @@ to a CDP Target (tab).
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Launching : BrowserInstance::launch()
+    [*] --> Launching : BrowserInstance.launch()
     Launching --> Healthy : CDP connect + getVersion OK
     Launching --> Error : timeout / binary not found
     Healthy --> InUse : pool.acquire()
-    InUse --> Healthy : handle.release() → health_check()
+    InUse --> Healthy : handle.release() -> health_check()
     InUse --> Evicted : health_check() fails
     Healthy --> Evicted : idle_timeout exceeded
     Evicted --> [*] : shutdown()

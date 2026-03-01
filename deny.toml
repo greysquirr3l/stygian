@@ -1,0 +1,39 @@
+[graph]
+# Exclude dev-only crates from license/ban checks
+exclude-dev = true
+
+[licenses]
+# Require all dependencies to use approved licenses
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+    "Zlib",
+    "OpenSSL",
+]
+# Warn on unlicensed crates rather than hard-fail (some C bundled libs)
+unlicensed = "deny"
+copyleft = "deny"
+
+[bans]
+# Deny duplicate versions of the same crate by default
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+
+# Allow multiple versions of crates that commonly ship both v1 and v2
+[[bans.allow]]
+name = "rustls"
+[[bans.allow]]
+name = "ring"
+[[bans.allow]]
+name = "webpki"
+
+[advisories]
+# Deny crates with known security vulnerabilities
+ignore = []

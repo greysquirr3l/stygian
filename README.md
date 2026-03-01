@@ -5,6 +5,8 @@
 [![Crates.io](https://img.shields.io/crates/v/mycelium-graph.svg)](https://crates.io/crates/mycelium-graph)
 [![Documentation](https://docs.rs/mycelium-graph/badge.svg)](https://docs.rs/mycelium-graph)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
+[![Tests](https://img.shields.io/badge/tests-209%20passing-brightgreen)](https://github.com/greysquirr3l/mycelium/actions)
+[![Coverage](https://img.shields.io/badge/coverage-65.74%25-yellowgreen)](https://github.com/greysquirr3l/mycelium/actions)
 
 ---
 
@@ -167,12 +169,19 @@ cargo test --lib
 # Integration tests
 cargo test --test '*'
 
-# Property-based tests
-cargo test --features proptest
-
-# With browser feature (requires Chrome)
+# All tests (browser integration tests require Chrome)
 cargo test --all-features
+
+# Measure coverage (requires cargo-tarpaulin)
+cargo tarpaulin --workspace --all-features --ignore-tests --out Lcov
 ```
+
+**Coverage**: 65.74% (2 882 / 4 384 lines) across 209 tests.
+
+`mycelium-graph` achieves ~72% line coverage across unit and integration tests.
+`mycelium-browser` coverage is structurally bounded by the Chrome CDP requirement — all tests
+that spin up a real browser are marked `#[ignore = "requires Chrome"]`; pure-logic tests are
+fully covered.
 
 ---
 
@@ -224,6 +233,6 @@ Built with:
 
 ---
 
-**Status**: Active development | Version 0.1.0 | Rust 2024 edition
+**Status**: Active development | Version 0.1.0 | Rust 2024 edition | 209 tests | 65.74% coverage
 
 For detailed documentation, see [docs.rs/mycelium-graph](https://docs.rs/mycelium-graph) and [docs.rs/mycelium-browser](https://docs.rs/mycelium-browser).

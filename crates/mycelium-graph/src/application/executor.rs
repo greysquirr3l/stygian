@@ -15,3 +15,19 @@ impl Default for PipelineExecutor {
         Self::new()
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_returns_executor() {
+        let _e = PipelineExecutor::new();
+    }
+
+    #[test]
+    fn default_is_same_as_new() {
+        let _e = PipelineExecutor::default();
+    }
+}

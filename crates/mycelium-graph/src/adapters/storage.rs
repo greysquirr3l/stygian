@@ -547,4 +547,67 @@ mod tests {
             "separators must be sanitised: got {fname:?}"
         );
     }
+
+    #[tokio::test]
+    async fn file_storage_retrieve_finds_correct_record() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = FileStorage::new(dir.path().to_path_buf());
+
+        // Store records across two pipelines to exercise full-dir scan in retrieve
+        let r1 = StorageRecord::new("pipe-x", "node-1", json!({"val": 1}));
+        let r2 = StorageRecord::new("pipe-y", "node-2", json!({"val": 2}));
+        let id1 = r1.id.clone();
+        let id2 = r2.id.clone();
+
+        storage.store(r1).await.unwrap();
+        storage.store(r2).await.unwrap();
+
+        let found = storage.retrieve(&id1).await.unwrap().unwrap();
+        assert_eq!(found.id, id1);
+        assert_eq!(found.pipeline_id, "pipe-x");
+
+        let found2 = storage.retrieve(&id2).await.unwrap().unwrap();
+        assert_eq!(found2.id, id2);
+        assert_eq!(found2.pipeline_id, "pipe-y");
+    }
+
+    #[tokio::test]
+    async fn file_storage_retrieve_missing_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = FileStorage::new(dir.path().to_path_buf());
+        // Store something so the dir exists and the scan loop runs
+        storage
+            .store(StorageRecord::new("p", "n", json!(0)))
+            .await
+            .unwrap();
+        let result = storage.retrieve("nonexistent-id").await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn file_storage_delete_nonexistent_dir_is_noop() {
+        // Dir is never created — delete should return Ok without panicking
+        let storage = FileStorage::new(std::path::PathBuf::from("/tmp/mycelium-no-such-dir-xyz"));
+        storage.delete("any-id").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn file_storage_delete_id_not_present_is_noop() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = FileStorage::new(dir.path().to_path_buf());
+        let r = StorageRecord::new("pipe-z", "n", json!(42));
+        storage.store(r).await.unwrap();
+        // Deleting a non-existent id should not modify the file
+        storage.delete("totally-unknown-id").await.unwrap();
+        let records = storage.list("pipe-z").await.unwrap();
+        assert_eq!(records.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn file_storage_list_missing_pipeline_returns_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let storage = FileStorage::new(dir.path().to_path_buf());
+        let records = storage.list("never-stored").await.unwrap();
+        assert!(records.is_empty());
+    }
 }

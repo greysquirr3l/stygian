@@ -245,4 +245,53 @@ mod tests {
             MyceliumError::Provider(ProviderError::InvalidCredentials)
         ));
     }
+
+    #[test]
+    fn test_map_http_error_401() {
+        assert!(matches!(
+            CopilotProvider::map_http_error(401, ""),
+            MyceliumError::Provider(ProviderError::InvalidCredentials)
+        ));
+    }
+
+    #[test]
+    fn test_map_http_error_429() {
+        let err = CopilotProvider::map_http_error(429, "rate limit hit");
+        assert!(
+            matches!(err, MyceliumError::Provider(ProviderError::ApiError(ref msg)) if msg.contains("rate limited"))
+        );
+    }
+
+    #[test]
+    fn test_map_http_error_server_error() {
+        let err = CopilotProvider::map_http_error(502, "bad gateway");
+        assert!(
+            matches!(err, MyceliumError::Provider(ProviderError::ApiError(ref msg)) if msg.contains("502"))
+        );
+    }
+
+    #[test]
+    fn test_parse_response_valid() -> Result<()> {
+        let resp = serde_json::json!({
+            "choices": [{"message": {"content": "{\"title\": \"Hello\"}"}}]
+        });
+        let val = CopilotProvider::parse_response(&resp)?;
+        assert_eq!(
+            val.get("title").and_then(serde_json::Value::as_str),
+            Some("Hello")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_response_no_content() {
+        let resp = serde_json::json!({"choices": []});
+        assert!(CopilotProvider::parse_response(&resp).is_err());
+    }
+
+    #[test]
+    fn test_config_with_model() {
+        let cfg = CopilotConfig::new("ghp_tok".to_string()).with_model("claude-3.5-sonnet");
+        assert_eq!(cfg.model, "claude-3.5-sonnet");
+    }
 }

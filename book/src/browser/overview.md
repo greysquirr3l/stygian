@@ -1,0 +1,106 @@
+# Browser Automation Overview
+
+`mycelium-browser` is a high-performance, anti-detection browser automation library for Rust.
+It is built on the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/)
+via [`chromiumoxide`](https://github.com/mattsse/chromiumoxide) and ships a comprehensive suite
+of stealth features for bypassing modern bot-detection systems.
+
+---
+
+## Feature summary
+
+| Feature | Description |
+|---|---|
+| **Browser pooling** | Warm pool with configurable min/max, LRU eviction, backpressure |
+| **Anti-detection** | `navigator` spoofing, canvas noise, WebGL randomisation, UA patching |
+| **Human behaviour** | Bézier-curve mouse paths, realistic keystroke timing, typo simulation |
+| **CDP leak protection** | Hides `Runtime.enable` artifacts that expose automation |
+| **WebRTC control** | Block, proxy-route, or allow — prevents IP leaks |
+| **Fingerprint generation** | Statistically-weighted device profiles (Windows, Mac, Linux, mobile) |
+| **Stealth levels** | `None` / `Basic` / `Advanced` — tune evasion vs. performance |
+| **Resource filtering** | Block images, fonts, media per-tab to speed up text scraping |
+| **Cookie persistence** | Save and restore cookie jars across sessions |
+
+---
+
+## Use cases
+
+| Scenario | Recommended config |
+|---|---|
+| Public HTML scraping (no bot detection) | `StealthLevel::None`, HTTP adapter preferred |
+| Single-page app rendering | `StealthLevel::Basic`, `WaitUntil::NetworkIdle` |
+| Cloudflare / DataDome protected sites | `StealthLevel::Advanced` |
+| Price monitoring (authenticated sessions) | `StealthLevel::Basic` + cookie persistence |
+| CAPTCHA-adjacent flows | `StealthLevel::Advanced` + human behaviour + proxy |
+
+---
+
+## Quick start
+
+```rust,no_run
+use mycelium_browser::{BrowserConfig, BrowserPool, WaitUntil};
+use std::time::Duration;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Default config: headless, Advanced stealth, 2 warm browsers
+    let pool   = BrowserPool::new(BrowserConfig::default()).await?;
+    let handle = pool.acquire().await?;            // < 100 ms from warm pool
+
+    let mut page = handle.browser().new_page().await?;
+
+    page.navigate(
+        "https://example.com",
+        WaitUntil::Selector("body".to_string()),
+        Duration::from_secs(30),
+    ).await?;
+
+    println!("Title: {}", page.title().await?);
+    println!("HTML:  {} bytes", page.content().await?.len());
+
+    handle.release().await;               // returns browser to pool
+    Ok(())
+}
+```
+
+---
+
+## Performance targets
+
+| Operation | Target |
+|---|---|
+| Browser acquisition (warm pool) | < 100 ms |
+| Browser launch (cold start) | < 2 s |
+| Advanced stealth injection overhead | 10–30 ms per page |
+| Pool health check | < 5 ms |
+
+---
+
+## Platform support
+
+| Platform | Status |
+|---|---|
+| macOS (Apple Silicon / Intel) | Fully supported, actively tested |
+| Linux (x86-64, ARM64) | Fully supported, CI tested |
+| Windows | Depends on `chromiumoxide` backend; not actively tested |
+| Headless CI (GitHub Actions) | Supported — default config is `headless: true` |
+
+---
+
+## Installation
+
+```toml
+[dependencies]
+mycelium-browser = "0.1"
+tokio            = { version = "1", features = ["full"] }
+```
+
+To disable stealth features for a minimal build:
+
+```toml
+mycelium-browser = { version = "0.1", default-features = false }
+```
+
+Chrome 120+ must be available on the system or specified via `MYCELIUM_CHROME_PATH`.
+On CI, install it with `apt-get install google-chrome-stable` or use the
+`browser-actions/setup-chrome` GitHub Action.

@@ -2,6 +2,9 @@
 
 High-performance, anti-detection browser automation library for Rust.
 
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
+[![Coverage](https://img.shields.io/badge/coverage-limited%20by%20CDP-lightgrey)](https://github.com/greysquirr3l/mycelium/actions)
+
 Built on the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) via
 [`chromiumoxide`](https://github.com/mattsse/chromiumoxide) with comprehensive stealth features
 for bypassing modern anti-bot systems: Cloudflare, DataDome, PerimeterX, Akamai.
@@ -315,6 +318,29 @@ A: Set `MYCELIUM_CHROME_PATH=/path/to/chrome` or use
 **Q: Why does `stats().idle` always return 0?**  
 A: `idle` is a lock-free approximation.  The count is not maintained in the hot
 acquire/release path to avoid contention.  Use `available` and `active` instead.
+
+---
+
+## Testing
+
+```bash
+# Pure-logic unit tests (no Chrome required)
+cargo test --lib -p mycelium-browser
+
+# Integration tests (requires Chrome 120+)
+cargo test --all-features -p mycelium-browser
+
+# Run only ignored Chrome tests explicitly
+cargo test --all-features -p mycelium-browser -- --include-ignored
+
+# Measure coverage for logic units
+cargo tarpaulin -p mycelium-browser --lib --ignore-tests --out Lcov
+```
+
+**Coverage notes**: All tests that launch a real browser instance are annotated
+`#[ignore = "requires Chrome"]` so the suite passes in CI without a Chrome binary.
+Pure-logic coverage (config, stealth scripts, fingerprint generation, simulator math)
+is high; overall line coverage is structurally bounded by the CDP requirement.
 
 ---
 

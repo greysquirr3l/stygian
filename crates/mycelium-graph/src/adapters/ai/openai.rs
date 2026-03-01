@@ -266,4 +266,32 @@ mod tests {
             MyceliumError::Provider(ProviderError::InvalidCredentials)
         ));
     }
+
+    #[test]
+    fn test_map_http_error_429() {
+        let err = OpenAIProvider::map_http_error(429, "too many");
+        assert!(
+            matches!(err, MyceliumError::Provider(ProviderError::ApiError(ref msg)) if msg.contains("rate limited"))
+        );
+    }
+
+    #[test]
+    fn test_map_http_error_server_error() {
+        let err = OpenAIProvider::map_http_error(500, "internal");
+        assert!(
+            matches!(err, MyceliumError::Provider(ProviderError::ApiError(ref msg)) if msg.contains("500"))
+        );
+    }
+
+    #[test]
+    fn test_parse_response_missing_choices() {
+        let resp = serde_json::json!({"id": "chatcmpl-abc"});
+        assert!(OpenAIProvider::parse_response(&resp).is_err());
+    }
+
+    #[test]
+    fn test_config_with_model() {
+        let cfg = OpenAIConfig::new("key".to_string()).with_model("gpt-4-turbo");
+        assert_eq!(cfg.model, "gpt-4-turbo");
+    }
 }

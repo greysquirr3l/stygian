@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-03-01
+
+### Added
+
+- GitHub Actions CI/CD workflows: `ci.yml`, `docs.yml`, `release.yml`, `scorecard.yml`, `security.yml`
+- `deny.toml` cargo-deny configuration for supply-chain security (advisories, licenses, bans)
+- mdBook documentation site (`book/`) with 17 chapters across three parts: Graph Engine, Browser Automation, and Reference
+- GitHub Pages deployment via `docs.yml` — mdBook at `/` with rustdoc API reference merged at `/api/`
+- Additional unit tests for `FileStorage`, `Config`, `Executor`, and `Cli` modules (storage cross-pipeline retrieve, default config assertions, executor concurrency, CLI parse coverage)
+- OpenAI, Gemini, and GitHub Copilot AI adapter test coverage improvements
+
+### Changed
+
+- README files updated with CI status badges and coverage reporting
+- `.gitignore` extended to exclude `book/book/` build output and Coraline artefacts
+
 ### Added
 
 #### mycelium-graph
@@ -71,5 +87,6 @@ Both crates are functional and well-tested, but APIs may evolve based on communi
 
 ---
 
-[Unreleased]: https://github.com/greysquirr3l/mycelium/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/greysquirr3l/mycelium/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/greysquirr3l/mycelium/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/greysquirr3l/mycelium/releases/tag/v0.1.0

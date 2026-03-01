@@ -531,4 +531,34 @@ mod tests {
         assert!(out.data.contains("mock-wasm-plugin"));
         assert!(out.data.contains("https://test.com"));
     }
+
+    #[test]
+    fn mock_plugin_default_dir_is_plugins() {
+        let loader = MockWasmPlugin::default();
+        assert_eq!(loader.plugin_dir, PathBuf::from("plugins"));
+    }
+
+    #[tokio::test]
+    async fn mock_service_execute_with_json_params() {
+        let loader = MockWasmPlugin::new();
+        let (_, svc) = loader.discover().await.unwrap().remove(0);
+        let input = ServiceInput {
+            url: "https://api.example.com/data".to_string(),
+            params: serde_json::json!({"key": "value"}),
+        };
+        let out = svc.execute(input).await.unwrap();
+        // Mock service always succeeds regardless of params
+        assert!(!out.data.is_empty());
+        assert!(out.data.contains("https://api.example.com/data"));
+    }
+
+    #[tokio::test]
+    async fn mock_loader_load_uses_file_stem_as_name() {
+        let loader = MockWasmPlugin::new();
+        let (meta, _) = loader
+            .load(&PathBuf::from("plugins/my-extractor.wasm"))
+            .await
+            .unwrap();
+        assert_eq!(meta.name, "my-extractor");
+    }
 }

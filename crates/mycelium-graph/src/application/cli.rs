@@ -475,4 +475,43 @@ mod tests {
         // global registry is empty in tests — should succeed with a "no services" message
         cmd_list_services().unwrap();
     }
+
+    /// Helper: write a minimal valid pipeline TOML to a `NamedTempFile`
+    fn minimal_pipeline_toml() -> tempfile::NamedTempFile {
+        use std::io::Write as _;
+        let mut tmp = tempfile::NamedTempFile::new().unwrap();
+        writeln!(
+            tmp,
+            r#"
+[[services]]
+name = "http"
+kind = "http"
+
+[[nodes]]
+name = "fetch"
+service = "http"
+url = "https://example.com"
+"#
+        )
+        .unwrap();
+        tmp
+    }
+
+    #[test]
+    fn cmd_check_valid_toml_succeeds() {
+        let tmp = minimal_pipeline_toml();
+        cmd_check(tmp.path().to_str().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn cmd_graph_viz_dot_format_succeeds() {
+        let tmp = minimal_pipeline_toml();
+        cmd_graph_viz(tmp.path().to_str().unwrap(), VizFormat::Dot).unwrap();
+    }
+
+    #[test]
+    fn cmd_graph_viz_mermaid_format_succeeds() {
+        let tmp = minimal_pipeline_toml();
+        cmd_graph_viz(tmp.path().to_str().unwrap(), VizFormat::Mermaid).unwrap();
+    }
 }
