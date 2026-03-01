@@ -9,8 +9,8 @@
 
 use std::time::Duration;
 
-use mycelium_browser::{BrowserConfig, BrowserPool, WaitUntil};
 use mycelium_browser::config::StealthLevel;
+use mycelium_browser::{BrowserConfig, BrowserPool, WaitUntil};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -25,7 +25,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Launching browser with Advanced stealth...");
     let pool = BrowserPool::new(config).await?;
     let handle = pool.acquire().await?;
-    let mut page = handle.browser().ok_or("browser handle no longer valid")?.new_page().await?;
+    let mut page = handle
+        .browser()
+        .ok_or("browser handle no longer valid")?
+        .new_page()
+        .await?;
 
     // First verify stealth properties on about:blank
     page.navigate(

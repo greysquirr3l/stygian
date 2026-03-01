@@ -17,15 +17,17 @@
 //! overloaded queues) to validate that the engine degrades gracefully and that
 //! resilience primitives behave correctly under stress.
 
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::Duration;
 
 use mycelium_graph::adapters::resilience::{CircuitBreakerImpl, RetryPolicy};
 use mycelium_graph::application::metrics::{MetricEvent, MetricsRegistry};
 use mycelium_graph::domain::error::{MyceliumError, ServiceError};
 use mycelium_graph::domain::executor::WorkerPool;
-use mycelium_graph::ports::{CircuitBreaker, CircuitState, ScrapingService, ServiceInput, ServiceOutput};
+use mycelium_graph::ports::{
+    CircuitBreaker, CircuitState, ScrapingService, ServiceInput, ServiceOutput,
+};
 
 // ─── Fault-injecting service ──────────────────────────────────────────────────
 
@@ -77,7 +79,11 @@ fn circuit_breaker_opens_under_sustained_error_stream() {
     let cb = CircuitBreakerImpl::new(5, Duration::from_secs(60));
 
     for _ in 0..5 {
-        assert_eq!(cb.state(), CircuitState::Closed, "should be closed before threshold");
+        assert_eq!(
+            cb.state(),
+            CircuitState::Closed,
+            "should be closed before threshold"
+        );
         cb.record_failure();
     }
 
@@ -97,7 +103,11 @@ fn circuit_breaker_closes_after_zero_timeout_and_success() {
     assert_ne!(cb.state(), CircuitState::Closed);
 
     cb.record_success();
-    assert_eq!(cb.state(), CircuitState::Closed, "circuit should close after success");
+    assert_eq!(
+        cb.state(),
+        CircuitState::Closed,
+        "circuit should close after success"
+    );
 }
 
 #[test]
@@ -120,11 +130,7 @@ fn circuit_breaker_alternating_success_failure_does_not_trip() {
 
 #[test]
 fn retry_policy_does_not_panic_for_large_attempt_index() {
-    let policy = RetryPolicy::new(
-        5,
-        Duration::from_millis(1),
-        Duration::from_millis(100),
-    );
+    let policy = RetryPolicy::new(5, Duration::from_millis(1), Duration::from_millis(100));
     // Must not panic for any attempt index
     for attempt in 0u32..=50 {
         let _ = policy.delay_for(attempt);
@@ -143,13 +149,16 @@ async fn worker_pool_processes_burst_of_tasks() {
 
     for _ in 0..50 {
         let p = Arc::clone(&pool);
-        let svc = Arc::new(FaultInjectingService::new("ok", 0))
-            as Arc<dyn ScrapingService>;
+        let svc = Arc::new(FaultInjectingService::new("ok", 0)) as Arc<dyn ScrapingService>;
         handles.push(tokio::spawn(async move {
-            p.submit(svc, ServiceInput {
-                url: "https://example.com".into(),
-                params: serde_json::json!({}),
-            }).await
+            p.submit(
+                svc,
+                ServiceInput {
+                    url: "https://example.com".into(),
+                    params: serde_json::json!({}),
+                },
+            )
+            .await
         }));
     }
 
@@ -170,10 +179,18 @@ async fn worker_pool_fast_tasks_finish_despite_slow_ones() {
     struct SlowService;
     #[async_trait::async_trait]
     impl ScrapingService for SlowService {
-        fn name(&self) -> &'static str { "slow" }
-        async fn execute(&self, _: ServiceInput) -> mycelium_graph::domain::error::Result<ServiceOutput> {
+        fn name(&self) -> &'static str {
+            "slow"
+        }
+        async fn execute(
+            &self,
+            _: ServiceInput,
+        ) -> mycelium_graph::domain::error::Result<ServiceOutput> {
             tokio::time::sleep(Duration::from_millis(20)).await;
-            Ok(ServiceOutput { data: String::new(), metadata: serde_json::json!({}) })
+            Ok(ServiceOutput {
+                data: String::new(),
+                metadata: serde_json::json!({}),
+            })
         }
     }
 
@@ -185,10 +202,14 @@ async fn worker_pool_fast_tasks_finish_despite_slow_ones() {
     {
         let p = Arc::clone(&pool);
         handles.push(tokio::spawn(async move {
-            p.submit(Arc::new(SlowService), ServiceInput {
-                url: "https://slow.example.com".into(),
-                params: serde_json::json!({}),
-            }).await
+            p.submit(
+                Arc::new(SlowService),
+                ServiceInput {
+                    url: "https://slow.example.com".into(),
+                    params: serde_json::json!({}),
+                },
+            )
+            .await
         }));
     }
 
@@ -198,10 +219,15 @@ async fn worker_pool_fast_tasks_finish_despite_slow_ones() {
         let c = Arc::clone(&fast_counter);
         let svc = Arc::new(FaultInjectingService::new("fast", 0)) as Arc<dyn ScrapingService>;
         handles.push(tokio::spawn(async move {
-            let result = p.submit(svc, ServiceInput {
-                url: "https://example.com".into(),
-                params: serde_json::json!({}),
-            }).await;
+            let result = p
+                .submit(
+                    svc,
+                    ServiceInput {
+                        url: "https://example.com".into(),
+                        params: serde_json::json!({}),
+                    },
+                )
+                .await;
             if result.is_ok() {
                 c.fetch_add(1, Ordering::Relaxed);
             }
@@ -210,7 +236,11 @@ async fn worker_pool_fast_tasks_finish_despite_slow_ones() {
     }
 
     join_all(handles).await;
-    assert_eq!(fast_counter.load(Ordering::Relaxed), 20, "all fast tasks must complete");
+    assert_eq!(
+        fast_counter.load(Ordering::Relaxed),
+        20,
+        "all fast tasks must complete"
+    );
 }
 
 /// Concurrent producers all submitting to the same pool.
@@ -228,12 +258,17 @@ async fn worker_pool_concurrent_producers_all_complete() {
             let mut inner = Vec::new();
             for _ in 0..5 {
                 let pp = Arc::clone(&p);
-                let svc = Arc::new(FaultInjectingService::new("prod", 0)) as Arc<dyn ScrapingService>;
+                let svc =
+                    Arc::new(FaultInjectingService::new("prod", 0)) as Arc<dyn ScrapingService>;
                 inner.push(tokio::spawn(async move {
-                    pp.submit(svc, ServiceInput {
-                        url: "https://example.com".into(),
-                        params: serde_json::json!({}),
-                    }).await
+                    pp.submit(
+                        svc,
+                        ServiceInput {
+                            url: "https://example.com".into(),
+                            params: serde_json::json!({}),
+                        },
+                    )
+                    .await
                 }));
             }
             join_all(inner).await
@@ -241,7 +276,8 @@ async fn worker_pool_concurrent_producers_all_complete() {
     }
 
     let groups = join_all(handles).await;
-    let total_success: usize = groups.iter()
+    let total_success: usize = groups
+        .iter()
         .filter_map(|g| g.as_ref().ok())
         .flat_map(|v| v.iter())
         .filter(|r| r.as_ref().map(Result::is_ok).unwrap_or(false))
@@ -263,7 +299,9 @@ async fn metrics_registry_thread_safe_under_concurrent_writes() {
         let mm = Arc::clone(&m);
         handles.push(tokio::spawn(async move {
             for _ in 0..100 {
-                mm.record(MetricEvent::RequestStarted { service: "svc".into() });
+                mm.record(MetricEvent::RequestStarted {
+                    service: "svc".into(),
+                });
                 mm.record(MetricEvent::CacheAccess { hit: true });
             }
         }));

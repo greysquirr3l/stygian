@@ -28,7 +28,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let handle = pool.acquire().await?;
 
     // Open a new tab
-    let mut page = handle.browser().ok_or("browser handle no longer valid")?.new_page().await?;
+    let mut page = handle
+        .browser()
+        .ok_or("browser handle no longer valid")?
+        .new_page()
+        .await?;
 
     // Navigate and wait until <body> is present
     println!("Navigating to https://example.com ...");
@@ -47,7 +51,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("HTML   : {} bytes", html.len());
     println!(
         "Snippet: {}",
-        html.chars().take(200).collect::<String>().replace('\n', " ")
+        html.chars()
+            .take(200)
+            .collect::<String>()
+            .replace('\n', " ")
     );
 
     // Explicitly close the tab (also happens on drop)

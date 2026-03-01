@@ -17,9 +17,9 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use mycelium_browser::{BrowserConfig, BrowserInstance, BrowserPool, WaitUntil};
 use mycelium_browser::config::PoolConfig;
 use mycelium_browser::page::ResourceFilter;
+use mycelium_browser::{BrowserConfig, BrowserInstance, BrowserPool, WaitUntil};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -57,8 +57,14 @@ fn test_config() -> BrowserConfig {
 async fn browser_launch_and_shutdown() -> Result<(), Box<dyn std::error::Error>> {
     let mut instance = BrowserInstance::launch(test_config()).await?;
 
-    assert!(instance.is_healthy_cached(), "freshly launched browser should be healthy");
-    assert!(instance.is_healthy().await, "async health check should pass");
+    assert!(
+        instance.is_healthy_cached(),
+        "freshly launched browser should be healthy"
+    );
+    assert!(
+        instance.is_healthy().await,
+        "async health check should pass"
+    );
 
     instance.shutdown().await?;
     Ok(())
@@ -113,7 +119,10 @@ async fn page_eval_returns_typed_value() -> Result<(), Box<dyn std::error::Error
     .await?;
 
     let result: f64 = page.eval("1 + 2").await?;
-    assert!((result - 3.0).abs() < f64::EPSILON, "1+2 should be 3, got {result}");
+    assert!(
+        (result - 3.0).abs() < f64::EPSILON,
+        "1+2 should be 3, got {result}"
+    );
 
     let s: String = page.eval(r#""hello""#).await?;
     assert_eq!(s, "hello");
@@ -161,7 +170,8 @@ async fn fingerprint_injection_webdriver_hidden() -> Result<(), Box<dyn std::err
 /// inject — the values change per fingerprint but must be sane.
 #[tokio::test]
 #[ignore = "requires real Chrome binary and external network access"]
-async fn fingerprint_injection_hardware_values_sensible() -> Result<(), Box<dyn std::error::Error>> {
+async fn fingerprint_injection_hardware_values_sensible() -> Result<(), Box<dyn std::error::Error>>
+{
     let instance = BrowserInstance::launch(test_config()).await?;
 
     let mut page = instance.new_page().await?;
@@ -173,17 +183,13 @@ async fn fingerprint_injection_hardware_values_sensible() -> Result<(), Box<dyn 
     )
     .await?;
 
-    let concurrency: u32 = page
-        .eval("navigator.hardwareConcurrency")
-        .await?;
+    let concurrency: u32 = page.eval("navigator.hardwareConcurrency").await?;
     assert!(
         (1..=64).contains(&concurrency),
         "hardwareConcurrency {concurrency} out of sane range"
     );
 
-    let memory: u32 = page
-        .eval("navigator.deviceMemory")
-        .await?;
+    let memory: u32 = page.eval("navigator.deviceMemory").await?;
     assert!(
         [4u32, 8, 16].contains(&memory),
         "deviceMemory {memory} not in valid set {{4, 8, 16}}"
@@ -210,7 +216,8 @@ async fn resource_filter_api_does_not_error() -> Result<(), Box<dyn std::error::
     let mut page = instance.new_page().await?;
 
     // API must not error when called.
-    page.set_resource_filter(ResourceFilter::block_media()).await?;
+    page.set_resource_filter(ResourceFilter::block_media())
+        .await?;
 
     // about:blank has no external network requests, so Fetch intercept does not
     // block navigation.
@@ -238,7 +245,11 @@ async fn resource_filter_api_does_not_error() -> Result<(), Box<dyn std::error::
 async fn pool_acquire_release_reuse() -> Result<(), Box<dyn std::error::Error>> {
     let mut config = BrowserConfig::builder()
         .headless(true)
-        .pool(PoolConfig { min_size: 1, max_size: 2, ..PoolConfig::default() })
+        .pool(PoolConfig {
+            min_size: 1,
+            max_size: 2,
+            ..PoolConfig::default()
+        })
         .build();
     config.launch_timeout = Duration::from_secs(30);
     config.cdp_timeout = Duration::from_secs(15);
@@ -247,12 +258,20 @@ async fn pool_acquire_release_reuse() -> Result<(), Box<dyn std::error::Error>> 
     let pool = BrowserPool::new(config).await?;
 
     let handle1 = pool.acquire().await?;
-    let id1 = handle1.browser().ok_or("handle1 has no valid browser")?.id().to_string();
+    let id1 = handle1
+        .browser()
+        .ok_or("handle1 has no valid browser")?
+        .id()
+        .to_string();
     handle1.release().await;
 
     // Second acquire should return the same warmed instance.
     let handle2 = pool.acquire().await?;
-    let id2 = handle2.browser().ok_or("handle2 has no valid browser")?.id().to_string();
+    let id2 = handle2
+        .browser()
+        .ok_or("handle2 has no valid browser")?
+        .id()
+        .to_string();
 
     assert_eq!(
         id1, id2,
@@ -301,7 +320,11 @@ async fn pool_max_concurrency_enforced() -> Result<(), Box<dyn std::error::Error
 async fn pool_stats_track_active_handles() -> Result<(), Box<dyn std::error::Error>> {
     let mut config = BrowserConfig::builder()
         .headless(true)
-        .pool(PoolConfig { min_size: 0, max_size: 3, ..PoolConfig::default() })
+        .pool(PoolConfig {
+            min_size: 0,
+            max_size: 3,
+            ..PoolConfig::default()
+        })
         .build();
     config.launch_timeout = Duration::from_secs(30);
     config.cdp_timeout = Duration::from_secs(15);

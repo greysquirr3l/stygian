@@ -14,8 +14,8 @@
 
 use std::time::Duration;
 
+use mycelium_browser::webrtc::{ProxyLocation, WebRtcConfig, WebRtcPolicy};
 use mycelium_browser::{BrowserConfig, BrowserPool, WaitUntil};
-use mycelium_browser::webrtc::{WebRtcConfig, WebRtcPolicy, ProxyLocation};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -47,7 +47,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ── Launch ──────────────────────────────────────────────────────────────────
     let pool = BrowserPool::new(config).await?;
     let handle = pool.acquire().await?;
-    let mut page = handle.browser().ok_or("browser handle no longer valid")?.new_page().await?;
+    let mut page = handle
+        .browser()
+        .ok_or("browser handle no longer valid")?
+        .new_page()
+        .await?;
 
     // ── Verify IP via ipify.org ────────────────────────────────────────────────
     println!("Checking IP via https://api.ipify.org ...");
@@ -69,10 +73,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .unwrap_or_else(|_| serde_json::json!({"ip": "unknown"}));
 
-    let ip = ip_json.get("ip").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let ip = ip_json
+        .get("ip")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
     println!(
         "Apparent IP: {ip}{}",
-        if using_proxy { " (via proxy)" } else { " (direct)" }
+        if using_proxy {
+            " (via proxy)"
+        } else {
+            " (direct)"
+        }
     );
 
     // ── Verify WebRTC policy prevents leaks ───────────────────────────────────

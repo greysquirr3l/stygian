@@ -178,7 +178,9 @@ mod tests {
 
     #[test]
     fn launch_failed_is_debug_printable() {
-        let e = BrowserError::LaunchFailed { reason: "test".to_string() };
+        let e = BrowserError::LaunchFailed {
+            reason: "test".to_string(),
+        };
         assert!(!format!("{e:?}").is_empty());
     }
 
@@ -190,4 +192,3 @@ mod tests {
         assert!(s.contains("max=5"));
     }
 }
-

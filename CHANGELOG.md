@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - README files updated with CI status badges and coverage reporting
-- `.gitignore` extended to exclude `book/book/` build output and Coraline artefacts
+- `.gitignore` extended to exclude `book/book/` build output and Coraline artifacts
 
 ### Added
 

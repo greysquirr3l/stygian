@@ -23,7 +23,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = BrowserConfig::default();
     let pool = BrowserPool::new(config).await?;
     let handle = pool.acquire().await?;
-    let mut page = handle.browser().ok_or("browser handle no longer valid")?.new_page().await?;
+    let mut page = handle
+        .browser()
+        .ok_or("browser handle no longer valid")?
+        .new_page()
+        .await?;
 
     println!("Navigating to form...");
     page.navigate(

@@ -119,8 +119,7 @@ impl SessionSnapshot {
     pub fn save_to_file(&self, path: impl AsRef<Path>) -> Result<()> {
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| BrowserError::ConfigError(format!("Failed to serialise session: {e}")))?;
-        std::fs::write(path, json)
-            .map_err(BrowserError::Io)
+        std::fs::write(path, json).map_err(BrowserError::Io)
     }
 
     /// Deserialise from a JSON file previously written by [`Self::save_to_file`].
@@ -129,8 +128,7 @@ impl SessionSnapshot {
     ///
     /// Returns an IO or deserialisation error if the file cannot be read.
     pub fn load_from_file(path: impl AsRef<Path>) -> Result<Self> {
-        let json = std::fs::read_to_string(path)
-            .map_err(BrowserError::Io)?;
+        let json = std::fs::read_to_string(path).map_err(BrowserError::Io)?;
         serde_json::from_str(&json)
             .map_err(|e| BrowserError::ConfigError(format!("Failed to deserialise session: {e}")))
     }
@@ -258,10 +256,7 @@ pub async fn restore_session(page: &PageHandle, snapshot: &SessionSnapshot) -> R
 
         let script = entries.join("\n");
 
-        let _: serde_json::Value = page
-            .eval(&script)
-            .await
-            .unwrap_or(serde_json::Value::Null);
+        let _: serde_json::Value = page.eval(&script).await.unwrap_or(serde_json::Value::Null);
     }
 
     debug!(
@@ -291,11 +286,9 @@ async fn capture_local_storage(page: &PageHandle) -> Result<HashMap<String, Stri
     ";
 
     match page.eval::<String>(script).await {
-        Ok(json_str) => {
-            serde_json::from_str(&json_str).map_err(|e| {
-                BrowserError::ConfigError(format!("Failed to parse localStorage JSON: {e}"))
-            })
-        }
+        Ok(json_str) => serde_json::from_str(&json_str).map_err(|e| {
+            BrowserError::ConfigError(format!("Failed to parse localStorage JSON: {e}"))
+        }),
         Err(e) => {
             warn!("localStorage capture failed (non-HTML page?): {e}");
             Ok(HashMap::new())
@@ -355,8 +348,14 @@ mod tests {
             .as_secs();
         let s = make_snapshot(now - 60, None);
         let age = s.age();
-        assert!(age >= Duration::from_secs(59), "age should be ≥59s, got {age:?}");
-        assert!(age < Duration::from_secs(65), "age should be <65s, got {age:?}");
+        assert!(
+            age >= Duration::from_secs(59),
+            "age should be ≥59s, got {age:?}"
+        );
+        assert!(
+            age < Duration::from_secs(65),
+            "age should be <65s, got {age:?}"
+        );
     }
 
     #[test]
@@ -372,7 +371,8 @@ mod tests {
             secure: true,
             same_site: "Lax".to_string(),
         });
-        s.local_storage.insert("theme".to_string(), "dark".to_string());
+        s.local_storage
+            .insert("theme".to_string(), "dark".to_string());
 
         let json = serde_json::to_string(&s)?;
         let decoded: SessionSnapshot = serde_json::from_str(&json)?;
@@ -381,7 +381,10 @@ mod tests {
         if let Some(c) = decoded.cookies.first() {
             assert_eq!(c.name, "session_id");
         }
-        assert_eq!(decoded.local_storage.get("theme").map(String::as_str), Some("dark"));
+        assert_eq!(
+            decoded.local_storage.get("theme").map(String::as_str),
+            Some("dark")
+        );
         assert_eq!(decoded.ttl_secs, Some(7200));
         Ok(())
     }

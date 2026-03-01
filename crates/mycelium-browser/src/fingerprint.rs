@@ -102,21 +102,11 @@ const MACOS_WEBGL_PROFILES: &[(&str, &str)] = &[
 ];
 
 // Mobile screen resolution pools
-const MOBILE_ANDROID_RESOLUTIONS: &[(u32, u32)] = &[
-    (393, 851),
-    (390, 844),
-    (412, 915),
-    (414, 896),
-    (360, 780),
-];
+const MOBILE_ANDROID_RESOLUTIONS: &[(u32, u32)] =
+    &[(393, 851), (390, 844), (412, 915), (414, 896), (360, 780)];
 
-const MOBILE_IOS_RESOLUTIONS: &[(u32, u32)] = &[
-    (390, 844),
-    (393, 852),
-    (375, 667),
-    (414, 896),
-    (428, 926),
-];
+const MOBILE_IOS_RESOLUTIONS: &[(u32, u32)] =
+    &[(390, 844), (393, 852), (375, 667), (414, 896), (428, 926)];
 
 // Mobile GPU pools
 const ANDROID_WEBGL_PROFILES: &[(&str, &str)] = &[
@@ -126,10 +116,7 @@ const ANDROID_WEBGL_PROFILES: &[(&str, &str)] = &[
         "Google Inc. (Qualcomm)",
         "ANGLE (Qualcomm, Adreno (TM) 730, OpenGL ES 3.2)",
     ),
-    (
-        "Google Inc. (ARM)",
-        "ANGLE (ARM, Mali-G610, OpenGL ES 3.2)",
-    ),
+    ("Google Inc. (ARM)", "ANGLE (ARM, Mali-G610, OpenGL ES 3.2)"),
 ];
 
 const IOS_WEBGL_PROFILES: &[(&str, &str)] = &[
@@ -437,20 +424,16 @@ impl Fingerprint {
                 ));
             }
             if self.platform == "Win32" && vendor.starts_with("Apple") {
-                issues.push(format!(
-                    "Win32 platform has Apple GPU vendor '{vendor}'"
-                ));
+                issues.push(format!("Win32 platform has Apple GPU vendor '{vendor}'"));
             }
         }
 
         // Font / platform cross-check (only when fonts are populated)
         if !self.fonts.is_empty() {
-            let has_win_exclusive = self.fonts.iter().any(|f| {
-                matches!(
-                    f.as_str(),
-                    "Segoe UI" | "Calibri" | "Consolas" | "Tahoma"
-                )
-            });
+            let has_win_exclusive = self
+                .fonts
+                .iter()
+                .any(|f| matches!(f.as_str(), "Segoe UI" | "Calibri" | "Consolas" | "Tahoma"));
             let has_mac_exclusive = self.fonts.iter().any(|f| {
                 matches!(
                     f.as_str(),
@@ -465,8 +448,7 @@ impl Fingerprint {
             });
 
             if self.platform == "MacIntel" && has_win_exclusive {
-                issues
-                    .push("MacIntel platform has Windows-exclusive fonts".to_string());
+                issues.push("MacIntel platform has Windows-exclusive fonts".to_string());
             }
             if self.platform == "Win32" && has_mac_exclusive {
                 issues.push("Win32 platform has macOS-exclusive fonts".to_string());
@@ -625,7 +607,10 @@ impl Fingerprint {
         };
 
         let (webgl_vendor, webgl_renderer) = pick(ANDROID_WEBGL_PROFILES, rng(seed, 6));
-        let fonts = MOBILE_ANDROID_FONTS.iter().map(|s| (*s).to_string()).collect();
+        let fonts = MOBILE_ANDROID_FONTS
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
 
         Self {
             user_agent,
@@ -1051,8 +1036,14 @@ mod tests {
     fn random_fingerprint_has_valid_ranges() {
         let fp = Fingerprint::random();
         let (w, h) = fp.screen_resolution;
-        assert!((1280..=3840).contains(&w), "width {w} out of expected range");
-        assert!((768..=2160).contains(&h), "height {h} out of expected range");
+        assert!(
+            (1280..=3840).contains(&w),
+            "width {w} out of expected range"
+        );
+        assert!(
+            (768..=2160).contains(&h),
+            "height {h} out of expected range"
+        );
         assert!(
             HARDWARE_CONCURRENCY.contains(&fp.hardware_concurrency),
             "hardware_concurrency {} not in pool",
@@ -1184,7 +1175,10 @@ mod tests {
         assert_eq!(fp.platform, "Win32");
         assert!(fp.user_agent.contains("Windows NT"), "UA must be Windows");
         assert!(!fp.fonts.is_empty(), "Windows profile must have fonts");
-        assert!(fp.validate_consistency().is_empty(), "must pass consistency");
+        assert!(
+            fp.validate_consistency().is_empty(),
+            "must pass consistency"
+        );
     }
 
     #[test]
@@ -1197,7 +1191,10 @@ mod tests {
             fp.user_agent
         );
         assert!(!fp.fonts.is_empty(), "Mac profile must have fonts");
-        assert!(fp.validate_consistency().is_empty(), "must pass consistency");
+        assert!(
+            fp.validate_consistency().is_empty(),
+            "must pass consistency"
+        );
     }
 
     #[test]
@@ -1206,7 +1203,10 @@ mod tests {
         assert_eq!(fp.platform, "Linux x86_64");
         assert!(fp.user_agent.contains("Linux"), "UA must be Linux");
         assert!(!fp.fonts.is_empty(), "Linux profile must have fonts");
-        assert!(fp.validate_consistency().is_empty(), "must pass consistency");
+        assert!(
+            fp.validate_consistency().is_empty(),
+            "must pass consistency"
+        );
     }
 
     #[test]
@@ -1259,7 +1259,9 @@ mod tests {
     fn device_profile_random_weighted_distribution() {
         // Run 1000 samples and verify Windows dominates (expect ≥50%)
         let windows_count = (0u64..1000)
-            .filter(|&i| DeviceProfile::random_weighted(i * 13 + 7) == DeviceProfile::DesktopWindows)
+            .filter(|&i| {
+                DeviceProfile::random_weighted(i * 13 + 7) == DeviceProfile::DesktopWindows
+            })
             .count();
         assert!(
             windows_count >= 500,
@@ -1384,4 +1386,3 @@ mod tests {
         }
     }
 }
-

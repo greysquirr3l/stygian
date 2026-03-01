@@ -57,7 +57,7 @@ chromiumoxide = "0.7"
 ulid = "1.2"
 parking_lot = "0.12"
 dashmap = "6"
-lru = "0.12"
+lru = "0.16"
 base64 = "0.22"
 prometheus-client = "0.22"
 figment = { version = "0.10", features = ["toml", "env"] }
@@ -73,7 +73,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 csv = "1.3"
 
 # WASM plugins (optional heavy dep)
-wasmtime = { version = "27", default-features = false, features = ["runtime", "cranelift", "component-model"] }
+wasmtime = { version = "42", default-features = false, features = ["runtime", "cranelift", "component-model"] }
 
 # Database (optional)
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "json", "migrate"] }

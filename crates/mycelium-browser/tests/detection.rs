@@ -57,8 +57,7 @@ fn test_config() -> BrowserConfig {
 #[tokio::test]
 #[ignore = "requires real Chrome binary and external network access"]
 async fn stealth_webdriver_not_present() -> Result<(), Box<dyn std::error::Error>> {
-    let instance = BrowserInstance::launch(test_config())
-        .await?;
+    let instance = BrowserInstance::launch(test_config()).await?;
 
     let mut page = instance.new_page().await?;
     page.navigate(
@@ -89,8 +88,7 @@ async fn stealth_webdriver_not_present() -> Result<(), Box<dyn std::error::Error
 #[tokio::test]
 #[ignore = "requires real Chrome binary and external network access"]
 async fn stealth_plugins_not_empty() -> Result<(), Box<dyn std::error::Error>> {
-    let instance = BrowserInstance::launch(test_config())
-        .await?;
+    let instance = BrowserInstance::launch(test_config()).await?;
 
     let mut page = instance.new_page().await?;
     page.navigate(
@@ -100,9 +98,7 @@ async fn stealth_plugins_not_empty() -> Result<(), Box<dyn std::error::Error>> {
     )
     .await?;
 
-    let plugin_count: u32 = page
-        .eval("navigator.plugins.length")
-        .await?;
+    let plugin_count: u32 = page.eval("navigator.plugins.length").await?;
 
     assert!(
         plugin_count > 0,
@@ -121,8 +117,7 @@ async fn stealth_plugins_not_empty() -> Result<(), Box<dyn std::error::Error>> {
 #[tokio::test]
 #[ignore = "requires real Chrome binary and external network access"]
 async fn stealth_user_agent_not_headless() -> Result<(), Box<dyn std::error::Error>> {
-    let instance = BrowserInstance::launch(test_config())
-        .await?;
+    let instance = BrowserInstance::launch(test_config()).await?;
 
     let mut page = instance.new_page().await?;
     page.navigate(
@@ -132,9 +127,7 @@ async fn stealth_user_agent_not_headless() -> Result<(), Box<dyn std::error::Err
     )
     .await?;
 
-    let ua: String = page
-        .eval("navigator.userAgent")
-        .await?;
+    let ua: String = page.eval("navigator.userAgent").await?;
 
     assert!(
         !ua.contains("HeadlessChrome"),
@@ -157,8 +150,7 @@ async fn stealth_user_agent_not_headless() -> Result<(), Box<dyn std::error::Err
 #[tokio::test]
 #[ignore = "requires real Chrome binary and external network access"]
 async fn stealth_chrome_object_present() -> Result<(), Box<dyn std::error::Error>> {
-    let instance = BrowserInstance::launch(test_config())
-        .await?;
+    let instance = BrowserInstance::launch(test_config()).await?;
 
     let mut page = instance.new_page().await?;
     page.navigate(
@@ -168,9 +160,7 @@ async fn stealth_chrome_object_present() -> Result<(), Box<dyn std::error::Error
     )
     .await?;
 
-    let chrome_defined: bool = page
-        .eval("typeof window.chrome !== 'undefined'")
-        .await?;
+    let chrome_defined: bool = page.eval("typeof window.chrome !== 'undefined'").await?;
 
     assert!(
         chrome_defined,
@@ -190,8 +180,7 @@ async fn stealth_chrome_object_present() -> Result<(), Box<dyn std::error::Error
 #[tokio::test]
 #[ignore = "requires real Chrome binary and external network access"]
 async fn stealth_cdp_automation_properties_absent() -> Result<(), Box<dyn std::error::Error>> {
-    let instance = BrowserInstance::launch(test_config())
-        .await?;
+    let instance = BrowserInstance::launch(test_config()).await?;
 
     let mut page = instance.new_page().await?;
     page.navigate(
@@ -227,8 +216,7 @@ async fn stealth_cdp_automation_properties_absent() -> Result<(), Box<dyn std::e
 #[tokio::test]
 #[ignore = "requires real Chrome binary and external network access"]
 async fn stealth_permissions_api_present() -> Result<(), Box<dyn std::error::Error>> {
-    let instance = BrowserInstance::launch(test_config())
-        .await?;
+    let instance = BrowserInstance::launch(test_config()).await?;
 
     let mut page = instance.new_page().await?;
     page.navigate(
@@ -242,7 +230,10 @@ async fn stealth_permissions_api_present() -> Result<(), Box<dyn std::error::Err
         .eval("typeof navigator.permissions !== 'undefined' && typeof navigator.permissions.query === 'function'")
         .await?;
 
-    assert!(api_present, "navigator.permissions should be present and expose query()");
+    assert!(
+        api_present,
+        "navigator.permissions should be present and expose query()"
+    );
 
     page.close().await?;
     instance.shutdown().await?;
@@ -256,8 +247,7 @@ async fn stealth_permissions_api_present() -> Result<(), Box<dyn std::error::Err
 #[tokio::test]
 #[ignore = "requires real Chrome binary and external network access"]
 async fn stealth_language_and_vendor_not_empty() -> Result<(), Box<dyn std::error::Error>> {
-    let instance = BrowserInstance::launch(test_config())
-        .await?;
+    let instance = BrowserInstance::launch(test_config()).await?;
 
     let mut page = instance.new_page().await?;
     page.navigate(
@@ -267,12 +257,8 @@ async fn stealth_language_and_vendor_not_empty() -> Result<(), Box<dyn std::erro
     )
     .await?;
 
-    let language: String = page
-        .eval("navigator.language || ''")
-        .await?;
-    let vendor: String = page
-        .eval("navigator.vendor || ''")
-        .await?;
+    let language: String = page.eval("navigator.language || ''").await?;
+    let vendor: String = page.eval("navigator.vendor || ''").await?;
 
     assert!(
         !language.is_empty(),
@@ -296,8 +282,7 @@ async fn stealth_language_and_vendor_not_empty() -> Result<(), Box<dyn std::erro
 #[tokio::test]
 #[ignore = "requires real Chrome binary and external network access"]
 async fn sannysoft_critical_signals_pass() -> Result<(), Box<dyn std::error::Error>> {
-    let instance = BrowserInstance::launch(test_config())
-        .await?;
+    let instance = BrowserInstance::launch(test_config()).await?;
 
     let mut page = instance.new_page().await?;
     page.navigate(
@@ -311,13 +296,9 @@ async fn sannysoft_critical_signals_pass() -> Result<(), Box<dyn std::error::Err
         .eval("typeof navigator.webdriver === 'undefined' || navigator.webdriver === false")
         .await?;
 
-    let ua: String = page
-        .eval("navigator.userAgent")
-        .await?;
+    let ua: String = page.eval("navigator.userAgent").await?;
 
-    let plugins: u32 = page
-        .eval("navigator.plugins.length")
-        .await?;
+    let plugins: u32 = page.eval("navigator.plugins.length").await?;
 
     assert!(
         webdriver_hidden,
@@ -344,8 +325,7 @@ async fn sannysoft_critical_signals_pass() -> Result<(), Box<dyn std::error::Err
 #[tokio::test]
 #[ignore = "requires real Chrome binary and external network access"]
 async fn browserleaks_no_automation_signals() -> Result<(), Box<dyn std::error::Error>> {
-    let instance = BrowserInstance::launch(test_config())
-        .await?;
+    let instance = BrowserInstance::launch(test_config()).await?;
 
     let mut page = instance.new_page().await?;
     page.navigate(
@@ -359,13 +339,9 @@ async fn browserleaks_no_automation_signals() -> Result<(), Box<dyn std::error::
         .eval("typeof navigator.webdriver === 'undefined' || navigator.webdriver === false")
         .await?;
 
-    let language: String = page
-        .eval("navigator.language || ''")
-        .await?;
+    let language: String = page.eval("navigator.language || ''").await?;
 
-    let vendor: String = page
-        .eval("navigator.vendor || ''")
-        .await?;
+    let vendor: String = page.eval("navigator.vendor || ''").await?;
 
     assert!(
         webdriver_hidden,
@@ -392,8 +368,7 @@ async fn browserleaks_no_automation_signals() -> Result<(), Box<dyn std::error::
 #[tokio::test]
 #[ignore = "requires real Chrome binary and external network access"]
 async fn creepjs_page_loads_without_bot_crash() -> Result<(), Box<dyn std::error::Error>> {
-    let instance = BrowserInstance::launch(test_config())
-        .await?;
+    let instance = BrowserInstance::launch(test_config()).await?;
 
     let mut page = instance.new_page().await?;
     // CreepJS is JS-heavy; give it extra time.

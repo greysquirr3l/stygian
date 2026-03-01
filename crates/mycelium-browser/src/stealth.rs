@@ -358,9 +358,9 @@ pub async fn apply_stealth_to_page(
     page: &chromiumoxide::Page,
     config: &crate::config::BrowserConfig,
 ) -> crate::error::Result<()> {
-    use chromiumoxide::cdp::browser_protocol::page::AddScriptToEvaluateOnNewDocumentParams;
     use crate::cdp_protection::CdpProtection;
     use crate::config::StealthLevel;
+    use chromiumoxide::cdp::browser_protocol::page::AddScriptToEvaluateOnNewDocumentParams;
 
     /// Inline helper: push one script as `AddScriptToEvaluateOnNewDocument`.
     async fn inject_one(
@@ -396,12 +396,20 @@ pub async fn apply_stealth_to_page(
 
     let (nav_profile, stealth_cfg) = match config.stealth_level {
         StealthLevel::Basic => (NavigatorProfile::default(), StealthConfig::minimal()),
-        StealthLevel::Advanced => (NavigatorProfile::windows_chrome(), StealthConfig::paranoid()),
+        StealthLevel::Advanced => (
+            NavigatorProfile::windows_chrome(),
+            StealthConfig::paranoid(),
+        ),
         StealthLevel::None => unreachable!(),
     };
     let nav_script = StealthProfile::new(stealth_cfg, nav_profile).injection_script();
     if !nav_script.is_empty() {
-        inject_one(page, "AddScriptToEvaluateOnNewDocument(navigator)", nav_script).await?;
+        inject_one(
+            page,
+            "AddScriptToEvaluateOnNewDocument(navigator)",
+            nav_script,
+        )
+        .await?;
     }
 
     // ── Advanced only ──────────────────────────────────────────────────────────
@@ -536,7 +544,10 @@ mod tests {
         let config = StealthConfig::minimal();
         let profile = NavigatorProfile::default();
         let script = StealthProfile::new(config, profile).injection_script();
-        assert!(!script.is_empty(), "Basic stealth should produce a navigator script");
+        assert!(
+            !script.is_empty(),
+            "Basic stealth should produce a navigator script"
+        );
     }
 
     #[test]
@@ -552,10 +563,13 @@ mod tests {
 
     #[test]
     fn advanced_level_fingerprint_script_non_empty() {
-        use crate::fingerprint::{inject_fingerprint, Fingerprint};
+        use crate::fingerprint::{Fingerprint, inject_fingerprint};
         let fp = Fingerprint::random();
         let script = inject_fingerprint(&fp);
-        assert!(!script.is_empty(), "Fingerprint injection script must not be empty");
+        assert!(
+            !script.is_empty(),
+            "Fingerprint injection script must not be empty"
+        );
     }
 
     #[test]

@@ -12,13 +12,15 @@ allow = [
     "BSD-3-Clause",
     "ISC",
     "Unicode-DFS-2016",
+    "Unicode-3.0",
     "CC0-1.0",
     "Zlib",
     "OpenSSL",
+    "MPL-2.0",
+    "CDLA-Permissive-2.0",
 ]
-# Warn on unlicensed crates rather than hard-fail (some C bundled libs)
-unlicensed = "deny"
-copyleft = "deny"
+# Crates with any license not in the allow list above are denied by default.
+# Copyleft licenses (GPL, LGPL, AGPL) are not in the allow list and are therefore also denied.
 
 [bans]
 # Deny duplicate versions of the same crate by default
@@ -26,14 +28,18 @@ multiple-versions = "warn"
 wildcards = "deny"
 highlight = "all"
 
-# Allow multiple versions of crates that commonly ship both v1 and v2
-[[bans.allow]]
-name = "rustls"
-[[bans.allow]]
-name = "ring"
-[[bans.allow]]
-name = "webpki"
-
 [advisories]
-# Deny crates with known security vulnerabilities
-ignore = []
+# Deny crates with known security vulnerabilities.
+# The entries below are acknowledged transitive issues with no fix available in
+# the crate we actually control — they are tracked and will be removed once
+# an upstream fix lands.
+ignore = [
+    # rsa 0.9.x Marvin timing attack — transitive via sqlx-mysql; no upstream fix available.
+    { id = "RUSTSEC-2023-0071", reason = "Transitive via sqlx-mysql; no upstream fix available" },
+    # async-std discontinued — transitive via chromiumoxide (cdp library); no alternative yet.
+    { id = "RUSTSEC-2025-0052", reason = "Transitive via chromiumoxide; no alternative CDP library" },
+    # fxhash unmaintained — transitive via scraper/selectors; upstream must update.
+    { id = "RUSTSEC-2025-0057", reason = "Transitive via scraper->selectors; no action available" },
+    # number_prefix unmaintained — transitive dep; no direct upgrade path.
+    { id = "RUSTSEC-2025-0119", reason = "Transitive unmaintained dep; no direct upgrade path" },
+]

@@ -38,11 +38,11 @@ use prometheus_client::{
     metrics::{
         counter::Counter,
         gauge::Gauge,
-        histogram::{exponential_buckets, Histogram},
+        histogram::{Histogram, exponential_buckets},
     },
     registry::Registry,
 };
-use tracing::{warn, error};
+use tracing::{error, warn};
 
 // ─── Thresholds ──────────────────────────────────────────────────────────────
 
@@ -75,8 +75,7 @@ pub struct BrowserMetrics {
 impl BrowserMetrics {
     fn new() -> Self {
         // Histogram buckets: 5 ms → ~20 s (12 exponential buckets, factor 2)
-        let acquisition_duration_seconds =
-            Histogram::new(exponential_buckets(0.005, 2.0, 12));
+        let acquisition_duration_seconds = Histogram::new(exponential_buckets(0.005, 2.0, 12));
         let pool_size = Gauge::default();
         let crashes_total: Counter = Counter::default();
         let acquisitions_total: Counter = Counter::default();
@@ -146,8 +145,7 @@ impl BrowserMetrics {
             if rate > ALERT_CRASH_RATE_THRESHOLD {
                 error!(
                     crash_rate = format!("{:.1}%", rate * 100.0),
-                    crashes, acquires,
-                    "Browser crash rate exceeds 10% alert threshold"
+                    crashes, acquires, "Browser crash rate exceeds 10% alert threshold"
                 );
             }
         }
@@ -218,7 +216,7 @@ pub fn gather() -> String {
 // ─── Platform-specific RSS ───────────────────────────────────────────────────
 
 /// Read process RSS from `/proc/self/status` (Linux) or return 0.
-const fn rss_bytes() -> i64 {
+fn rss_bytes() -> i64 {
     #[cfg(target_os = "linux")]
     {
         read_linux_rss().unwrap_or(0)
@@ -288,7 +286,10 @@ mod tests {
         m.record_crash();
         let output = m.gather();
         assert!(output.contains("browser_pool_size"), "missing pool_size");
-        assert!(output.contains("browser_crashes_total"), "missing crashes_total");
+        assert!(
+            output.contains("browser_crashes_total"),
+            "missing crashes_total"
+        );
         assert!(
             output.contains("browser_acquisition_duration_seconds"),
             "missing acquisition histogram"

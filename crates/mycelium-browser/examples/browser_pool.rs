@@ -10,8 +10,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use mycelium_browser::{BrowserConfig, BrowserPool, WaitUntil};
 use mycelium_browser::config::PoolConfig;
+use mycelium_browser::{BrowserConfig, BrowserPool, WaitUntil};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -32,7 +32,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = Arc::new(BrowserPool::new(config).await?);
 
     let stats = pool.stats();
-    println!("Pool stats: available={}, max={}", stats.available, stats.max);
+    println!(
+        "Pool stats: available={}, max={}",
+        stats.available, stats.max
+    );
 
     // Spawn 3 concurrent scraping tasks
     let urls = vec![
@@ -49,8 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let h = tokio::spawn(async move {
             // Acquire a browser slot (waiting up to acquire_timeout if pool is full)
-            let browser_handle = pool.acquire().await
-                .map_err(|e| e.to_string())?;
+            let browser_handle = pool.acquire().await.map_err(|e| e.to_string())?;
             let mut page = browser_handle
                 .browser()
                 .ok_or("browser handle no longer valid")?

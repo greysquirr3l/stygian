@@ -25,9 +25,9 @@
 //! ```
 
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, RwLock};
-use std::fmt::Write;
 
 use serde::{Deserialize, Serialize};
 
@@ -299,7 +299,11 @@ impl MetricsRegistry {
     /// assert!(text.contains("mycelium_requests_total"));
     /// assert!(text.contains("mycelium_errors_total"));
     /// ```
-    #[allow(clippy::too_many_lines, clippy::indexing_slicing, clippy::format_push_string)]
+    #[allow(
+        clippy::too_many_lines,
+        clippy::indexing_slicing,
+        clippy::format_push_string
+    )]
     pub fn render_prometheus(&self) -> String {
         let snap = self.snapshot();
         let mut out = String::with_capacity(2048);
@@ -417,7 +421,11 @@ impl MetricsRegistry {
             "mycelium_pipeline_duration_ms_sum {}",
             self.pipeline_duration_sum.load(Ordering::Relaxed)
         );
-        let _ = writeln!(&mut out, "mycelium_pipeline_duration_ms_count {}", snap.pipelines_total);
+        let _ = writeln!(
+            &mut out,
+            "mycelium_pipeline_duration_ms_count {}",
+            snap.pipelines_total
+        );
 
         out
     }
@@ -638,11 +646,7 @@ impl TracingInit {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::float_cmp,
-    clippy::indexing_slicing
-)]
+#[allow(clippy::unwrap_used, clippy::float_cmp, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 

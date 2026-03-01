@@ -470,7 +470,8 @@ mod tests {
     async fn test_execute_csv() -> crate::domain::error::Result<()> {
         let a = adapter();
         let output = a.execute(input("text/csv", "x,y\n1,2")).await?;
-        let data: Value = serde_json::from_str(&output.data).map_err(|e| ServiceError::InvalidResponse(e.to_string()))?;
+        let data: Value = serde_json::from_str(&output.data)
+            .map_err(|e| ServiceError::InvalidResponse(e.to_string()))?;
         assert_eq!(data.get("row_count").and_then(Value::as_u64), Some(1));
         assert_eq!(
             output.metadata.get("detected_type").and_then(Value::as_str),
@@ -485,7 +486,8 @@ mod tests {
         let out = a
             .execute(input("application/json", r#"{"k": "v"}"#))
             .await?;
-        let data: Value = serde_json::from_str(&out.data).map_err(|e| ServiceError::InvalidResponse(e.to_string()))?;
+        let data: Value = serde_json::from_str(&out.data)
+            .map_err(|e| ServiceError::InvalidResponse(e.to_string()))?;
         assert_eq!(data.get("k").and_then(Value::as_str), Some("v"));
         Ok(())
     }
@@ -494,7 +496,8 @@ mod tests {
     async fn test_execute_image_no_provider() -> crate::domain::error::Result<()> {
         let a = adapter();
         let out = a.execute(input("image/png", "binary-data")).await?;
-        let data: Value = serde_json::from_str(&out.data).map_err(|e| ServiceError::InvalidResponse(e.to_string()))?;
+        let data: Value = serde_json::from_str(&out.data)
+            .map_err(|e| ServiceError::InvalidResponse(e.to_string()))?;
         assert_eq!(
             data.get("status").and_then(Value::as_str),
             Some("no_vision_provider")
@@ -506,7 +509,8 @@ mod tests {
     async fn test_execute_unknown_passthrough() -> crate::domain::error::Result<()> {
         let a = adapter();
         let out = a.execute(input("application/octet-stream", "raw")).await?;
-        let data: Value = serde_json::from_str(&out.data).map_err(|e| ServiceError::InvalidResponse(e.to_string()))?;
+        let data: Value = serde_json::from_str(&out.data)
+            .map_err(|e| ServiceError::InvalidResponse(e.to_string()))?;
         assert_eq!(data.get("raw").and_then(Value::as_str), Some("raw"));
         Ok(())
     }
@@ -522,7 +526,8 @@ mod tests {
             }),
         };
         let out = a.execute(input).await?;
-        let data: Value = serde_json::from_str(&out.data).map_err(|e| ServiceError::InvalidResponse(e.to_string()))?;
+        let data: Value = serde_json::from_str(&out.data)
+            .map_err(|e| ServiceError::InvalidResponse(e.to_string()))?;
         assert_eq!(data.get("answer").and_then(Value::as_u64), Some(42));
         Ok(())
     }

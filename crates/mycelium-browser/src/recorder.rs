@@ -241,7 +241,9 @@ fn iso_timestamp() -> String {
 /// Very small epoch-days → (y, m, d) conversion (Gregorian, UTC approximate).
 fn epoch_days_to_ymd(days: u64) -> (u32, u32, u32) {
     // 400-year cycle = 146097 days
-    let d = i64::try_from(days).unwrap_or(i64::MAX).saturating_add(719_468); // offset to 0000-03-01
+    let d = i64::try_from(days)
+        .unwrap_or(i64::MAX)
+        .saturating_add(719_468); // offset to 0000-03-01
     let era = d.div_euclid(146_097);
     let doe = d.rem_euclid(146_097);
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;

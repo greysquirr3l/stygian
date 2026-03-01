@@ -94,7 +94,10 @@ mod tests {
 
         let output = provider.extract(content.clone(), schema).await?;
         assert_eq!(output.get("mock").and_then(Value::as_bool), Some(true));
-        assert_eq!(output.get("provider").and_then(Value::as_str), Some("mock-ai"));
+        assert_eq!(
+            output.get("provider").and_then(Value::as_str),
+            Some("mock-ai")
+        );
         assert_eq!(
             output.get("content_length").and_then(Value::as_u64),
             u64::try_from(content.len()).ok()
@@ -124,15 +127,24 @@ mod tests {
 
         assert_eq!(chunks.len(), 3, "Should emit 3 chunks");
         assert_eq!(
-            chunks.first().and_then(|c| c.get("chunk")).and_then(Value::as_u64),
+            chunks
+                .first()
+                .and_then(|c| c.get("chunk"))
+                .and_then(Value::as_u64),
             Some(1)
         );
         assert_eq!(
-            chunks.get(1).and_then(|c| c.get("chunk")).and_then(Value::as_u64),
+            chunks
+                .get(1)
+                .and_then(|c| c.get("chunk"))
+                .and_then(Value::as_u64),
             Some(2)
         );
         assert_eq!(
-            chunks.get(2).and_then(|c| c.get("chunk")).and_then(Value::as_u64),
+            chunks
+                .get(2)
+                .and_then(|c| c.get("chunk"))
+                .and_then(Value::as_u64),
             Some(3)
         );
         assert_eq!(
