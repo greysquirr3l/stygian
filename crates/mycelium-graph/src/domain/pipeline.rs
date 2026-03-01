@@ -97,6 +97,7 @@ impl PipelineUnvalidated {
     /// # Ok(())
     /// # }
     /// ```
+    #[allow(clippy::too_many_lines, clippy::unwrap_used, clippy::indexing_slicing)]
     pub fn validate(self) -> Result<PipelineValidated, MyceliumError> {
         use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -141,32 +142,28 @@ impl PipelineUnvalidated {
 
         for (idx, node) in nodes.iter().enumerate() {
             let node_obj = node.as_object().ok_or_else(|| {
-                GraphError::InvalidPipeline(format!("Node at index {}: must be an object", idx))
+                GraphError::InvalidPipeline(format!("Node at index {idx}: must be an object"))
             })?;
 
             // Rule 2 & 3: Validate node ID
             let node_id = node_obj.get("id").and_then(|v| v.as_str()).ok_or_else(|| {
                 GraphError::InvalidPipeline(format!(
-                    "Node at index {}: 'id' field is required and must be a string",
-                    idx
+                    "Node at index {idx}: 'id' field is required and must be a string"
                 ))
             })?;
 
             if node_id.is_empty() {
                 return Err(GraphError::InvalidPipeline(format!(
-                    "Node at index {}: id cannot be empty",
-                    idx
+                    "Node at index {idx}: id cannot be empty"
                 ))
                 .into());
             }
 
             // Check for duplicate node IDs
             if node_map.insert(node_id.to_string(), idx).is_some() {
-                return Err(GraphError::InvalidPipeline(format!(
-                    "Duplicate node id: '{}'",
-                    node_id
-                ))
-                .into());
+                return Err(
+                    GraphError::InvalidPipeline(format!("Duplicate node id: '{node_id}'")).into(),
+                );
             }
 
             // Rule 4: Validate service type
@@ -175,15 +172,13 @@ impl PipelineUnvalidated {
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| {
                     GraphError::InvalidPipeline(format!(
-                        "Node '{}': 'service' field is required and must be a string",
-                        node_id
+                        "Node '{node_id}': 'service' field is required and must be a string"
                     ))
                 })?;
 
             if !valid_services.contains(&service) {
                 return Err(GraphError::InvalidPipeline(format!(
-                    "Node '{}': service type '{}' is not recognized",
-                    node_id, service
+                    "Node '{node_id}': service type '{service}' is not recognized"
                 ))
                 .into());
             }
@@ -194,7 +189,7 @@ impl PipelineUnvalidated {
         let mut in_degree: HashMap<String, usize> = HashMap::new();
 
         // Initialize in_degree for all nodes
-        for node in nodes.iter() {
+        for node in nodes {
             if let Some(id) = node.get("id").and_then(|v| v.as_str()) {
                 in_degree.insert(id.to_string(), 0);
                 adjacency.insert(id.to_string(), Vec::new());
@@ -203,10 +198,7 @@ impl PipelineUnvalidated {
 
         for (edge_idx, edge) in edges.iter().enumerate() {
             let edge_obj = edge.as_object().ok_or_else(|| {
-                GraphError::InvalidPipeline(format!(
-                    "Edge at index {}: must be an object",
-                    edge_idx
-                ))
+                GraphError::InvalidPipeline(format!("Edge at index {edge_idx}: must be an object"))
             })?;
 
             let from = edge_obj
@@ -214,23 +206,20 @@ impl PipelineUnvalidated {
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| {
                     GraphError::InvalidPipeline(format!(
-                        "Edge at index {}: 'from' field is required and must be a string",
-                        edge_idx
+                        "Edge at index {edge_idx}: 'from' field is required and must be a string"
                     ))
                 })?;
 
             let to = edge_obj.get("to").and_then(|v| v.as_str()).ok_or_else(|| {
                 GraphError::InvalidPipeline(format!(
-                    "Edge at index {}: 'to' field is required and must be a string",
-                    edge_idx
+                    "Edge at index {edge_idx}: 'to' field is required and must be a string"
                 ))
             })?;
 
             // Source node must exist
             if !node_map.contains_key(from) {
                 return Err(GraphError::InvalidPipeline(format!(
-                    "Edge {} -> {}: source node '{}' not found",
-                    from, to, from
+                    "Edge {from} -> {to}: source node '{from}' not found"
                 ))
                 .into());
             }
@@ -238,8 +227,7 @@ impl PipelineUnvalidated {
             // Target node must exist
             if !node_map.contains_key(to) {
                 return Err(GraphError::InvalidPipeline(format!(
-                    "Edge {} -> {}: target node '{}' not found",
-                    from, to, to
+                    "Edge {from} -> {to}: target node '{to}' not found"
                 ))
                 .into());
             }
@@ -247,8 +235,7 @@ impl PipelineUnvalidated {
             // Source and target cannot be the same
             if from == to {
                 return Err(GraphError::InvalidPipeline(format!(
-                    "Self-loop detected at node '{}'",
-                    from
+                    "Self-loop detected at node '{from}'"
                 ))
                 .into());
             }
@@ -351,8 +338,7 @@ impl PipelineUnvalidated {
                 .collect::<Vec<_>>()
                 .join("', '");
             return Err(GraphError::InvalidPipeline(format!(
-                "Unreachable nodes found: '{}' (ensure all nodes are connected in a single DAG)",
-                unreachable_str
+                "Unreachable nodes found: '{unreachable_str}' (ensure all nodes are connected in a single DAG)"
             ))
             .into());
         }
@@ -474,6 +460,7 @@ impl PipelineComplete {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 mod tests {
     use super::*;
     use serde_json::json;

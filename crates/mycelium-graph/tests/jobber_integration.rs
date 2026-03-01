@@ -8,6 +8,8 @@
 //! JOBBER_ACCESS_TOKEN=<token> cargo test --test jobber_integration -- --ignored
 //! ```
 
+#![allow(clippy::expect_used, clippy::needless_raw_string_hashes)]
+
 use mycelium_graph::adapters::graphql_plugins::jobber::JobberPlugin;
 use mycelium_graph::ports::graphql_plugin::GraphQlTargetPlugin;
 
@@ -35,7 +37,7 @@ fn jobber_plugin_metadata() {
 /// JOBBER_ACCESS_TOKEN=<token> cargo test --test jobber_integration -- --ignored
 /// ```
 #[tokio::test]
-#[ignore]
+#[ignore = "requires JOBBER_ACCESS_TOKEN env var"]
 async fn test_jobber_clients_returns_data() {
     let token = std::env::var("JOBBER_ACCESS_TOKEN")
         .expect("JOBBER_ACCESS_TOKEN must be set to run integration tests");

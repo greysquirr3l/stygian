@@ -663,7 +663,8 @@ impl PipelineWatcher {
     }
 
     /// Override the polling interval (default: 5 seconds).
-    pub fn with_interval(mut self, interval: Duration) -> Self {
+    #[must_use]
+    pub const fn with_interval(mut self, interval: Duration) -> Self {
         self.interval = interval;
         self
     }

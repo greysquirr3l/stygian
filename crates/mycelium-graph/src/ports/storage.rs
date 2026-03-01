@@ -80,16 +80,19 @@ impl StorageRecord {
     /// ```
     pub fn new(pipeline_id: &str, node_name: &str, data: Value) -> Self {
         let id = uuid::Uuid::new_v4().to_string();
-        let timestamp_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
+        let timestamp_ms = u64::try_from(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis(),
+        )
+        .unwrap_or(u64::MAX);
         Self {
             id,
             pipeline_id: pipeline_id.to_string(),
             node_name: node_name.to_string(),
             data,
-            metadata: Default::default(),
+            metadata: std::collections::HashMap::new(),
             timestamp_ms,
         }
     }
@@ -106,6 +109,7 @@ impl StorageRecord {
     ///     .with_metadata("status", "200");
     /// assert_eq!(r.metadata["status"], "200");
     /// ```
+    #[must_use]
     pub fn with_metadata(mut self, key: &str, value: &str) -> Self {
         self.metadata.insert(key.to_string(), value.to_string());
         self
@@ -224,7 +228,7 @@ impl OutputFormat {
     /// assert_eq!(OutputFormat::Json.extension(), "json");
     /// assert_eq!(OutputFormat::Jsonl.extension(), "jsonl");
     /// ```
-    pub fn extension(self) -> &'static str {
+    pub const fn extension(self) -> &'static str {
         match self {
             Self::Jsonl => "jsonl",
             Self::Csv => "csv",

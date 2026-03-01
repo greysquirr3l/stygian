@@ -4,6 +4,12 @@
 //! specific examples. Good for finding edge cases in graph construction,
 //! cache behaviour, and metric calculations.
 
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::manual_range_contains
+)]
+
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
@@ -138,7 +144,7 @@ proptest! {
             });
         }
         let rate = m.snapshot().error_rate();
-        prop_assert!(rate >= 0.0 && rate <= 1.0, "error rate out of range: {rate}");
+        prop_assert!((0.0..=1.0).contains(&rate), "error rate out of range: {rate}");
     }
 
     /// cache_hit_rate is always in [0.0, 1.0] regardless of hit/miss mix.
@@ -152,7 +158,7 @@ proptest! {
             m.record(MetricEvent::CacheAccess { hit: false });
         }
         let rate = m.snapshot().cache_hit_rate();
-        prop_assert!(rate >= 0.0 && rate <= 1.0, "cache hit rate out of range: {rate}");
+        prop_assert!((0.0..=1.0).contains(&rate), "cache hit rate out of range: {rate}");
     }
 }
 

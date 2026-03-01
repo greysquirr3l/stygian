@@ -157,9 +157,8 @@ impl StoragePort for FileStorage {
             if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
                 continue;
             }
-            let content = match tokio::fs::read_to_string(&path).await {
-                Ok(c) => c,
-                Err(_) => continue,
+            let Ok(content) = tokio::fs::read_to_string(&path).await else {
+                continue;
             };
             for line in content.lines() {
                 if let Ok(record) = serde_json::from_str::<StorageRecord>(line)
@@ -268,10 +267,11 @@ mod postgres {
     //!     ON pipeline_records (pipeline_id);
     //! ```
 
-    use super::*;
+    use crate::domain::error::{MyceliumError, Result, ServiceError};
+    use crate::ports::storage::{StoragePort, StorageRecord};
     use sqlx::{PgPool, Row};
 
-    /// PostgreSQL storage adapter.
+    /// `PostgreSQL` storage adapter.
     ///
     /// # Example
     ///
@@ -302,7 +302,7 @@ mod postgres {
         /// let s = PostgresStorage::new(pool);
         /// # });
         /// ```
-        pub fn new(pool: PgPool) -> Self {
+        pub const fn new(pool: PgPool) -> Self {
             Self { pool }
         }
     }
@@ -329,7 +329,7 @@ mod postgres {
             .bind(&record.node_name)
             .bind(&record.data)
             .bind(metadata_json)
-            .bind(record.timestamp_ms as i64)
+            .bind(i64::try_from(record.timestamp_ms).unwrap_or(i64::MAX))
             .execute(&self.pool)
             .await
             .map_err(|e| {
@@ -358,22 +358,18 @@ mod postgres {
                 )))
             })?;
 
-            match row {
-                None => Ok(None),
-                Some(r) => {
-                    let metadata =
-                        serde_json::from_value(r.get::<serde_json::Value, _>("metadata"))
-                            .unwrap_or_default();
-                    Ok(Some(StorageRecord {
-                        id: r.get("id"),
-                        pipeline_id: r.get("pipeline_id"),
-                        node_name: r.get("node_name"),
-                        data: r.get("data"),
-                        metadata,
-                        timestamp_ms: r.get::<i64, _>("timestamp_ms") as u64,
-                    }))
-                }
-            }
+            row.map_or(Ok(None), |r| {
+                let metadata = serde_json::from_value(r.get::<serde_json::Value, _>("metadata"))
+                    .unwrap_or_default();
+                Ok(Some(StorageRecord {
+                    id: r.get("id"),
+                    pipeline_id: r.get("pipeline_id"),
+                    node_name: r.get("node_name"),
+                    data: r.get("data"),
+                    metadata,
+                    timestamp_ms: u64::try_from(r.get::<i64, _>("timestamp_ms")).unwrap_or(0),
+                }))
+            })
         }
 
         async fn list(&self, pipeline_id: &str) -> Result<Vec<StorageRecord>> {
@@ -406,7 +402,7 @@ mod postgres {
                         node_name: r.get("node_name"),
                         data: r.get("data"),
                         metadata,
-                        timestamp_ms: r.get::<i64, _>("timestamp_ms") as u64,
+                        timestamp_ms: u64::try_from(r.get::<i64, _>("timestamp_ms")).unwrap_or(0),
                     }
                 })
                 .collect();
@@ -435,8 +431,10 @@ mod postgres {
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
-    use super::*;
+    use super::{FileStorage, NullStorage};
+    use crate::ports::storage::{StoragePort, StorageRecord};
     use serde_json::json;
 
     #[tokio::test]
@@ -539,7 +537,7 @@ mod tests {
 
         let files: Vec<_> = std::fs::read_dir(dir.path())
             .unwrap()
-            .filter_map(|e| e.ok())
+            .filter_map(Result::ok)
             .collect();
         // File must be inside the temp dir, not some other directory
         assert_eq!(files.len(), 1);

@@ -3,6 +3,13 @@
 //! Verifies that the pipeline engine handles failures gracefully and performs
 //! correctly under high concurrency. All tests use in-memory adapters; no
 //! real network I/O is performed.
+
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::missing_const_for_fn,
+    clippy::redundant_closure_for_method_calls
+)]
 //!
 //! ## Purpose
 //!
@@ -149,7 +156,7 @@ async fn worker_pool_processes_burst_of_tasks() {
     let results = join_all(handles).await;
     let successes = results
         .iter()
-        .filter(|r| r.as_ref().map(|inner| inner.is_ok()).unwrap_or(false))
+        .filter(|r| r.as_ref().map(Result::is_ok).unwrap_or(false))
         .count();
     assert_eq!(successes, 50, "all 50 tasks must succeed");
 }
@@ -237,7 +244,7 @@ async fn worker_pool_concurrent_producers_all_complete() {
     let total_success: usize = groups.iter()
         .filter_map(|g| g.as_ref().ok())
         .flat_map(|v| v.iter())
-        .filter(|r| r.as_ref().map(|inner| inner.is_ok()).unwrap_or(false))
+        .filter(|r| r.as_ref().map(Result::is_ok).unwrap_or(false))
         .count();
 
     assert_eq!(total_success, 40, "all 40 submissions must succeed");

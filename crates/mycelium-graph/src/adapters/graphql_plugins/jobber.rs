@@ -59,7 +59,7 @@ impl GraphQlTargetPlugin for JobberPlugin {
 }
 
 #[cfg(test)]
-#[allow(unsafe_code)] // set_var/remove_var are unsafe in Rust ≥1.93; scoped to tests only
+#[allow(unsafe_code, clippy::expect_used)] // set_var/remove_var are unsafe in Rust ≥1.93; scoped to tests only
 mod tests {
     use super::*;
 

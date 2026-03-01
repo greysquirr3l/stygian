@@ -73,10 +73,10 @@ impl WaitStrategy {
 impl fmt::Display for WaitStrategy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            WaitStrategy::DomContentLoaded => write!(f, "dom_content_loaded"),
-            WaitStrategy::NetworkIdle => write!(f, "network_idle"),
-            WaitStrategy::SelectorAppears(selector) => write!(f, "selector_appears({selector})"),
-            WaitStrategy::Fixed(duration) => write!(f, "fixed_{}ms", duration.as_millis()),
+            Self::DomContentLoaded => write!(f, "dom_content_loaded"),
+            Self::NetworkIdle => write!(f, "network_idle"),
+            Self::SelectorAppears(selector) => write!(f, "selector_appears({selector})"),
+            Self::Fixed(duration) => write!(f, "fixed_{}ms", duration.as_millis()),
         }
     }
 }
@@ -105,9 +105,9 @@ impl StealthLevel {
     /// Convert stealth level to string representation
     pub const fn as_str(&self) -> &'static str {
         match self {
-            StealthLevel::None => "none",
-            StealthLevel::Basic => "basic",
-            StealthLevel::Advanced => "advanced",
+            Self::None => "none",
+            Self::Basic => "basic",
+            Self::Advanced => "advanced",
         }
     }
 }
@@ -388,6 +388,12 @@ impl ScrapingService for BrowserAdapter {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::redundant_closure_for_method_calls
+)]
 mod tests {
     use super::*;
 

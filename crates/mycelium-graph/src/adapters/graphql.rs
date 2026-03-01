@@ -167,6 +167,7 @@ impl GraphQlService {
     /// 1. `extensions.cost.throttleStatus == "THROTTLED"`
     /// 2. Any error entry with `extensions.code == "THROTTLED"`
     /// 3. Any error message containing "throttled" (case-insensitive)
+    #[allow(clippy::indexing_slicing)]
     fn detect_throttle(body: &Value) -> Option<u64> {
         // 1. extensions.cost.throttleStatus
         if body["extensions"]["cost"]["throttleStatus"]
@@ -203,6 +204,11 @@ impl GraphQlService {
     /// deficit = maximumAvailable − currentlyAvailable
     /// ms      = (deficit / restoreRate * 1000).clamp(500, 2000)
     /// ```
+    #[allow(
+        clippy::indexing_slicing,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     fn throttle_backoff(body: &Value) -> u64 {
         let cost = &body["extensions"]["cost"];
         let max_avail = cost["maximumAvailable"].as_f64().unwrap_or(10_000.0);
@@ -218,6 +224,7 @@ impl GraphQlService {
     }
 
     /// Extract the `extensions.cost` object into a metadata-compatible [`Value`].
+    #[allow(clippy::indexing_slicing)]
     fn extract_cost_metadata(body: &Value) -> Option<Value> {
         let cost = &body["extensions"]["cost"];
         if cost.is_null() || cost.is_object() && cost.as_object()?.is_empty() {
@@ -227,6 +234,7 @@ impl GraphQlService {
     }
 
     /// Navigate a dot-separated JSON path like `"data.clients.pageInfo"`.
+    #[allow(clippy::indexing_slicing)]
     fn json_path<'v>(root: &'v Value, path: &str) -> &'v Value {
         let mut cur = root;
         for key in path.split('.') {
@@ -236,6 +244,7 @@ impl GraphQlService {
     }
 
     /// Execute one GraphQL POST and return the parsed JSON body or an error.
+    #[allow(clippy::indexing_slicing)]
     async fn post_query(
         &self,
         url: &str,
@@ -288,6 +297,7 @@ impl GraphQlService {
     }
 
     /// Validate a parsed GraphQL body (errors array, missing `data` key, throttle).
+    #[allow(clippy::indexing_slicing)]
     fn validate_body(body: &Value) -> Result<()> {
         // Throttle check takes priority so callers can retry with backoff.
         if let Some(retry_after_ms) = Self::detect_throttle(body) {
@@ -342,6 +352,7 @@ impl ScrapingService for GraphQlService {
     ///
     /// Returns `Err` for HTTP ≥ 400, invalid JSON, GraphQL `errors[]`, missing
     /// `data` key, throttle detection, or pagination runaway.
+    #[allow(clippy::too_many_lines, clippy::indexing_slicing)]
     async fn execute(&self, input: ServiceInput) -> Result<ServiceOutput> {
         let params = &input.params;
 
@@ -502,6 +513,13 @@ impl ScrapingService for GraphQlService {
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::needless_pass_by_value,
+    clippy::field_reassign_with_default,
+    clippy::unnecessary_literal_bound
+)]
 mod tests {
     use super::*;
     use std::collections::HashMap;
@@ -954,23 +972,18 @@ mod tests {
 
         let page_body_clone = page_body.clone();
         tokio::spawn(async move {
-            loop {
-                match listener.accept().await {
-                    Ok((mut stream, _)) => {
-                        let mut buf = [0u8; 8192];
-                        let _ = stream.read(&mut buf).await;
-                        let mut resp = Vec::new();
-                        write!(
-                            resp,
-                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                            page_body_clone.len()
-                        )
-                        .unwrap();
-                        resp.extend_from_slice(&page_body_clone);
-                        let _ = stream.write_all(&resp).await;
-                    }
-                    Err(_) => break,
-                }
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = [0u8; 8192];
+                let _ = stream.read(&mut buf).await;
+                let mut resp = Vec::new();
+                write!(
+                    resp,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    page_body_clone.len()
+                )
+                .unwrap();
+                resp.extend_from_slice(&page_body_clone);
+                let _ = stream.write_all(&resp).await;
             }
         });
 

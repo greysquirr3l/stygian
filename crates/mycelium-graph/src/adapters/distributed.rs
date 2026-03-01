@@ -134,14 +134,12 @@ impl WorkQueuePort for LocalWorkQueue {
     }
 
     async fn fail(&self, task_id: &str, error: &str) -> Result<()> {
-        let attempt = match self.state.get(task_id) {
-            Some(status) => match status.value() {
+        let attempt = self.state.get(task_id).map_or(0, |status| {
+            match status.value() {
                 TaskStatus::Failed { attempt, .. } => *attempt,
-                TaskStatus::InProgress { .. } => 0,
                 _ => 0,
-            },
-            None => 0,
-        };
+            }
+        });
 
         if attempt >= self.max_retries {
             warn!(task_id = %task_id, %error, "task dead-lettered after max retries");
@@ -298,7 +296,7 @@ impl<Q: WorkQueuePort + 'static> DistributedDagExecutor<Q> {
                     match q.try_dequeue().await {
                         Ok(Some(task)) => {
                             let service_input = ServiceInput {
-                                url: task.input["url"].as_str().unwrap_or("").to_string(),
+                                url: task.input.get("url").and_then(serde_json::Value::as_str).unwrap_or("").to_string(),
                                 params: task.input.clone(),
                             };
                             let output = match svcs.get(&task.node_name) {
@@ -354,6 +352,10 @@ impl<Q: WorkQueuePort + 'static> DistributedDagExecutor<Q> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
     use serde_json::json;

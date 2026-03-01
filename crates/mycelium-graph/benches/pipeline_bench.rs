@@ -2,6 +2,13 @@
 //!
 //! Run with: `cargo bench -p mycelium-graph`
 
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::semicolon_if_nothing_returned,
+    clippy::doc_markdown
+)]
+
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -48,7 +55,7 @@ fn bench_dag_construction(c: &mut Criterion) {
     let mut group = c.benchmark_group("dag_construction");
     for n in [1, 5, 10, 50, 100] {
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &n| {
-            b.iter(|| DagExecutor::from_pipeline(&linear_pipeline(n)))
+            b.iter(|| DagExecutor::from_pipeline(&linear_pipeline(n)));
         });
     }
     group.finish();
@@ -126,7 +133,7 @@ fn bench_registry_lookup(c: &mut Criterion) {
         }
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &n| {
             let lookup_name = format!("svc_{}", n - 1);
-            b.iter(|| registry.get(&lookup_name))
+            b.iter(|| registry.get(&lookup_name));
         });
     }
     group.finish();

@@ -183,6 +183,7 @@ impl MetricsRegistry {
     /// r.record(MetricEvent::CacheAccess { hit: true });
     /// assert_eq!(r.snapshot().cache_hits_total, 1);
     /// ```
+    #[allow(clippy::indexing_slicing)]
     pub fn record(&self, event: MetricEvent) {
         match event {
             MetricEvent::RequestStarted { service } => {
@@ -298,6 +299,7 @@ impl MetricsRegistry {
     /// assert!(text.contains("mycelium_requests_total"));
     /// assert!(text.contains("mycelium_errors_total"));
     /// ```
+    #[allow(clippy::too_many_lines, clippy::indexing_slicing, clippy::format_push_string)]
     pub fn render_prometheus(&self) -> String {
         let snap = self.snapshot();
         let mut out = String::with_capacity(2048);
@@ -485,6 +487,7 @@ impl MetricsSnapshot {
     /// let snap = r.snapshot();
     /// assert!((snap.cache_hit_rate() - 0.5).abs() < f64::EPSILON);
     /// ```
+    #[allow(clippy::cast_precision_loss)]
     pub fn cache_hit_rate(&self) -> f64 {
         let total = self.cache_hits_total + self.cache_misses_total;
         if total == 0 {
@@ -507,6 +510,7 @@ impl MetricsSnapshot {
     /// let snap = r.snapshot();
     /// assert!((snap.error_rate() - 1.0).abs() < f64::EPSILON);
     /// ```
+    #[allow(clippy::cast_precision_loss)]
     pub fn error_rate(&self) -> f64 {
         if self.requests_total == 0 {
             0.0
@@ -634,6 +638,11 @@ impl TracingInit {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::float_cmp,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
 

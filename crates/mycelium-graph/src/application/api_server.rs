@@ -89,7 +89,7 @@ pub enum PipelineState {
 /// A pipeline run record stored in the in-memory registry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipelineRun {
-    /// Unique identifier (UUIDv4)
+    /// Unique identifier (`UUIDv4`)
     pub id: String,
     /// User-supplied pipeline definition (TOML or JSON)
     pub definition: Value,
@@ -99,7 +99,7 @@ pub struct PipelineRun {
     pub submitted_at: u64,
     /// Unix timestamp (seconds) when the pipeline finished, if applicable
     pub finished_at: Option<u64>,
-    /// Accumulated results (node_name → output)
+    /// Accumulated results (`node_name` → output)
     pub results: Value,
     /// Error message if `state == Failed`
     pub error: Option<String>,
@@ -279,6 +279,7 @@ async fn list_pipelines(State(state): State<AppState>) -> impl IntoResponse {
     Json(list)
 }
 
+#[allow(clippy::option_if_let_else)]
 async fn get_pipeline(State(state): State<AppState>, Path(id): Path<String>) -> Response {
     match state.pipelines.get(&id) {
         Some(run) => Json(PipelineStatus::from(run.value())).into_response(),
@@ -590,6 +591,7 @@ setInterval(loadPipelines, 10_000);
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use axum::{

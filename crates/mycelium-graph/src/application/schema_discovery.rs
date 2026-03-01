@@ -201,6 +201,7 @@ impl SchemaDiscoveryService {
     /// let svc = SchemaDiscoveryService::new(SchemaDiscoveryConfig::default(), None)
     ///     .with_graphql_service(gql);
     /// ```
+    #[must_use]
     pub fn with_graphql_service(mut self, service: Arc<dyn ScrapingService>) -> Self {
         self.graphql_service = Some(service);
         self
@@ -536,6 +537,7 @@ impl SchemaDiscoveryService {
     /// let schema = svc.infer_from_graphql("https://api.example.com/graphql", None).await;
     /// # });
     /// ```
+    #[allow(clippy::indexing_slicing)]
     pub async fn infer_from_graphql(
         &self,
         endpoint: &str,
@@ -646,6 +648,7 @@ impl SchemaDiscoveryService {
     }
 
     /// Convert a top-level GraphQL type definition to a JSON Schema object.
+    #[allow(clippy::indexing_slicing)]
     fn convert_type_to_definition(gql_type: &Value) -> Value {
         let kind = gql_type.get("kind").and_then(Value::as_str).unwrap_or("");
         match kind {
@@ -727,11 +730,10 @@ impl SchemaDiscoveryService {
     /// Map a GraphQL scalar name to its JSON Schema type.
     fn scalar_to_json_schema(name: &str) -> Value {
         match name {
-            "String" => json!({ "type": "string" }),
+            "String" | "ID" => json!({ "type": "string" }),
             "Int" => json!({ "type": "integer" }),
             "Float" => json!({ "type": "number" }),
             "Boolean" => json!({ "type": "boolean" }),
-            "ID" => json!({ "type": "string" }),
             s if s.to_ascii_lowercase().contains("datetime")
                 || s.to_ascii_lowercase().contains("date") =>
             {
@@ -763,7 +765,14 @@ impl SchemaDiscoveryService {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::approx_constant)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::approx_constant,
+    clippy::significant_drop_tightening,
+    clippy::float_cmp,
+    clippy::unnecessary_map_or
+)]
 mod tests {
     use super::*;
     use serde_json::json;
@@ -981,7 +990,7 @@ mod tests {
 
     // ── GraphQL introspection tests ──────────────────────────────────────────
 
-    /// Minimal mock ScrapingService that returns a pre-baked `Value` as `data`.
+    /// Minimal mock [`ScrapingService`] that returns a pre-baked `Value` as `data`.
     struct MockGraphQlService(Value);
 
     #[async_trait::async_trait]
@@ -995,7 +1004,7 @@ mod tests {
         ) -> Result<crate::ports::ServiceOutput> {
             Ok(crate::ports::ServiceOutput {
                 data: serde_json::to_string(&self.0).unwrap_or_default(),
-                metadata: Default::default(),
+                metadata: Value::default(),
             })
         }
     }
@@ -1151,7 +1160,7 @@ mod tests {
         // Neither field is NON_NULL, so no required array
         assert!(
             schema.get("required").is_none()
-                || schema["required"].as_array().map_or(true, Vec::is_empty)
+                || schema["required"].as_array().is_none_or(Vec::is_empty)
         );
     }
 

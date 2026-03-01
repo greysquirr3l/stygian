@@ -154,6 +154,7 @@ async fn cmd_run(file: &str, watch: bool, watch_interval: u64) -> anyhow::Result
     Ok(())
 }
 
+#[allow(clippy::expect_used)]
 async fn run_pipeline_once(file: &str) -> anyhow::Result<()> {
     info!(file, "Loading pipeline");
 
@@ -255,6 +256,7 @@ fn cmd_check(file: &str) -> anyhow::Result<()> {
 
 // ─── list-services ────────────────────────────────────────────────────────────
 
+#[allow(clippy::unnecessary_wraps)]
 fn cmd_list_services() -> anyhow::Result<()> {
     let registry = global_registry();
     let names = registry.names();
@@ -300,7 +302,12 @@ struct ProviderInfo {
     json_mode: bool,
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn cmd_list_providers() -> anyhow::Result<()> {
+    const fn flag(b: bool) -> &'static str {
+        if b { "✓" } else { "✗" }
+    }
+
     let providers = [
         ProviderInfo {
             name: "claude (Anthropic)",
@@ -344,10 +351,6 @@ fn cmd_list_providers() -> anyhow::Result<()> {
         },
     ];
 
-    fn flag(b: bool) -> &'static str {
-        if b { "✓" } else { "✗" }
-    }
-
     println!(
         "{:<28} {:<8} {:<8} {:<10} {:<10}  MODELS",
         "PROVIDER", "STREAM", "VISION", "TOOL_USE", "JSON_MODE"
@@ -373,6 +376,7 @@ fn cmd_list_providers() -> anyhow::Result<()> {
 
 // ─── graph-viz ────────────────────────────────────────────────────────────────
 
+#[allow(clippy::needless_pass_by_value)]
 fn cmd_graph_viz(file: &str, format: VizFormat) -> anyhow::Result<()> {
     let def = PipelineParser::from_figment_file(file)
         .map_err(|e| anyhow::anyhow!("Failed to load pipeline: {e}"))?;
@@ -392,6 +396,7 @@ fn cmd_graph_viz(file: &str, format: VizFormat) -> anyhow::Result<()> {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use clap::CommandFactory;

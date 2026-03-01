@@ -18,8 +18,9 @@
 //! ```
 
 use std::collections::HashMap;
-use std::sync::RwLock;
 use std::time::SystemTime;
+
+use parking_lot::RwLock;
 
 use serde::{Deserialize, Serialize};
 
@@ -48,7 +49,7 @@ impl HealthStatus {
     /// assert!(!HealthStatus::Degraded("latency".into()).is_healthy());
     /// ```
     pub const fn is_healthy(&self) -> bool {
-        matches!(self, HealthStatus::Healthy)
+        matches!(self, Self::Healthy)
     }
 
     /// Returns `true` when the component can still serve requests (healthy or degraded).
@@ -62,16 +63,16 @@ impl HealthStatus {
     /// assert!(!HealthStatus::Unhealthy("connection refused".into()).is_operational());
     /// ```
     pub const fn is_operational(&self) -> bool {
-        !matches!(self, HealthStatus::Unhealthy(_))
+        !matches!(self, Self::Unhealthy(_))
     }
 }
 
 impl std::fmt::Display for HealthStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            HealthStatus::Healthy => write!(f, "healthy"),
-            HealthStatus::Degraded(r) => write!(f, "degraded: {r}"),
-            HealthStatus::Unhealthy(r) => write!(f, "unhealthy: {r}"),
+            Self::Healthy => write!(f, "healthy"),
+            Self::Degraded(r) => write!(f, "degraded: {r}"),
+            Self::Unhealthy(r) => write!(f, "unhealthy: {r}"),
         }
     }
 }
@@ -159,6 +160,7 @@ impl ComponentHealth {
     ///
     /// assert!(c.details.is_some());
     /// ```
+    #[must_use]
     pub fn with_details(mut self, details: serde_json::Value) -> Self {
         self.details = Some(details);
         self
@@ -319,7 +321,7 @@ impl HealthReporter {
             status,
             details: None,
         };
-        self.components.write().unwrap().insert(name, component);
+        self.components.write().insert(name, component);
     }
 
     /// Register or update a component with full [`ComponentHealth`].
@@ -336,7 +338,6 @@ impl HealthReporter {
     pub fn register_component(&self, component: ComponentHealth) {
         self.components
             .write()
-            .unwrap()
             .insert(component.name.clone(), component);
     }
 
@@ -353,7 +354,7 @@ impl HealthReporter {
     /// assert!(r.report().components.is_empty());
     /// ```
     pub fn deregister(&self, name: &str) {
-        self.components.write().unwrap().remove(name);
+        self.components.write().remove(name);
     }
 
     /// Generate a [`HealthReport`] from current component states.
@@ -369,8 +370,7 @@ impl HealthReporter {
     /// assert!(report.is_live());
     /// ```
     pub fn report(&self) -> HealthReport {
-        let components: Vec<ComponentHealth> =
-            self.components.read().unwrap().values().cloned().collect();
+        let components: Vec<ComponentHealth> = self.components.read().values().cloned().collect();
 
         let overall = aggregate_status(&components);
         HealthReport {
@@ -408,6 +408,7 @@ fn aggregate_status(components: &[ComponentHealth]) -> HealthStatus {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

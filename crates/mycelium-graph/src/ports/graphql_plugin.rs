@@ -107,12 +107,14 @@ pub trait GraphQlTargetPlugin: Send + Sync {
     }
 
     /// Human-readable description shown in `mycelium plugins list`.
+    #[allow(clippy::unnecessary_literal_bound)]
     fn description(&self) -> &str {
         ""
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::unnecessary_literal_bound, clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::ports::GraphQlAuthKind;

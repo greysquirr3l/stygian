@@ -4,6 +4,13 @@
 //! They use `NoopService` and in-memory cache adapters to execute realistic
 //! pipeline shapes end-to-end without external dependencies.
 
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::redundant_closure_for_method_calls
+)]
+
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -416,7 +423,7 @@ async fn worker_pool_handles_concurrent_submissions() {
     let results = join_all(handles).await;
     let successes = results
         .iter()
-        .filter(|r| r.as_ref().map(|inner| inner.is_ok()).unwrap_or(false))
+        .filter(|r| r.as_ref().map(Result::is_ok).unwrap_or(false))
         .count();
     assert_eq!(successes, 20, "all 20 submissions must succeed");
 }

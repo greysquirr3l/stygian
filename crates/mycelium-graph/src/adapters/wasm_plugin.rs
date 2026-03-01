@@ -13,8 +13,6 @@
 //! ```
 
 use crate::domain::error::Result;
-#[cfg(feature = "wasm-plugins")]
-use crate::domain::error::{MyceliumError, ServiceError};
 use crate::ports::wasm_plugin::{WasmPluginMeta, WasmPluginPort};
 use crate::ports::{ScrapingService, ServiceInput, ServiceOutput};
 use async_trait::async_trait;
@@ -159,8 +157,12 @@ mod real {
     //! a JSON byte slice through shared linear memory and reads back the
     //! serialised [`ServiceOutput`].
 
-    use super::*;
+    use crate::domain::error::{MyceliumError, Result, ServiceError};
+    use crate::ports::wasm_plugin::{WasmPluginMeta, WasmPluginPort};
+    use crate::ports::{ScrapingService, ServiceInput, ServiceOutput};
     use std::collections::HashMap;
+    use std::path::PathBuf;
+    use std::sync::Arc;
     use tokio::sync::RwLock;
     use wasmtime::{Engine, Linker, Module, Store};
 
@@ -245,9 +247,8 @@ mod real {
     #[async_trait::async_trait]
     impl WasmPluginPort for WasmPluginLoader {
         async fn discover(&self) -> Result<Vec<(WasmPluginMeta, Arc<dyn ScrapingService>)>> {
-            let mut entries = match tokio::fs::read_dir(&self.plugin_dir).await {
-                Ok(e) => e,
-                Err(_) => return Ok(vec![]), // dir missing → no plugins
+            let Ok(mut entries) = tokio::fs::read_dir(&self.plugin_dir).await else {
+                return Ok(vec![]); // dir missing → no plugins
             };
 
             let mut results = Vec::new();
@@ -329,11 +330,12 @@ mod real {
 
             Ok(ServiceOutput {
                 data: result.to_string(),
-                metadata: Default::default(),
+                metadata: serde_json::Value::default(),
             })
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn execute_wasm_sync(
         engine: &Engine,
         module: &Module,
@@ -382,7 +384,11 @@ mod real {
         })?;
 
         // Allocate input buffer in guest memory
-        let in_len = input_json.len() as i32;
+        let in_len = i32::try_from(input_json.len()).map_err(|e| {
+            MyceliumError::Service(ServiceError::InvalidResponse(format!(
+                "WASM input too large: {e}"
+            )))
+        })?;
         let in_ptr = alloc.call(&mut store, in_len).map_err(|e| {
             MyceliumError::Service(ServiceError::InvalidResponse(format!(
                 "WASM alloc failed: {e}"
@@ -390,8 +396,13 @@ mod real {
         })?;
 
         // Write input bytes into guest memory
+        let in_ptr_usize = usize::try_from(in_ptr).map_err(|e| {
+            MyceliumError::Service(ServiceError::InvalidResponse(format!(
+                "WASM invalid input pointer: {e}"
+            )))
+        })?;
         memory
-            .write(&mut store, in_ptr as usize, &input_json)
+            .write(&mut store, in_ptr_usize, &input_json)
             .map_err(|e| {
                 MyceliumError::Service(ServiceError::InvalidResponse(format!(
                     "WASM memory write failed: {e}"
@@ -422,17 +433,31 @@ mod real {
 
         // Read the output pointer value from the slot
         let mut ptr_bytes = [0u8; 4];
+        let out_ptr_slot_usize = usize::try_from(out_ptr_slot).map_err(|e| {
+            MyceliumError::Service(ServiceError::InvalidResponse(format!(
+                "WASM invalid output pointer slot: {e}"
+            )))
+        })?;
         memory
-            .read(&store, out_ptr_slot as usize, &mut ptr_bytes)
+            .read(&store, out_ptr_slot_usize, &mut ptr_bytes)
             .map_err(|e| {
                 MyceliumError::Service(ServiceError::InvalidResponse(format!(
                     "WASM output ptr read failed: {e}"
                 )))
             })?;
-        let out_ptr = i32::from_le_bytes(ptr_bytes) as usize;
+        let out_ptr = usize::try_from(i32::from_le_bytes(ptr_bytes)).map_err(|e| {
+            MyceliumError::Service(ServiceError::InvalidResponse(format!(
+                "WASM invalid output pointer: {e}"
+            )))
+        })?;
 
         // Read the output bytes
-        let mut out_bytes = vec![0u8; out_len as usize];
+        let out_len_usize = usize::try_from(out_len).map_err(|e| {
+            MyceliumError::Service(ServiceError::InvalidResponse(format!(
+                "WASM invalid output length: {e}"
+            )))
+        })?;
+        let mut out_bytes = vec![0u8; out_len_usize];
         memory.read(&store, out_ptr, &mut out_bytes).map_err(|e| {
             MyceliumError::Service(ServiceError::InvalidResponse(format!(
                 "WASM output read failed: {e}"
@@ -454,8 +479,12 @@ mod real {
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
-    use super::*;
+    use super::MockWasmPlugin;
+    use crate::ports::ServiceInput;
+    use crate::ports::wasm_plugin::WasmPluginPort;
+    use std::path::PathBuf;
 
     #[tokio::test]
     async fn mock_loader_discover_returns_one_plugin() {
