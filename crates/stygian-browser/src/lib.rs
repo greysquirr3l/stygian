@@ -1,6 +1,7 @@
 //! # stygian-browser
 //!
 #![allow(clippy::multiple_crate_versions)]
+#![deny(unsafe_code)] // All unsafe usage is confined to #[cfg(test)] modules with explicit #[allow]
 //! High-performance, anti-detection browser automation library for Rust.
 //!
 //! Built on Chrome `DevTools` Protocol (CDP) via [`chromiumoxide`](https://github.com/mattsse/chromiumoxide)

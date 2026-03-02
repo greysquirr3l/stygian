@@ -978,6 +978,7 @@ mod tests {
 // cleanup to isolate side effects.
 
 #[cfg(test)]
+#[allow(unsafe_code)] // env::set_var / remove_var are unsafe in Rust ≥1.93; guarded by ENV_LOCK
 mod temp_env {
     use std::env;
     use std::ffi::OsStr;
