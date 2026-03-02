@@ -47,7 +47,9 @@ let title = page.title().await?;
 // Current URL (may differ from navigated URL after redirects)
 let url   = page.url().await?;
 
-// HTTP status code of the last navigation (None if no navigation yet)
+// HTTP status code of the last navigation, if available
+// (None if no navigation has committed yet, the URL is non-HTTP such as file://,
+//  or network events were not captured)
 if let Some(status) = page.status_code()? {
     println!("HTTP {status}");
 }
