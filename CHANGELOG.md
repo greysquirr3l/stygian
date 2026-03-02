@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-03-02
+
+### Changed
+
+- Relicensed from `MIT OR Apache-2.0` to `AGPL-3.0-only`
+- Replaced `LICENSE-MIT` and `LICENSE-APACHE` with a single `LICENSE` (AGPL-3.0)
+- Updated license badges and license sections in all README files
+- Updated `deny.toml` to reflect AGPL-3.0-only as the project license
+
 ## [0.1.2] - 2026-03-01
 
 ### Changed
@@ -102,7 +111,8 @@ Both crates are functional and well-tested, but APIs may evolve based on communi
 
 ---
 
-[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/greysquirr3l/stygian/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/greysquirr3l/stygian/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/greysquirr3l/stygian/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/greysquirr3l/stygian/releases/tag/v0.1.0

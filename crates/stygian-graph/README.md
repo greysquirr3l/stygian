@@ -4,7 +4,7 @@ High-performance, graph-based web scraping engine treating pipelines as DAGs wit
 
 [![Crates.io](https://img.shields.io/crates/v/stygian-graph.svg)](https://crates.io/crates/stygian-graph)
 [![Documentation](https://docs.rs/stygian-graph/badge.svg)](https://docs.rs/stygian-graph)
-[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
 [![Tests](https://img.shields.io/badge/tests-209%20passing-brightgreen)](https://github.com/greysquirr3l/stygian/actions)
 [![Coverage](https://img.shields.io/badge/coverage-~72%25-yellowgreen)](https://github.com/greysquirr3l/stygian/actions)
 
@@ -359,9 +359,7 @@ See [examples/](../../examples) for complete pipelines:
 
 ## License
 
-Licensed under either of Apache License 2.0 or MIT license at your option.
-
-See [LICENSE-APACHE](../../LICENSE-APACHE) and [LICENSE-MIT](../../LICENSE-MIT).
+Licensed under the [GNU Affero General Public License v3.0](../../LICENSE) (`AGPL-3.0-only`).
 
 ---
 

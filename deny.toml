@@ -18,9 +18,11 @@ allow = [
     "OpenSSL",
     "MPL-2.0",
     "CDLA-Permissive-2.0",
+    "AGPL-3.0-only",
 ]
 # Crates with any license not in the allow list above are denied by default.
-# Copyleft licenses (GPL, LGPL, AGPL) are not in the allow list and are therefore also denied.
+# Note: AGPL-3.0-only is the license of this project itself, not a dependency.
+# Copyleft licenses (GPL, LGPL) are not in the allow list and are therefore also denied.
 
 [bans]
 # Deny duplicate versions of the same crate by default

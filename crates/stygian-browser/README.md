@@ -2,7 +2,7 @@
 
 High-performance, anti-detection browser automation library for Rust.
 
-[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](../../LICENSE-MIT)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
 [![Coverage](https://img.shields.io/badge/coverage-limited%20by%20CDP-lightgrey)](https://github.com/greysquirr3l/stygian/actions)
 
 Built on the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) via
@@ -346,4 +346,4 @@ is high; overall line coverage is structurally bounded by the CDP requirement.
 
 ## License
 
-MIT OR Apache-2.0
+Licensed under the [GNU Affero General Public License v3.0](../../LICENSE) (`AGPL-3.0-only`).
