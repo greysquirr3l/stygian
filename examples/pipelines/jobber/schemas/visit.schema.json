@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://mycelium/schemas/jobber/visit.schema.json",
+  "$id": "https://stygian/schemas/jobber/visit.schema.json",
   "title": "Visit",
   "description": "A Jobber visit (scheduled appointment) record",
   "type": "object",

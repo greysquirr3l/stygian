@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://mycelium/schemas/jobber/quote.schema.json",
+  "$id": "https://stygian/schemas/jobber/quote.schema.json",
   "title": "Quote",
   "description": "A Jobber quote record",
   "type": "object",

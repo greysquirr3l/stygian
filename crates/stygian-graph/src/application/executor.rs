@@ -28,6 +28,6 @@ mod tests {
 
     #[test]
     fn default_is_same_as_new() {
-        let _e = PipelineExecutor::default();
+        let _ = PipelineExecutor;
     }
 }

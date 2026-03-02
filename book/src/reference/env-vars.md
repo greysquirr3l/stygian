@@ -9,20 +9,20 @@ variables. No recompilation required.
 
 | Variable | Default | Description |
 |---|---|---|
-| `MYCELIUM_CHROME_PATH` | auto-detect | Absolute path to Chrome or Chromium binary |
-| `MYCELIUM_HEADLESS` | `true` | `false` for headed mode (displays browser window) |
-| `MYCELIUM_STEALTH_LEVEL` | `advanced` | `none`, `basic`, or `advanced` |
-| `MYCELIUM_POOL_MIN` | `2` | Minimum warm browser instances |
-| `MYCELIUM_POOL_MAX` | `10` | Maximum concurrent browser instances |
-| `MYCELIUM_POOL_ACQUIRE_TIMEOUT_SECS` | `30` | Seconds to wait for a pool slot before error |
-| `MYCELIUM_CDP_FIX_MODE` | `addBinding` | `addBinding`, `isolatedworld`, or `enabledisable` |
-| `MYCELIUM_PROXY` | — | Proxy URL (`http://`, `https://`, or `socks5://`) |
-| `MYCELIUM_WINDOW_WIDTH` | `1920` | Browser viewport width in pixels |
-| `MYCELIUM_WINDOW_HEIGHT` | `1080` | Browser viewport height in pixels |
+| `STYGIAN_CHROME_PATH` | auto-detect | Absolute path to Chrome or Chromium binary |
+| `STYGIAN_HEADLESS` | `true` | `false` for headed mode (displays browser window) |
+| `STYGIAN_STEALTH_LEVEL` | `advanced` | `none`, `basic`, or `advanced` |
+| `STYGIAN_POOL_MIN` | `2` | Minimum warm browser instances |
+| `STYGIAN_POOL_MAX` | `10` | Maximum concurrent browser instances |
+| `STYGIAN_POOL_ACQUIRE_TIMEOUT_SECS` | `30` | Seconds to wait for a pool slot before error |
+| `STYGIAN_CDP_FIX_MODE` | `addBinding` | `addBinding`, `isolatedworld`, or `enabledisable` |
+| `STYGIAN_PROXY` | — | Proxy URL (`http://`, `https://`, or `socks5://`) |
+| `STYGIAN_WINDOW_WIDTH` | `1920` | Browser viewport width in pixels |
+| `STYGIAN_WINDOW_HEIGHT` | `1080` | Browser viewport height in pixels |
 
 ### Chrome binary auto-detection order
 
-When `MYCELIUM_CHROME_PATH` is not set, the library searches:
+When `STYGIAN_CHROME_PATH` is not set, the library searches:
 
 1. `google-chrome` on `$PATH`
 2. `chromium` on `$PATH`
@@ -37,13 +37,13 @@ When `MYCELIUM_CHROME_PATH` is not set, the library searches:
 
 | Variable | Default | Description |
 |---|---|---|
-| `MYCELIUM_LOG` | `info` | Alias for `RUST_LOG` if set; otherwise defers to `RUST_LOG` |
-| `MYCELIUM_WORKERS` | `num_cpus * 4` | Default worker pool concurrency |
-| `MYCELIUM_QUEUE_DEPTH` | `workers * 4` | Worker pool channel depth |
-| `MYCELIUM_CACHE_CAPACITY` | `10000` | Default LRU cache entry limit |
-| `MYCELIUM_CACHE_TTL_SECS` | `300` | Default DashMap cache TTL in seconds |
-| `MYCELIUM_HTTP_TIMEOUT_SECS` | `30` | HTTP adapter request timeout |
-| `MYCELIUM_HTTP_MAX_REDIRECTS` | `10` | HTTP redirect chain limit |
+| `STYGIAN_LOG` | `info` | Alias for `RUST_LOG` if set; otherwise defers to `RUST_LOG` |
+| `STYGIAN_WORKERS` | `num_cpus * 4` | Default worker pool concurrency |
+| `STYGIAN_QUEUE_DEPTH` | `workers * 4` | Worker pool channel depth |
+| `STYGIAN_CACHE_CAPACITY` | `10000` | Default LRU cache entry limit |
+| `STYGIAN_CACHE_TTL_SECS` | `300` | Default DashMap cache TTL in seconds |
+| `STYGIAN_HTTP_TIMEOUT_SECS` | `30` | HTTP adapter request timeout |
+| `STYGIAN_HTTP_MAX_REDIRECTS` | `10` | HTTP redirect chain limit |
 
 ### AI provider variables
 
@@ -61,8 +61,8 @@ When `MYCELIUM_CHROME_PATH` is not set, the library searches:
 |---|---|---|
 | `REDIS_URL` | `redis://localhost:6379` | Redis/Valkey connection URL |
 | `REDIS_MAX_CONNECTIONS` | `20` | Redis connection pool size |
-| `MYCELIUM_QUEUE_NAME` | `stygian:work` | Default work queue key |
-| `MYCELIUM_VISIBILITY_TIMEOUT_SECS` | `60` | Task visibility timeout for in-flight items |
+| `STYGIAN_QUEUE_NAME` | `stygian:work` | Default work queue key |
+| `STYGIAN_VISIBILITY_TIMEOUT_SECS` | `60` | Task visibility timeout for in-flight items |
 
 ---
 

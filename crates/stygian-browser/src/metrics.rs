@@ -216,6 +216,10 @@ pub fn gather() -> String {
 // ─── Platform-specific RSS ───────────────────────────────────────────────────
 
 /// Read process RSS from `/proc/self/status` (Linux) or return 0.
+// Not `const fn`: the Linux branch reads `/proc/self/status` (file I/O).
+// On other platforms clippy would suggest `const fn` because the body is just
+// `0`, but that would break cross-platform compilation.
+#[allow(clippy::missing_const_for_fn)]
 fn rss_bytes() -> i64 {
     #[cfg(target_os = "linux")]
     {

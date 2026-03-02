@@ -11,7 +11,7 @@
 //! cargo test -p stygian-browser browser_launch_and_shutdown -- --ignored
 //! ```
 //!
-//! Set `MYCELIUM_CHROME_PATH` to override the browser binary used.
+//! Set `STYGIAN_CHROME_PATH` to override the browser binary used.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -42,7 +42,7 @@ fn test_config() -> BrowserConfig {
     cfg.user_data_dir = Some(unique_user_data_dir());
 
     // Allow override via env so CI can point at a specific binary.
-    if let Ok(p) = std::env::var("MYCELIUM_CHROME_PATH") {
+    if let Ok(p) = std::env::var("STYGIAN_CHROME_PATH") {
         cfg.chrome_path = Some(PathBuf::from(p));
     }
 

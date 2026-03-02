@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-03-01
+
+### Changed
+
+- Renamed all `MYCELIUM_*` environment variables to `STYGIAN_*` across both crates, docs, examples, and plan files
+- Updated JSON schema `$id` URIs from `https://mycelium/schemas/...` to `https://stygian/schemas/...`
+- Updated `.gitattributes` workspace comment to reference stygian
+
+### Fixed
+
+- Clippy `redundant_closure_for_method_calls`: replaced `|e| e.into_inner()` with `PoisonError::into_inner` in `config.rs`
+- Clippy `default_constructed_unit_structs`: replaced `PipelineExecutor::default()` with direct struct literal in test
+- Clippy `useless_format`: replaced `format!(r#"..."#)` with `.to_string()` in `pipeline_parser.rs` test
+- Added `#[allow(clippy::missing_const_for_fn)]` with explanation to `rss_bytes()` — non-Linux targets see only `{ 0 }` but the Linux branch uses file I/O, making `const fn` impossible cross-platform
+
 ## [0.1.1] - 2026-03-01
 
 ### Added
@@ -87,6 +102,7 @@ Both crates are functional and well-tested, but APIs may evolve based on communi
 
 ---
 
-[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/greysquirr3l/stygian/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/greysquirr3l/stygian/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/greysquirr3l/stygian/releases/tag/v0.1.0

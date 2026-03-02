@@ -14,7 +14,7 @@
 //! cargo test -p stygian-browser --test detection stealth_webdriver_not_present -- --ignored
 //! ```
 //!
-//! Set `MYCELIUM_CHROME_PATH` to override the browser binary path.
+//! Set `STYGIAN_CHROME_PATH` to override the browser binary path.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -41,7 +41,7 @@ fn test_config() -> BrowserConfig {
     cfg.cdp_timeout = Duration::from_secs(15);
     cfg.user_data_dir = Some(unique_user_data_dir());
 
-    if let Ok(p) = std::env::var("MYCELIUM_CHROME_PATH") {
+    if let Ok(p) = std::env::var("STYGIAN_CHROME_PATH") {
         cfg.chrome_path = Some(PathBuf::from(p));
     }
     cfg

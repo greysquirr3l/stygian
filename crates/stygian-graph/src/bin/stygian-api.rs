@@ -4,14 +4,14 @@
 //!
 //! | Variable | Default | Description |
 //! |----------|---------|-------------|
-//! | `MYCELIUM_API_KEY` | `"dev-key"` | API key for `/pipelines` routes |
-//! | `MYCELIUM_BIND` | `"0.0.0.0:8080"` | TCP address to listen on |
+//! | `STYGIAN_API_KEY` | `"dev-key"` | API key for `/pipelines` routes |
+//! | `STYGIAN_BIND` | `"0.0.0.0:8080"` | TCP address to listen on |
 //! | `RUST_LOG` | `"info"` | Tracing filter |
 //!
 //! # Usage
 //!
 //! ```bash
-//! MYCELIUM_API_KEY=secret cargo run --bin stygian-api
+//! STYGIAN_API_KEY=secret cargo run --bin stygian-api
 //! curl -H "X-Api-Key: secret" http://localhost:8080/pipelines
 //! ```
 
@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .compact()
         .init();
 
-    let bind = std::env::var("MYCELIUM_BIND").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
+    let bind = std::env::var("STYGIAN_BIND").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
 
     ApiServer::from_env().run(&bind).await
 }

@@ -122,14 +122,14 @@ All config values can be overridden at runtime without recompiling:
 
 | Variable | Default | Description |
 | ---------- | --------- | ------------- |
-| `MYCELIUM_CHROME_PATH` | auto-detect | Path to Chrome/Chromium binary |
-| `MYCELIUM_HEADLESS` | `true` | `false` for headed mode |
-| `MYCELIUM_STEALTH_LEVEL` | `advanced` | `none`, `basic`, `advanced` |
-| `MYCELIUM_POOL_MIN` | `2` | Minimum warm browser count |
-| `MYCELIUM_POOL_MAX` | `10` | Maximum concurrent browsers |
-| `MYCELIUM_POOL_ACQUIRE_TIMEOUT_SECS` | `30` | Seconds to wait for pool slot |
-| `MYCELIUM_CDP_FIX_MODE` | `addBinding` | `addBinding`, `isolatedworld`, `enabledisable` |
-| `MYCELIUM_PROXY` | — | Proxy URL |
+| `STYGIAN_CHROME_PATH` | auto-detect | Path to Chrome/Chromium binary |
+| `STYGIAN_HEADLESS` | `true` | `false` for headed mode |
+| `STYGIAN_STEALTH_LEVEL` | `advanced` | `none`, `basic`, `advanced` |
+| `STYGIAN_POOL_MIN` | `2` | Minimum warm browser count |
+| `STYGIAN_POOL_MAX` | `10` | Maximum concurrent browsers |
+| `STYGIAN_POOL_ACQUIRE_TIMEOUT_SECS` | `30` | Seconds to wait for pool slot |
+| `STYGIAN_CDP_FIX_MODE` | `addBinding` | `addBinding`, `isolatedworld`, `enabledisable` |
+| `STYGIAN_PROXY` | — | Proxy URL |
 
 ---
 
@@ -312,7 +312,7 @@ JavaScript signals and TLS/network-layer heuristics.  Advanced stealth eliminate
 all known JavaScript signals, which is necessary but may not be sufficient.
 
 **Q: How do I set a custom Chrome path?**  
-A: Set `MYCELIUM_CHROME_PATH=/path/to/chrome` or use
+A: Set `STYGIAN_CHROME_PATH=/path/to/chrome` or use
 `BrowserConfig::builder().chrome_path("/path/to/chrome".into()).build()`.
 
 **Q: Why does `stats().idle` always return 0?**  

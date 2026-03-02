@@ -370,7 +370,7 @@ fn cmd_list_providers() -> anyhow::Result<()> {
     }
 
     println!();
-    println!("Configure via TOML [[services]] blocks or MYCELIUM_* environment variables.");
+    println!("Configure via TOML [[services]] blocks or STYGIAN_* environment variables.");
     Ok(())
 }
 

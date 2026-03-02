@@ -7,7 +7,7 @@
 //! # Usage
 //!
 //! ```sh
-//! MYCELIUM_MCP_ENABLED=true \
+//! STYGIAN_MCP_ENABLED=true \
 //!   cargo run --example mcp_server -p stygian-browser --features mcp
 //! ```
 //!
@@ -15,7 +15,7 @@
 //!
 //! | Variable | Default | Description |
 //! |----------|---------|-------------|
-//! | `MYCELIUM_MCP_ENABLED` | `false` | Must be `true` to start the server |
+//! | `STYGIAN_MCP_ENABLED` | `false` | Must be `true` to start the server |
 //! | `RUST_LOG` | `info` | Tracing filter (use `debug` for CDP traffic) |
 
 #[cfg(feature = "mcp")]
@@ -43,7 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     if !is_mcp_enabled() {
-        eprintln!("MCP server is disabled. Set MYCELIUM_MCP_ENABLED=true to enable.");
+        eprintln!("MCP server is disabled. Set STYGIAN_MCP_ENABLED=true to enable.");
         std::process::exit(1);
     }
 

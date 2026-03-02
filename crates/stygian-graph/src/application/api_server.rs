@@ -19,7 +19,7 @@
 //! # Authentication
 //!
 //! All `/pipelines` routes require an `X-Api-Key` header.  Set the API key via
-//! the `MYCELIUM_API_KEY` environment variable (defaults to `"dev-key"` when
+//! the `STYGIAN_API_KEY` environment variable (defaults to `"dev-key"` when
 //! the variable is not set).
 //!
 //! # Example
@@ -408,9 +408,9 @@ impl ApiServer {
 
     /// Create an `ApiServer` from environment variables.
     ///
-    /// Reads `MYCELIUM_API_KEY` (defaults to `"dev-key"` if unset).
+    /// Reads `STYGIAN_API_KEY` (defaults to `"dev-key"` if unset).
     pub fn from_env() -> Self {
-        let key = std::env::var("MYCELIUM_API_KEY").unwrap_or_else(|_| "dev-key".to_string());
+        let key = std::env::var("STYGIAN_API_KEY").unwrap_or_else(|_| "dev-key".to_string());
         Self::new(key)
     }
 

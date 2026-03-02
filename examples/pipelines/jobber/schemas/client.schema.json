@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://mycelium/schemas/jobber/client.schema.json",
+  "$id": "https://stygian/schemas/jobber/client.schema.json",
   "title": "Client",
   "description": "A Jobber client record",
   "type": "object",

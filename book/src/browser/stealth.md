@@ -86,7 +86,7 @@ device profile.
 ## CDP leak protection
 
 The Chrome DevTools Protocol itself can expose automation. Three modes are available,
-set via `MYCELIUM_CDP_FIX_MODE` or `BrowserConfig::cdp_fix_mode`:
+set via `STYGIAN_CDP_FIX_MODE` or `BrowserConfig::cdp_fix_mode`:
 
 | Mode | Protection | Compatibility |
 |---|---|---|

@@ -87,14 +87,14 @@ All config values can be overridden without touching source code:
 
 | Variable | Default | Description |
 |---|---|---|
-| `MYCELIUM_CHROME_PATH` | auto-detect | Path to Chrome/Chromium binary |
-| `MYCELIUM_HEADLESS` | `true` | Set `false` for headed mode |
-| `MYCELIUM_STEALTH_LEVEL` | `advanced` | `none`, `basic`, `advanced` |
-| `MYCELIUM_POOL_MIN` | `2` | Minimum warm browsers |
-| `MYCELIUM_POOL_MAX` | `10` | Maximum concurrent browsers |
-| `MYCELIUM_POOL_ACQUIRE_TIMEOUT_SECS` | `30` | Seconds to wait for a pool slot |
-| `MYCELIUM_CDP_FIX_MODE` | `addBinding` | `addBinding`, `isolatedworld`, `enabledisable` |
-| `MYCELIUM_PROXY` | — | Proxy URL |
+| `STYGIAN_CHROME_PATH` | auto-detect | Path to Chrome/Chromium binary |
+| `STYGIAN_HEADLESS` | `true` | Set `false` for headed mode |
+| `STYGIAN_STEALTH_LEVEL` | `advanced` | `none`, `basic`, `advanced` |
+| `STYGIAN_POOL_MIN` | `2` | Minimum warm browsers |
+| `STYGIAN_POOL_MAX` | `10` | Maximum concurrent browsers |
+| `STYGIAN_POOL_ACQUIRE_TIMEOUT_SECS` | `30` | Seconds to wait for a pool slot |
+| `STYGIAN_CDP_FIX_MODE` | `addBinding` | `addBinding`, `isolatedworld`, `enabledisable` |
+| `STYGIAN_PROXY` | — | Proxy URL |
 
 ---
 

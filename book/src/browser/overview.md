@@ -101,6 +101,6 @@ To disable stealth features for a minimal build:
 stygian-browser = { version = "0.1", default-features = false }
 ```
 
-Chrome 120+ must be available on the system or specified via `MYCELIUM_CHROME_PATH`.
+Chrome 120+ must be available on the system or specified via `STYGIAN_CHROME_PATH`.
 On CI, install it with `apt-get install google-chrome-stable` or use the
 `browser-actions/setup-chrome` GitHub Action.

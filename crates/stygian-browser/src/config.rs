@@ -1,7 +1,7 @@
 //! Browser configuration and options
 //!
 //! All configuration can be overridden via environment variables at runtime.
-//! See individual fields for the corresponding `MYCELIUM_*` variable names.
+//! See individual fields for the corresponding `STYGIAN_*` variable names.
 //!
 //! ## Configuration priority
 //!
@@ -53,9 +53,9 @@ impl StealthLevel {
         self != Self::None
     }
 
-    /// Parse `source_url` from `MYCELIUM_SOURCE_URL` (`0` disables).
+    /// Parse `source_url` from `STYGIAN_SOURCE_URL` (`0` disables).
     pub fn from_env() -> Self {
-        match std::env::var("MYCELIUM_STEALTH_LEVEL")
+        match std::env::var("STYGIAN_STEALTH_LEVEL")
             .unwrap_or_default()
             .to_lowercase()
             .as_str()
@@ -83,24 +83,24 @@ impl StealthLevel {
 pub struct PoolConfig {
     /// Minimum warm instances kept ready at all times.
     ///
-    /// Env: `MYCELIUM_POOL_MIN` (default: `2`)
+    /// Env: `STYGIAN_POOL_MIN` (default: `2`)
     pub min_size: usize,
 
     /// Maximum concurrent browser instances.
     ///
-    /// Env: `MYCELIUM_POOL_MAX` (default: `10`)
+    /// Env: `STYGIAN_POOL_MAX` (default: `10`)
     pub max_size: usize,
 
     /// How long an idle browser is kept before eviction.
     ///
-    /// Env: `MYCELIUM_POOL_IDLE_SECS` (default: `300`)
+    /// Env: `STYGIAN_POOL_IDLE_SECS` (default: `300`)
     #[serde(with = "duration_secs")]
     pub idle_timeout: Duration,
 
     /// Maximum time to wait for a pool slot before returning
     /// [`PoolExhausted`][crate::error::BrowserError::PoolExhausted].
     ///
-    /// Env: `MYCELIUM_POOL_ACQUIRE_SECS` (default: `5`)
+    /// Env: `STYGIAN_POOL_ACQUIRE_SECS` (default: `5`)
     #[serde(with = "duration_secs")]
     pub acquire_timeout: Duration,
 }
@@ -108,10 +108,10 @@ pub struct PoolConfig {
 impl Default for PoolConfig {
     fn default() -> Self {
         Self {
-            min_size: env_usize("MYCELIUM_POOL_MIN", 2),
-            max_size: env_usize("MYCELIUM_POOL_MAX", 10),
-            idle_timeout: Duration::from_secs(env_u64("MYCELIUM_POOL_IDLE_SECS", 300)),
-            acquire_timeout: Duration::from_secs(env_u64("MYCELIUM_POOL_ACQUIRE_SECS", 5)),
+            min_size: env_usize("STYGIAN_POOL_MIN", 2),
+            max_size: env_usize("STYGIAN_POOL_MAX", 10),
+            idle_timeout: Duration::from_secs(env_u64("STYGIAN_POOL_IDLE_SECS", 300)),
+            acquire_timeout: Duration::from_secs(env_u64("STYGIAN_POOL_ACQUIRE_SECS", 5)),
         }
     }
 }
@@ -136,7 +136,7 @@ impl Default for PoolConfig {
 pub struct BrowserConfig {
     /// Path to the Chrome/Chromium executable.
     ///
-    /// Env: `MYCELIUM_CHROME_PATH`
+    /// Env: `STYGIAN_CHROME_PATH`
     pub chrome_path: Option<PathBuf>,
 
     /// Extra Chrome launch arguments appended after the defaults.
@@ -144,7 +144,7 @@ pub struct BrowserConfig {
 
     /// Run in headless mode (no visible window).
     ///
-    /// Env: `MYCELIUM_HEADLESS` (`true`/`false`, default: `true`)
+    /// Env: `STYGIAN_HEADLESS` (`true`/`false`, default: `true`)
     pub headless: bool,
 
     /// Persistent user profile directory. `None` = temporary profile.
@@ -161,7 +161,7 @@ pub struct BrowserConfig {
 
     /// Comma-separated list of hosts that bypass the proxy.
     ///
-    /// Env: `MYCELIUM_PROXY_BYPASS` (e.g. `"<local>,localhost,127.0.0.1"`)
+    /// Env: `STYGIAN_PROXY_BYPASS` (e.g. `"<local>,localhost,127.0.0.1"`)
     pub proxy_bypass_list: Option<String>,
 
     /// WebRTC IP-leak prevention and geolocation consistency settings.
@@ -175,7 +175,7 @@ pub struct BrowserConfig {
 
     /// CDP Runtime.enable leak-mitigation mode.
     ///
-    /// Env: `MYCELIUM_CDP_FIX_MODE` (`add_binding`/`isolated_world`/`enable_disable`/`none`)
+    /// Env: `STYGIAN_CDP_FIX_MODE` (`add_binding`/`isolated_world`/`enable_disable`/`none`)
     pub cdp_fix_mode: CdpFixMode,
 
     /// Source URL injected into `Function.prototype.toString` patches, or
@@ -183,7 +183,7 @@ pub struct BrowserConfig {
     ///
     /// Set to `"0"` (as a string) to disable sourceURL patching entirely.
     ///
-    /// Env: `MYCELIUM_SOURCE_URL`
+    /// Env: `STYGIAN_SOURCE_URL`
     pub source_url: Option<String>,
 
     /// Browser pool settings.
@@ -191,13 +191,13 @@ pub struct BrowserConfig {
 
     /// Browser launch timeout.
     ///
-    /// Env: `MYCELIUM_LAUNCH_TIMEOUT_SECS` (default: `10`)
+    /// Env: `STYGIAN_LAUNCH_TIMEOUT_SECS` (default: `10`)
     #[serde(with = "duration_secs")]
     pub launch_timeout: Duration,
 
     /// Per-operation CDP timeout.
     ///
-    /// Env: `MYCELIUM_CDP_TIMEOUT_SECS` (default: `30`)
+    /// Env: `STYGIAN_CDP_TIMEOUT_SECS` (default: `30`)
     #[serde(with = "duration_secs")]
     pub cdp_timeout: Duration,
 }
@@ -205,24 +205,22 @@ pub struct BrowserConfig {
 impl Default for BrowserConfig {
     fn default() -> Self {
         Self {
-            chrome_path: std::env::var("MYCELIUM_CHROME_PATH")
-                .ok()
-                .map(PathBuf::from),
+            chrome_path: std::env::var("STYGIAN_CHROME_PATH").ok().map(PathBuf::from),
             args: vec![],
-            headless: env_bool("MYCELIUM_HEADLESS", true),
+            headless: env_bool("STYGIAN_HEADLESS", true),
             user_data_dir: None,
             window_size: Some((1920, 1080)),
             devtools: false,
-            proxy: std::env::var("MYCELIUM_PROXY").ok(),
-            proxy_bypass_list: std::env::var("MYCELIUM_PROXY_BYPASS").ok(),
+            proxy: std::env::var("STYGIAN_PROXY").ok(),
+            proxy_bypass_list: std::env::var("STYGIAN_PROXY_BYPASS").ok(),
             #[cfg(feature = "stealth")]
             webrtc: WebRtcConfig::default(),
             stealth_level: StealthLevel::from_env(),
             cdp_fix_mode: CdpFixMode::from_env(),
-            source_url: std::env::var("MYCELIUM_SOURCE_URL").ok(),
+            source_url: std::env::var("STYGIAN_SOURCE_URL").ok(),
             pool: PoolConfig::default(),
-            launch_timeout: Duration::from_secs(env_u64("MYCELIUM_LAUNCH_TIMEOUT_SECS", 10)),
-            cdp_timeout: Duration::from_secs(env_u64("MYCELIUM_CDP_TIMEOUT_SECS", 30)),
+            launch_timeout: Duration::from_secs(env_u64("STYGIAN_LAUNCH_TIMEOUT_SECS", 10)),
+            cdp_timeout: Duration::from_secs(env_u64("STYGIAN_CDP_TIMEOUT_SECS", 30)),
         }
     }
 }
@@ -745,14 +743,14 @@ mod tests {
     //
     // These tests set env vars and call BrowserConfig::default() to verify
     // the overrides are picked up.  Tests use a per-test unique var name to
-    // prevent cross-test pollution, but the real MYCELIUM_* paths are also
+    // prevent cross-test pollution, but the real STYGIAN_* paths are also
     // exercised via a serial test that saves/restores the env.
 
     #[test]
     fn stealth_level_from_env_none() {
         // env_bool / StealthLevel::from_env are pure functions — we test the
         // conversion logic indirectly via a temporary override.
-        temp_env::with_var("MYCELIUM_STEALTH_LEVEL", Some("none"), || {
+        temp_env::with_var("STYGIAN_STEALTH_LEVEL", Some("none"), || {
             let level = StealthLevel::from_env();
             assert_eq!(level, StealthLevel::None);
         });
@@ -760,14 +758,14 @@ mod tests {
 
     #[test]
     fn stealth_level_from_env_basic() {
-        temp_env::with_var("MYCELIUM_STEALTH_LEVEL", Some("basic"), || {
+        temp_env::with_var("STYGIAN_STEALTH_LEVEL", Some("basic"), || {
             assert_eq!(StealthLevel::from_env(), StealthLevel::Basic);
         });
     }
 
     #[test]
     fn stealth_level_from_env_advanced_is_default() {
-        temp_env::with_var("MYCELIUM_STEALTH_LEVEL", Some("anything_else"), || {
+        temp_env::with_var("STYGIAN_STEALTH_LEVEL", Some("anything_else"), || {
             assert_eq!(StealthLevel::from_env(), StealthLevel::Advanced);
         });
     }
@@ -775,7 +773,7 @@ mod tests {
     #[test]
     fn stealth_level_from_env_missing_defaults_to_advanced() {
         // When the key is absent, from_env() falls through to Advanced.
-        temp_env::with_var("MYCELIUM_STEALTH_LEVEL", None::<&str>, || {
+        temp_env::with_var("STYGIAN_STEALTH_LEVEL", None::<&str>, || {
             assert_eq!(StealthLevel::from_env(), StealthLevel::Advanced);
         });
     }
@@ -791,11 +789,11 @@ mod tests {
             ("unknown_value", CdpFixMode::AddBinding), // falls back to default
         ];
         for (val, expected) in cases {
-            temp_env::with_var("MYCELIUM_CDP_FIX_MODE", Some(val), || {
+            temp_env::with_var("STYGIAN_CDP_FIX_MODE", Some(val), || {
                 assert_eq!(
                     CdpFixMode::from_env(),
                     expected,
-                    "MYCELIUM_CDP_FIX_MODE={val}"
+                    "STYGIAN_CDP_FIX_MODE={val}"
                 );
             });
         }
@@ -805,8 +803,8 @@ mod tests {
     fn pool_config_from_env_min_max() {
         temp_env::with_vars(
             [
-                ("MYCELIUM_POOL_MIN", Some("3")),
-                ("MYCELIUM_POOL_MAX", Some("15")),
+                ("STYGIAN_POOL_MIN", Some("3")),
+                ("STYGIAN_POOL_MAX", Some("15")),
             ],
             || {
                 let p = PoolConfig::default();
@@ -818,23 +816,23 @@ mod tests {
 
     #[test]
     fn headless_from_env_false() {
-        temp_env::with_var("MYCELIUM_HEADLESS", Some("false"), || {
+        temp_env::with_var("STYGIAN_HEADLESS", Some("false"), || {
             // env_bool parses the value via BrowserConfig::default()
-            assert!(!env_bool("MYCELIUM_HEADLESS", true));
+            assert!(!env_bool("STYGIAN_HEADLESS", true));
         });
     }
 
     #[test]
     fn headless_from_env_zero_means_false() {
-        temp_env::with_var("MYCELIUM_HEADLESS", Some("0"), || {
-            assert!(!env_bool("MYCELIUM_HEADLESS", true));
+        temp_env::with_var("STYGIAN_HEADLESS", Some("0"), || {
+            assert!(!env_bool("STYGIAN_HEADLESS", true));
         });
     }
 
     #[test]
     fn headless_from_env_no_means_false() {
-        temp_env::with_var("MYCELIUM_HEADLESS", Some("no"), || {
-            assert!(!env_bool("MYCELIUM_HEADLESS", true));
+        temp_env::with_var("STYGIAN_HEADLESS", Some("no"), || {
+            assert!(!env_bool("STYGIAN_HEADLESS", true));
         });
     }
 
@@ -911,7 +909,9 @@ mod temp_env {
         V: AsRef<OsStr>,
         F: FnOnce(),
     {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let key = key.as_ref();
         let prev = env::var_os(key);
         match value {
@@ -932,7 +932,9 @@ mod temp_env {
         V: AsRef<OsStr>,
         F: FnOnce(),
     {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let pairs: Vec<_> = pairs
             .into_iter()
             .map(|(k, v)| {

@@ -599,7 +599,7 @@ impl PipelineParser {
     ///
     /// Layers (later overrides earlier):
     /// 1. TOML file at `path`
-    /// 2. Environment variables with prefix `MYCELIUM_` (e.g. `MYCELIUM_NODES_0_URL`)
+    /// 2. Environment variables with prefix `STYGIAN_` (e.g. `STYGIAN_NODES_0_URL`)
     ///
     /// Applies template variable expansion after loading.
     ///
@@ -619,7 +619,7 @@ impl PipelineParser {
     pub fn from_figment_file(path: &str) -> Result<PipelineDefinition, PipelineError> {
         let mut def: PipelineDefinition = Figment::new()
             .merge(Toml::file(path))
-            .merge(Env::prefixed("MYCELIUM_").lowercase(true))
+            .merge(Env::prefixed("STYGIAN_").lowercase(true))
             .extract()
             .map_err(|e| PipelineError::FigmentError(e.to_string()))?;
         def.expand_templates();
@@ -856,14 +856,13 @@ depends_on = ["a"]
     fn template_env_expansion() {
         // Use CARGO which is always set by cargo on every platform (Unix + Windows).
         let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
-        let toml = format!(
-            r#"
+        let toml = r#"
 [[nodes]]
 name = "n"
 service = "http"
-url = "${{env:CARGO}}"
+url = "${env:CARGO}"
 "#
-        );
+        .to_string();
         let mut def = PipelineParser::from_str(&toml).unwrap();
         def.expand_templates();
         assert_eq!(def.nodes[0].url.as_deref(), Some(cargo.as_str()));
@@ -875,14 +874,14 @@ url = "${{env:CARGO}}"
 [[nodes]]
 name = "n"
 service = "http"
-url = "${env:MYCELIUM_DEFINITELY_UNSET_VAR}"
+url = "${env:STYGIAN_DEFINITELY_UNSET_VAR}"
 "#;
         let mut def = PipelineParser::from_str(toml).unwrap();
         def.expand_templates();
         // Missing env var: keep original token
         assert_eq!(
             def.nodes[0].url.as_deref(),
-            Some("${env:MYCELIUM_DEFINITELY_UNSET_VAR}")
+            Some("${env:STYGIAN_DEFINITELY_UNSET_VAR}")
         );
     }
 

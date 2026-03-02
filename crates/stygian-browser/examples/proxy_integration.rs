@@ -3,10 +3,10 @@
 //! Demonstrates configuring an HTTP/SOCKS5 proxy with WebRTC leak protection
 //! and verifying the apparent IP address changed.
 //!
-//! Set the `MYCELIUM_PROXY` environment variable before running:
+//! Set the `STYGIAN_PROXY` environment variable before running:
 //!
 //! ```sh
-//! MYCELIUM_PROXY=http://user:pass@proxy.example.com:8080 \
+//! STYGIAN_PROXY=http://user:pass@proxy.example.com:8080 \
 //!   cargo run --example proxy_integration -p stygian-browser
 //! ```
 //!
@@ -22,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     // ── Configuration ──────────────────────────────────────────────────────────
-    let proxy_url = std::env::var("MYCELIUM_PROXY").ok();
+    let proxy_url = std::env::var("STYGIAN_PROXY").ok();
     let using_proxy = proxy_url.is_some();
 
     let mut builder = BrowserConfig::builder()
@@ -39,7 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Using proxy: {proxy}");
         builder = builder.proxy(proxy);
     } else {
-        println!("No MYCELIUM_PROXY set — running without proxy");
+        println!("No STYGIAN_PROXY set — running without proxy");
     }
 
     let config = builder.build();

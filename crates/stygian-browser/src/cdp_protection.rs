@@ -14,14 +14,14 @@
 //! | `EnableDisable` | Enable → evaluate → disable immediately | Low ★ |
 //! | `None` | No protection | Detectable |
 //!
-//! The default is `AddBinding`.  Select via the `MYCELIUM_CDP_FIX_MODE` env var.
+//! The default is `AddBinding`.  Select via the `STYGIAN_CDP_FIX_MODE` env var.
 //!
 //! # Source URL patching
 //!
 //! Scripts evaluated via CDP receive a source URL comment
 //! `//# sourceURL=pptr://...` that exposes automation.  The injected bootstrap
 //! script overwrites `Function.prototype.toString` to sanitise these URLs.
-//! Set `MYCELIUM_SOURCE_URL` to a custom value (e.g. `app.js`) or `0` to skip.
+//! Set `STYGIAN_SOURCE_URL` to a custom value (e.g. `app.js`) or `0` to skip.
 //!
 //! # Reference
 //!
@@ -52,7 +52,7 @@ use serde::{Deserialize, Serialize};
 /// use stygian_browser::cdp_protection::CdpFixMode;
 ///
 /// let mode = CdpFixMode::from_env();
-/// // Defaults to AddBinding unless MYCELIUM_CDP_FIX_MODE is set.
+/// // Defaults to AddBinding unless STYGIAN_CDP_FIX_MODE is set.
 /// assert_ne!(mode, CdpFixMode::None);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -70,12 +70,12 @@ pub enum CdpFixMode {
 }
 
 impl CdpFixMode {
-    /// Read the mode from `MYCELIUM_CDP_FIX_MODE`.
+    /// Read the mode from `STYGIAN_CDP_FIX_MODE`.
     ///
     /// Accepts (case-insensitive): `addBinding`, `isolated`, `enableDisable`, `none`.
     /// Falls back to [`CdpFixMode::AddBinding`] for any unknown value.
     pub fn from_env() -> Self {
-        match std::env::var("MYCELIUM_CDP_FIX_MODE")
+        match std::env::var("STYGIAN_CDP_FIX_MODE")
             .unwrap_or_default()
             .to_lowercase()
             .as_str()
@@ -139,12 +139,12 @@ impl CdpProtection {
 
     /// Read configuration from environment variables.
     ///
-    /// - `MYCELIUM_CDP_FIX_MODE` → [`CdpFixMode::from_env`]
-    /// - `MYCELIUM_SOURCE_URL`   → custom source URL string (`0` to disable)
+    /// - `STYGIAN_CDP_FIX_MODE` → [`CdpFixMode::from_env`]
+    /// - `STYGIAN_SOURCE_URL`   → custom source URL string (`0` to disable)
     pub fn from_env() -> Self {
         Self {
             mode: CdpFixMode::from_env(),
-            source_url: std::env::var("MYCELIUM_SOURCE_URL").ok(),
+            source_url: std::env::var("STYGIAN_SOURCE_URL").ok(),
         }
     }
 
@@ -197,7 +197,7 @@ impl CdpProtection {
 
     /// Build only the `Function.prototype.toString` source-URL patch.
     ///
-    /// Returns an empty string if source URL patching is disabled (`MYCELIUM_SOURCE_URL=0`).
+    /// Returns an empty string if source URL patching is disabled (`STYGIAN_SOURCE_URL=0`).
     fn build_source_url_patch(&self) -> String {
         let url = match &self.source_url {
             Some(v) if v == "0" => return String::new(),

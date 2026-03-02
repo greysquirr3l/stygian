@@ -15,7 +15,7 @@
 //! ## Running the server
 //!
 //! ```sh
-//! MYCELIUM_MCP_ENABLED=true cargo run --example mcp_server -p stygian-browser
+//! STYGIAN_MCP_ENABLED=true cargo run --example mcp_server -p stygian-browser
 //! ```
 //!
 //! ## Protocol
@@ -656,12 +656,12 @@ fn mcp_enabled_from(value: &str) -> bool {
     matches!(value.to_lowercase().as_str(), "true" | "1" | "yes")
 }
 
-/// Returns `true` if the MCP server is enabled via the `MYCELIUM_MCP_ENABLED`
+/// Returns `true` if the MCP server is enabled via the `STYGIAN_MCP_ENABLED`
 /// environment variable.
 ///
-/// Set `MYCELIUM_MCP_ENABLED=true` to enable the server.
+/// Set `STYGIAN_MCP_ENABLED=true` to enable the server.
 pub fn is_mcp_enabled() -> bool {
-    mcp_enabled_from(&std::env::var("MYCELIUM_MCP_ENABLED").unwrap_or_default())
+    mcp_enabled_from(&std::env::var("STYGIAN_MCP_ENABLED").unwrap_or_default())
 }
 
 #[cfg(test)]
@@ -690,7 +690,7 @@ mod tests {
 
     #[test]
     fn mcp_env_disabled_by_default() {
-        // If MYCELIUM_MCP_ENABLED is not "true"/"1"/"yes", function returns false
+        // If STYGIAN_MCP_ENABLED is not "true"/"1"/"yes", function returns false
         let cases = ["false", "0", "no", "", "off"];
         for val in cases {
             assert!(!mcp_enabled_from(val), "expected disabled for {val:?}");

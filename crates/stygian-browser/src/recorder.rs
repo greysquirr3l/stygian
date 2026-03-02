@@ -8,8 +8,8 @@
 //!
 //! | Variable | Default | Description |
 //! |----------|---------|-------------|
-//! | `MYCELIUM_RECORD_SESSION` | `false` | Enable recording automatically |
-//! | `MYCELIUM_RECORD_DIR` | `./recordings` | Output directory |
+//! | `STYGIAN_RECORD_SESSION` | `false` | Enable recording automatically |
+//! | `STYGIAN_RECORD_DIR` | `./recordings` | Output directory |
 //!
 //! ## HAR export
 //!
@@ -71,7 +71,7 @@ pub struct RecorderConfig {
 
 impl Default for RecorderConfig {
     fn default() -> Self {
-        let output_dir = std::env::var("MYCELIUM_RECORD_DIR").map_or_else(
+        let output_dir = std::env::var("STYGIAN_RECORD_DIR").map_or_else(
             |_| std::path::PathBuf::from("./recordings"),
             std::path::PathBuf::from,
         );
@@ -567,10 +567,10 @@ impl SessionRecorder {
 
 // ─── Convenience helpers ──────────────────────────────────────────────────────
 
-/// Returns `true` if session recording is enabled via `MYCELIUM_RECORD_SESSION`.
+/// Returns `true` if session recording is enabled via `STYGIAN_RECORD_SESSION`.
 pub fn is_recording_enabled() -> bool {
     matches!(
-        std::env::var("MYCELIUM_RECORD_SESSION")
+        std::env::var("STYGIAN_RECORD_SESSION")
             .unwrap_or_default()
             .to_lowercase()
             .as_str(),
