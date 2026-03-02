@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-03-02
+
+### Added
+
+- `stygian-browser`: `PageHandle::url()` — returns the post-navigation, post-redirect page URL via CDP `Target.getTargetInfo` ([#1](https://github.com/greysquirr3l/stygian/issues/1))
+- `stygian-browser`: `PageHandle::status_code()` — returns the HTTP status code of the most recent main-frame navigation, captured atomically from `Network.responseReceived` before `goto()` is called; returns `None` for `file://` navigations or before `navigate()` is called ([#1](https://github.com/greysquirr3l/stygian/issues/1))
+
 ## [0.1.4] - 2026-03-02
 
 ### Fixed
@@ -126,7 +133,8 @@ Both crates are functional and well-tested, but APIs may evolve based on communi
 
 ---
 
-[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/greysquirr3l/stygian/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/greysquirr3l/stygian/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/greysquirr3l/stygian/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/greysquirr3l/stygian/compare/v0.1.1...v0.1.2
