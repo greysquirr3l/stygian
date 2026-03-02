@@ -3,7 +3,7 @@
 High-performance, graph-based web scraping engine treating pipelines as DAGs with pluggable service modules.
 
 [![Crates.io](https://img.shields.io/crates/v/stygian-graph.svg)](https://crates.io/crates/stygian-graph)
-[![Documentation](https://docs.rs/stygian-graph/badge.svg)](https://docs.rs/stygian-graph)
+[![Documentation](https://img.shields.io/badge/docs-github.io-blue)](https://greysquirr3l.github.io/stygian)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
 [![Tests](https://img.shields.io/badge/tests-209%20passing-brightgreen)](https://github.com/greysquirr3l/stygian/actions)
 [![Coverage](https://img.shields.io/badge/coverage-~72%25-yellowgreen)](https://github.com/greysquirr3l/stygian/actions)

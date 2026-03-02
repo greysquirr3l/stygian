@@ -6,6 +6,7 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+documentation = "https://greysquirr3l.github.io/stygian"
 readme = "README.md"
 description = "Anti-detection browser automation library for Rust with CDP stealth features"
 keywords = ["browser", "automation", "scraping", "anti-detection", "cdp"]

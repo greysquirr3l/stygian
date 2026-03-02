@@ -232,4 +232,4 @@ Built with:
 
 **Status**: Active development | Version 0.1.1 | Rust 2024 edition | 842 tests | Linux + macOS
 
-For detailed documentation, see [docs.rs/stygian-graph](https://docs.rs/stygian-graph) and [docs.rs/stygian-browser](https://docs.rs/stygian-browser).
+For detailed documentation, see the [project docs site](https://greysquirr3l.github.io/stygian).

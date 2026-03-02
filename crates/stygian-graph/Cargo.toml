@@ -6,6 +6,7 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+documentation = "https://greysquirr3l.github.io/stygian"
 description = "High-performance graph-based web scraping engine with AI extraction, multi-modal support, and anti-bot capabilities"
 keywords = ["scraping", "web-scraping", "graph", "ai", "extraction"]
 categories = ["web-programming", "network-programming", "asynchronous"]
