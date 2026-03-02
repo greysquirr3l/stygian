@@ -191,8 +191,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{count} products found");
 
     let url = page.url().await?;
-    let status = page.status_code()?.unwrap_or(0);
-    println!("{url} → HTTP {status}");
+    let status = page.status_code()?;
+    match status {
+        Some(code) => println!("{url} → HTTP {code}"),
+        None => println!("{url} → HTTP status unknown"),
+    }
 
     let html = page.content().await?;
     // … pass html to an AI extraction node …
