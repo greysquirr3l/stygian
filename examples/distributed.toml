@@ -6,7 +6,7 @@
 # affect domain B.
 #
 # Run:
-#   ANTHROPIC_API_KEY=sk-... mycelium run examples/distributed.toml
+#   ANTHROPIC_API_KEY=sk-... stygian run examples/distributed.toml
 
 # ── Service declarations (one per domain) ─────────────────────────────────────
 

@@ -1,6 +1,6 @@
 # Jobber GraphQL Pipelines
 
-Ready-to-run Mycelium pipelines for the [Jobber](https://d.getjobber.com/docs/api/) field-service management GraphQL API.
+Ready-to-run Stygian pipelines for the [Jobber](https://d.getjobber.com/docs/api/) field-service management GraphQL API.
 
 ## Requirements
 
@@ -43,32 +43,32 @@ This header is **automatically injected** by the `JobberPlugin` — you do not n
 export JOBBER_ACCESS_TOKEN="your-token-here"
 
 # Validate a pipeline without executing
-mycelium check examples/pipelines/jobber/clients.toml
+stygian check examples/pipelines/jobber/clients.toml
 
 # Fetch all clients
-mycelium run examples/pipelines/jobber/clients.toml
+stygian run examples/pipelines/jobber/clients.toml
 
 # Fetch all jobs
-mycelium run examples/pipelines/jobber/jobs.toml
+stygian run examples/pipelines/jobber/jobs.toml
 
 # Fetch invoices with line items
-mycelium run examples/pipelines/jobber/invoices.toml
+stygian run examples/pipelines/jobber/invoices.toml
 
 # Fetch quotes
-mycelium run examples/pipelines/jobber/quotes.toml
+stygian run examples/pipelines/jobber/quotes.toml
 
 # Fetch expenses
-mycelium run examples/pipelines/jobber/expenses.toml
+stygian run examples/pipelines/jobber/expenses.toml
 
 # Fetch visits
-mycelium run examples/pipelines/jobber/visits.toml
+stygian run examples/pipelines/jobber/visits.toml
 
 # Full sync with AI normalisation (requires ANTHROPIC_API_KEY)
 export ANTHROPIC_API_KEY="sk-ant-..."
-mycelium run examples/pipelines/jobber/full_sync.toml
+stygian run examples/pipelines/jobber/full_sync.toml
 
-# Introspect the Jobber schema (writes to ~/.mycelium/cache/jobber_schema.json)
-mycelium run examples/pipelines/jobber/introspect.toml
+# Introspect the Jobber schema (writes to ~/.stygian/cache/jobber_schema.json)
+stygian run examples/pipelines/jobber/introspect.toml
 ```
 
 ## Pipeline structure
@@ -176,7 +176,7 @@ variables = { filter = { createdAt = { gte = "2025-01-01", lte = "2025-12-31" } 
 
 To add a new GraphQL target (e.g. Shopify, GitHub, Linear):
 
-1. Create `crates/mycelium-graph/src/adapters/graphql_plugins/<target>.rs` implementing `GraphQlTargetPlugin`
+1. Create `crates/stygian-graph/src/adapters/graphql_plugins/<target>.rs` implementing `GraphQlTargetPlugin`
 2. Add `pub mod <target>;` to `adapters/graphql_plugins/mod.rs`
 3. Register the plugin at startup
 4. Reference it with `plugin = "<target>"` in TOML

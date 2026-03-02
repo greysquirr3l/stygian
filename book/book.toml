@@ -1,5 +1,5 @@
 [book]
-title       = "mycelium"
+title       = "stygian"
 description = "High-performance web scraping toolkit for Rust"
 authors     = ["greysquirr3l"]
 language    = "en"
@@ -10,9 +10,9 @@ build-dir      = "book"
 create-missing = false
 
 [output.html]
-site-url             = "/mycelium/"
-git-repository-url   = "https://github.com/greysquirr3l/mycelium"
-edit-url-template    = "https://github.com/greysquirr3l/mycelium/edit/main/book/src/{path}"
+site-url             = "/stygian/"
+git-repository-url   = "https://github.com/greysquirr3l/stygian"
+edit-url-template    = "https://github.com/greysquirr3l/stygian/edit/main/book/src/{path}"
 default-theme        = "ayu"
 preferred-dark-theme = "ayu"
 fold.enable          = true

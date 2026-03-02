@@ -42,7 +42,7 @@ Create `src/adapters/playwright.rs`:
 use std::time::Duration;
 use serde_json::Value;
 
-use crate::domain::error::{MyceliumError, ServiceError};
+use crate::domain::error::{StygianError, ServiceError};
 use crate::ports::{ScrapingService, ServiceInput, ServiceOutput};
 
 // ── Configuration ─────────────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ use crate::ports::{ScrapingService, ServiceInput, ServiceOutput};
 /// # Example
 ///
 /// ```rust
-/// use mycelium_graph::adapters::playwright::PlaywrightConfig;
+/// use stygian_graph::adapters::playwright::PlaywrightConfig;
 ///
 /// let cfg = PlaywrightConfig {
 ///     ws_endpoint:     "ws://localhost:3000/playwright".into(),
@@ -111,7 +111,7 @@ impl ScrapingService for PlaywrightService {
         //   4. Await "networkidle" lifecycle event
         //   5. Call Page.getContent() for rendered HTML
         //   6. Close the page
-        Err(MyceliumError::Service(ServiceError::Unavailable(
+        Err(StygianError::Service(ServiceError::Unavailable(
             format!("PlaywrightService not connected (url={})", input.url),
         )))
     }
@@ -141,8 +141,8 @@ In your binary entry point or `application/executor.rs` startup code:
 
 ```rust
 use std::sync::Arc;
-use mycelium_graph::adapters::playwright::{PlaywrightConfig, PlaywrightService};
-use mycelium_graph::application::registry::ServiceRegistry;
+use stygian_graph::adapters::playwright::{PlaywrightConfig, PlaywrightService};
+use stygian_graph::application::registry::ServiceRegistry;
 
 let registry = ServiceRegistry::new();
 
@@ -169,7 +169,7 @@ Wrap before registering to get circuit-breaker and retry behaviour for free:
 ```rust
 use std::sync::Arc;
 use std::time::Duration;
-use mycelium_graph::adapters::resilience::{CircuitBreakerImpl, RetryPolicy, ResilientAdapter};
+use stygian_graph::adapters::resilience::{CircuitBreakerImpl, RetryPolicy, ResilientAdapter};
 
 let cb = CircuitBreakerImpl::new(
     5,                          // open after 5 consecutive failures
@@ -195,13 +195,13 @@ registry.register("playwright".into(), Arc::new(resilient));
 
 ## Step 6: Integration tests
 
-Use mycelium's built-in mock transport for unit tests that don't require a real server:
+Use stygian's built-in mock transport for unit tests that don't require a real server:
 
 ```rust
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mycelium_graph::ports::ServiceInput;
+    use stygian_graph::ports::ServiceInput;
 
     fn make_input(url: &str) -> ServiceInput {
         ServiceInput { url: url.into(), config: serde_json::Value::Null, ..Default::default() }

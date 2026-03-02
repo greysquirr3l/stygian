@@ -15,17 +15,17 @@ cargo test --workspace --all-features
 cargo test --workspace --all-features -- --include-ignored
 
 # Specific crate
-cargo test -p mycelium-graph
-cargo test -p mycelium-browser
+cargo test -p stygian-graph
+cargo test -p stygian-browser
 ```
 
 ---
 
 ## Test organisation
 
-### mycelium-graph
+### stygian-graph
 
-Tests live alongside their module in `src/` (unit tests) and in `crates/mycelium-graph/tests/`
+Tests live alongside their module in `src/` (unit tests) and in `crates/stygian-graph/tests/`
 (integration tests).
 
 | Layer | Location | Approach |
@@ -37,7 +37,7 @@ Tests live alongside their module in `src/` (unit tests) and in `crates/mycelium
 
 All tests in the graph crate pass without any external services.
 
-### mycelium-browser
+### stygian-browser
 
 Browser tests fall into two categories:
 
@@ -50,7 +50,7 @@ To run integration tests locally:
 
 ```bash
 # Ensure Chrome 120+ is on PATH, then:
-cargo test -p mycelium-browser --all-features -- --include-ignored
+cargo test -p stygian-browser --all-features -- --include-ignored
 ```
 
 ---
@@ -72,11 +72,11 @@ cargo install cargo-tarpaulin
 # Workspace summary (excludes Chrome-gated tests)
 cargo tarpaulin --workspace --all-features --ignore-tests --out Lcov
 
-# mycelium-graph only
-cargo tarpaulin -p mycelium-graph --all-features --ignore-tests --out Lcov
+# stygian-graph only
+cargo tarpaulin -p stygian-graph --all-features --ignore-tests --out Lcov
 
-# mycelium-browser logic-only (no Chrome)
-cargo tarpaulin -p mycelium-browser --lib --ignore-tests --out Lcov
+# stygian-browser logic-only (no Chrome)
+cargo tarpaulin -p stygian-browser --lib --ignore-tests --out Lcov
 ```
 
 ### Current numbers
@@ -84,10 +84,10 @@ cargo tarpaulin -p mycelium-browser --lib --ignore-tests --out Lcov
 | Scope | Line coverage | Notes |
 |---|---|---|
 | **Workspace** | **65.74 %** | 2 882 / 4 384 lines · 209 tests |
-| `mycelium-graph` | ~72 % | All unit and integration logic covered |
-| `mycelium-browser` | structurally bounded | Chrome-gated tests excluded from CI |
+| `stygian-graph` | ~72 % | All unit and integration logic covered |
+| `stygian-browser` | structurally bounded | Chrome-gated tests excluded from CI |
 
-High-coverage modules in `mycelium-graph`:
+High-coverage modules in `stygian-graph`:
 
 | Module | Coverage |
 |---|---|

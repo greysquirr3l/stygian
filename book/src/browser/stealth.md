@@ -1,6 +1,6 @@
 # Stealth & Anti-Detection
 
-`mycelium-browser` implements a layered anti-detection system. Each layer targets a different
+`stygian-browser` implements a layered anti-detection system. Each layer targets a different
 class of bot-detection signal.
 
 ---
@@ -38,7 +38,7 @@ Executed on every new document context before any page script runs.
 The fingerprint is drawn from statistically-weighted device profiles:
 
 ```rust
-use mycelium_browser::fingerprint::{DeviceProfile, Platform};
+use stygian_browser::fingerprint::{DeviceProfile, Platform};
 
 let profile = DeviceProfile::random();   // weighted: Windows 60%, Mac 25%, Linux 15%
 println!("Platform:    {:?}", profile.platform);
@@ -108,7 +108,7 @@ Generates Bézier-curve paths with natural arc shapes:
 - 10–50 ms inter-event delays
 
 ```rust,no_run
-use mycelium_browser::behavior::MouseSimulator;
+use stygian_browser::behavior::MouseSimulator;
 
 let sim = MouseSimulator::new();
 // Move from (100, 200) to (450, 380) with realistic arc
@@ -125,7 +125,7 @@ Models realistic typing cadence:
 - Burst/pause rhythm typical of human typists
 
 ```rust,no_run
-use mycelium_browser::behavior::TypingSimulator;
+use stygian_browser::behavior::TypingSimulator;
 
 let typer = TypingSimulator::new()
     .wpm(90)

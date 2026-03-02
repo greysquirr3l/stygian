@@ -1,6 +1,6 @@
 # Architecture
 
-`mycelium-graph` is built around the **Hexagonal Architecture** (Ports & Adapters) pattern.
+`stygian-graph` is built around the **Hexagonal Architecture** (Ports & Adapters) pattern.
 The domain core is pure Rust with zero I/O dependencies. All external capabilities — HTTP, AI,
 caching, queues — are declared as port traits and injected from the outside.
 
@@ -11,7 +11,7 @@ caching, queues — are declared as port traits and injected from the outside.
 ```text
 ┌──────────────────────────────────────────────────────┐
 │                   CLI / Entry Points                 │
-│              (src/bin/mycelium.rs)                   │
+│              (src/bin/stygian.rs)                   │
 ├──────────────────────────────────────────────────────┤
 │                  Application Layer                   │
 │   ServiceRegistry · PipelineParser · Metrics         │
@@ -56,7 +56,7 @@ Pure Rust. Only `std`, `serde`, and arithmetic/pure-data crates allowed. No `tok
 Pipelines enforce their lifecycle at **compile time** using the typestate pattern:
 
 ```rust
-use mycelium_graph::domain::pipeline::{
+use stygian_graph::domain::pipeline::{
     PipelineUnvalidated, PipelineValidated,
     PipelineExecuting, PipelineComplete,
 };
@@ -126,7 +126,7 @@ Adapters implement port traits and handle real I/O. They are **never** imported 
 | Adapter | Port | Notes |
 |---|---|---|
 | `HttpAdapter` | `ScrapingService` | reqwest, UA rotation, cookie jar, retry |
-| `BrowserAdapter` | `ScrapingService` | chromiumoxide via `mycelium-browser` |
+| `BrowserAdapter` | `ScrapingService` | chromiumoxide via `stygian-browser` |
 | `ClaudeProvider` | `AIProvider` | Anthropic API, streaming |
 | `OpenAiProvider` | `AIProvider` | OpenAI Chat Completions API |
 | `GeminiProvider` | `AIProvider` | Google Gemini API |

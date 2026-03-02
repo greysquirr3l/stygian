@@ -1,6 +1,6 @@
 # Performance Tuning and Optimization Guide
 
-This guide covers strategies for maximizing Mycelium's throughput and efficiency across worker pools, caching, memory, networking, and observability.
+This guide covers strategies for maximizing Stygian's throughput and efficiency across worker pools, caching, memory, networking, and observability.
 
 ## Table of Contents
 
@@ -69,7 +69,7 @@ ratio of 4–8× concurrency is a reasonable starting point.
 
 ## Channel Sizing
 
-Mycelium uses bounded `tokio::sync::mpsc` channels internally. Their capacity directly affects latency and throughput.
+Stygian uses bounded `tokio::sync::mpsc` channels internally. Their capacity directly affects latency and throughput.
 
 ### Throughput vs latency trade-off
 
@@ -216,7 +216,7 @@ will never match.
 | TTI (Time-to-Idle) | Session-like data | `time_to_idle` |
 | TTL (Time-to-Live) | Freshness guarantees | `time_to_live` |
 
-Mycelium uses `moka` for async-safe caching. Configure both TTL and capacity to avoid unbounded growth:
+Stygian uses `moka` for async-safe caching. Configure both TTL and capacity to avoid unbounded growth:
 
 ```rust
 use moka::future::Cache;
@@ -328,7 +328,7 @@ Install the `flamegraph` subcommand and use `perf` (Linux) or `dtrace` (macOS):
 cargo install flamegraph
 
 # macOS — requires sudo for dtrace
-sudo cargo flamegraph --bin mycelium-graph -- --config pipeline.toml
+sudo cargo flamegraph --bin stygian-graph -- --config pipeline.toml
 
 # Open the generated flamegraph.svg in a browser
 open flamegraph.svg
@@ -380,14 +380,14 @@ cargo bench --bench pipeline_execution
 ```bash
 sudo apt-get install heaptrack heaptrack-gui
 heaptrack cargo test --release
-heaptrack_gui heaptrack.mycelium-graph.*.gz
+heaptrack_gui heaptrack.stygian-graph.*.gz
 ```
 
 **valgrind/massif** (Linux — detailed but slow):
 
 ```bash
 cargo build --release
-valgrind --tool=massif --pages-as-heap=yes ./target/release/mycelium-graph
+valgrind --tool=massif --pages-as-heap=yes ./target/release/stygian-graph
 ms_print massif.out.* | head -50
 ```
 
@@ -481,7 +481,7 @@ sqlx::query!(
 
 ### Indexes
 
-Add indexes on columns used in `WHERE` clauses and `JOIN` conditions. For Mycelium workloads:
+Add indexes on columns used in `WHERE` clauses and `JOIN` conditions. For Stygian workloads:
 
 ```sql
 -- Filter by domain and crawl status frequently

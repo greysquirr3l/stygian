@@ -1,6 +1,6 @@
 # Built-in Adapters
 
-`mycelium-graph` ships adapters for every major scraping and AI workload. All adapters
+`stygian-graph` ships adapters for every major scraping and AI workload. All adapters
 implement the port traits defined in `src/ports.rs` and are registered by name in the
 `ServiceRegistry`.
 
@@ -12,12 +12,12 @@ The default content-fetching adapter. Uses `reqwest` with connection pooling, au
 redirect following, and configurable retry logic.
 
 ```rust
-use mycelium_graph::adapters::{HttpAdapter, HttpConfig};
+use stygian_graph::adapters::{HttpAdapter, HttpConfig};
 use std::time::Duration;
 
 let adapter = HttpAdapter::with_config(HttpConfig {
     timeout:          Duration::from_secs(15),
-    user_agent:       Some("mycelium/0.1".to_string()),
+    user_agent:       Some("stygian/0.1".to_string()),
     follow_redirects: true,
     max_redirects:    10,
     ..Default::default()
@@ -38,12 +38,12 @@ let adapter = HttpAdapter::with_config(HttpConfig {
 
 ## Browser Adapter
 
-Delegates to `mycelium-browser` for JavaScript-rendered pages. Requires the `browser`
+Delegates to `stygian-browser` for JavaScript-rendered pages. Requires the `browser`
 feature flag and a Chrome binary.
 
 ```rust
-use mycelium_graph::adapters::{BrowserAdapter, BrowserAdapterConfig};
-use mycelium_browser::StealthLevel;
+use stygian_graph::adapters::{BrowserAdapter, BrowserAdapterConfig};
+use stygian_browser::StealthLevel;
 use std::time::Duration;
 
 let adapter = BrowserAdapter::with_config(BrowserAdapterConfig {
@@ -71,7 +71,7 @@ schema declared in the node config.
 ### Claude (Anthropic)
 
 ```rust
-use mycelium_graph::adapters::ClaudeAdapter;
+use stygian_graph::adapters::ClaudeAdapter;
 
 let adapter = ClaudeAdapter::new(
     std::env::var("ANTHROPIC_API_KEY")?,
@@ -91,7 +91,7 @@ let adapter = ClaudeAdapter::new(
 ### OpenAI
 
 ```rust
-use mycelium_graph::adapters::OpenAiAdapter;
+use stygian_graph::adapters::OpenAiAdapter;
 
 let adapter = OpenAiAdapter::new(
     std::env::var("OPENAI_API_KEY")?,
@@ -104,7 +104,7 @@ let adapter = OpenAiAdapter::new(
 ### Gemini (Google)
 
 ```rust
-use mycelium_graph::adapters::GeminiAdapter;
+use stygian_graph::adapters::GeminiAdapter;
 
 let adapter = GeminiAdapter::new(
     std::env::var("GOOGLE_API_KEY")?,
@@ -119,7 +119,7 @@ let adapter = GeminiAdapter::new(
 Uses the Copilot API with your personal access token (PAT) or GitHub App credentials.
 
 ```rust
-use mycelium_graph::adapters::CopilotAdapter;
+use stygian_graph::adapters::CopilotAdapter;
 
 let adapter = CopilotAdapter::new(
     std::env::var("GITHUB_TOKEN")?,
@@ -134,7 +134,7 @@ let adapter = CopilotAdapter::new(
 Run any GGUF model locally without sending data to an external API.
 
 ```rust
-use mycelium_graph::adapters::OllamaAdapter;
+use stygian_graph::adapters::OllamaAdapter;
 
 let adapter = OllamaAdapter::new(
     "http://localhost:11434",
@@ -152,7 +152,7 @@ Adapters can be wrapped in a fallback chain. If the primary provider fails (rate
 outage), the next in the list is tried:
 
 ```rust
-use mycelium_graph::adapters::AiFallbackChain;
+use stygian_graph::adapters::AiFallbackChain;
 
 let chain = AiFallbackChain::new(vec![
     Arc::new(ClaudeAdapter::new(api_key.clone(), "claude-3-5-sonnet-20241022")),
@@ -171,7 +171,7 @@ Wrap any `ScrapingService` with circuit breaker and retry logic without touching
 underlying implementation:
 
 ```rust
-use mycelium_graph::adapters::resilience::{
+use stygian_graph::adapters::resilience::{
     CircuitBreakerImpl, RetryPolicy, ResilientAdapter,
 };
 use std::time::Duration;
@@ -205,7 +205,7 @@ Two in-process cache implementations are included. Both implement `CachePort`.
 Thread-safe LRU with a hard capacity limit:
 
 ```rust
-use mycelium_graph::adapters::BoundedLruCache;
+use stygian_graph::adapters::BoundedLruCache;
 use std::num::NonZeroUsize;
 
 let cache = BoundedLruCache::new(NonZeroUsize::new(10_000).unwrap());
@@ -216,7 +216,7 @@ let cache = BoundedLruCache::new(NonZeroUsize::new(10_000).unwrap());
 Concurrent hash-map backed cache with a background TTL cleanup task:
 
 ```rust
-use mycelium_graph::adapters::DashMapCache;
+use stygian_graph::adapters::DashMapCache;
 use std::time::Duration;
 
 let cache = DashMapCache::new(Duration::from_secs(300)); // 5-minute default TTL

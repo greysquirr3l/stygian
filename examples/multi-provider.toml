@@ -5,7 +5,7 @@
 # are tight or when offline operation is required.
 #
 # Run:
-#   ANTHROPIC_API_KEY=sk-... mycelium run examples/multi-provider.toml
+#   ANTHROPIC_API_KEY=sk-... stygian run examples/multi-provider.toml
 
 [[services]]
 name  = "http"

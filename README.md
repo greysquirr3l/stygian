@@ -1,20 +1,20 @@
-# mycelium
+# stygian
 
 **High-performance web scraping toolkit for Rust** — graph-based execution engine + anti-detection browser automation.
 
-[![CI](https://github.com/greysquirr3l/mycelium/actions/workflows/ci.yml/badge.svg)](https://github.com/greysquirr3l/mycelium/actions/workflows/ci.yml)
-[![Security Audit](https://github.com/greysquirr3l/mycelium/actions/workflows/security.yml/badge.svg)](https://github.com/greysquirr3l/mycelium/actions/workflows/security.yml)
-[![Documentation](https://github.com/greysquirr3l/mycelium/actions/workflows/docs.yml/badge.svg)](https://github.com/greysquirr3l/mycelium/actions/workflows/docs.yml)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/greysquirr3l/mycelium/badge)](https://securityscorecards.dev/viewer/?uri=github.com/greysquirr3l/mycelium)
+[![CI](https://github.com/greysquirr3l/stygian/actions/workflows/ci.yml/badge.svg)](https://github.com/greysquirr3l/stygian/actions/workflows/ci.yml)
+[![Security Audit](https://github.com/greysquirr3l/stygian/actions/workflows/security.yml/badge.svg)](https://github.com/greysquirr3l/stygian/actions/workflows/security.yml)
+[![Documentation](https://github.com/greysquirr3l/stygian/actions/workflows/docs.yml/badge.svg)](https://github.com/greysquirr3l/stygian/actions/workflows/docs.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/greysquirr3l/stygian/badge)](https://securityscorecards.dev/viewer/?uri=github.com/greysquirr3l/stygian)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
 
 ---
 
-## What is mycelium?
+## What is stygian?
 
-Mycelium is a **monorepo** containing two complementary Rust crates for building robust, scalable web scraping systems:
+Stygian is a **monorepo** containing two complementary Rust crates for building robust, scalable web scraping systems:
 
-### 📊 [mycelium-graph](crates/mycelium-graph)
+### 📊 [stygian-graph](crates/stygian-graph)
 
 Graph-based scraping engine treating pipelines as DAGs with pluggable service modules:
 
@@ -26,7 +26,7 @@ Graph-based scraping engine treating pipelines as DAGs with pluggable service mo
 - **Circuit breaker** — graceful degradation when services fail
 - **Idempotency** — safe retries with deduplication keys
 
-### 🌐 [mycelium-browser](crates/mycelium-browser)
+### 🌐 [stygian-browser](crates/stygian-browser)
 
 Anti-detection browser automation library for bypassing modern bot protection:
 
@@ -43,7 +43,7 @@ Anti-detection browser automation library for bypassing modern bot protection:
 ### Graph Scraping Pipeline
 
 ```rust
-use mycelium_graph::{PipelineBuilder, adapters::HttpAdapter};
+use stygian_graph::{PipelineBuilder, adapters::HttpAdapter};
 use serde_json::json;
 
 #[tokio::main]
@@ -66,7 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Browser Automation
 
 ```rust
-use mycelium_browser::{BrowserConfig, BrowserPool};
+use stygian_browser::{BrowserConfig, BrowserPool};
 use std::time::Duration;
 
 #[tokio::main]
@@ -97,8 +97,8 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-mycelium-graph = "0.1"
-mycelium-browser = "0.1"  # optional, for JavaScript rendering
+stygian-graph = "0.1"
+stygian-browser = "0.1"  # optional, for JavaScript rendering
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -106,7 +106,7 @@ tokio = { version = "1", features = ["full"] }
 
 ## Architecture
 
-### mycelium-graph: Hexagonal (Ports & Adapters)
+### stygian-graph: Hexagonal (Ports & Adapters)
 
 ```
 Domain Layer (business logic)
@@ -120,7 +120,7 @@ Adapters (HTTP, browser, AI providers, storage)
 - **Dependency inversion** — adapters depend on ports, not vice versa
 - **Extreme testability** — mock any external system
 
-### mycelium-browser: Modular
+### stygian-browser: Modular
 
 - Self-contained modules with clear interfaces
 - Pool management with resource limits
@@ -131,10 +131,10 @@ Adapters (HTTP, browser, AI providers, storage)
 ## Project Structure
 
 ```
-mycelium/
+stygian/
 ├── crates/
-│   ├── mycelium-graph/      # Scraping engine
-│   └── mycelium-browser/    # Browser automation
+│   ├── stygian-graph/      # Scraping engine
+│   └── stygian-browser/    # Browser automation
 ├── examples/                # Example pipelines
 ├── docs/                    # Architecture docs
 └── assets/                  # Diagrams, images
@@ -176,8 +176,8 @@ cargo test --all-features
 cargo tarpaulin --workspace --all-features --ignore-tests --out Lcov
 ```
 
-`mycelium-graph` achieves strong unit coverage across domain, ports, and adapter layers.
-`mycelium-browser` coverage is structurally bounded by the Chrome CDP requirement — all tests
+`stygian-graph` achieves strong unit coverage across domain, ports, and adapter layers.
+`stygian-browser` coverage is structurally bounded by the Chrome CDP requirement — all tests
 that spin up a real browser are marked `#[ignore = "requires Chrome"]`; pure-logic tests are
 fully covered.
 
@@ -233,4 +233,4 @@ Built with:
 
 **Status**: Active development | Version 0.1.1 | Rust 2024 edition | 842 tests | Linux + macOS
 
-For detailed documentation, see [docs.rs/mycelium-graph](https://docs.rs/mycelium-graph) and [docs.rs/mycelium-browser](https://docs.rs/mycelium-browser).
+For detailed documentation, see [docs.rs/stygian-graph](https://docs.rs/stygian-graph) and [docs.rs/stygian-browser](https://docs.rs/stygian-browser).

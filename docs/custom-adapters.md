@@ -1,4 +1,4 @@
-# Building Custom Adapters for Mycelium
+# Building Custom Adapters for Stygian
 
 This guide walks through implementing a production-quality custom adapter from scratch.
 We'll build a hypothetical `PlaywrightService` — a browser automation adapter that uses the
@@ -21,7 +21,7 @@ Adapters live in `src/adapters/` and implement traits defined in `src/ports.rs`.
 
 ## Step 1: Choose the right port trait
 
-Mycelium has three primary port traits you can implement:
+Stygian has three primary port traits you can implement:
 
 | Port | Use when |
 | --- | --- |
@@ -47,7 +47,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde_json::json;
 
-use crate::domain::error::{MyceliumError, ServiceError};
+use crate::domain::error::{StygianError, ServiceError};
 use crate::ports::{ScrapingService, ServiceInput, ServiceOutput};
 
 // ─── Configuration ────────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ use crate::ports::{ScrapingService, ServiceInput, ServiceOutput};
 /// # Example
 ///
 /// ```rust
-/// use mycelium_graph::adapters::playwright::PlaywrightConfig;
+/// use stygian_graph::adapters::playwright::PlaywrightConfig;
 /// use std::time::Duration;
 ///
 /// let config = PlaywrightConfig {
@@ -94,10 +94,10 @@ impl Default for PlaywrightConfig {
 ///
 /// ```rust,no_run
 /// use std::sync::Arc;
-/// use mycelium_graph::adapters::playwright::{PlaywrightService, PlaywrightConfig};
+/// use stygian_graph::adapters::playwright::{PlaywrightService, PlaywrightConfig};
 ///
 /// let svc = PlaywrightService::new(PlaywrightConfig::default());
-/// let svc: Arc<dyn mycelium_graph::ports::ScrapingService> = Arc::new(svc);
+/// let svc: Arc<dyn stygian_graph::ports::ScrapingService> = Arc::new(svc);
 /// ```
 pub struct PlaywrightService {
     config: PlaywrightConfig,
@@ -140,7 +140,7 @@ impl ScrapingService for PlaywrightService {
         //
         // Here we return a placeholder to demonstrate the shape of the code.
         let _ = &self.config; // suppress unused warning in example
-        Err(MyceliumError::Service(ServiceError::Unavailable(
+        Err(StygianError::Service(ServiceError::Unavailable(
             format!("PlaywrightService not connected (url={})", input.url),
         )))
     }
@@ -164,8 +164,8 @@ Wire it up in the application startup code (`application/executor.rs` or your bi
 
 ```rust
 use std::sync::Arc;
-use mycelium_graph::adapters::playwright::{PlaywrightConfig, PlaywrightService};
-use mycelium_graph::application::registry::ServiceRegistry;
+use stygian_graph::adapters::playwright::{PlaywrightConfig, PlaywrightService};
+use stygian_graph::application::registry::ServiceRegistry;
 
 let registry = ServiceRegistry::new();
 
@@ -191,8 +191,8 @@ Wrap your adapter with the built-in resilience primitives before registering:
 ```rust
 use std::sync::Arc;
 use std::time::Duration;
-use mycelium_graph::adapters::resilience::{CircuitBreakerImpl, RetryPolicy};
-use mycelium_graph::ports::CircuitBreaker;
+use stygian_graph::adapters::resilience::{CircuitBreakerImpl, RetryPolicy};
+use stygian_graph::ports::CircuitBreaker;
 
 // Circuit breaker: open after 5 consecutive failures, try to reset after 2 min
 let cb = Arc::new(CircuitBreakerImpl::new(5, Duration::from_secs(120)));
@@ -227,7 +227,7 @@ pub struct PlaywrightService {
 }
 
 impl PlaywrightService {
-    async fn ensure_connected(&self) -> Result<(), MyceliumError> {
+    async fn ensure_connected(&self) -> Result<(), StygianError> {
         let mut conn = self.connection.lock().await;
         if conn.is_none() {
             *conn = Some(PlaywrightConnection::connect(&self.config).await?);
@@ -327,8 +327,8 @@ Every public type and method must have a doc comment with an example (enforced b
 /// # Example
 ///
 /// ```rust,no_run
-/// # use mycelium_graph::adapters::playwright::{PlaywrightService, PlaywrightConfig};
-/// # use mycelium_graph::ports::{ScrapingService, ServiceInput};
+/// # use stygian_graph::adapters::playwright::{PlaywrightService, PlaywrightConfig};
+/// # use stygian_graph::ports::{ScrapingService, ServiceInput};
 /// # use serde_json::json;
 /// # tokio_test::block_on(async {
 /// let svc = PlaywrightService::new(PlaywrightConfig::default());
@@ -350,7 +350,7 @@ Before submitting your adapter:
 - [ ] Implements the correct port trait with `#[async_trait]`
 - [ ] `fn name() -> &'static str` returns a stable, lowercase identifier
 - [ ] `execute()` has no `.unwrap()` or `.expect()` calls
-- [ ] All errors use `ServiceError` or `MyceliumError` — no `anyhow`
+- [ ] All errors use `ServiceError` or `StygianError` — no `anyhow`
 - [ ] Interior mutability used for all shared mutable state
 - [ ] Doc comment with example on every public item
 - [ ] Re-exported from `src/adapters.rs`

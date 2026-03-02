@@ -1,8 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/mycelium-graph",
-    "crates/mycelium-browser",
+    "crates/stygian-graph",
+    "crates/stygian-browser",
 ]
 
 [workspace.package]
@@ -11,7 +11,7 @@ edition = "2024"
 rust-version = "1.93.1"
 authors = ["Nick Campbell <s0ma@protonmail.com>"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/greysquirr3l/mycelium"
+repository = "https://github.com/greysquirr3l/stygian"
 
 [workspace.dependencies]
 # Core async runtime
@@ -50,7 +50,7 @@ proptest = "1.5"
 mockall = "0.13"
 criterion = { version = "0.5", features = ["async_tokio"] }
 
-# Browser automation (for mycelium-browser)
+# Browser automation (for stygian-browser)
 chromiumoxide = "0.7"
 
 # Utilities

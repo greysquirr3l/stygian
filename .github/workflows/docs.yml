@@ -60,16 +60,16 @@ jobs:
         run: |
           mkdir -p book/book/api
           cp -r target/doc/. book/book/api/
-          # redirect /api/ → mycelium_graph crate index
+          # redirect /api/ → stygian_graph crate index
           cat > book/book/api/index.html << 'HTML'
           <!DOCTYPE html>
           <html>
           <head>
             <meta charset="utf-8">
-            <meta http-equiv="refresh" content="0; url=mycelium_graph/index.html">
-            <title>mycelium API docs</title>
+            <meta http-equiv="refresh" content="0; url=stygian_graph/index.html">
+            <title>stygian API docs</title>
           </head>
-          <body><p><a href="mycelium_graph/index.html">mycelium_graph</a></p></body>
+          <body><p><a href="stygian_graph/index.html">stygian_graph</a></p></body>
           </html>
           HTML
 

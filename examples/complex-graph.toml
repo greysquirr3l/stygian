@@ -11,7 +11,7 @@
 #             store
 #
 # Run:
-#   ANTHROPIC_API_KEY=sk-... mycelium run examples/complex-graph.toml
+#   ANTHROPIC_API_KEY=sk-... stygian run examples/complex-graph.toml
 
 [[services]]
 name  = "http"

@@ -1,6 +1,6 @@
 # Browser Automation Overview
 
-`mycelium-browser` is a high-performance, anti-detection browser automation library for Rust.
+`stygian-browser` is a high-performance, anti-detection browser automation library for Rust.
 It is built on the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/)
 via [`chromiumoxide`](https://github.com/mattsse/chromiumoxide) and ships a comprehensive suite
 of stealth features for bypassing modern bot-detection systems.
@@ -38,7 +38,7 @@ of stealth features for bypassing modern bot-detection systems.
 ## Quick start
 
 ```rust,no_run
-use mycelium_browser::{BrowserConfig, BrowserPool, WaitUntil};
+use stygian_browser::{BrowserConfig, BrowserPool, WaitUntil};
 use std::time::Duration;
 
 #[tokio::main]
@@ -91,14 +91,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ```toml
 [dependencies]
-mycelium-browser = "0.1"
+stygian-browser = "0.1"
 tokio            = { version = "1", features = ["full"] }
 ```
 
 To disable stealth features for a minimal build:
 
 ```toml
-mycelium-browser = { version = "0.1", default-features = false }
+stygian-browser = { version = "0.1", default-features = false }
 ```
 
 Chrome 120+ must be available on the system or specified via `MYCELIUM_CHROME_PATH`.

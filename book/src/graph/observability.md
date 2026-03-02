@@ -1,6 +1,6 @@
 # Observability
 
-`mycelium-graph` exposes structured metrics and distributed tracing out of the box.
+`stygian-graph` exposes structured metrics and distributed tracing out of the box.
 Both are opt-in: neither requires code changes to your adapters or domain logic.
 
 ---
@@ -10,13 +10,13 @@ Both are opt-in: neither requires code changes to your adapters or domain logic.
 Enable the `metrics` feature flag:
 
 ```toml
-mycelium-graph = { version = "0.1", features = ["metrics"] }
+stygian-graph = { version = "0.1", features = ["metrics"] }
 ```
 
 ### Creating a collector
 
 ```rust
-use mycelium_graph::application::MetricsCollector;
+use stygian_graph::application::MetricsCollector;
 
 let metrics = MetricsCollector::new();
 ```
@@ -30,7 +30,7 @@ Attach the Prometheus scrape handler to any HTTP server. Example with Axum:
 
 ```rust
 use axum::{Router, routing::get};
-use mycelium_graph::application::MetricsCollector;
+use stygian_graph::application::MetricsCollector;
 
 let metrics  = MetricsCollector::new();
 let handler  = metrics.prometheus_handler();
@@ -46,20 +46,20 @@ axum::serve(listener, app).await?;
 
 | Metric name | Type | Labels | Description |
 |---|---|---|---|
-| `mycelium_requests_total` | counter | `service`, `status` | Total requests per adapter |
-| `mycelium_request_duration_seconds` | histogram | `service` | Request latency distribution |
-| `mycelium_errors_total` | counter | `service`, `error_kind` | Errors by type |
-| `mycelium_worker_pool_active` | gauge | `pool` | Active workers |
-| `mycelium_worker_pool_queued` | gauge | `pool` | Queued tasks |
-| `mycelium_circuit_breaker_state` | gauge | `service` | 0=closed, 1=open, 2=half-open |
-| `mycelium_cache_hits_total` | counter | `cache` | Cache hits |
-| `mycelium_cache_misses_total` | counter | `cache` | Cache misses |
+| `stygian_requests_total` | counter | `service`, `status` | Total requests per adapter |
+| `stygian_request_duration_seconds` | histogram | `service` | Request latency distribution |
+| `stygian_errors_total` | counter | `service`, `error_kind` | Errors by type |
+| `stygian_worker_pool_active` | gauge | `pool` | Active workers |
+| `stygian_worker_pool_queued` | gauge | `pool` | Queued tasks |
+| `stygian_circuit_breaker_state` | gauge | `service` | 0=closed, 1=open, 2=half-open |
+| `stygian_cache_hits_total` | counter | `cache` | Cache hits |
+| `stygian_cache_misses_total` | counter | `cache` | Cache misses |
 
 ---
 
 ## Structured tracing
 
-`mycelium-graph` instruments all hot paths with the [`tracing`](https://docs.rs/tracing) crate.
+`stygian-graph` instruments all hot paths with the [`tracing`](https://docs.rs/tracing) crate.
 Any compatible subscriber (JSON, OTLP, Jaeger) receives full span trees.
 
 ### Basic JSON logging
@@ -69,13 +69,13 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 
 tracing_subscriber::registry()
     .with(EnvFilter::from_default_env()
-        .add_directive("mycelium_graph=debug".parse()?)
-        .add_directive("mycelium_browser=info".parse()?))
+        .add_directive("stygian_graph=debug".parse()?)
+        .add_directive("stygian_browser=info".parse()?))
     .with(tracing_subscriber::fmt::layer().json())
     .init();
 ```
 
-Set `RUST_LOG=mycelium_graph=trace` at runtime for full span output.
+Set `RUST_LOG=stygian_graph=trace` at runtime for full span output.
 
 ### OpenTelemetry export (Jaeger / OTLP)
 

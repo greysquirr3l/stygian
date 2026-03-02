@@ -63,7 +63,7 @@ good starting point.
 
 ## Channel sizing
 
-Mycelium uses bounded `tokio::sync::mpsc` channels internally.
+Stygian uses bounded `tokio::sync::mpsc` channels internally.
 
 | Channel depth | Throughput | Latency | Memory |
 |---|---|---|---|
@@ -212,7 +212,7 @@ cargo flamegraph --bench dag_executor -- --bench
 
 ### Criterion benchmarks
 
-The `mycelium-graph` crate ships Criterion benchmarks in `benches/`:
+The `stygian-graph` crate ships Criterion benchmarks in `benches/`:
 
 ```bash
 cargo bench                       # run all benchmarks

@@ -1,6 +1,6 @@
 # Distributed Execution
 
-`mycelium-graph` supports horizontal scaling via a Redis/Valkey-backed work queue.
+`stygian-graph` supports horizontal scaling via a Redis/Valkey-backed work queue.
 Multiple worker processes can consume from the same queue, enabling throughput that
 scales linearly with the number of nodes.
 
@@ -39,14 +39,14 @@ docker run -d --name redis -p 6379:6379 redis:7
 
 ```toml
 # Cargo.toml
-mycelium-graph = { version = "0.1", features = ["distributed"] }
+stygian-graph = { version = "0.1", features = ["distributed"] }
 ```
 
 ### 3. Create a work queue and executor
 
 ```rust
-use mycelium_graph::adapters::{DistributedDagExecutor, RedisWorkQueue};
-use mycelium_graph::application::registry::ServiceRegistry;
+use stygian_graph::adapters::{DistributedDagExecutor, RedisWorkQueue};
+use stygian_graph::application::registry::ServiceRegistry;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -107,7 +107,7 @@ This makes distributed task execution **safe to retry** — duplicate network de
 and worker restarts produce the same observable outcome.
 
 ```rust
-use mycelium_graph::domain::idempotency::IdempotencyKey;
+use stygian_graph::domain::idempotency::IdempotencyKey;
 
 // Deterministic key from pipeline id + input URL — replays the same result
 let key = IdempotencyKey::from_input("pipeline-1", "https://example.com/item/42");

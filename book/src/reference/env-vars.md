@@ -5,7 +5,7 @@ variables. No recompilation required.
 
 ---
 
-## mycelium-browser
+## stygian-browser
 
 | Variable | Default | Description |
 |---|---|---|
@@ -33,7 +33,7 @@ When `MYCELIUM_CHROME_PATH` is not set, the library searches:
 
 ---
 
-## mycelium-graph
+## stygian-graph
 
 | Variable | Default | Description |
 |---|---|---|
@@ -61,7 +61,7 @@ When `MYCELIUM_CHROME_PATH` is not set, the library searches:
 |---|---|---|
 | `REDIS_URL` | `redis://localhost:6379` | Redis/Valkey connection URL |
 | `REDIS_MAX_CONNECTIONS` | `20` | Redis connection pool size |
-| `MYCELIUM_QUEUE_NAME` | `mycelium:work` | Default work queue key |
+| `MYCELIUM_QUEUE_NAME` | `stygian:work` | Default work queue key |
 | `MYCELIUM_VISIBILITY_TIMEOUT_SECS` | `60` | Task visibility timeout for in-flight items |
 
 ---
@@ -70,7 +70,7 @@ When `MYCELIUM_CHROME_PATH` is not set, the library searches:
 
 | Variable | Example | Description |
 |---|---|---|
-| `RUST_LOG` | `mycelium_graph=debug,mycelium_browser=info` | Log level per crate |
+| `RUST_LOG` | `stygian_graph=debug,stygian_browser=info` | Log level per crate |
 | `RUST_LOG` | `trace` | Enable all tracing (very verbose) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4317` | OTLP trace export endpoint |
-| `OTEL_SERVICE_NAME` | `mycelium-scraper` | Service name in trace metadata |
+| `OTEL_SERVICE_NAME` | `stygian-scraper` | Service name in trace metadata |

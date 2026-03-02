@@ -8,7 +8,7 @@ A `Page` represents a single browser tab. You get one by calling `browser.new_pa
 ## Navigation
 
 ```rust,no_run
-use mycelium_browser::WaitUntil;
+use stygian_browser::WaitUntil;
 use std::time::Duration;
 
 // Wait for a specific CSS selector to appear
@@ -85,12 +85,12 @@ page.wait_for_selector(".results", Duration::from_secs(10)).await?;
 ## Screenshots
 
 ```rust,no_run
-use mycelium_browser::page::ScreenshotOptions;
+use stygian_browser::page::ScreenshotOptions;
 
 // Full-page screenshot (PNG bytes)
 let png = page.screenshot(ScreenshotOptions {
     full_page: true,
-    format:    mycelium_browser::page::ImageFormat::Png,
+    format:    stygian_browser::page::ImageFormat::Png,
     ..Default::default()
 }).await?;
 
@@ -104,7 +104,7 @@ tokio::fs::write("screenshot.png", &png).await?;
 Block resource types to reduce bandwidth and speed up text-only scraping:
 
 ```rust,no_run
-use mycelium_browser::page::ResourceFilter;
+use stygian_browser::page::ResourceFilter;
 
 // Block all images and fonts
 page.set_resource_filter(ResourceFilter::block_media()).await?;
@@ -140,7 +140,7 @@ let json = serde_json::to_string(&cookies)?;
 tokio::fs::write("cookies.json", &json).await?;
 
 // Later...
-let cookies: Vec<mycelium_browser::Cookie> =
+let cookies: Vec<stygian_browser::Cookie> =
     serde_json::from_str(&tokio::fs::read_to_string("cookies.json").await?)?;
 page.restore_cookies(&cookies).await?;
 ```
@@ -161,8 +161,8 @@ internal tab limit and may degrade performance.
 ## Complete example
 
 ```rust,no_run
-use mycelium_browser::{BrowserConfig, BrowserPool, WaitUntil};
-use mycelium_browser::page::ResourceFilter;
+use stygian_browser::{BrowserConfig, BrowserPool, WaitUntil};
+use stygian_browser::page::ResourceFilter;
 use std::time::Duration;
 
 #[tokio::main]

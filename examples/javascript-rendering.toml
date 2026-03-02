@@ -6,10 +6,10 @@
 #
 # Prerequisites:
 #   - Chrome / Chromium must be installed and discoverable
-#   - mycelium-browser feature enabled
+#   - stygian-browser feature enabled
 #
 # Run:
-#   ANTHROPIC_API_KEY=sk-... mycelium run examples/javascript-rendering.toml
+#   ANTHROPIC_API_KEY=sk-... stygian run examples/javascript-rendering.toml
 
 [[services]]
 name  = "browser"

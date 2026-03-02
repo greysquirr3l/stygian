@@ -11,7 +11,7 @@
 #   OLLAMA_BASE_URL       — Ollama (default: http://localhost:11434)
 #
 # Run:
-#   mycelium run examples/compare-providers.toml
+#   stygian run examples/compare-providers.toml
 
 [[services]]
 name  = "http"

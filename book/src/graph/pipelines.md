@@ -1,6 +1,6 @@
 # Building Pipelines
 
-A mycelium pipeline is a **directed acyclic graph (DAG)** of service nodes. Pipelines can be
+A stygian pipeline is a **directed acyclic graph (DAG)** of service nodes. Pipelines can be
 defined in JSON, TOML, or built programmatically in Rust.
 
 ---
@@ -16,7 +16,7 @@ defined in JSON, TOML, or built programmatically in Rust.
       "service": "http",
       "config": {
         "timeout_ms": 10000,
-        "user_agent": "Mozilla/5.0 (compatible; mycelium/0.1)"
+        "user_agent": "Mozilla/5.0 (compatible; stygian/0.1)"
       }
     },
     {
@@ -94,8 +94,8 @@ to   = "extract_data"
 For pipelines constructed at runtime:
 
 ```rust
-use mycelium_graph::domain::pipeline::PipelineUnvalidated;
-use mycelium_graph::domain::graph::{Node, Edge};
+use stygian_graph::domain::pipeline::PipelineUnvalidated;
+use stygian_graph::domain::graph::{Node, Edge};
 use serde_json::json;
 
 let pipeline = PipelineUnvalidated::builder()
@@ -125,7 +125,7 @@ let results   = validated.execute().await?;
 Any validation failure returns a typed `PipelineError` — never panics.
 
 ```rust
-use mycelium_graph::domain::error::PipelineError;
+use stygian_graph::domain::error::PipelineError;
 
 match pipeline.validate() {
     Ok(validated)                     => { /* proceed */ }
@@ -145,7 +145,7 @@ Every execution is assigned an `IdempotencyKey` — a ULID that acts as a dedupl
 token across retries:
 
 ```rust
-use mycelium_graph::domain::idempotency::IdempotencyKey;
+use stygian_graph::domain::idempotency::IdempotencyKey;
 
 // Auto-generated (recommended)
 let key = IdempotencyKey::new();

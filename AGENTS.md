@@ -2,27 +2,27 @@
 
 ## Project
 
-**mycelium** — A monorepo containing two Rust crates:
+**stygian** — A monorepo containing two Rust crates:
 
-1. **mycelium-graph** — High-performance, graph-based scraping engine treating pipelines
+1. **stygian-graph** — High-performance, graph-based scraping engine treating pipelines
    as DAGs with pluggable service modules (HTTP fetchers, LLM extractors, headless browsers).
    Built with hexagonal architecture for extreme concurrency and extensibility.
 
-2. **mycelium-browser** — Anti-detection browser automation library built on Chrome DevTools
+2. **stygian-browser** — Anti-detection browser automation library built on Chrome DevTools
    Protocol with stealth features to bypass modern anti-bot systems. Features browser pooling and
    resource management for scalability.
 
 ## Setup commands
 
 - Build all: `cargo build --workspace`
-- Build graph: `cargo build -p mycelium-graph`
-- Build browser: `cargo build -p mycelium-browser`
+- Build graph: `cargo build -p stygian-graph`
+- Build browser: `cargo build -p stygian-browser`
 - Test all: `cargo test --workspace`
 - Lint all: `cargo clippy --workspace -- -D warnings`
 
 ## Architecture
 
-### mycelium-graph: Hexagonal (Ports & Adapters)
+### stygian-graph: Hexagonal (Ports & Adapters)
 
 - Domain layer must have zero I/O dependencies
 - All external interactions go through port traits
@@ -30,7 +30,7 @@
 - New capabilities require a new port trait before an adapter
 - Depend inward: adapters → ports ← domain
 
-### mycelium-browser: Modular
+### stygian-browser: Modular
 
 - Each module is self-contained with its own models, handlers, and storage
 - Modules communicate through well-defined public interfaces
@@ -54,7 +54,7 @@
 - Documentation: every public trait and method must have a doc comment with an example.
 - Graceful degradation: log failures, return errors, never panic in library code.
 
-### mycelium-graph specific
+### stygian-graph specific
 
 - Hexagonal Architecture (Ports & Adapters): Domain core is isolated from infrastructure concerns.
 - Workspace structure: domain (business logic), ports (trait definitions), adapters (implementations), application (orchestration).
@@ -67,7 +67,7 @@
 - Idempotence: All operations must be safely retryable with idempotency keys.
 - Security-first: Authorization checks at repository level, fail-secure by default.
 
-### mycelium-browser specific
+### stygian-browser specific
 
 - Use chromiumoxide crate for CDP automation (async, type-safe bindings).
 - Thread-safe browser pool using `Arc<RwLock<Pool>>` or `tokio::sync::RwLock`.

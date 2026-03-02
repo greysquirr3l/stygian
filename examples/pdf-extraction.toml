@@ -5,7 +5,7 @@
 # it supports inline PDF base64 blobs via its Files API.
 #
 # Run:
-#   GEMINI_API_KEY=... mycelium run examples/pdf-extraction.toml
+#   GEMINI_API_KEY=... stygian run examples/pdf-extraction.toml
 
 [[services]]
 name  = "http"

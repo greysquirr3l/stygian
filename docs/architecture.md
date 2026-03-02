@@ -1,6 +1,6 @@
-# Mycelium Architecture
+# Stygian Architecture
 
-Mycelium is a high-performance, graph-based scraping engine that treats pipelines as Directed
+Stygian is a high-performance, graph-based scraping engine that treats pipelines as Directed
 Acyclic Graphs (DAGs). It is built around the **Hexagonal Architecture** (Ports & Adapters)
 pattern to enable extreme concurrency, testability, and extensibility.
 
@@ -11,7 +11,7 @@ pattern to enable extreme concurrency, testability, and extensibility.
 ```text
 ┌──────────────────────────────────────────────────────┐
 │                   CLI / Entry Points                 │
-│              (src/bin/mycelium.rs)                   │
+│              (src/bin/stygian.rs)                   │
 ├──────────────────────────────────────────────────────┤
 │                  Application Layer                   │
 │   registry · pipeline_parser · metrics · health      │
@@ -56,7 +56,7 @@ and other pure data crates.
 Pipelines use the typestate pattern to enforce correct lifecycle at compile time:
 
 ```rust
-use mycelium_graph::domain::pipeline::{
+use stygian_graph::domain::pipeline::{
     PipelineUnvalidated, PipelineValidated, PipelineExecuting, PipelineComplete,
 };
 
@@ -124,7 +124,7 @@ Adapters implement port traits and handle real I/O. They are **never** imported 
 | Adapter | Port | Notes |
 | --- | --- | --- |
 | `HttpAdapter` | `ScrapingService` | reqwest, UA rotation, cookie jar, retry |
-| `BrowserAdapter` | `ScrapingService` | chromiumoxide via mycelium-browser |
+| `BrowserAdapter` | `ScrapingService` | chromiumoxide via stygian-browser |
 | `ClaudeProvider` | `AIProvider` | Anthropic API, streaming |
 | `OpenAiProvider` | `AIProvider` | OpenAI Chat API |
 | `GeminiProvider` | `AIProvider` | Google Gemini API |
@@ -234,7 +234,7 @@ store.store(&key, result_json, ttl).await?;  // persist result
 
 ---
 
-## Extending Mycelium
+## Extending Stygian
 
 ### Adding a new AI provider
 

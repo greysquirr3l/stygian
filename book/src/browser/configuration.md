@@ -8,9 +8,9 @@ programmatically or overridden at runtime via environment variables — no recom
 ## Builder pattern
 
 ```rust,no_run
-use mycelium_browser::{BrowserConfig, StealthLevel};
-use mycelium_browser::config::PoolConfig;
-use mycelium_browser::webrtc::{WebRtcConfig, WebRtcPolicy};
+use stygian_browser::{BrowserConfig, StealthLevel};
+use stygian_browser::config::PoolConfig;
+use stygian_browser::webrtc::{WebRtcConfig, WebRtcPolicy};
 use std::time::Duration;
 
 let config = BrowserConfig::builder()
@@ -101,7 +101,7 @@ All config values can be overridden without touching source code:
 ## Loading config from environment
 
 ```rust,no_run
-use mycelium_browser::BrowserConfig;
+use stygian_browser::BrowserConfig;
 
 // All fields read from environment; builder values serve as defaults
 let config = BrowserConfig::from_env()?;
@@ -115,7 +115,7 @@ let pool   = BrowserPool::new(config).await?;
 ### Minimal — fast text scraping
 
 ```rust,no_run
-use mycelium_browser::{BrowserConfig, StealthLevel};
+use stygian_browser::{BrowserConfig, StealthLevel};
 
 let config = BrowserConfig::builder()
     .headless(true)
@@ -135,7 +135,7 @@ let config = BrowserConfig::builder()
 ### Proxy with full stealth
 
 ```rust,no_run
-use mycelium_browser::webrtc::{WebRtcConfig, WebRtcPolicy};
+use stygian_browser::webrtc::{WebRtcConfig, WebRtcPolicy};
 
 let config = BrowserConfig::builder()
     .headless(true)

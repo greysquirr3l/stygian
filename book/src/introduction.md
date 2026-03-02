@@ -1,12 +1,12 @@
 # Introduction
 
-**mycelium** is a high-performance web scraping toolkit for Rust, delivered as two complementary
+**stygian** is a high-performance web scraping toolkit for Rust, delivered as two complementary
 crates in a single workspace.
 
 | Crate | Purpose |
 |---|---|
-| [`mycelium-graph`](./graph/architecture.md) | Graph-based scraping engine — DAG pipelines, AI extraction, distributed execution |
-| [`mycelium-browser`](./browser/overview.md) | Anti-detection browser automation — stealth profiles, browser pooling, CDP automation |
+| [`stygian-graph`](./graph/architecture.md) | Graph-based scraping engine — DAG pipelines, AI extraction, distributed execution |
+| [`stygian-browser`](./browser/overview.md) | Anti-detection browser automation — stealth profiles, browser pooling, CDP automation |
 
 Both crates share a common philosophy: **zero-cost abstractions, extreme composability, and
 secure defaults**.
@@ -40,23 +40,23 @@ Add both crates to `Cargo.toml`:
 
 ```toml
 [dependencies]
-mycelium-graph   = "0.1"
-mycelium-browser = "0.1"   # optional — only needed for JS-rendered pages
+stygian-graph   = "0.1"
+stygian-browser = "0.1"   # optional — only needed for JS-rendered pages
 tokio            = { version = "1", features = ["full"] }
 serde_json       = "1"
 ```
 
-Enable optional feature groups on `mycelium-graph`:
+Enable optional feature groups on `stygian-graph`:
 
 ```toml
-mycelium-graph = { version = "0.1", features = ["browser", "ai-claude", "distributed"] }
+stygian-graph = { version = "0.1", features = ["browser", "ai-claude", "distributed"] }
 ```
 
 Available features:
 
 | Feature | Includes |
 |---|---|
-| `browser` | `BrowserAdapter` backed by `mycelium-browser` |
+| `browser` | `BrowserAdapter` backed by `stygian-browser` |
 | `ai-claude` | Anthropic Claude adapter |
 | `ai-openai` | OpenAI adapter |
 | `ai-gemini` | Google Gemini adapter |
@@ -70,7 +70,7 @@ Available features:
 ## Quick start — scraping pipeline
 
 ```rust
-use mycelium_graph::{Pipeline, adapters::HttpAdapter};
+use stygian_graph::{Pipeline, adapters::HttpAdapter};
 use serde_json::json;
 
 #[tokio::main]
@@ -94,7 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Quick start — browser automation
 
 ```rust
-use mycelium_browser::{BrowserConfig, BrowserPool, WaitUntil};
+use stygian_browser::{BrowserConfig, BrowserPool, WaitUntil};
 use std::time::Duration;
 
 #[tokio::main]
@@ -120,10 +120,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Repository layout
 
 ```
-mycelium/
+stygian/
 ├── crates/
-│   ├── mycelium-graph/     # Scraping engine
-│   └── mycelium-browser/   # Browser automation
+│   ├── stygian-graph/     # Scraping engine
+│   └── stygian-browser/   # Browser automation
 ├── book/                   # This documentation (mdBook)
 ├── docs/                   # Architecture reference docs
 ├── examples/               # Example pipeline configs (.toml)
@@ -131,7 +131,7 @@ mycelium/
 ```
 
 Source, issues, and pull requests live at
-[github.com/greysquirr3l/mycelium](https://github.com/greysquirr3l/mycelium).
+[github.com/greysquirr3l/stygian](https://github.com/greysquirr3l/stygian).
 
 ---
 
@@ -139,8 +139,8 @@ Source, issues, and pull requests live at
 
 | Resource | URL |
 |---|---|
-| This guide | [greysquirr3l.github.io/mycelium](https://greysquirr3l.github.io/mycelium/) |
-| API reference (`mycelium-graph`) | [greysquirr3l.github.io/mycelium/api/mycelium_graph](https://greysquirr3l.github.io/mycelium/api/mycelium_graph/index.html) |
-| API reference (`mycelium-browser`) | [greysquirr3l.github.io/mycelium/api/mycelium_browser](https://greysquirr3l.github.io/mycelium/api/mycelium_browser/index.html) |
-| crates.io (`mycelium-graph`) | [crates.io/crates/mycelium-graph](https://crates.io/crates/mycelium-graph) |
-| crates.io (`mycelium-browser`) | [crates.io/crates/mycelium-browser](https://crates.io/crates/mycelium-browser) |
+| This guide | [greysquirr3l.github.io/stygian](https://greysquirr3l.github.io/stygian/) |
+| API reference (`stygian-graph`) | [greysquirr3l.github.io/stygian/api/stygian_graph](https://greysquirr3l.github.io/stygian/api/stygian_graph/index.html) |
+| API reference (`stygian-browser`) | [greysquirr3l.github.io/stygian/api/stygian_browser](https://greysquirr3l.github.io/stygian/api/stygian_browser/index.html) |
+| crates.io (`stygian-graph`) | [crates.io/crates/stygian-graph](https://crates.io/crates/stygian-graph) |
+| crates.io (`stygian-browser`) | [crates.io/crates/stygian-browser](https://crates.io/crates/stygian-browser) |

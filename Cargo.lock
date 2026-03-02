@@ -2363,68 +2363,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mycelium-browser"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64",
- "chromiumoxide",
- "futures",
- "parking_lot",
- "prometheus-client",
- "proptest",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "ulid",
-]
-
-[[package]]
-name = "mycelium-graph"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "axum",
- "clap",
- "criterion",
- "csv",
- "dashmap",
- "figment",
- "futures",
- "indicatif",
- "lru",
- "mockall",
- "mycelium-browser",
- "parking_lot",
- "petgraph",
- "prometheus-client",
- "proptest",
- "rayon",
- "reqwest",
- "scraper",
- "serde",
- "serde_json",
- "sqlx",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tokio-test",
- "tokio-util",
- "toml",
- "tower",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "ulid",
- "uuid",
- "wasmtime",
-]
-
-[[package]]
 name = "native-tls"
 version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3974,6 +3912,68 @@ name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+
+[[package]]
+name = "stygian-browser"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "chromiumoxide",
+ "futures",
+ "parking_lot",
+ "prometheus-client",
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "ulid",
+]
+
+[[package]]
+name = "stygian-graph"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "clap",
+ "criterion",
+ "csv",
+ "dashmap",
+ "figment",
+ "futures",
+ "indicatif",
+ "lru",
+ "mockall",
+ "parking_lot",
+ "petgraph",
+ "prometheus-client",
+ "proptest",
+ "rayon",
+ "reqwest",
+ "scraper",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "stygian-browser",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-test",
+ "tokio-util",
+ "toml",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "ulid",
+ "uuid",
+ "wasmtime",
+]
 
 [[package]]
 name = "subtle"

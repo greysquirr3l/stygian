@@ -25,8 +25,8 @@ When all browsers are active and the pool is at `max_size`, callers block in
 ## Creating a pool
 
 ```rust,no_run
-use mycelium_browser::{BrowserConfig, BrowserPool};
-use mycelium_browser::config::PoolConfig;
+use stygian_browser::{BrowserConfig, BrowserPool};
+use stygian_browser::config::PoolConfig;
 use std::time::Duration;
 
 let config = BrowserConfig::builder()

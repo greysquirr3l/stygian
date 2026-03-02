@@ -4,7 +4,7 @@
 # structured data from the HTML using Claude.
 #
 # Run:
-#   ANTHROPIC_API_KEY=sk-... mycelium run examples/basic-scrape.toml
+#   ANTHROPIC_API_KEY=sk-... stygian run examples/basic-scrape.toml
 
 [[services]]
 name  = "http"

@@ -5,7 +5,7 @@
 # support, and a circuit breaker to back off when blocks are detected.
 #
 # Run:
-#   PROXY_URL=http://user:pass@proxy:8080 mycelium run examples/anti-bot.toml
+#   PROXY_URL=http://user:pass@proxy:8080 stygian run examples/anti-bot.toml
 
 [[services]]
 name = "http-stealth"

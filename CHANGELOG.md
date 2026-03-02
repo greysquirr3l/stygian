@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the mycelium workspace will be documented in this file.
+All notable changes to the stygian workspace will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -25,12 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-#### mycelium-graph
+#### stygian-graph
 
 - Initial release of graph-based scraping engine
 - Hexagonal architecture with ports and adapters pattern
 - HTTP adapter with configurable timeouts and retries
-- Browser adapter with JavaScript rendering support (via mycelium-browser)
+- Browser adapter with JavaScript rendering support (via stygian-browser)
 - AI extraction adapters: Claude, OpenAI, Gemini, GitHub Copilot, Ollama
 - Multi-modal support for images, PDFs, videos
 - Distributed execution via work queue abstraction
@@ -41,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prometheus metrics collection
 - Comprehensive test suite (280+ tests)
 
-#### mycelium-browser
+#### stygian-browser
 
 - Initial release of anti-detection browser automation library
 - Browser pool with warm instance reuse (<100ms acquisition)
@@ -87,6 +87,6 @@ Both crates are functional and well-tested, but APIs may evolve based on communi
 
 ---
 
-[Unreleased]: https://github.com/greysquirr3l/mycelium/compare/v0.1.1...HEAD
-[0.1.1]: https://github.com/greysquirr3l/mycelium/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/greysquirr3l/mycelium/releases/tag/v0.1.0
+[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/greysquirr3l/stygian/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/greysquirr3l/stygian/releases/tag/v0.1.0
