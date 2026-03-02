@@ -46,6 +46,11 @@ let title = page.title().await?;
 
 // Current URL (may differ from navigated URL after redirects)
 let url   = page.url().await?;
+
+// HTTP status code of the last navigation (None if no navigation yet)
+if let Some(status) = page.status_code()? {
+    println!("HTTP {status}");
+}
 ```
 
 ---
@@ -182,6 +187,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let count: u32 = page.eval("document.querySelectorAll('.product').length").await?;
     println!("{count} products found");
+
+    let url = page.url().await?;
+    let status = page.status_code()?.unwrap_or(0);
+    println!("{url} → HTTP {status}");
 
     let html = page.content().await?;
     // … pass html to an AI extraction node …
