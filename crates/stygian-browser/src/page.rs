@@ -38,6 +38,10 @@
 //! # }
 //! ```
 
+use std::sync::{
+    Arc,
+    atomic::{AtomicU16, Ordering},
+};
 use std::time::Duration;
 
 use chromiumoxide::Page;
@@ -179,12 +183,19 @@ pub enum WaitUntil {
 pub struct PageHandle {
     page: Page,
     cdp_timeout: Duration,
+    /// HTTP status code of the most recent main-frame navigation, or `0` if not
+    /// yet captured.  Written atomically by the listener spawned in `navigate()`.
+    last_status_code: Arc<AtomicU16>,
 }
 
 impl PageHandle {
     /// Wrap a raw chromiumoxide [`Page`] in a handle.
-    pub(crate) const fn new(page: Page, cdp_timeout: Duration) -> Self {
-        Self { page, cdp_timeout }
+    pub(crate) fn new(page: Page, cdp_timeout: Duration) -> Self {
+        Self {
+            page,
+            cdp_timeout,
+            last_status_code: Arc::new(AtomicU16::new(0)),
+        }
     }
 
     /// Navigate to `url` and wait for `condition` within `nav_timeout`.
@@ -199,10 +210,44 @@ impl PageHandle {
         condition: WaitUntil,
         nav_timeout: Duration,
     ) -> Result<()> {
+        use chromiumoxide::cdp::browser_protocol::network::{
+            EventResponseReceived, ResourceType as NetworkResourceType,
+        };
         use chromiumoxide::cdp::browser_protocol::page::EventLoadEventFired;
         use futures::StreamExt;
 
         let url_owned = url.to_string();
+
+        // Reset the stored status before each navigation so stale codes are
+        // not returned if the new navigation fails before headers arrive.
+        self.last_status_code.store(0, Ordering::Release);
+
+        // Subscribe to Network.responseReceived *before* goto() so no events
+        // are missed.  The listener runs in a detached task and stores the
+        // first Document-type response status atomically.
+        let page_for_listener = self.page.clone();
+        let status_capture = Arc::clone(&self.last_status_code);
+        match page_for_listener
+            .event_listener::<EventResponseReceived>()
+            .await
+        {
+            Ok(mut stream) => {
+                tokio::spawn(async move {
+                    while let Some(event) = stream.next().await {
+                        if event.r#type == NetworkResourceType::Document {
+                            let code = u16::try_from(event.response.status).unwrap_or(0);
+                            if code > 0 {
+                                status_capture.store(code, Ordering::Release);
+                            }
+                            break;
+                        }
+                    }
+                });
+            }
+            Err(e) => {
+                warn!("status-code capture unavailable: {e}");
+            }
+        }
 
         let navigate_fut = async {
             self.page
@@ -304,6 +349,87 @@ impl PageHandle {
 
         debug!("Resource filter active: {:?}", filter);
         Ok(())
+    }
+
+    /// Return the current page URL (post-navigation, post-redirect).
+    ///
+    /// Delegates to the CDP `Target.getTargetInfo` binding already used
+    /// internally by [`save_cookies`](Self::save_cookies); no extra network
+    /// request is made.  Returns an empty string if the URL is not yet set
+    /// (e.g. on a blank tab before the first navigation).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::CdpError`] if the underlying CDP call fails, or
+    /// [`BrowserError::Timeout`] if it exceeds `cdp_timeout`.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_browser::{BrowserPool, BrowserConfig};
+    /// use stygian_browser::page::WaitUntil;
+    /// use std::time::Duration;
+    ///
+    /// # async fn run() -> stygian_browser::error::Result<()> {
+    /// let pool = BrowserPool::new(BrowserConfig::default()).await?;
+    /// let handle = pool.acquire().await?;
+    /// let mut page = handle.browser().expect("valid browser").new_page().await?;
+    /// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
+    /// let url = page.url().await?;
+    /// println!("Final URL after redirects: {url}");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn url(&self) -> Result<String> {
+        timeout(self.cdp_timeout, self.page.url())
+            .await
+            .map_err(|_| BrowserError::Timeout {
+                operation: "page.url".to_string(),
+                duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
+            })?
+            .map_err(|e| BrowserError::CdpError {
+                operation: "page.url".to_string(),
+                message: e.to_string(),
+            })
+            .map(Option::unwrap_or_default)
+    }
+
+    /// Return the HTTP status code of the most recent main-frame navigation.
+    ///
+    /// The status is captured from the `Network.responseReceived` CDP event
+    /// wired up inside [`navigate`](Self::navigate), so it reflects the
+    /// *final* response after any server-side redirects.
+    ///
+    /// Returns `None` if the status was not captured — for example on `file://`
+    /// navigations, when [`navigate`](Self::navigate) has not yet been called,
+    /// or if the network event subscription failed.
+    ///
+    /// # Errors
+    ///
+    /// This method is infallible; the `Result` wrapper is kept for API
+    /// consistency with other `PageHandle` methods.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_browser::{BrowserPool, BrowserConfig};
+    /// use stygian_browser::page::WaitUntil;
+    /// use std::time::Duration;
+    ///
+    /// # async fn run() -> stygian_browser::error::Result<()> {
+    /// let pool = BrowserPool::new(BrowserConfig::default()).await?;
+    /// let handle = pool.acquire().await?;
+    /// let mut page = handle.browser().expect("valid browser").new_page().await?;
+    /// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
+    /// if let Some(code) = page.status_code().await? {
+    ///     println!("HTTP {code}");
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn status_code(&self) -> Result<Option<u16>> {
+        let code = self.last_status_code.load(Ordering::Acquire);
+        Ok(if code == 0 { None } else { Some(code) })
     }
 
     /// Return the page's `<title>` text.
@@ -546,5 +672,34 @@ mod tests {
         assert_eq!(ResourceType::Font.as_cdp_str(), "Font");
         assert_eq!(ResourceType::Stylesheet.as_cdp_str(), "Stylesheet");
         assert_eq!(ResourceType::Media.as_cdp_str(), "Media");
+    }
+
+    /// `PageHandle` must be `Send + Sync` for use across thread boundaries.
+    #[test]
+    fn page_handle_is_send_sync() {
+        fn assert_send<T: Send>() {}
+        fn assert_sync<T: Sync>() {}
+        assert_send::<PageHandle>();
+        assert_sync::<PageHandle>();
+    }
+
+    /// The status-code sentinel (0 = "not yet captured") and the conversion to
+    /// `Option<u16>` are pure-logic invariants testable without a live browser.
+    #[test]
+    fn status_code_sentinel_zero_maps_to_none() {
+        use std::sync::atomic::{AtomicU16, Ordering};
+        let atom = AtomicU16::new(0);
+        let code = atom.load(Ordering::Acquire);
+        assert_eq!(if code == 0 { None } else { Some(code) }, None::<u16>);
+    }
+
+    #[test]
+    fn status_code_non_zero_maps_to_some() {
+        use std::sync::atomic::{AtomicU16, Ordering};
+        for &expected in &[200u16, 301, 404, 503] {
+            let atom = AtomicU16::new(expected);
+            let code = atom.load(Ordering::Acquire);
+            assert_eq!(if code == 0 { None } else { Some(code) }, Some(expected));
+        }
     }
 }
