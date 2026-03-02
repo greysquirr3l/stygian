@@ -854,17 +854,19 @@ depends_on = ["a"]
 
     #[test]
     fn template_env_expansion() {
-        // Use HOME which is always set on Unix — avoids unsafe set_var
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-        let toml = r#"
+        // Use CARGO which is always set by cargo on every platform (Unix + Windows).
+        let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+        let toml = format!(
+            r#"
 [[nodes]]
 name = "n"
 service = "http"
-url = "${env:HOME}"
-"#;
-        let mut def = PipelineParser::from_str(toml).unwrap();
+url = "${{env:CARGO}}"
+"#
+        );
+        let mut def = PipelineParser::from_str(&toml).unwrap();
         def.expand_templates();
-        assert_eq!(def.nodes[0].url.as_deref(), Some(home.as_str()));
+        assert_eq!(def.nodes[0].url.as_deref(), Some(cargo.as_str()));
     }
 
     #[test]
