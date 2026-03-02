@@ -130,6 +130,7 @@ All config values can be overridden at runtime without recompiling:
 | `STYGIAN_POOL_ACQUIRE_TIMEOUT_SECS` | `30` | Seconds to wait for pool slot |
 | `STYGIAN_CDP_FIX_MODE` | `addBinding` | `addBinding`, `isolatedworld`, `enabledisable` |
 | `STYGIAN_PROXY` | — | Proxy URL |
+| `STYGIAN_DISABLE_SANDBOX` | auto-detect | `true` to pass `--no-sandbox` (see note below) |
 
 ---
 
@@ -318,6 +319,17 @@ A: Set `STYGIAN_CHROME_PATH=/path/to/chrome` or use
 **Q: Why does `stats().idle` always return 0?**  
 A: `idle` is a lock-free approximation.  The count is not maintained in the hot
 acquire/release path to avoid contention.  Use `available` and `active` instead.
+
+**Q: Should I set `STYGIAN_DISABLE_SANDBOX=true`?**  
+A: Only inside a container (Docker, Kubernetes, etc.) where Chromium's renderer
+sandbox cannot function due to missing user namespaces.  This is auto-detected via
+`/.dockerenv` and `/proc/1/cgroup` on Linux — you normally don't need to set it
+explicitly.  **Never set this on a bare-metal host** without an equivalent isolation
+boundary; doing so removes a meaningful OS-level security layer.
+
+For highest-security deployments, run each browser session in its own container and
+let the container runtime provide isolation — the sandbox flag will be set
+automatically inside the container.
 
 ---
 

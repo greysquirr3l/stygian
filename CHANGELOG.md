@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-03-02
+
+### Fixed
+
+- **Security**: `--no-sandbox` was passed unconditionally to Chrome, disabling Chromium's built-in renderer sandbox on bare-metal hosts. It is now only passed when running inside a container (auto-detected via `/.dockerenv` / `/proc/1/cgroup` on Linux) or when explicitly set via `STYGIAN_DISABLE_SANDBOX=true`. macOS and Windows are never affected (their native sandbox mechanisms differ). (`stygian-browser`)
+- Fixed fmt CI failures: import ordering across 23 files in `stygian-graph`
+
+### Changed
+
+- `BrowserConfig` gains a `disable_sandbox: bool` field and `.disable_sandbox()` builder method
+- `STYGIAN_DISABLE_SANDBOX` env var overrides auto-detection
+- Updated `stygian-browser` README: `STYGIAN_DISABLE_SANDBOX` added to env-var table; FAQ expanded with sandbox guidance
+- Repository homepage updated from `greysquirr3l.github.io/mycelium` to `greysquirr3l.github.io/stygian`
+- Documentation links point to GitHub Pages instead of docs.rs (crates not yet on crates.io)
+
 ## [0.1.3] - 2026-03-02
 
 ### Changed
@@ -111,7 +126,8 @@ Both crates are functional and well-tested, but APIs may evolve based on communi
 
 ---
 
-[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/greysquirr3l/stygian/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/greysquirr3l/stygian/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/greysquirr3l/stygian/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/greysquirr3l/stygian/compare/v0.1.0...v0.1.1
