@@ -62,6 +62,10 @@ impl GraphQlTargetPlugin for JobberPlugin {
 #[allow(unsafe_code, clippy::expect_used)] // set_var/remove_var are unsafe in Rust ≥1.93; scoped to tests only
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // Serialise env-var mutations so parallel test threads don't race each other.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn plugin_name_is_jobber() {
@@ -88,8 +92,11 @@ mod tests {
     #[test]
     fn default_auth_reads_env() {
         let key = "JOBBER_ACCESS_TOKEN";
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let prev = std::env::var(key).ok();
-        // SAFETY: single-threaded test; no concurrent env access
+        // SAFETY: ENV_LOCK serialises all env mutations in this module
         unsafe { std::env::set_var(key, "test-token-abc") };
 
         let auth = JobberPlugin.default_auth();
@@ -109,8 +116,11 @@ mod tests {
     #[test]
     fn default_auth_absent_when_no_env() {
         let key = "JOBBER_ACCESS_TOKEN";
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let prev = std::env::var(key).ok();
-        // SAFETY: single-threaded test; no concurrent env access
+        // SAFETY: ENV_LOCK serialises all env mutations in this module
         unsafe { std::env::remove_var(key) };
 
         assert!(JobberPlugin.default_auth().is_none());
