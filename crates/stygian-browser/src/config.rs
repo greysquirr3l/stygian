@@ -609,10 +609,10 @@ fn is_containerized() -> bool {
         if std::path::Path::new("/.dockerenv").exists() {
             return true;
         }
-        if let Ok(cgroup) = std::fs::read_to_string("/proc/1/cgroup") {
-            if cgroup.contains("docker") || cgroup.contains("kubepods") {
-                return true;
-            }
+        if let Ok(cgroup) = std::fs::read_to_string("/proc/1/cgroup")
+            && (cgroup.contains("docker") || cgroup.contains("kubepods"))
+        {
+            return true;
         }
         false
     }
