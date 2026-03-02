@@ -8,7 +8,7 @@
 //! | [`FileStorage`](storage::FileStorage) | always | `.jsonl` files on local disk |
 //! | [`PostgresStorage`](storage::PostgresStorage) | `feature = "postgres"` | PostgreSQL via sqlx |
 
-use crate::domain::error::{StygianError, Result, ServiceError};
+use crate::domain::error::{Result, ServiceError, StygianError};
 use crate::ports::storage::{StoragePort, StorageRecord};
 use async_trait::async_trait;
 use std::path::PathBuf;
@@ -267,7 +267,7 @@ mod postgres {
     //!     ON pipeline_records (pipeline_id);
     //! ```
 
-    use crate::domain::error::{StygianError, Result, ServiceError};
+    use crate::domain::error::{Result, ServiceError, StygianError};
     use crate::ports::storage::{StoragePort, StorageRecord};
     use sqlx::{PgPool, Row};
 

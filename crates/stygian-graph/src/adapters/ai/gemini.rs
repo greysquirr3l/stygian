@@ -24,7 +24,7 @@ use futures::stream::{self, BoxStream};
 use reqwest::Client;
 use serde_json::{Value, json};
 
-use crate::domain::error::{StygianError, ProviderError, Result};
+use crate::domain::error::{ProviderError, Result, StygianError};
 use crate::ports::{AIProvider, ProviderCapabilities};
 
 /// Default model

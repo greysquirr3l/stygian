@@ -16,6 +16,7 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 
+use serde_json::json;
 use stygian_graph::adapters::cache::{BoundedLruCache, DashMapCache};
 use stygian_graph::adapters::noop::NoopService;
 use stygian_graph::adapters::resilience::{
@@ -29,7 +30,6 @@ use stygian_graph::domain::graph::{DagExecutor, Edge, Node, Pipeline};
 use stygian_graph::ports::{
     CachePort, CircuitBreaker, CircuitState, RateLimiter, ScrapingService, ServiceInput,
 };
-use serde_json::json;
 
 // ─── Helper types ─────────────────────────────────────────────────────────────
 

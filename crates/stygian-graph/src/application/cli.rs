@@ -428,9 +428,8 @@ mod tests {
 
     #[test]
     fn cli_parses_graph_viz_dot() {
-        let cli =
-            Cli::try_parse_from(["stygian", "graph-viz", "pipeline.toml", "--format", "dot"])
-                .unwrap();
+        let cli = Cli::try_parse_from(["stygian", "graph-viz", "pipeline.toml", "--format", "dot"])
+            .unwrap();
         assert!(matches!(
             cli.command,
             Commands::GraphViz {

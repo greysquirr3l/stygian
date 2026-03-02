@@ -88,7 +88,7 @@ fragment TypeRef on __Type {
 }
 ";
 
-use crate::domain::error::{StygianError, ProviderError, Result, ServiceError};
+use crate::domain::error::{ProviderError, Result, ServiceError, StygianError};
 use crate::ports::{AIProvider, GraphQlAuth, ScrapingService, ServiceInput};
 
 /// Discovered schema with metadata

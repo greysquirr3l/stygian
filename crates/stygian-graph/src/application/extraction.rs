@@ -37,7 +37,7 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use tracing::{debug, info, warn};
 
-use crate::domain::error::{StygianError, ProviderError, Result};
+use crate::domain::error::{ProviderError, Result, StygianError};
 use crate::ports::{AIProvider, ScrapingService, ServiceInput, ServiceOutput};
 
 /// Configuration for the LLM extraction service

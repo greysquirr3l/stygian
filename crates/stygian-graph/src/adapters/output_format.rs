@@ -3,7 +3,7 @@
 //! Implements [`OutputFormatter`](crate::ports::storage::OutputFormatter) for the three formats defined in
 //! [`crate::ports::storage::OutputFormat`].
 
-use crate::domain::error::{StygianError, Result, ServiceError};
+use crate::domain::error::{Result, ServiceError, StygianError};
 use crate::ports::storage::{OutputFormat, OutputFormatter, StorageRecord};
 
 // ─────────────────────────────────────────────────────────────────────────────

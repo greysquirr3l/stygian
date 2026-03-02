@@ -15,7 +15,7 @@
 //!    └─ collect_results when all tasks in wave are Completed
 //! ```
 
-use crate::domain::error::{StygianError, Result, ServiceError};
+use crate::domain::error::{Result, ServiceError, StygianError};
 use crate::ports::work_queue::{TaskStatus, WorkQueuePort, WorkTask};
 use crate::ports::{ScrapingService, ServiceInput};
 use async_trait::async_trait;

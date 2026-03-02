@@ -229,9 +229,9 @@ impl<C: CachePort> IdempotencyStore<C> {
         };
 
         let record: IdempotencyRecord = serde_json::from_str(&json).map_err(|e| {
-            crate::domain::error::StygianError::Cache(
-                crate::domain::error::CacheError::ReadFailed(e.to_string()),
-            )
+            crate::domain::error::StygianError::Cache(crate::domain::error::CacheError::ReadFailed(
+                e.to_string(),
+            ))
         })?;
 
         if record.is_expired() {

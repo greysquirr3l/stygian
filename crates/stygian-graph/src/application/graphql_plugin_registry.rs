@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::domain::error::{ConfigError, StygianError, Result};
+use crate::domain::error::{ConfigError, Result, StygianError};
 use crate::ports::graphql_plugin::GraphQlTargetPlugin;
 
 /// A registry of named [`GraphQlTargetPlugin`] implementations.

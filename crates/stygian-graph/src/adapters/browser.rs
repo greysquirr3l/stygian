@@ -34,7 +34,7 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use crate::domain::error::{StygianError, Result, ServiceError};
+use crate::domain::error::{Result, ServiceError, StygianError};
 use crate::ports::{ScrapingService, ServiceInput, ServiceOutput};
 
 /// Wait strategy for JavaScript-rendered pages

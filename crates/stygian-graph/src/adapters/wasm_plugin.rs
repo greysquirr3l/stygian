@@ -157,7 +157,7 @@ mod real {
     //! a JSON byte slice through shared linear memory and reads back the
     //! serialised [`ServiceOutput`].
 
-    use crate::domain::error::{StygianError, Result, ServiceError};
+    use crate::domain::error::{Result, ServiceError, StygianError};
     use crate::ports::wasm_plugin::{WasmPluginMeta, WasmPluginPort};
     use crate::ports::{ScrapingService, ServiceInput, ServiceOutput};
     use std::collections::HashMap;

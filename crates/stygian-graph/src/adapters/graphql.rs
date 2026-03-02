@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 
 use crate::application::graphql_plugin_registry::GraphQlPluginRegistry;
 use crate::application::pipeline_parser::expand_template;
-use crate::domain::error::{StygianError, Result, ServiceError};
+use crate::domain::error::{Result, ServiceError, StygianError};
 use crate::ports::{GraphQlAuth, GraphQlAuthKind, ScrapingService, ServiceInput, ServiceOutput};
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -652,10 +652,7 @@ mod tests {
             };
             let err = svc.execute(input).await.unwrap_err();
             assert!(
-                matches!(
-                    err,
-                    StygianError::Service(ServiceError::InvalidResponse(_))
-                ),
+                matches!(err, StygianError::Service(ServiceError::InvalidResponse(_))),
                 "expected InvalidResponse, got {err:?}"
             );
         })
@@ -691,10 +688,7 @@ mod tests {
             };
             let err = svc.execute(input).await.unwrap_err();
             assert!(
-                matches!(
-                    err,
-                    StygianError::Service(ServiceError::InvalidResponse(_))
-                ),
+                matches!(err, StygianError::Service(ServiceError::InvalidResponse(_))),
                 "expected InvalidResponse, got {err:?}"
             );
         })

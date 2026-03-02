@@ -29,7 +29,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use reqwest::{Client, Proxy, header};
 
-use crate::domain::error::{StygianError, Result, ServiceError};
+use crate::domain::error::{Result, ServiceError, StygianError};
 use crate::ports::{ScrapingService, ServiceInput, ServiceOutput};
 
 /// Rotating pool of realistic browser User-Agent strings

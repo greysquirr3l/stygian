@@ -23,7 +23,7 @@ use std::time::Duration;
 
 use stygian_graph::adapters::resilience::{CircuitBreakerImpl, RetryPolicy};
 use stygian_graph::application::metrics::{MetricEvent, MetricsRegistry};
-use stygian_graph::domain::error::{StygianError, ServiceError};
+use stygian_graph::domain::error::{ServiceError, StygianError};
 use stygian_graph::domain::executor::WorkerPool;
 use stygian_graph::ports::{
     CircuitBreaker, CircuitState, ScrapingService, ServiceInput, ServiceOutput,

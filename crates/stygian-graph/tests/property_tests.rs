@@ -13,12 +13,12 @@
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
+use proptest::prelude::*;
 use stygian_graph::adapters::cache::BoundedLruCache;
 use stygian_graph::adapters::resilience::RetryPolicy;
 use stygian_graph::application::metrics::{MetricEvent, MetricsRegistry};
 use stygian_graph::domain::graph::{DagExecutor, Edge, Node, Pipeline};
 use stygian_graph::ports::CachePort;
-use proptest::prelude::*;
 
 // ─── Graph invariants ─────────────────────────────────────────────────────────
 

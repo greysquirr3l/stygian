@@ -20,7 +20,7 @@ use tokio::sync::{Mutex, mpsc};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
-use crate::domain::error::{GraphError, StygianError, Result};
+use crate::domain::error::{GraphError, Result, StygianError};
 use crate::ports::{ScrapingService, ServiceInput, ServiceOutput};
 
 /// A work item sent to a pool worker

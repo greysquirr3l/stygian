@@ -36,7 +36,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use crate::domain::error::{StygianError, ProviderError, Result, ServiceError};
+use crate::domain::error::{ProviderError, Result, ServiceError, StygianError};
 use crate::ports::{AIProvider, ScrapingService, ServiceInput, ServiceOutput};
 
 /// Detected or declared content type for multi-modal routing

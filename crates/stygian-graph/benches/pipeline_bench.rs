@@ -15,13 +15,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use serde_json::json;
 use stygian_graph::adapters::cache::{BoundedLruCache, DashMapCache};
 use stygian_graph::adapters::noop::NoopService;
 use stygian_graph::application::metrics::{MetricEvent, MetricsRegistry};
 use stygian_graph::application::registry::ServiceRegistry;
 use stygian_graph::domain::graph::{DagExecutor, Edge, Node, Pipeline};
 use stygian_graph::ports::{CachePort, ScrapingService};
-use serde_json::json;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
