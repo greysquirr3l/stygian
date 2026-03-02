@@ -214,26 +214,33 @@ impl PageHandle {
         condition: WaitUntil,
         nav_timeout: Duration,
     ) -> Result<()> {
-        use std::sync::atomic::AtomicI32;
+        self.setup_status_capture().await;
+        timeout(
+            nav_timeout,
+            self.navigate_inner(url, condition, nav_timeout),
+        )
+        .await
+        .map_err(|_| BrowserError::NavigationFailed {
+            url: url.to_string(),
+            reason: format!("navigation timed out after {nav_timeout:?}"),
+        })?
+    }
 
+    /// Reset the last status code and wire up the `Network.responseReceived`
+    /// listener before any navigation starts.  Errors are logged and swallowed
+    /// so that a missing network domain never blocks navigation.
+    async fn setup_status_capture(&self) {
         use chromiumoxide::cdp::browser_protocol::network::{
-            EventLoadingFailed, EventLoadingFinished, EventRequestWillBeSent,
             EventResponseReceived, ResourceType as NetworkResourceType,
-        };
-        use chromiumoxide::cdp::browser_protocol::page::{
-            EventDomContentEventFired, EventLoadEventFired,
         };
         use futures::StreamExt;
 
-        let url_owned = url.to_string();
-
-        // Reset the stored status before each navigation so stale codes are
-        // not returned if the new navigation fails before headers arrive.
+        // Reset so a stale code is not returned if the new navigation fails
+        // before the response headers arrive.
         self.last_status_code.store(0, Ordering::Release);
 
-        // Subscribe to Network.responseReceived *before* goto() so no events
-        // are missed.  The listener runs in a detached task and stores the
-        // first Document-type response status atomically.
+        // Subscribe *before* goto() — the listener runs in a detached task and
+        // stores the first Document-type response status atomically.
         let page_for_listener = self.page.clone();
         let status_capture = Arc::clone(&self.last_status_code);
         match page_for_listener
@@ -253,140 +260,144 @@ impl PageHandle {
                     }
                 });
             }
-            Err(e) => {
-                warn!("status-code capture unavailable: {e}");
-            }
+            Err(e) => warn!("status-code capture unavailable: {e}"),
         }
+    }
 
-        let navigate_fut = async {
-            // All event subscriptions happen BEFORE goto() — see #7: Chrome
-            // fires these events at the same time as the CDP Navigate response
-            // arrives, so subscribing after goto() is a guaranteed race.
+    /// Subscribe to the appropriate CDP events, fire `goto`, then await
+    /// `condition`.  All subscriptions precede `goto` to eliminate the race
+    /// described in issue #7.
+    async fn navigate_inner(
+        &mut self,
+        url: &str,
+        condition: WaitUntil,
+        nav_timeout: Duration,
+    ) -> Result<()> {
+        use std::sync::atomic::AtomicI32;
 
-            // DomContentLoaded: subscribe to the correct CDP event.
-            let mut dom_events = match &condition {
-                WaitUntil::DomContentLoaded => Some(
-                    self.page
-                        .event_listener::<EventDomContentEventFired>()
-                        .await
-                        .map_err(|e| BrowserError::NavigationFailed {
-                            url: url_owned.clone(),
-                            reason: e.to_string(),
-                        })?,
-                ),
-                _ => None,
-            };
+        use chromiumoxide::cdp::browser_protocol::network::{
+            EventLoadingFailed, EventLoadingFinished, EventRequestWillBeSent,
+        };
+        use chromiumoxide::cdp::browser_protocol::page::{
+            EventDomContentEventFired, EventLoadEventFired,
+        };
+        use futures::StreamExt;
 
-            // NetworkIdle: wait for the load event as a baseline, then
-            // additionally poll until in-flight request count drops to ≤ 2
-            // for 500 ms (mirrors Playwright's networkidle2).
-            let mut load_events = match &condition {
-                WaitUntil::NetworkIdle => Some(
-                    self.page
-                        .event_listener::<EventLoadEventFired>()
-                        .await
-                        .map_err(|e| BrowserError::NavigationFailed {
-                            url: url_owned.clone(),
-                            reason: e.to_string(),
-                        })?,
-                ),
-                _ => None,
-            };
+        let url_owned = url.to_string();
 
-            // For NetworkIdle: track in-flight requests via detached tasks so
-            // they can outlive goto() without holding a borrow on self.
-            let inflight = if matches!(condition, WaitUntil::NetworkIdle) {
-                let counter: Arc<AtomicI32> = Arc::new(AtomicI32::new(0));
-                let p1 = self.page.clone();
-                let p2 = self.page.clone();
-                let p3 = self.page.clone();
-                let c1 = Arc::clone(&counter);
-                let c2 = Arc::clone(&counter);
-                let c3 = Arc::clone(&counter);
-                match p1.event_listener::<EventRequestWillBeSent>().await {
-                    Ok(mut s) => {
-                        tokio::spawn(async move {
-                            while s.next().await.is_some() {
-                                c1.fetch_add(1, Ordering::Relaxed);
-                            }
-                        });
-                    }
-                    Err(e) => warn!("network-idle: request tracker unavailable: {e}"),
+        // DomContentLoaded: subscribe to the correct CDP event.
+        let mut dom_events = match &condition {
+            WaitUntil::DomContentLoaded => Some(
+                self.page
+                    .event_listener::<EventDomContentEventFired>()
+                    .await
+                    .map_err(|e| BrowserError::NavigationFailed {
+                        url: url_owned.clone(),
+                        reason: e.to_string(),
+                    })?,
+            ),
+            _ => None,
+        };
+
+        // NetworkIdle baseline: the load event signals all static subresources
+        // have been requested; we then poll the in-flight counter below.
+        let mut load_events = match &condition {
+            WaitUntil::NetworkIdle => Some(
+                self.page
+                    .event_listener::<EventLoadEventFired>()
+                    .await
+                    .map_err(|e| BrowserError::NavigationFailed {
+                        url: url_owned.clone(),
+                        reason: e.to_string(),
+                    })?,
+            ),
+            _ => None,
+        };
+
+        // For NetworkIdle: track in-flight requests via detached tasks so they
+        // can outlive goto() without holding a borrow on self.
+        let inflight = if matches!(condition, WaitUntil::NetworkIdle) {
+            let counter: Arc<AtomicI32> = Arc::new(AtomicI32::new(0));
+            let p1 = self.page.clone();
+            let p2 = self.page.clone();
+            let p3 = self.page.clone();
+            let c1 = Arc::clone(&counter);
+            let c2 = Arc::clone(&counter);
+            let c3 = Arc::clone(&counter);
+            match p1.event_listener::<EventRequestWillBeSent>().await {
+                Ok(mut s) => {
+                    tokio::spawn(async move {
+                        while s.next().await.is_some() {
+                            c1.fetch_add(1, Ordering::Relaxed);
+                        }
+                    });
                 }
-                match p2.event_listener::<EventLoadingFinished>().await {
-                    Ok(mut s) => {
-                        tokio::spawn(async move {
-                            while s.next().await.is_some() {
-                                c2.fetch_sub(1, Ordering::Relaxed);
-                            }
-                        });
-                    }
-                    Err(e) => warn!("network-idle: finish tracker unavailable: {e}"),
+                Err(e) => warn!("network-idle: request tracker unavailable: {e}"),
+            }
+            match p2.event_listener::<EventLoadingFinished>().await {
+                Ok(mut s) => {
+                    tokio::spawn(async move {
+                        while s.next().await.is_some() {
+                            c2.fetch_sub(1, Ordering::Relaxed);
+                        }
+                    });
                 }
-                match p3.event_listener::<EventLoadingFailed>().await {
-                    Ok(mut s) => {
-                        tokio::spawn(async move {
-                            while s.next().await.is_some() {
-                                c3.fetch_sub(1, Ordering::Relaxed);
-                            }
-                        });
-                    }
-                    Err(e) => warn!("network-idle: fail tracker unavailable: {e}"),
+                Err(e) => warn!("network-idle: finish tracker unavailable: {e}"),
+            }
+            match p3.event_listener::<EventLoadingFailed>().await {
+                Ok(mut s) => {
+                    tokio::spawn(async move {
+                        while s.next().await.is_some() {
+                            c3.fetch_sub(1, Ordering::Relaxed);
+                        }
+                    });
                 }
-                Some(counter)
-            } else {
-                None
-            };
+                Err(e) => warn!("network-idle: fail tracker unavailable: {e}"),
+            }
+            Some(counter)
+        } else {
+            None
+        };
 
-            self.page
-                .goto(url)
-                .await
-                .map_err(|e| BrowserError::NavigationFailed {
-                    url: url_owned.clone(),
-                    reason: e.to_string(),
-                })?;
+        self.page
+            .goto(url)
+            .await
+            .map_err(|e| BrowserError::NavigationFailed {
+                url: url_owned.clone(),
+                reason: e.to_string(),
+            })?;
 
-            match &condition {
-                WaitUntil::DomContentLoaded => {
-                    if let Some(ref mut events) = dom_events {
-                        let _ = events.next().await;
-                    }
+        match &condition {
+            WaitUntil::DomContentLoaded => {
+                if let Some(ref mut events) = dom_events {
+                    let _ = events.next().await;
                 }
-                WaitUntil::NetworkIdle => {
-                    // Wait for the load event first (ensures the page and its
-                    // static subresources have been requested before sampling).
-                    if let Some(ref mut events) = load_events {
-                        let _ = events.next().await;
-                    }
-                    // Then wait for in-flight count ≤ 2 for 500 ms.
-                    if let Some(ref counter) = inflight {
-                        const IDLE_THRESHOLD: i32 = 2;
-                        const SETTLE: Duration = Duration::from_millis(500);
-                        loop {
+            }
+            WaitUntil::NetworkIdle => {
+                if let Some(ref mut events) = load_events {
+                    let _ = events.next().await;
+                }
+                // Wait until ≤ 2 requests in-flight for 500 ms (networkidle2).
+                if let Some(ref counter) = inflight {
+                    const IDLE_THRESHOLD: i32 = 2;
+                    const SETTLE: Duration = Duration::from_millis(500);
+                    loop {
+                        if counter.load(Ordering::Relaxed) <= IDLE_THRESHOLD {
+                            tokio::time::sleep(SETTLE).await;
                             if counter.load(Ordering::Relaxed) <= IDLE_THRESHOLD {
-                                tokio::time::sleep(SETTLE).await;
-                                if counter.load(Ordering::Relaxed) <= IDLE_THRESHOLD {
-                                    break;
-                                }
-                            } else {
-                                tokio::time::sleep(Duration::from_millis(50)).await;
+                                break;
                             }
+                        } else {
+                            tokio::time::sleep(Duration::from_millis(50)).await;
                         }
                     }
                 }
-                WaitUntil::Selector(css) => {
-                    self.wait_for_selector(css, nav_timeout).await?;
-                }
             }
-            Ok(())
-        };
-
-        timeout(nav_timeout, navigate_fut)
-            .await
-            .map_err(|_| BrowserError::NavigationFailed {
-                url: url.to_string(),
-                reason: format!("navigation timed out after {nav_timeout:?}"),
-            })?
+            WaitUntil::Selector(css) => {
+                self.wait_for_selector(css, nav_timeout).await?;
+            }
+        }
+        Ok(())
     }
 
     /// Wait until `document.querySelector(selector)` is non-null (`timeout`).
