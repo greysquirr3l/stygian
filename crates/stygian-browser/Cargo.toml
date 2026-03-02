@@ -9,7 +9,7 @@ repository.workspace = true
 readme = "README.md"
 description = "Anti-detection browser automation library for Rust with CDP stealth features"
 keywords = ["browser", "automation", "scraping", "anti-detection", "cdp"]
-categories = ["web-programming", "automation"]
+categories = ["web-programming", "development-tools"]
 
 [features]
 default = ["stealth"]
