@@ -173,6 +173,19 @@ pub struct BrowserConfig {
     /// Anti-detection intensity level.
     pub stealth_level: StealthLevel,
 
+    /// Disable Chromium's built-in renderer sandbox (`--no-sandbox`).
+    ///
+    /// Chromium's sandbox requires user namespaces, which are unavailable inside
+    /// most container runtimes. When running in Docker or similar, set this to
+    /// `true` (or set `STYGIAN_DISABLE_SANDBOX=true`) and rely on the
+    /// container's own isolation instead.
+    ///
+    /// **Never set this on a bare-metal host without an alternative isolation
+    /// boundary.** Doing so removes a meaningful security layer.
+    ///
+    /// Env: `STYGIAN_DISABLE_SANDBOX` (`true`/`false`, default: auto-detect)
+    pub disable_sandbox: bool,
+
     /// CDP Runtime.enable leak-mitigation mode.
     ///
     /// Env: `STYGIAN_CDP_FIX_MODE` (`add_binding`/`isolated_world`/`enable_disable`/`none`)
@@ -215,6 +228,7 @@ impl Default for BrowserConfig {
             proxy_bypass_list: std::env::var("STYGIAN_PROXY_BYPASS").ok(),
             #[cfg(feature = "stealth")]
             webrtc: WebRtcConfig::default(),
+            disable_sandbox: env_bool("STYGIAN_DISABLE_SANDBOX", is_containerized()),
             stealth_level: StealthLevel::from_env(),
             cdp_fix_mode: CdpFixMode::from_env(),
             source_url: std::env::var("STYGIAN_SOURCE_URL").ok(),
@@ -241,12 +255,15 @@ impl BrowserConfig {
         let mut args = vec![
             "--disable-blink-features=AutomationControlled".to_string(),
             "--disable-dev-shm-usage".to_string(),
-            "--no-sandbox".to_string(),
             "--disable-infobars".to_string(),
             "--disable-background-timer-throttling".to_string(),
             "--disable-backgrounding-occluded-windows".to_string(),
             "--disable-renderer-backgrounding".to_string(),
         ];
+
+        if self.disable_sandbox {
+            args.push("--no-sandbox".to_string());
+        }
 
         if let Some(proxy) = &self.proxy {
             args.push(format!("--proxy-server={proxy}"));
@@ -484,6 +501,25 @@ impl BrowserConfigBuilder {
         self
     }
 
+    /// Explicitly control whether `--no-sandbox` is passed to Chrome.
+    ///
+    /// By default this is auto-detected: `true` inside containers, `false` on
+    /// bare metal. Override only when the auto-detection is wrong.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_browser::BrowserConfig;
+    /// // Force sandbox on (bare-metal host)
+    /// let cfg = BrowserConfig::builder().disable_sandbox(false).build();
+    /// assert!(!cfg.effective_args().iter().any(|a| a == "--no-sandbox"));
+    /// ```
+    #[must_use]
+    pub const fn disable_sandbox(mut self, disable: bool) -> Self {
+        self.config.disable_sandbox = disable;
+        self
+    }
+
     /// Set the CDP leak-mitigation mode.
     ///
     /// # Example
@@ -557,6 +593,35 @@ fn env_bool(key: &str, default: bool) -> bool {
         .unwrap_or(default)
 }
 
+/// Heuristic: returns `true` when the process appears to be running inside a
+/// container (Docker, Kubernetes, etc.) where Chromium's renderer sandbox may
+/// not function because user namespaces are unavailable.
+///
+/// Detection checks (Linux only):
+/// - `/.dockerenv` file exists
+/// - `/proc/1/cgroup` contains "docker" or "kubepods"
+///
+/// On non-Linux platforms this always returns `false` (macOS/Windows have
+/// their own sandbox mechanisms and don't need `--no-sandbox`).
+fn is_containerized() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        if std::path::Path::new("/.dockerenv").exists() {
+            return true;
+        }
+        if let Ok(cgroup) = std::fs::read_to_string("/proc/1/cgroup") {
+            if cgroup.contains("docker") || cgroup.contains("kubepods") {
+                return true;
+            }
+        }
+        false
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
 fn env_u64(key: &str, default: u64) -> u64 {
     std::env::var(key)
         .ok()
@@ -601,6 +666,25 @@ mod tests {
         let cfg = BrowserConfig::default();
         let args = cfg.effective_args();
         assert!(args.iter().any(|a| a.contains("AutomationControlled")));
+    }
+
+    #[test]
+    fn no_sandbox_only_when_explicitly_enabled() {
+        let with_sandbox_disabled = BrowserConfig::builder().disable_sandbox(true).build();
+        assert!(
+            with_sandbox_disabled
+                .effective_args()
+                .iter()
+                .any(|a| a == "--no-sandbox")
+        );
+
+        let with_sandbox_enabled = BrowserConfig::builder().disable_sandbox(false).build();
+        assert!(
+            !with_sandbox_enabled
+                .effective_args()
+                .iter()
+                .any(|a| a == "--no-sandbox")
+        );
     }
 
     #[test]

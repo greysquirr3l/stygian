@@ -355,10 +355,17 @@ mod tests {
     }
 
     #[test]
-    fn effective_args_include_no_sandbox() {
-        let cfg = BrowserConfig::default();
-        let args = cfg.effective_args();
-        assert!(args.iter().any(|a| a == "--no-sandbox"));
+    fn no_sandbox_absent_by_default_on_non_linux() {
+        // On non-Linux (macOS, Windows) is_containerized() always returns false,
+        // so --no-sandbox must NOT appear in the default args unless overridden.
+        // On Linux in CI/Docker the STYGIAN_DISABLE_SANDBOX env var or /.dockerenv
+        // controls this — skip the assertion there to avoid false failures.
+        #[cfg(not(target_os = "linux"))]
+        {
+            let cfg = BrowserConfig::default();
+            let args = cfg.effective_args();
+            assert!(!args.iter().any(|a| a == "--no-sandbox"));
+        }
     }
 
     #[test]
