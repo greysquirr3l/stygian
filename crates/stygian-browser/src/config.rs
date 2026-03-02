@@ -603,6 +603,7 @@ fn env_bool(key: &str, default: bool) -> bool {
 ///
 /// On non-Linux platforms this always returns `false` (macOS/Windows have
 /// their own sandbox mechanisms and don't need `--no-sandbox`).
+#[allow(clippy::missing_const_for_fn)] // Linux branch uses runtime file I/O (Path::exists, fs::read_to_string)
 fn is_containerized() -> bool {
     #[cfg(target_os = "linux")]
     {
