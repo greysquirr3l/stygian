@@ -268,7 +268,7 @@ impl PageHandle {
     /// `condition`.  All subscriptions precede `goto` to eliminate the race
     /// described in issue #7.
     async fn navigate_inner(
-        &mut self,
+        &self,
         url: &str,
         condition: WaitUntil,
         nav_timeout: Duration,
