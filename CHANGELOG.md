@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `stygian-browser`: `navigate()` race condition — `EventLoadEventFired` subscription now registered **before** `goto()` so Chrome cannot fire the event before the listener is in place; previously this caused 100% timeouts with any `DomContentLoaded` or `NetworkIdle` wait strategy ([#7](https://github.com/greysquirr3l/stygian/issues/7))
+- `stygian-browser`: `WaitUntil::DomContentLoaded` now subscribes to `Page.domContentEventFired` (fires when the DOM is ready, before subresources load) instead of `Page.loadEventFired`, matching its documented semantics
+- `stygian-browser`: `WaitUntil::NetworkIdle` now implements genuine network-idle detection — in-flight request count is tracked via `Network.requestWillBeSent` / `Network.loadingFinished` / `Network.loadingFailed`; navigation resolves when ≤ 2 requests remain in-flight for at least 500 ms after the load event (equivalent to Playwright's `networkidle2`)
 
 ### Changed
 
