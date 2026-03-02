@@ -273,11 +273,6 @@ impl PageHandle {
         condition: WaitUntil,
         nav_timeout: Duration,
     ) -> Result<()> {
-        use std::sync::atomic::AtomicI32;
-
-        use chromiumoxide::cdp::browser_protocol::network::{
-            EventLoadingFailed, EventLoadingFinished, EventRequestWillBeSent,
-        };
         use chromiumoxide::cdp::browser_protocol::page::{
             EventDomContentEventFired, EventLoadEventFired,
         };
@@ -285,7 +280,6 @@ impl PageHandle {
 
         let url_owned = url.to_string();
 
-        // DomContentLoaded: subscribe to the correct CDP event.
         let mut dom_events = match &condition {
             WaitUntil::DomContentLoaded => Some(
                 self.page
@@ -299,8 +293,6 @@ impl PageHandle {
             _ => None,
         };
 
-        // NetworkIdle baseline: the load event signals all static subresources
-        // have been requested; we then poll the in-flight counter below.
         let mut load_events = match &condition {
             WaitUntil::NetworkIdle => Some(
                 self.page
@@ -314,47 +306,8 @@ impl PageHandle {
             _ => None,
         };
 
-        // For NetworkIdle: track in-flight requests via detached tasks so they
-        // can outlive goto() without holding a borrow on self.
         let inflight = if matches!(condition, WaitUntil::NetworkIdle) {
-            let counter: Arc<AtomicI32> = Arc::new(AtomicI32::new(0));
-            let p1 = self.page.clone();
-            let p2 = self.page.clone();
-            let p3 = self.page.clone();
-            let c1 = Arc::clone(&counter);
-            let c2 = Arc::clone(&counter);
-            let c3 = Arc::clone(&counter);
-            match p1.event_listener::<EventRequestWillBeSent>().await {
-                Ok(mut s) => {
-                    tokio::spawn(async move {
-                        while s.next().await.is_some() {
-                            c1.fetch_add(1, Ordering::Relaxed);
-                        }
-                    });
-                }
-                Err(e) => warn!("network-idle: request tracker unavailable: {e}"),
-            }
-            match p2.event_listener::<EventLoadingFinished>().await {
-                Ok(mut s) => {
-                    tokio::spawn(async move {
-                        while s.next().await.is_some() {
-                            c2.fetch_sub(1, Ordering::Relaxed);
-                        }
-                    });
-                }
-                Err(e) => warn!("network-idle: finish tracker unavailable: {e}"),
-            }
-            match p3.event_listener::<EventLoadingFailed>().await {
-                Ok(mut s) => {
-                    tokio::spawn(async move {
-                        while s.next().await.is_some() {
-                            c3.fetch_sub(1, Ordering::Relaxed);
-                        }
-                    });
-                }
-                Err(e) => warn!("network-idle: fail tracker unavailable: {e}"),
-            }
-            Some(counter)
+            Some(self.subscribe_inflight_counter().await)
         } else {
             None
         };
@@ -377,20 +330,8 @@ impl PageHandle {
                 if let Some(ref mut events) = load_events {
                     let _ = events.next().await;
                 }
-                // Wait until ≤ 2 requests in-flight for 500 ms (networkidle2).
                 if let Some(ref counter) = inflight {
-                    const IDLE_THRESHOLD: i32 = 2;
-                    const SETTLE: Duration = Duration::from_millis(500);
-                    loop {
-                        if counter.load(Ordering::Relaxed) <= IDLE_THRESHOLD {
-                            tokio::time::sleep(SETTLE).await;
-                            if counter.load(Ordering::Relaxed) <= IDLE_THRESHOLD {
-                                break;
-                            }
-                        } else {
-                            tokio::time::sleep(Duration::from_millis(50)).await;
-                        }
-                    }
+                    Self::wait_network_idle(counter).await;
                 }
             }
             WaitUntil::Selector(css) => {
@@ -398,6 +339,68 @@ impl PageHandle {
             }
         }
         Ok(())
+    }
+
+    /// Spawn three detached tasks that maintain a signed in-flight request
+    /// counter via `Network.requestWillBeSent` (+1) and
+    /// `Network.loadingFinished`/`Network.loadingFailed` (−1 each).
+    /// Returns the shared counter so the caller can poll it.
+    async fn subscribe_inflight_counter(&self) -> Arc<std::sync::atomic::AtomicI32> {
+        use std::sync::atomic::AtomicI32;
+
+        use chromiumoxide::cdp::browser_protocol::network::{
+            EventLoadingFailed, EventLoadingFinished, EventRequestWillBeSent,
+        };
+        use futures::StreamExt;
+
+        let counter: Arc<AtomicI32> = Arc::new(AtomicI32::new(0));
+        let pairs: [(Arc<AtomicI32>, i32); 3] = [
+            (Arc::clone(&counter), 1),
+            (Arc::clone(&counter), -1),
+            (Arc::clone(&counter), -1),
+        ];
+        let [p1, p2, p3] = [self.page.clone(), self.page.clone(), self.page.clone()];
+
+        macro_rules! spawn_tracker {
+            ($page:expr, $event:ty, $c:expr, $delta:expr) => {
+                match $page.event_listener::<$event>().await {
+                    Ok(mut s) => {
+                        let c = $c;
+                        let d = $delta;
+                        tokio::spawn(async move {
+                            while s.next().await.is_some() {
+                                c.fetch_add(d, Ordering::Relaxed);
+                            }
+                        });
+                    }
+                    Err(e) => warn!("network-idle tracker unavailable: {e}"),
+                }
+            };
+        }
+
+        let [(c1, d1), (c2, d2), (c3, d3)] = pairs;
+        spawn_tracker!(p1, EventRequestWillBeSent, c1, d1);
+        spawn_tracker!(p2, EventLoadingFinished, c2, d2);
+        spawn_tracker!(p3, EventLoadingFailed, c3, d3);
+
+        counter
+    }
+
+    /// Poll `counter` until ≤ 2 in-flight requests persist for 500 ms
+    /// (equivalent to Playwright's `networkidle2`).
+    async fn wait_network_idle(counter: &Arc<std::sync::atomic::AtomicI32>) {
+        const IDLE_THRESHOLD: i32 = 2;
+        const SETTLE: Duration = Duration::from_millis(500);
+        loop {
+            if counter.load(Ordering::Relaxed) <= IDLE_THRESHOLD {
+                tokio::time::sleep(SETTLE).await;
+                if counter.load(Ordering::Relaxed) <= IDLE_THRESHOLD {
+                    break;
+                }
+            } else {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        }
     }
 
     /// Wait until `document.querySelector(selector)` is non-null (`timeout`).
