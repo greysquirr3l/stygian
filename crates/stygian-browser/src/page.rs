@@ -250,6 +250,23 @@ impl PageHandle {
         }
 
         let navigate_fut = async {
+            // Fix #7: subscribe to EventLoadEventFired BEFORE goto() so the
+            // event cannot fire between goto() returning and our subscription
+            // registering (Chrome fires load events at the same time as the
+            // CDP Navigate response, making subscribe-after-goto a 100% race).
+            let mut load_events = match &condition {
+                WaitUntil::DomContentLoaded | WaitUntil::NetworkIdle => Some(
+                    self.page
+                        .event_listener::<EventLoadEventFired>()
+                        .await
+                        .map_err(|e| BrowserError::NavigationFailed {
+                            url: url_owned.clone(),
+                            reason: e.to_string(),
+                        })?,
+                ),
+                WaitUntil::Selector(_) => None,
+            };
+
             self.page
                 .goto(url)
                 .await
@@ -260,20 +277,9 @@ impl PageHandle {
 
             match &condition {
                 WaitUntil::DomContentLoaded | WaitUntil::NetworkIdle => {
-                    // chromiumoxide's goto() already waits for load; for
-                    // NetworkIdle we listen for the load event as a proxy
-                    // (full idle detection requires request interception which
-                    // is setup separately).
-                    let mut events = self
-                        .page
-                        .event_listener::<EventLoadEventFired>()
-                        .await
-                        .map_err(|e| BrowserError::NavigationFailed {
-                            url: url_owned.clone(),
-                            reason: e.to_string(),
-                        })?;
-                    // consume first event or treat as already fired
-                    let _ = events.next().await;
+                    if let Some(ref mut events) = load_events {
+                        let _ = events.next().await;
+                    }
                 }
                 WaitUntil::Selector(css) => {
                     self.wait_for_selector(css, nav_timeout).await?;

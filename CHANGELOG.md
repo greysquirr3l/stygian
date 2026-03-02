@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `stygian-browser`: `navigate()` race condition — `EventLoadEventFired` subscription now registered **before** `goto()` so Chrome cannot fire the event before the listener is in place; previously this caused 100% timeouts with any `DomContentLoaded` or `NetworkIdle` wait strategy ([#7](https://github.com/greysquirr3l/stygian/issues/7))
+
+### Changed
+
+- `stygian-browser`: `chromiumoxide` upgraded from `0.7` → `0.9.1`
+- `stygian-graph`: `JobberPlugin` promoted from unit struct to a struct with an injectable `token` field; `default_auth` now reads from `self.token` set at construction time instead of accessing the environment on every call; new `with_token(impl Into<String>)` constructor bypasses env lookup entirely — eliminates all unsafe env mutations from the test suite (closes [#5](https://github.com/greysquirr3l/stygian/pull/5), [#6](https://github.com/greysquirr3l/stygian/pull/6))
+
 ## [0.1.6] - 2026-03-02
 
 ### Security

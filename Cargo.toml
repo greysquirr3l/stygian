@@ -51,7 +51,7 @@ mockall = "0.13"
 criterion = { version = "0.5", features = ["async_tokio"] }
 
 # Browser automation (for stygian-browser)
-chromiumoxide = "0.7"
+chromiumoxide = "0.9"
 
 # Utilities
 ulid = "1.2"

@@ -16,7 +16,7 @@ use stygian_graph::ports::graphql_plugin::GraphQlTargetPlugin;
 /// Smoke-test the plugin's static metadata without any network calls.
 #[test]
 fn jobber_plugin_metadata() {
-    let plugin = JobberPlugin;
+    let plugin = JobberPlugin::new();
     assert_eq!(plugin.name(), "jobber");
     assert_eq!(plugin.endpoint(), "https://api.getjobber.com/api/graphql");
 
@@ -60,7 +60,7 @@ async fn test_jobber_clients_returns_data() {
     });
 
     let response = client
-        .post(JobberPlugin.endpoint())
+        .post(JobberPlugin::new().endpoint())
         .bearer_auth(&token)
         .header("X-JOBBER-GRAPHQL-VERSION", "2025-04-16")
         .header("Content-Type", "application/json")
