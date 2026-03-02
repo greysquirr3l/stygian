@@ -1,5 +1,7 @@
 # stygian
 
+![stygian](assets/img/stygian-logo.png)
+
 **High-performance web scraping toolkit for Rust** — graph-based execution engine + anti-detection browser automation.
 
 [![CI](https://github.com/greysquirr3l/stygian/actions/workflows/ci.yml/badge.svg)](https://github.com/greysquirr3l/stygian/actions/workflows/ci.yml)
