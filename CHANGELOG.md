@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-03-02
+
+### Security
+
+- `stygian-browser`: added `#![deny(unsafe_code)]` — unsafe code is now a compile error in library code; test helpers that require it carry an explicit `#[allow(unsafe_code)]`
+- `stygian-graph`: env-var mutations in `jobber` plugin tests are now serialised with `ENV_LOCK` (eliminates a potential race when tests run in parallel)
+
+### Documentation
+
+- `page-operations.md`: added `status_code()` to the "Reading page content" snippet and the complete usage example
+
 ## [0.1.5] - 2026-03-02
 
 ### Added
@@ -133,7 +144,8 @@ Both crates are functional and well-tested, but APIs may evolve based on communi
 
 ---
 
-[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/greysquirr3l/stygian/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/greysquirr3l/stygian/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/greysquirr3l/stygian/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/greysquirr3l/stygian/compare/v0.1.2...v0.1.3
