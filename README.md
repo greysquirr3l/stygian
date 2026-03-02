@@ -2,11 +2,11 @@
 
 **High-performance web scraping toolkit for Rust** — graph-based execution engine + anti-detection browser automation.
 
-[![Crates.io](https://img.shields.io/crates/v/mycelium-graph.svg)](https://crates.io/crates/mycelium-graph)
-[![Documentation](https://docs.rs/mycelium-graph/badge.svg)](https://docs.rs/mycelium-graph)
+[![CI](https://github.com/greysquirr3l/mycelium/actions/workflows/ci.yml/badge.svg)](https://github.com/greysquirr3l/mycelium/actions/workflows/ci.yml)
+[![Security Audit](https://github.com/greysquirr3l/mycelium/actions/workflows/security.yml/badge.svg)](https://github.com/greysquirr3l/mycelium/actions/workflows/security.yml)
+[![Documentation](https://github.com/greysquirr3l/mycelium/actions/workflows/docs.yml/badge.svg)](https://github.com/greysquirr3l/mycelium/actions/workflows/docs.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/greysquirr3l/mycelium/badge)](https://securityscorecards.dev/viewer/?uri=github.com/greysquirr3l/mycelium)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
-[![Tests](https://img.shields.io/badge/tests-209%20passing-brightgreen)](https://github.com/greysquirr3l/mycelium/actions)
-[![Coverage](https://img.shields.io/badge/coverage-65.74%25-yellowgreen)](https://github.com/greysquirr3l/mycelium/actions)
 
 ---
 
@@ -176,9 +176,7 @@ cargo test --all-features
 cargo tarpaulin --workspace --all-features --ignore-tests --out Lcov
 ```
 
-**Coverage**: 65.74% (2 882 / 4 384 lines) across 209 tests.
-
-`mycelium-graph` achieves ~72% line coverage across unit and integration tests.
+`mycelium-graph` achieves strong unit coverage across domain, ports, and adapter layers.
 `mycelium-browser` coverage is structurally bounded by the Chrome CDP requirement — all tests
 that spin up a real browser are marked `#[ignore = "requires Chrome"]`; pure-logic tests are
 fully covered.
@@ -233,6 +231,6 @@ Built with:
 
 ---
 
-**Status**: Active development | Version 0.1.0 | Rust 2024 edition | 209 tests | 65.74% coverage
+**Status**: Active development | Version 0.1.1 | Rust 2024 edition | 842 tests | Linux + macOS
 
 For detailed documentation, see [docs.rs/mycelium-graph](https://docs.rs/mycelium-graph) and [docs.rs/mycelium-browser](https://docs.rs/mycelium-browser).
