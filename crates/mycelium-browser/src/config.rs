@@ -898,6 +898,10 @@ mod tests {
 mod temp_env {
     use std::env;
     use std::ffi::OsStr;
+    use std::sync::Mutex;
+
+    // Serialise all env-var mutations so parallel tests don't race.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     /// Run `f` with the environment variable `key` set to `value` (or unset if
     /// `None`), then restore the previous value.
@@ -907,6 +911,7 @@ mod temp_env {
         V: AsRef<OsStr>,
         F: FnOnce(),
     {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let key = key.as_ref();
         let prev = env::var_os(key);
         match value {
@@ -927,6 +932,7 @@ mod temp_env {
         V: AsRef<OsStr>,
         F: FnOnce(),
     {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let pairs: Vec<_> = pairs
             .into_iter()
             .map(|(k, v)| {

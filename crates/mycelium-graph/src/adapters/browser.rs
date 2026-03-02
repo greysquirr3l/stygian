@@ -632,6 +632,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires real Chrome binary and external network access"]
     async fn browser_adapter_metadata_complete() {
         let config = BrowserAdapterConfig {
             default_stealth: StealthLevel::Advanced,
