@@ -421,13 +421,13 @@ impl PageHandle {
     /// let handle = pool.acquire().await?;
     /// let mut page = handle.browser().expect("valid browser").new_page().await?;
     /// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
-    /// if let Some(code) = page.status_code().await? {
+    /// if let Some(code) = page.status_code()? {
     ///     println!("HTTP {code}");
     /// }
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn status_code(&self) -> Result<Option<u16>> {
+    pub fn status_code(&self) -> Result<Option<u16>> {
         let code = self.last_status_code.load(Ordering::Acquire);
         Ok(if code == 0 { None } else { Some(code) })
     }
