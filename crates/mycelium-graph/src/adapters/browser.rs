@@ -484,6 +484,7 @@ mod tests {
 
     #[allow(clippy::panic)]
     #[tokio::test]
+    #[ignore = "requires real Chrome binary"]
     async fn test_execute_returns_service_output_or_unavailable() {
         let adapter = BrowserAdapter::new();
         let input = ServiceInput {
@@ -506,6 +507,7 @@ mod tests {
     // Integration tests from T00 Task Requirements
 
     #[tokio::test]
+    #[ignore = "requires real Chrome binary and external network access"]
     async fn browser_adapter_navigates_url() {
         let config = BrowserAdapterConfig::default();
         let adapter = BrowserAdapter::with_config(config);
@@ -587,6 +589,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires real Chrome binary"]
     async fn browser_adapter_invalid_url() {
         let config = BrowserAdapterConfig::default();
         let adapter = BrowserAdapter::with_config(config);
@@ -603,6 +606,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires real Chrome binary and external network access"]
     async fn browser_adapter_wait_strategy_selector() {
         let config = BrowserAdapterConfig::default();
         let adapter = BrowserAdapter::with_config(config);
