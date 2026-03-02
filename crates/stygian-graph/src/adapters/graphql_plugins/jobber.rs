@@ -44,13 +44,7 @@ impl GraphQlTargetPlugin for JobberPlugin {
     }
 
     fn default_auth(&self) -> Option<GraphQlAuth> {
-        std::env::var("JOBBER_ACCESS_TOKEN")
-            .ok()
-            .map(|token| GraphQlAuth {
-                kind: GraphQlAuthKind::Bearer,
-                token,
-                header_name: None,
-            })
+        auth_from_env_lookup(|key| std::env::var(key).ok())
     }
 
     fn description(&self) -> &'static str {
@@ -58,14 +52,22 @@ impl GraphQlTargetPlugin for JobberPlugin {
     }
 }
 
+/// Build auth from an injectable env-lookup closure.
+///
+/// Extracted so tests can supply a synthetic environment without mutating the
+/// process environment (which would require `unsafe` and a process-wide lock).
+fn auth_from_env_lookup<F: Fn(&str) -> Option<String>>(lookup: F) -> Option<GraphQlAuth> {
+    lookup("JOBBER_ACCESS_TOKEN").map(|token| GraphQlAuth {
+        kind: GraphQlAuthKind::Bearer,
+        token,
+        header_name: None,
+    })
+}
+
 #[cfg(test)]
-#[allow(unsafe_code, clippy::expect_used)] // set_var/remove_var are unsafe in Rust ≥1.93; scoped to tests only
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
-
-    // Serialise env-var mutations so parallel test threads don't race each other.
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn plugin_name_is_jobber() {
@@ -91,40 +93,26 @@ mod tests {
 
     #[test]
     fn default_auth_reads_env() {
-        let key = "JOBBER_ACCESS_TOKEN";
-        let _guard = ENV_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let prev = std::env::var(key).ok();
-        // SAFETY: ENV_LOCK serialises all env mutations in this module
-        unsafe { std::env::set_var(key, "test-token-abc") };
-
-        let auth = JobberPlugin.default_auth();
+        // Use injectable lookup — no process-env mutation required.
+        let auth = auth_from_env_lookup(|key| {
+            if key == "JOBBER_ACCESS_TOKEN" {
+                Some("test-token-abc".to_string())
+            } else {
+                None
+            }
+        });
         assert!(auth.is_some(), "auth should be Some when env var is set");
         let auth = auth.expect("auth should be Some when env var is set");
         assert_eq!(auth.kind, GraphQlAuthKind::Bearer);
         assert_eq!(auth.token, "test-token-abc");
         assert!(auth.header_name.is_none());
-
-        // Restore previous state
-        match prev {
-            Some(v) => unsafe { std::env::set_var(key, v) },
-            None => unsafe { std::env::remove_var(key) },
-        }
     }
 
     #[test]
     fn default_auth_absent_when_no_env() {
-        let key = "JOBBER_ACCESS_TOKEN";
-        let _guard = ENV_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let prev = std::env::var(key).ok();
-        // SAFETY: ENV_LOCK serialises all env mutations in this module
-        unsafe { std::env::remove_var(key) };
-
-        assert!(JobberPlugin.default_auth().is_none());
-
-        // Restore
-        if let Some(v) = prev {
-            unsafe { std::env::set_var(key, v) };
-        }
+        // Use injectable lookup — no process-env mutation required.
+        let auth = auth_from_env_lookup(|_| None);
+        assert!(auth.is_none());
     }
 
     #[test]
