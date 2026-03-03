@@ -14,24 +14,20 @@ use std::time::Duration;
 // Wait for a specific CSS selector to appear
 page.navigate("https://example.com", WaitUntil::Selector("h1".into()), Duration::from_secs(30)).await?;
 
-// Wait for the load event
-page.navigate("https://example.com", WaitUntil::Load, Duration::from_secs(30)).await?;
+// Wait for the DOM to be parsed (fast; before images/CSS load)
+page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
 
-// Wait for network to go idle (good for SPAs)
+// Wait for network to go idle (good for SPAs — ≤ 2 in-flight requests for 500 ms)
 page.navigate("https://example.com", WaitUntil::NetworkIdle, Duration::from_secs(30)).await?;
-
-// Bare navigation — returns as soon as the request is sent
-page.navigate("https://example.com", WaitUntil::Commit, Duration::from_secs(10)).await?;
 ```
 
 `WaitUntil` variants from fastest to safest:
 
 | Variant | Condition |
 |---|---|
-| `Commit` | First bytes received |
-| `Load` | `window.onload` fired |
-| `NetworkIdle` | No network requests for 500 ms |
-| `Selector(css)` | Element matching the selector is present in the DOM |
+| `DomContentLoaded` | HTML fully parsed; DOM ready (fires before images/stylesheets) |
+| `NetworkIdle` | Load event fired **and** ≤ 2 in-flight requests for 500 ms |
+| `Selector(css)` | `document.querySelector(selector)` returns a non-null element |
 
 ---
 
@@ -73,17 +69,22 @@ page.eval::<serde_json::Value>("window.scrollTo(0, document.body.scrollHeight)")
 
 ## Element interaction
 
+High-level click/type helpers are provided by the **human behaviour** module
+(`stygian_browser::behavior`) when the `stealth` feature is enabled. These simulate
+realistic mouse paths and typing cadence. See the [Stealth & Anti-Detection](stealth.md)
+page for full usage.
+
 ```rust,no_run
-// Click an element by CSS selector
-page.click("#submit-button").await?;
+use stygian_browser::behavior::{MouseSimulator, TypingSimulator};
 
-// Type into an input field
-page.type_into("#search", "rust async scraping").await?;
+let mouse = MouseSimulator::new();
+mouse.move_to(&page, 100.0, 200.0, 450.0, 380.0).await?;
+mouse.click(&page, 450.0, 380.0).await?;
 
-// Select an option in a <select>
-page.select("#country", "US").await?;
+let typer = TypingSimulator::new().wpm(90);
+typer.type_into(&page, "#search-input", "rust async scraping").await?;
 
-// Wait for a selector to appear (with timeout)
+// For selector-based waiting without mouse simulation:
 page.wait_for_selector(".results", Duration::from_secs(10)).await?;
 ```
 
@@ -92,15 +93,8 @@ page.wait_for_selector(".results", Duration::from_secs(10)).await?;
 ## Screenshots
 
 ```rust,no_run
-use stygian_browser::page::ScreenshotOptions;
-
-// Full-page screenshot (PNG bytes)
-let png = page.screenshot(ScreenshotOptions {
-    full_page: true,
-    format:    stygian_browser::page::ImageFormat::Png,
-    ..Default::default()
-}).await?;
-
+// Full-page screenshot — returns raw PNG bytes
+let png: Vec<u8> = page.screenshot().await?;
 tokio::fs::write("screenshot.png", &png).await?;
 ```
 
@@ -111,19 +105,21 @@ tokio::fs::write("screenshot.png", &png).await?;
 Block resource types to reduce bandwidth and speed up text-only scraping:
 
 ```rust,no_run
-use stygian_browser::page::ResourceFilter;
+use stygian_browser::page::{ResourceFilter, ResourceType};
 
-// Block all images and fonts
+// Block images, fonts, CSS, and media
 page.set_resource_filter(ResourceFilter::block_media()).await?;
 
-// Block everything except documents and scripts
-page.set_resource_filter(ResourceFilter::documents_only()).await?;
+// Block only images and fonts (keep styles for layout-sensitive work)
+page.set_resource_filter(ResourceFilter::block_images_and_fonts()).await?;
 
 // Custom filter
-page.set_resource_filter(ResourceFilter::new()
-    .block_type("image")
-    .block_type("font")
-    .block_type("stylesheet")).await?;
+page.set_resource_filter(
+    ResourceFilter::default()
+        .block(ResourceType::Image)
+        .block(ResourceType::Font)
+        .block(ResourceType::Stylesheet)
+).await?;
 ```
 
 Must be called before `navigate()` to take effect.
@@ -132,24 +128,45 @@ Must be called before `navigate()` to take effect.
 
 ## Cookie management
 
-```rust,no_run
-// Save all cookies for the current origin
-let cookies = page.save_cookies().await?;
+Session persistence is handled via the `session` module. Save and restore full session
+state (cookies + localStorage) across runs, or inject individual cookies without a full
+round-trip.
 
-// Restore cookies in a new session
-page.restore_cookies(&cookies).await?;
+```rust,no_run
+use stygian_browser::session::{save_session, restore_session, SessionSnapshot, SessionCookie};
+
+// Save full session state after login
+let snapshot: SessionSnapshot = save_session(&page).await?;
+snapshot.save_to_file("session.json")?;
+
+// Restore in a later run
+let snapshot = SessionSnapshot::load_from_file("session.json")?;
+restore_session(&page, &snapshot).await?;
+
+// Inject individual cookies without a full snapshot (e.g. seed a known token)
+let cookies = vec![SessionCookie {
+    name:      "session".to_string(),
+    value:     "abc123".to_string(),
+    domain:    ".example.com".to_string(),
+    path:      "/".to_string(),
+    expires:   -1.0,   // session cookie
+    http_only: true,
+    secure:    true,
+    same_site: "Lax".to_string(),
+}];
+page.inject_cookies(&cookies).await?;
 ```
 
-Serialize cookies with `serde_json` for persistent storage:
+Check whether a saved snapshot is still fresh before restoring:
 
 ```rust,no_run
-let json = serde_json::to_string(&cookies)?;
-tokio::fs::write("cookies.json", &json).await?;
-
-// Later...
-let cookies: Vec<stygian_browser::Cookie> =
-    serde_json::from_str(&tokio::fs::read_to_string("cookies.json").await?)?;
-page.restore_cookies(&cookies).await?;
+let mut snapshot = SessionSnapshot::load_from_file("session.json")?;
+snapshot.ttl_secs = Some(3600);   // 1-hour TTL
+if snapshot.is_expired() {
+    // re-authenticate
+} else {
+    restore_session(&page, &snapshot).await?;
+}
 ```
 
 ---

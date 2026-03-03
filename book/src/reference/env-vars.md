@@ -11,14 +11,18 @@ variables. No recompilation required.
 |---|---|---|
 | `STYGIAN_CHROME_PATH` | auto-detect | Absolute path to Chrome or Chromium binary |
 | `STYGIAN_HEADLESS` | `true` | `false` for headed mode (displays browser window) |
+| `STYGIAN_HEADLESS_MODE` | `new` | `new` (`--headless=new`) or `legacy` (classic `--headless`; Chromium < 112 only) |
 | `STYGIAN_STEALTH_LEVEL` | `advanced` | `none`, `basic`, or `advanced` |
 | `STYGIAN_POOL_MIN` | `2` | Minimum warm browser instances |
 | `STYGIAN_POOL_MAX` | `10` | Maximum concurrent browser instances |
-| `STYGIAN_POOL_ACQUIRE_TIMEOUT_SECS` | `30` | Seconds to wait for a pool slot before error |
+| `STYGIAN_POOL_IDLE_SECS` | `300` | Idle timeout before a browser is evicted |
+| `STYGIAN_POOL_ACQUIRE_SECS` | `5` | Seconds to wait for a pool slot before error |
+| `STYGIAN_LAUNCH_TIMEOUT_SECS` | `10` | Browser launch timeout |
+| `STYGIAN_CDP_TIMEOUT_SECS` | `30` | Per-operation CDP command timeout |
 | `STYGIAN_CDP_FIX_MODE` | `addBinding` | `addBinding`, `isolatedworld`, or `enabledisable` |
 | `STYGIAN_PROXY` | — | Proxy URL (`http://`, `https://`, or `socks5://`) |
-| `STYGIAN_WINDOW_WIDTH` | `1920` | Browser viewport width in pixels |
-| `STYGIAN_WINDOW_HEIGHT` | `1080` | Browser viewport height in pixels |
+| `STYGIAN_PROXY_BYPASS` | — | Comma-separated proxy bypass list (e.g. `<local>,localhost`) |
+| `STYGIAN_DISABLE_SANDBOX` | auto-detect | `true` inside containers, `false` on bare metal |
 
 ### Chrome binary auto-detection order
 

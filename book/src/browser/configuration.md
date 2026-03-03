@@ -8,7 +8,7 @@ programmatically or overridden at runtime via environment variables — no recom
 ## Builder pattern
 
 ```rust,no_run
-use stygian_browser::{BrowserConfig, StealthLevel};
+use stygian_browser::{BrowserConfig, HeadlessMode, StealthLevel};
 use stygian_browser::config::PoolConfig;
 use stygian_browser::webrtc::{WebRtcConfig, WebRtcPolicy};
 use std::time::Duration;
@@ -16,8 +16,10 @@ use std::time::Duration;
 let config = BrowserConfig::builder()
     // ── Browser ──────────────────────────────────────────────────────────
     .headless(true)
+    .headless_mode(HeadlessMode::New)      // default; --headless=new shares headed rendering
     .window_size(1920, 1080)
     // .chrome_path("/usr/bin/google-chrome".into())   // auto-detect if omitted
+    // .user_data_dir("/tmp/my-profile")   // omit for auto unique temp dir per instance
 
     // ── Stealth ───────────────────────────────────────────────────────────
     .stealth_level(StealthLevel::Advanced)
@@ -48,12 +50,13 @@ let config = BrowserConfig::builder()
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `headless` | `bool` | `true` | Run without visible window |
-| `window_size` | `(u32, u32)` | `(1920, 1080)` | Browser viewport dimensions |
+| `headless_mode` | `HeadlessMode` | `New` | `New` = `--headless=new` (same renderer as headed Chrome); `Legacy` = classic `--headless` (Chromium < 112 only) |
+| `window_size` | `Option<(u32, u32)>` | `(1920, 1080)` | Browser viewport dimensions |
 | `chrome_path` | `Option<PathBuf>` | auto-detect | Path to Chrome/Chromium binary |
 | `stealth_level` | `StealthLevel` | `Advanced` | Anti-detection level |
 | `proxy` | `Option<String>` | `None` | Proxy URL (`http://`, `https://`, `socks5://`) |
-| `user_data_dir` | `Option<PathBuf>` | fresh profile | Chrome user data directory |
-| `extra_args` | `Vec<String>` | `[]` | Additional Chrome command-line flags |
+| `user_data_dir` | `Option<PathBuf>` | auto-generated | Per-instance temp dir (`$TMPDIR/stygian-<id>`); set explicitly to share a persistent profile. Auto-generation prevents `SingletonLock` races between concurrent pools. |
+| `args` | `Vec<String>` | `[]` | Additional Chrome command-line flags |
 
 ### Pool settings (`PoolConfig`)
 
@@ -89,24 +92,18 @@ All config values can be overridden without touching source code:
 |---|---|---|
 | `STYGIAN_CHROME_PATH` | auto-detect | Path to Chrome/Chromium binary |
 | `STYGIAN_HEADLESS` | `true` | Set `false` for headed mode |
+| `STYGIAN_HEADLESS_MODE` | `new` | `new` (`--headless=new`) or `legacy` (classic `--headless`) |
 | `STYGIAN_STEALTH_LEVEL` | `advanced` | `none`, `basic`, `advanced` |
 | `STYGIAN_POOL_MIN` | `2` | Minimum warm browsers |
 | `STYGIAN_POOL_MAX` | `10` | Maximum concurrent browsers |
-| `STYGIAN_POOL_ACQUIRE_TIMEOUT_SECS` | `30` | Seconds to wait for a pool slot |
+| `STYGIAN_POOL_IDLE_SECS` | `300` | Idle timeout before browser eviction |
+| `STYGIAN_POOL_ACQUIRE_SECS` | `5` | Seconds to wait for a pool slot |
+| `STYGIAN_LAUNCH_TIMEOUT_SECS` | `10` | Browser launch timeout |
+| `STYGIAN_CDP_TIMEOUT_SECS` | `30` | Per-operation CDP timeout |
 | `STYGIAN_CDP_FIX_MODE` | `addBinding` | `addBinding`, `isolatedworld`, `enabledisable` |
 | `STYGIAN_PROXY` | — | Proxy URL |
-
----
-
-## Loading config from environment
-
-```rust,no_run
-use stygian_browser::BrowserConfig;
-
-// All fields read from environment; builder values serve as defaults
-let config = BrowserConfig::from_env()?;
-let pool   = BrowserPool::new(config).await?;
-```
+| `STYGIAN_PROXY_BYPASS` | — | Comma-separated proxy bypass list (e.g. `<local>,localhost`) |
+| `STYGIAN_DISABLE_SANDBOX` | auto-detect | `true` inside containers, `false` on bare metal |
 
 ---
 
@@ -142,5 +139,31 @@ let config = BrowserConfig::builder()
     .stealth_level(StealthLevel::Advanced)
     .proxy("socks5://user:pass@proxy.example.com:1080".to_string())
     .webrtc(WebRtcConfig { policy: WebRtcPolicy::BlockAll, ..Default::default() })
+    .build();
+```
+
+### Anti-detection for JS-heavy sites (X/Twitter, LinkedIn)
+
+`StealthLevel::Advanced` combined with `HeadlessMode::New` is the most evasion-resistant
+configuration. `HeadlessMode::New` is the **default** since v0.1.11 — existing code
+elevates automatically.
+
+```rust,no_run
+use stygian_browser::{BrowserConfig, HeadlessMode, StealthLevel};
+use stygian_browser::webrtc::{WebRtcConfig, WebRtcPolicy};
+
+let config = BrowserConfig::builder()
+    .headless(true)
+    .headless_mode(HeadlessMode::New)   // default; shared rendering pipeline with headed Chrome
+    .stealth_level(StealthLevel::Advanced)
+    .webrtc(WebRtcConfig { policy: WebRtcPolicy::BlockAll, ..Default::default() })
+    .build();
+```
+
+For Chromium < 112 (rare), fall back to the legacy mode:
+
+```rust,no_run
+let config = BrowserConfig::builder()
+    .headless_mode(HeadlessMode::Legacy)
     .build();
 ```

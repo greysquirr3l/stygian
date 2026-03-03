@@ -13,13 +13,14 @@ of stealth features for bypassing modern bot-detection systems.
 |---|---|
 | **Browser pooling** | Warm pool with configurable min/max, LRU eviction, backpressure |
 | **Anti-detection** | `navigator` spoofing, canvas noise, WebGL randomisation, UA patching |
+| **Headless mode** | `HeadlessMode::New` default (`--headless=new`) — shares Chrome's headed rendering pipeline, harder to fingerprint-detect |
 | **Human behaviour** | Bézier-curve mouse paths, realistic keystroke timing, typo simulation |
 | **CDP leak protection** | Hides `Runtime.enable` artifacts that expose automation |
 | **WebRTC control** | Block, proxy-route, or allow — prevents IP leaks |
 | **Fingerprint generation** | Statistically-weighted device profiles (Windows, Mac, Linux, mobile) |
 | **Stealth levels** | `None` / `Basic` / `Advanced` — tune evasion vs. performance |
 | **Resource filtering** | Block images, fonts, media per-tab to speed up text scraping |
-| **Cookie persistence** | Save and restore cookie jars across sessions |
+| **Cookie persistence** | Save/restore full session state (cookies + localStorage); `inject_cookies()` for seeding individual tokens |
 
 ---
 

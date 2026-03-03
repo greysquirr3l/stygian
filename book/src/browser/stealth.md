@@ -25,6 +25,38 @@ class of bot-detection signal.
 
 ---
 
+## Headless mode
+
+The classic `--headless` flag (`HeadlessMode::Legacy`) is a well-known detection signal:
+sites like X/Twitter and LinkedIn inspect the Chrome renderer version string and reject
+old-headless sessions before any session state is even checked.
+
+Since v0.1.11, `stygian-browser` defaults to `--headless=new` (`HeadlessMode::New`),
+which shares the **same rendering pipeline as headed Chrome** and is significantly
+harder to fingerprint-detect.
+
+```rust,no_run
+use stygian_browser::{BrowserConfig, HeadlessMode};
+
+// Default since v0.1.11 — no change needed for existing code
+let config = BrowserConfig::builder()
+    .headless_mode(HeadlessMode::New)
+    .build();
+
+// Legacy mode: only needed for Chromium < 112
+let config = BrowserConfig::builder()
+    .headless_mode(HeadlessMode::Legacy)
+    .build();
+```
+
+Or via env var (no recompilation):
+
+```sh
+STYGIAN_HEADLESS_MODE=legacy cargo run   # opt back to old behaviour
+```
+
+---
+
 ## `navigator` spoofing
 
 Executed on every new document context before any page script runs.
