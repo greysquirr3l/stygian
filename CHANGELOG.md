@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-03-02
+
+### Fixed
+
+- `stygian-browser`: `set_resource_filter` previously called `Fetch.enable` but never subscribed to `Fetch.requestPaused` events, causing Chrome to intercept and hang every network request indefinitely — navigation always timed out when a resource filter was active. A background task now processes each paused event: blocked resource types receive `Fetch.failRequest(BlockedByClient)`, all others receive `Fetch.continueRequest` (closes [#9](https://github.com/greysquirr3l/stygian/issues/9))
+- `stygian-browser`: Chrome launch arguments including `--disable-blink-features=AutomationControlled` were being passed with a double-dash prefix (`----arg`) because chromiumoxide's `ArgsBuilder` prepends `--` to every key and stygian was also including the `--` in the string. The arg builder in `browser.rs` now strips the `--` prefix before handing each argument to chromiumoxide, so the stealth flag reaches Chrome correctly (closes [#10](https://github.com/greysquirr3l/stygian/issues/10))
+
 ## [0.1.8] - 2026-03-02
 
 ### Changed
@@ -163,7 +170,8 @@ Both crates are functional and well-tested, but APIs may evolve based on communi
 
 ---
 
-[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.1.9...HEAD
+[0.1.9]: https://github.com/greysquirr3l/stygian/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/greysquirr3l/stygian/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/greysquirr3l/stygian/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/greysquirr3l/stygian/compare/v0.1.5...v0.1.6

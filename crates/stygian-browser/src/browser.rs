@@ -98,7 +98,10 @@ impl BrowserInstance {
         }
 
         for arg in &args {
-            builder = builder.arg(arg.as_str());
+            // chromiumoxide's ArgsBuilder prepends "--" when formatting args, so
+            // we strip any existing "--" prefix first to avoid "----arg" in Chrome.
+            let stripped = arg.strip_prefix("--").unwrap_or(arg.as_str());
+            builder = builder.arg(stripped);
         }
 
         if let Some((w, h)) = config.window_size {

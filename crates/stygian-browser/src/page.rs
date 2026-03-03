@@ -190,6 +190,9 @@ pub struct PageHandle {
     /// HTTP status code of the most recent main-frame navigation, or `0` if not
     /// yet captured.  Written atomically by the listener spawned in `navigate()`.
     last_status_code: Arc<AtomicU16>,
+    /// Background task processing `Fetch.requestPaused` events. Aborted and
+    /// replaced each time `set_resource_filter` is called.
+    resource_filter_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl PageHandle {
@@ -199,6 +202,7 @@ impl PageHandle {
             page,
             cdp_timeout,
             last_status_code: Arc::new(AtomicU16::new(0)),
+            resource_filter_task: None,
         }
     }
 
@@ -430,19 +434,30 @@ impl PageHandle {
 
     /// Set a resource filter to block specific network request types.
     ///
-    /// **Note:** Requires Network.enable; called automatically.
+    /// Enables `Fetch` interception and spawns a background task that continues
+    /// allowed requests and fails blocked ones with `BlockedByClient`. Any
+    /// previously set filter task is cancelled first.
     ///
     /// # Errors
     ///
     /// Returns a [`BrowserError::CdpError`] if the CDP call fails.
     pub async fn set_resource_filter(&mut self, filter: ResourceFilter) -> Result<()> {
-        use chromiumoxide::cdp::browser_protocol::fetch::{EnableParams, RequestPattern};
+        use chromiumoxide::cdp::browser_protocol::fetch::{
+            ContinueRequestParams, EnableParams, EventRequestPaused, FailRequestParams,
+            RequestPattern,
+        };
+        use chromiumoxide::cdp::browser_protocol::network::ErrorReason;
+        use futures::StreamExt as _;
 
         if filter.is_empty() {
             return Ok(());
         }
 
-        // Both builders are infallible — they return the struct directly (not Result)
+        // Cancel any previously running filter task.
+        if let Some(task) = self.resource_filter_task.take() {
+            task.abort();
+        }
+
         let pattern = RequestPattern::builder().url_pattern("*").build();
         let params = EnableParams::builder()
             .patterns(vec![pattern])
@@ -460,7 +475,33 @@ impl PageHandle {
                 message: e.to_string(),
             })?;
 
+        // Subscribe to requestPaused events and dispatch each one so navigation
+        // is never blocked. Without this handler Chrome holds every intercepted
+        // request indefinitely and the page hangs.
+        let mut events = self
+            .page
+            .event_listener::<EventRequestPaused>()
+            .await
+            .map_err(|e| BrowserError::CdpError {
+                operation: "Fetch.requestPaused subscribe".to_string(),
+                message: e.to_string(),
+            })?;
+
+        let page = self.page.clone();
         debug!("Resource filter active: {:?}", filter);
+        let task = tokio::spawn(async move {
+            while let Some(event) = events.next().await {
+                let request_id = event.request_id.clone();
+                if filter.should_block(event.resource_type.as_ref()) {
+                    let params = FailRequestParams::new(request_id, ErrorReason::BlockedByClient);
+                    let _ = page.execute(params).await;
+                } else {
+                    let _ = page.execute(ContinueRequestParams::new(request_id)).await;
+                }
+            }
+        });
+
+        self.resource_filter_task = Some(task);
         Ok(())
     }
 
