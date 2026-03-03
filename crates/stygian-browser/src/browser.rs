@@ -84,9 +84,14 @@ impl BrowserInstance {
 
         let mut builder = chromiumoxide::BrowserConfig::builder();
 
-        // chromiumoxide defaults to headless; call with_head() only for headed mode
+        // Set headless / headed mode on the chromiumoxide builder.
+        // - headed: with_head()
+        // - headless new (default): new_headless_mode() → --headless=new
+        // - headless legacy: default (chromiumoxide defaults to old --headless)
         if !config.headless {
             builder = builder.with_head();
+        } else if config.headless_mode == crate::config::HeadlessMode::New {
+            builder = builder.new_headless_mode();
         }
 
         if let Some(path) = &config.chrome_path {

@@ -20,6 +20,55 @@ use crate::cdp_protection::CdpFixMode;
 #[cfg(feature = "stealth")]
 use crate::webrtc::WebRtcConfig;
 
+// ─── HeadlessMode ───────────────────────────────────────────────────────────────
+
+/// Controls which headless mode Chrome is launched in.
+///
+/// The *new* headless mode (`--headless=new`, available since Chromium 112)
+/// shares the same rendering pipeline as a headed Chrome window and is
+/// significantly harder to fingerprint-detect. It is the default.
+///
+/// Fall back to [`Legacy`][HeadlessMode::Legacy] only when targeting very old
+/// Chromium builds that do not support `--headless=new`.
+///
+/// Env: `STYGIAN_HEADLESS_MODE` (`new`/`legacy`, default: `new`)
+///
+/// # Example
+///
+/// ```
+/// use stygian_browser::BrowserConfig;
+/// use stygian_browser::config::HeadlessMode;
+/// let cfg = BrowserConfig::builder()
+///     .headless(true)
+///     .headless_mode(HeadlessMode::New)
+///     .build();
+/// assert_eq!(cfg.headless_mode, HeadlessMode::New);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum HeadlessMode {
+    /// `--headless=new` — shares Chrome's headed rendering pipeline.
+    /// Default. Requires Chromium 112+.
+    #[default]
+    New,
+    /// Classic `--headless` flag. Use only for Chromium < 112.
+    Legacy,
+}
+
+impl HeadlessMode {
+    /// Read from `STYGIAN_HEADLESS_MODE` env var (`new`/`legacy`).
+    pub fn from_env() -> Self {
+        match std::env::var("STYGIAN_HEADLESS_MODE")
+            .unwrap_or_default()
+            .to_lowercase()
+            .as_str()
+        {
+            "legacy" => Self::Legacy,
+            _ => Self::New,
+        }
+    }
+}
+
 // ─── StealthLevel ─────────────────────────────────────────────────────────────
 
 /// Anti-detection intensity level.
@@ -150,6 +199,13 @@ pub struct BrowserConfig {
     /// Persistent user profile directory. `None` = temporary profile.
     pub user_data_dir: Option<PathBuf>,
 
+    /// Which headless mode to use when `headless` is `true`.
+    ///
+    /// Defaults to [`HeadlessMode::New`] (`--headless=new`).
+    ///
+    /// Env: `STYGIAN_HEADLESS_MODE` (`new`/`legacy`)
+    pub headless_mode: HeadlessMode,
+
     /// Browser window size in pixels (width, height).
     pub window_size: Option<(u32, u32)>,
 
@@ -222,6 +278,7 @@ impl Default for BrowserConfig {
             args: vec![],
             headless: env_bool("STYGIAN_HEADLESS", true),
             user_data_dir: None,
+            headless_mode: HeadlessMode::from_env(),
             window_size: Some((1920, 1080)),
             devtools: false,
             proxy: std::env::var("STYGIAN_PROXY").ok(),
@@ -449,6 +506,27 @@ impl BrowserConfigBuilder {
     #[must_use]
     pub const fn headless(mut self, headless: bool) -> Self {
         self.config.headless = headless;
+        self
+    }
+
+    /// Choose between `--headless=new` (default) and the legacy `--headless` flag.
+    ///
+    /// Only relevant when [`headless`][Self::headless] is `true`. Has no effect
+    /// in headed mode.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_browser::BrowserConfig;
+    /// use stygian_browser::config::HeadlessMode;
+    /// let cfg = BrowserConfig::builder()
+    ///     .headless_mode(HeadlessMode::Legacy)
+    ///     .build();
+    /// assert_eq!(cfg.headless_mode, HeadlessMode::Legacy);
+    /// ```
+    #[must_use]
+    pub const fn headless_mode(mut self, mode: HeadlessMode) -> Self {
+        self.config.headless_mode = mode;
         self
     }
 

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-03-02
+
+### Added
+
+- `stygian-browser`: `HeadlessMode` enum with `New` (default, `--headless=new`) and `Legacy` (old `--headless`) variants — exposes Chrome's new headless rendering pipeline which shares the same code path as headed Chrome and is significantly harder to fingerprint-detect; fixes bot detection on sites like X/Twitter that reject the old headless mode before any session state is checked (closes [#13](https://github.com/greysquirr3l/stygian/issues/13))
+- `stygian-browser`: `BrowserConfig::headless_mode` field and `BrowserConfigBuilder::headless_mode(HeadlessMode)` setter — opt back to `HeadlessMode::Legacy` if targeting Chromium < 112; configurable via `STYGIAN_HEADLESS_MODE` env var (`new`/`legacy`)
+
 ## [0.1.10] - 2026-03-03
 
 ### Added

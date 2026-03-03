@@ -107,7 +107,7 @@ pub mod recorder;
 
 // Re-exports for convenience
 pub use browser::BrowserInstance;
-pub use config::BrowserConfig;
+pub use config::{BrowserConfig, HeadlessMode};
 pub use error::{BrowserError, Result};
 pub use page::{PageHandle, ResourceFilter, WaitUntil};
 pub use pool::{BrowserHandle, BrowserPool, PoolStats};
