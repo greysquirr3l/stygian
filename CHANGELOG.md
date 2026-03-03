@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-03-03
+
+### Added
+
+- `stygian-browser`: `PageHandle::inject_cookies()` — seed session cookies on a page without a full `SessionSnapshot` round-trip and without a direct `chromiumoxide` dependency in calling code (closes [#11](https://github.com/greysquirr3l/stygian/issues/11))
+- `stygian-browser`: `BrowserConfig::builder().user_data_dir(path)` builder method — set a custom Chrome profile directory; when omitted each browser instance now auto-generates a unique temporary directory (`$TMPDIR/stygian-<id>`) so concurrent pools no longer race on `SingletonLock` (closes [#12](https://github.com/greysquirr3l/stygian/issues/12))
+
 ## [0.1.9] - 2026-03-02
 
 ### Fixed

@@ -685,6 +685,84 @@ impl PageHandle {
         .map(|r| r.cookies.clone())
     }
 
+    /// Inject cookies into the current page.
+    ///
+    /// Seeds session tokens or other state without needing a full
+    /// [`SessionSnapshot`][crate::session::SessionSnapshot] and without
+    /// requiring a direct `chromiumoxide` dependency in calling code.
+    ///
+    /// Individual cookie failures are logged as warnings and do not abort the
+    /// remaining cookies.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::Timeout`] if a single `Network.setCookie` CDP
+    /// call exceeds `cdp_timeout`.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_browser::{BrowserPool, BrowserConfig};
+    /// use stygian_browser::session::SessionCookie;
+    /// use std::time::Duration;
+    ///
+    /// # async fn run() -> stygian_browser::error::Result<()> {
+    /// let pool = BrowserPool::new(BrowserConfig::default()).await?;
+    /// let handle = pool.acquire().await?;
+    /// let page = handle.browser().expect("valid browser").new_page().await?;
+    /// let cookies = vec![SessionCookie {
+    ///     name: "session".to_string(),
+    ///     value: "abc123".to_string(),
+    ///     domain: ".example.com".to_string(),
+    ///     path: "/".to_string(),
+    ///     expires: -1.0,
+    ///     http_only: true,
+    ///     secure: true,
+    ///     same_site: "Lax".to_string(),
+    /// }];
+    /// page.inject_cookies(&cookies).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn inject_cookies(&self, cookies: &[crate::session::SessionCookie]) -> Result<()> {
+        use chromiumoxide::cdp::browser_protocol::network::SetCookieParams;
+
+        for cookie in cookies {
+            let params = match SetCookieParams::builder()
+                .name(cookie.name.clone())
+                .value(cookie.value.clone())
+                .domain(cookie.domain.clone())
+                .path(cookie.path.clone())
+                .http_only(cookie.http_only)
+                .secure(cookie.secure)
+                .build()
+            {
+                Ok(p) => p,
+                Err(e) => {
+                    warn!(cookie = %cookie.name, error = %e, "Failed to build cookie params");
+                    continue;
+                }
+            };
+
+            match timeout(self.cdp_timeout, self.page.execute(params)).await {
+                Err(_) => {
+                    warn!(
+                        cookie = %cookie.name,
+                        timeout_ms = self.cdp_timeout.as_millis(),
+                        "Timed out injecting cookie"
+                    );
+                }
+                Ok(Err(e)) => {
+                    warn!(cookie = %cookie.name, error = %e, "Failed to inject cookie");
+                }
+                Ok(Ok(_)) => {}
+            }
+        }
+
+        debug!(count = cookies.len(), "Cookies injected");
+        Ok(())
+    }
+
     /// Capture a screenshot of the current page as PNG bytes.
     ///
     /// The screenshot is full-page by default (viewport clipped to the rendered

@@ -93,9 +93,13 @@ impl BrowserInstance {
             builder = builder.chrome_executable(path);
         }
 
-        if let Some(dir) = &config.user_data_dir {
-            builder = builder.user_data_dir(dir);
-        }
+        // Use the caller-supplied profile dir, or generate a unique temp dir
+        // per instance so concurrent pools never race on SingletonLock.
+        let data_dir = config
+            .user_data_dir
+            .clone()
+            .unwrap_or_else(|| std::env::temp_dir().join(format!("stygian-{id}")));
+        builder = builder.user_data_dir(&data_dir);
 
         for arg in &args {
             // chromiumoxide's ArgsBuilder prepends "--" when formatting args, so

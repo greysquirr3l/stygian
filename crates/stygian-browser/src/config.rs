@@ -424,6 +424,27 @@ impl BrowserConfigBuilder {
         self
     }
 
+    /// Set a custom user profile directory.
+    ///
+    /// When not set, each browser instance automatically uses a unique
+    /// temporary directory derived from its instance ID, preventing
+    /// `SingletonLock` races between concurrent pools or instances.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_browser::BrowserConfig;
+    /// let cfg = BrowserConfig::builder()
+    ///     .user_data_dir("/tmp/my-profile")
+    ///     .build();
+    /// assert!(cfg.user_data_dir.is_some());
+    /// ```
+    #[must_use]
+    pub fn user_data_dir(mut self, path: impl Into<std::path::PathBuf>) -> Self {
+        self.config.user_data_dir = Some(path.into());
+        self
+    }
+
     /// Set headless mode.
     #[must_use]
     pub const fn headless(mut self, headless: bool) -> Self {
