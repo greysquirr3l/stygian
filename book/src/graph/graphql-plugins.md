@@ -41,7 +41,7 @@ let plugin = GenericGraphQlPlugin::builder()
 | `.cost_throttle(CostThrottleConfig)` | no | Enable proactive point-budget throttling |
 | `.page_size(usize)` | no | Default page size for paginated queries (default `50`) |
 | `.description(impl Into<String>)` | no | Human-readable description |
-| `.build()` | — | Returns `Result<GenericGraphQlPlugin, String>` |
+| `.build()` | — | Returns `Result<GenericGraphQlPlugin, BuildError>` |
 
 ### Auth options
 
@@ -69,8 +69,10 @@ let plugin = GenericGraphQlPlugin::builder()
     .unwrap();
 ```
 
-Tokens starting with `${env:VAR_NAME}` are resolved at request time by the
-`EnvAuthPort` (or any custom `AuthPort` you wire in).
+Tokens containing `${env:VAR_NAME}` are expanded by the pipeline template processor
+(`expand_template`) or by `GraphQlService::apply_auth`, not by `EnvAuthPort` itself.
+`EnvAuthPort` reads the env var value directly — no template syntax is needed when
+using it as a runtime auth port.
 
 ---
 
@@ -80,27 +82,30 @@ For credentials that rotate, expire, or need a refresh flow, implement the
 `AuthPort` trait and inject it into `GraphQlService`.
 
 ```rust
-use stygian_graph::ports::auth::{AuthPort, TokenSet};
-use std::time::{Duration, SystemTime};
+use stygian_graph::ports::auth::{AuthPort, AuthError, TokenSet};
 
 pub struct MyOAuthPort { /* ... */ }
 
 impl AuthPort for MyOAuthPort {
-    async fn load_token(&self) -> Result<TokenSet, stygian_graph::StygianError> {
-        // read from your secret store / token cache
-        Ok(TokenSet {
-            token: fetch_stored_token().await?,
-            expires_at: Some(SystemTime::now() + Duration::from_secs(3600)),
-        })
+    async fn load_token(&self) -> Result<Option<TokenSet>, AuthError> {
+        // Return None if no cached token exists; Some(token) if you have one.
+        Ok(Some(TokenSet {
+            access_token:  fetch_stored_token().await?,
+            refresh_token: Some(fetch_stored_refresh_token().await?),
+            expires_at:    Some(std::time::SystemTime::now()
+                               + std::time::Duration::from_secs(3600)),
+            scopes:        vec!["read".to_string()],
+        }))
     }
 
-    async fn refresh_token(&self, _current: &TokenSet)
-        -> Result<TokenSet, stygian_graph::StygianError>
-    {
-        // call your OAuth2 refresh endpoint
+    async fn refresh_token(&self) -> Result<TokenSet, AuthError> {
+        // Exchange the refresh token for a new access token.
         Ok(TokenSet {
-            token: exchange_refresh_token().await?,
-            expires_at: Some(SystemTime::now() + Duration::from_secs(3600)),
+            access_token:  exchange_refresh_token().await?,
+            refresh_token: Some(fetch_new_refresh_token().await?),
+            expires_at:    Some(std::time::SystemTime::now()
+                               + std::time::Duration::from_secs(3600)),
+            scopes:        vec!["read".to_string()],
         })
     }
 }
@@ -110,10 +115,10 @@ impl AuthPort for MyOAuthPort {
 
 ```rust
 use std::sync::Arc;
-use stygian_graph::adapters::graphql::GraphQlService;
+use stygian_graph::adapters::graphql::{GraphQlConfig, GraphQlService};
 use stygian_graph::ports::auth::ErasedAuthPort;
 
-let service = GraphQlService::new(plugin_registry)
+let service = GraphQlService::new(GraphQlConfig::default(), None)
     .with_auth_port(Arc::new(MyOAuthPort { /* ... */ }) as Arc<dyn ErasedAuthPort>);
 ```
 
@@ -131,8 +136,9 @@ use stygian_graph::ports::auth::EnvAuthPort;
 let auth = EnvAuthPort::new("GITHUB_TOKEN");
 ```
 
-If `GITHUB_TOKEN` is not set at construction time an error is returned during the
-first `load_token` call.
+If `GITHUB_TOKEN` is not set, `EnvAuthPort::load_token` returns `Ok(None)`. An error
+(`AuthError::TokenNotFound`) is only raised later when `resolve_token` is called and
+finds no token available.
 
 ---
 
@@ -147,19 +153,19 @@ Jobber, and others) can be configured for proactive point-budget management.
 use stygian_graph::ports::graphql_plugin::CostThrottleConfig;
 
 let config = CostThrottleConfig {
-    max_points:        1_000,    // bucket capacity
-    restore_rate:      50.0,     // points restored per second
-    min_available:     100,      // don't send if fewer points remain
-    max_delay_ms:      5_000,    // wait at most 5 s before giving up
+    max_points:      10_000.0,  // bucket capacity
+    restore_per_sec: 500.0,     // points restored per second
+    min_available:   50.0,      // don't send if fewer points remain
+    max_delay_ms:    30_000,    // wait at most 30 s before giving up
 };
 ```
 
 | Field | Default | Description |
 |---|---|---|
-| `max_points` | `1000` | Total bucket capacity |
-| `restore_rate` | `50.0` | Points/second restored |
-| `min_available` | `100` | Points threshold below which we pre-sleep |
-| `max_delay_ms` | `5000` | Hard ceiling on proactive sleep duration |
+| `max_points` | `10_000.0` | Total bucket capacity |
+| `restore_per_sec` | `500.0` | Points/second restored |
+| `min_available` | `50.0` | Points threshold below which we pre-sleep |
+| `max_delay_ms` | `30_000` | Hard ceiling on proactive sleep duration (ms) |
 
 Attach config to a plugin via `.cost_throttle(config)` on the builder, or override
 `GraphQlTargetPlugin::cost_throttle_config()` on a custom plugin implementation.

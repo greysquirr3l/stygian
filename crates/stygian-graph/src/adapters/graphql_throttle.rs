@@ -131,6 +131,12 @@ impl PluginBudget {
             config,
         }
     }
+
+    /// Return the `CostThrottleConfig` this budget was initialised from.
+    #[must_use]
+    pub fn config(&self) -> &CostThrottleConfig {
+        &self.config
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

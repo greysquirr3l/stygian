@@ -17,7 +17,7 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use tokio::sync::RwLock;
 
-use crate::adapters::graphql_throttle::{PluginBudget, pre_flight_delay, update_budget};
+use crate::adapters::graphql_throttle::{PluginBudget, pre_flight_delay, reactive_backoff_ms, update_budget};
 use crate::application::graphql_plugin_registry::GraphQlPluginRegistry;
 use crate::application::pipeline_parser::expand_template;
 use crate::domain::error::{Result, ServiceError, StygianError};
@@ -329,10 +329,16 @@ impl GraphQlService {
     }
 
     /// Validate a parsed GraphQL body (errors array, missing `data` key, throttle).
+    ///
+    /// When a `budget` is supplied, uses `reactive_backoff_ms` (exponential,
+    /// config-aware) instead of the fixed-clamp fallback for throttle back-off.
     #[allow(clippy::indexing_slicing)]
-    fn validate_body(body: &Value) -> Result<()> {
+    fn validate_body(body: &Value, budget: Option<&PluginBudget>) -> Result<()> {
         // Throttle check takes priority so callers can retry with backoff.
-        if let Some(retry_after_ms) = Self::detect_throttle(body) {
+        if Self::detect_throttle(body).is_some() {
+            let retry_after_ms = budget
+                .map(|b| reactive_backoff_ms(b.config(), body, 0))
+                .unwrap_or_else(|| Self::throttle_backoff(body));
             return Err(StygianError::Service(ServiceError::RateLimited {
                 retry_after_ms,
             }));
@@ -423,46 +429,57 @@ impl ScrapingService for GraphQlService {
         // ── 4. Resolve auth ───────────────────────────────────────────────
         let auth: Option<GraphQlAuth> = if !params["auth"].is_null() && params["auth"].is_object() {
             Self::parse_auth(&params["auth"])
-        } else if let Some(ref p) = plugin {
-            p.default_auth()
-        } else if let Some(ref port) = self.auth_port {
-            // Fall back to the runtime auth port if no static auth is present
-            match port.erased_resolve_token().await {
-                Ok(token) => Some(GraphQlAuth {
-                    kind: GraphQlAuthKind::Bearer,
-                    token,
-                    header_name: None,
-                }),
-                Err(e) => {
-                    tracing::warn!("auth port failed: {e}; proceeding without auth");
-                    None
-                }
-            }
         } else {
-            None
+            // Prefer plugin-provided default auth when present; only fall back to
+            // the runtime auth port when the plugin returns None (or no plugin).
+            let plugin_auth = plugin.as_ref().and_then(|p| p.default_auth());
+            if plugin_auth.is_some() {
+                plugin_auth
+            } else if let Some(ref port) = self.auth_port {
+                match port.erased_resolve_token().await {
+                    Ok(token) => Some(GraphQlAuth {
+                        kind: GraphQlAuthKind::Bearer,
+                        token,
+                        header_name: None,
+                    }),
+                    Err(e) => {
+                        let msg = format!("auth port failed to resolve token: {e}");
+                        tracing::error!("{msg}");
+                        return Err(StygianError::Service(ServiceError::AuthenticationFailed(
+                            msg,
+                        )));
+                    }
+                }
+            } else {
+                None
+            }
         };
 
         // ── 4b. Lazy-init and acquire per-plugin budget ───────────────────
         let maybe_budget: Option<PluginBudget> = if let Some(ref p) = plugin {
             if let Some(throttle_cfg) = p.cost_throttle_config() {
                 let name = p.name().to_string();
-                // Fast path: budget already exists
-                {
+                let budget = {
                     let read = self.budgets.read().await;
                     if let Some(b) = read.get(&name) {
-                        let b_clone = b.clone();
-                        drop(read);
-                        pre_flight_delay(&b_clone).await;
-                        Some(b_clone)
+                        b.clone()
                     } else {
                         drop(read);
-                        // Slow path: initialise
-                        let new_budget = PluginBudget::new(throttle_cfg);
-                        self.budgets.write().await.insert(name, new_budget.clone());
-                        pre_flight_delay(&new_budget).await;
-                        Some(new_budget)
+                        // Slow path: initialise under write lock with double-check
+                        // to prevent two concurrent requests both inserting a fresh
+                        // budget and one overwriting any updates the other has applied.
+                        let mut write = self.budgets.write().await;
+                        if let Some(existing) = write.get(&name) {
+                            existing.clone()
+                        } else {
+                            let new_budget = PluginBudget::new(throttle_cfg);
+                            write.insert(name, new_budget.clone());
+                            new_budget
+                        }
                     }
-                }
+                };
+                pre_flight_delay(&budget).await;
+                Some(budget)
             } else {
                 None
             }
@@ -530,7 +547,7 @@ impl ScrapingService for GraphQlService {
                     )
                     .await?;
 
-                Self::validate_body(&body)?;
+                Self::validate_body(&body, maybe_budget.as_ref())?;
 
                 // Update proactive budget from response
                 if let Some(ref b) = maybe_budget {
@@ -575,7 +592,7 @@ impl ScrapingService for GraphQlService {
                 )
                 .await?;
 
-            Self::validate_body(&body)?;
+            Self::validate_body(&body, maybe_budget.as_ref())?;
 
             // Update proactive budget from response
             if let Some(ref b) = maybe_budget {
