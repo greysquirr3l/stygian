@@ -37,9 +37,9 @@ pub mod mock_ai;
 /// GraphQL API adapter — generic ScrapingService for any GraphQL endpoint
 pub mod graphql;
 
+pub mod graphql_rate_limit;
 /// Proactive cost-throttle management for GraphQL APIs
 pub mod graphql_throttle;
-pub mod graphql_rate_limit;
 
 /// Distributed work queue and executor adapters
 pub mod distributed;
