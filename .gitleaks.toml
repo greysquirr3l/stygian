@@ -1,0 +1,21 @@
+# .gitleaks.toml — gitleaks configuration for stygian
+# Docs: https://github.com/gitleaks/gitleaks#configuration
+
+title = "stygian gitleaks config"
+
+[extend]
+# Extend the default ruleset shipped with gitleaks
+useDefault = true
+
+[allowlist]
+description = "Global allowlist"
+paths = [
+  # Cargo lock / generated files — no secrets
+  "Cargo.lock",
+  # Changelogs may reference token-like version strings
+  "CHANGELOG.md",
+  # Test fixtures and example configs are not real credentials
+  '''examples/.*''',
+  '''tests/.*''',
+  '''target/.*''',
+]

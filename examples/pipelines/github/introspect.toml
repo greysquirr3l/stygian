@@ -1,0 +1,48 @@
+# Introspect the full GitHub GraphQL schema.
+#
+# The result is written to the output data stream and can be redirected to a
+# file for offline exploration:
+#
+#   stygian run examples/pipelines/github/introspect.toml > github_schema.json
+
+[[services]]
+name = "github"
+kind = "graphql"
+
+[[nodes]]
+name    = "introspect_schema"
+service = "github"
+url     = "https://api.github.com/graphql"
+
+[nodes.params]
+operation_name = "IntrospectSchema"
+query = """
+query IntrospectSchema {
+  __schema {
+    types {
+      kind
+      name
+      description
+      fields(includeDeprecated: false) {
+        name
+        description
+        type {
+          kind
+          name
+          ofType { kind name ofType { kind name } }
+        }
+      }
+      inputFields {
+        name
+        description
+        type { kind name ofType { kind name } }
+      }
+      enumValues(includeDeprecated: false) { name description }
+    }
+  }
+}
+"""
+
+[nodes.params.auth]
+kind  = "bearer"
+token = "${env:GITHUB_TOKEN}"

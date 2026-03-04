@@ -221,3 +221,42 @@ use std::time::Duration;
 
 let cache = DashMapCache::new(Duration::from_secs(300)); // 5-minute default TTL
 ```
+
+---
+
+## GraphQL adapter
+
+The `GraphQlService` adapter executes queries against any GraphQL endpoint using
+`GraphQlTargetPlugin` implementations registered in a `GraphQlPluginRegistry`.
+
+For most APIs, use `GenericGraphQlPlugin` via the fluent builder rather than writing
+a dedicated struct:
+
+```rust
+use stygian_graph::adapters::graphql_plugins::generic::GenericGraphQlPlugin;
+use stygian_graph::adapters::graphql_throttle::CostThrottleConfig;
+
+let plugin = GenericGraphQlPlugin::builder()
+    .name("github")
+    .endpoint("https://api.github.com/graphql")
+    .bearer_auth("${env:GITHUB_TOKEN}")
+    .header("X-Github-Next-Global-ID", "1")
+    .cost_throttle(CostThrottleConfig::default())
+    .page_size(30)
+    .build()
+    .expect("name and endpoint required");
+```
+
+For runtime-rotating credentials inject an `AuthPort`:
+
+```rust
+use std::sync::Arc;
+use stygian_graph::adapters::graphql::{GraphQlConfig, GraphQlService};
+use stygian_graph::ports::auth::{EnvAuthPort, ErasedAuthPort};
+
+let service = GraphQlService::new(GraphQlConfig::default(), Some(Arc::new(registry)))
+    .with_auth_port(Arc::new(EnvAuthPort::new("MY_API_TOKEN")) as Arc<dyn ErasedAuthPort>);
+```
+
+See the [GraphQL Plugins](./graphql-plugins.md) page for the full builder reference,
+`AuthPort` implementation guide, proactive cost throttling, and custom plugin examples.

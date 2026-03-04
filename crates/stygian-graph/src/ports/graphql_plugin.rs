@@ -10,6 +10,69 @@ use std::collections::HashMap;
 
 use crate::ports::GraphQlAuth;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CostThrottleConfig
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Static cost-throttle parameters for a GraphQL API target.
+///
+/// Set these to match the API documentation.  After the first successful
+/// response the [`LiveBudget`](crate::adapters::graphql_throttle::LiveBudget)
+/// will update itself from the `extensions.cost.throttleStatus` envelope.
+///
+/// # Example
+///
+/// ```rust
+/// use stygian_graph::ports::graphql_plugin::CostThrottleConfig;
+///
+/// let config = CostThrottleConfig {
+///     max_points: 10_000.0,
+///     restore_per_sec: 500.0,
+///     min_available: 50.0,
+///     max_delay_ms: 30_000,
+///     estimated_cost_per_request: 100.0,
+/// };
+/// ```
+#[derive(Debug, Clone)]
+pub struct CostThrottleConfig {
+    /// Maximum point budget (e.g. `10_000.0` for Jobber / Shopify).
+    pub max_points: f64,
+    /// Points restored per second (e.g. `500.0`).
+    pub restore_per_sec: f64,
+    /// Minimum available points before a pre-flight delay is applied
+    /// (default: `50.0`).
+    pub min_available: f64,
+    /// Upper bound on any computed pre-flight delay in milliseconds
+    /// (default: `30_000`).
+    pub max_delay_ms: u64,
+    /// Pessimistic per-request cost reserved before each request is sent.
+    ///
+    /// The actual cost is only known from the response's
+    /// `extensions.cost.requestedQueryCost`.  Reserving this estimate before
+    /// sending prevents concurrent tasks from all passing the pre-flight check
+    /// against the same stale balance.  Tune this to match your API's typical
+    /// query cost (default: `100.0`).
+    ///
+    // TODO(async-drop): When `AsyncDrop` is stabilised on the stable toolchain
+    // (tracked at <https://github.com/rust-lang/rust/issues/126482>), replace
+    // the explicit `release_reservation` call sites in `graphql.rs` with a
+    // `BudgetReservation` RAII guard, eliminating manual cleanup at every
+    // early-return path.
+    pub estimated_cost_per_request: f64,
+}
+
+impl Default for CostThrottleConfig {
+    fn default() -> Self {
+        Self {
+            max_points: 10_000.0,
+            restore_per_sec: 500.0,
+            min_available: 50.0,
+            max_delay_ms: 30_000,
+            estimated_cost_per_request: 100.0,
+        }
+    }
+}
+
 /// A named GraphQL target that supplies connection defaults for a specific API.
 ///
 /// Plugins are identified by their [`name`](Self::name) and loaded from the
@@ -110,6 +173,34 @@ pub trait GraphQlTargetPlugin: Send + Sync {
     #[allow(clippy::unnecessary_literal_bound)]
     fn description(&self) -> &str {
         ""
+    }
+
+    /// Optional cost-throttle configuration for proactive pre-flight delays.
+    ///
+    /// Return a populated [`CostThrottleConfig`] to enable the
+    /// [`PluginBudget`](crate::adapters::graphql_throttle::PluginBudget)
+    /// pre-flight delay mechanism in `GraphQlService`.
+    ///
+    /// The default implementation returns `None` (no proactive throttling).
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use std::collections::HashMap;
+    /// use stygian_graph::ports::graphql_plugin::{GraphQlTargetPlugin, CostThrottleConfig};
+    /// use stygian_graph::ports::GraphQlAuth;
+    ///
+    /// struct ThrottledPlugin;
+    /// impl GraphQlTargetPlugin for ThrottledPlugin {
+    ///     fn name(&self) -> &str { "throttled" }
+    ///     fn endpoint(&self) -> &str { "https://api.example.com/graphql" }
+    ///     fn cost_throttle_config(&self) -> Option<CostThrottleConfig> {
+    ///         Some(CostThrottleConfig::default())
+    ///     }
+    /// }
+    /// ```
+    fn cost_throttle_config(&self) -> Option<CostThrottleConfig> {
+        None
     }
 }
 

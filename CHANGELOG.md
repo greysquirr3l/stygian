@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-03-04
+
+### Added
+
+- `stygian-graph`: `AuthPort` trait for runtime credential management — load, expiry-check, and refresh tokens without pre-loading static credentials; includes `ErasedAuthPort` object-safe wrapper (`Arc<dyn ErasedAuthPort>`) with a blanket impl, `EnvAuthPort` convenience implementation (reads from an env var), and `resolve_token` helper
+- `stygian-graph`: `CostThrottleConfig` (port layer) + `LiveBudget` / `PluginBudget` proactive throttle system — tracks the rolling point budget from Shopify/Jobber-style `extensions.cost.throttleStatus` response envelopes; `pre_flight_delay` sleeps before each request if the projected budget is too low, eliminating wasted throttled requests; `reactive_backoff_ms` computes exponential back-off from a throttle response
+- `stygian-graph`: `GenericGraphQlPlugin` builder API — construct a fully configured `GraphQlTargetPlugin` without writing a dedicated struct; fluent builder with `.name()`, `.endpoint()`, `.bearer_auth()`, `.auth()`, `.header()`, `.headers()`, `.cost_throttle()`, `.page_size()`, `.description()`, `.build()`
+- `stygian-graph`: `GraphQlService::with_auth_port()` — attach a runtime `ErasedAuthPort` to the service; token is resolved lazily per-request and overridden by any static per-plugin auth
+- `stygian-graph`: `GraphQlTargetPlugin::cost_throttle_config()` default method — plugins opt in to proactive throttling by returning a `CostThrottleConfig`
+
+### Removed
+
+- `stygian-graph`: `JobberPlugin` and `jobber_integration` tests removed from the library — consumer-specific plugins belong in the consuming application; use `GenericGraphQlPlugin` or implement `GraphQlTargetPlugin` directly
+
 ## [0.1.11] - 2026-03-02
 
 ### Added

@@ -1,0 +1,54 @@
+[[services]]
+name = "github"
+kind = "graphql"
+
+[[nodes]]
+name    = "fetch_pull_requests"
+service = "github"
+url     = "https://api.github.com/graphql"
+
+[nodes.params]
+operation_name = "ListPullRequests"
+query = """
+query ListPullRequests($owner: String!, $name: String!, $first: Int, $after: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(
+      first: $first
+      after: $after
+      states: [OPEN]
+      orderBy: { field: UPDATED_AT, direction: DESC }
+    ) {
+      edges {
+        node {
+          id
+          number
+          title
+          url
+          state
+          author { login }
+          additions
+          deletions
+          changedFiles
+          labels(first: 10) { nodes { name color } }
+          createdAt
+          updatedAt
+        }
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}
+"""
+
+[nodes.params.auth]
+kind  = "bearer"
+token = "${env:GITHUB_TOKEN}"
+
+[nodes.params.variables]
+owner = "rust-lang"
+name  = "rust"
+
+[nodes.params.pagination]
+strategy       = "cursor"
+page_info_path = "data.repository.pullRequests.pageInfo"
+edges_path     = "data.repository.pullRequests.edges"

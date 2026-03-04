@@ -5,8 +5,11 @@
 //!
 //! # Available plugins
 //!
-//! | Module | Target | Env var |
+//! | Module | Target | Notes |
 //! |--------|--------|---------|
-//! | [`jobber`](graphql_plugins::jobber) | Jobber field-service management | `JOBBER_ACCESS_TOKEN` |
+//! | [`generic`](graphql_plugins::generic) | Any GraphQL API | Fully configurable via builder |
+//!
+//! Consumer-specific plugins (e.g. Jobber) live in the consuming application,
+//! not in this library.  Use [`generic::GenericGraphQlPlugin`](crate::adapters::graphql_plugins::generic::GenericGraphQlPlugin) to build them.
 
-pub mod jobber;
+pub mod generic;

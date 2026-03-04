@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stygian/schemas/github/profile_summary.schema.json",
+  "title": "ProfileSummary",
+  "description": "AI-generated summary of a GitHub developer profile",
+  "type": "object",
+  "required": ["login", "primary_languages", "interests", "active_projects"],
+  "properties": {
+    "login": { "type": "string" },
+    "primary_languages": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Programming languages ranked by usage across owned repositories"
+    },
+    "interests": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Inferred technical interests from starred repositories"
+    },
+    "active_projects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "url"],
+        "properties": {
+          "name": { "type": "string" },
+          "url": { "type": "string", "format": "uri" },
+          "description": { "type": ["string", "null"] }
+        }
+      },
+      "description": "Most recently updated owned repositories"
+    },
+    "contribution_focus": {
+      "type": "string",
+      "description": "One-paragraph characterisation of the developer's open-source focus"
+    },
+    "total_stars_received": { "type": "integer", "minimum": 0 },
+    "total_forks": { "type": "integer", "minimum": 0 }
+  },
+  "additionalProperties": false
+}

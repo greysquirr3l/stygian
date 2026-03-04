@@ -15,10 +15,15 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
+use tokio::sync::RwLock;
 
+use crate::adapters::graphql_throttle::{
+    PluginBudget, pre_flight_reserve, reactive_backoff_ms, release_reservation, update_budget,
+};
 use crate::application::graphql_plugin_registry::GraphQlPluginRegistry;
 use crate::application::pipeline_parser::expand_template;
 use crate::domain::error::{Result, ServiceError, StygianError};
+use crate::ports::auth::ErasedAuthPort;
 use crate::ports::{GraphQlAuth, GraphQlAuthKind, ScrapingService, ServiceInput, ServiceOutput};
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -95,6 +100,10 @@ pub struct GraphQlService {
     client: reqwest::Client,
     config: GraphQlConfig,
     plugins: Option<Arc<GraphQlPluginRegistry>>,
+    /// Optional runtime auth port — used when no static auth is configured.
+    auth_port: Option<Arc<dyn ErasedAuthPort>>,
+    /// Per-plugin proactive cost-throttle budgets, keyed by plugin name.
+    budgets: Arc<RwLock<HashMap<String, PluginBudget>>>,
 }
 
 impl GraphQlService {
@@ -121,7 +130,32 @@ impl GraphQlService {
             client,
             config,
             plugins,
+            auth_port: None,
+            budgets: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    /// Attach a runtime auth port.
+    ///
+    /// When set, the port's `erased_resolve_token()` will be called to obtain
+    /// a bearer token whenever `params.auth` is absent and the plugin supplies
+    /// no `default_auth`.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use std::sync::Arc;
+    /// use stygian_graph::adapters::graphql::{GraphQlService, GraphQlConfig};
+    /// use stygian_graph::ports::auth::{EnvAuthPort, ErasedAuthPort};
+    ///
+    /// let auth: Arc<dyn ErasedAuthPort> = Arc::new(EnvAuthPort::new("API_TOKEN"));
+    /// let service = GraphQlService::new(GraphQlConfig::default(), None)
+    ///     .with_auth_port(auth);
+    /// ```
+    #[must_use]
+    pub fn with_auth_port(mut self, port: Arc<dyn ErasedAuthPort>) -> Self {
+        self.auth_port = Some(port);
+        self
     }
 
     // ── Internal helpers ─────────────────────────────────────────────────────
@@ -297,10 +331,19 @@ impl GraphQlService {
     }
 
     /// Validate a parsed GraphQL body (errors array, missing `data` key, throttle).
+    ///
+    /// When a `budget` is supplied, uses `reactive_backoff_ms` (config-aware)
+    /// instead of the fixed-clamp fallback for throttle back-off.  `attempt`
+    /// is the 0-based retry count; callers that implement a retry loop should
+    /// increment it on each attempt to get exponential back-off.
     #[allow(clippy::indexing_slicing)]
-    fn validate_body(body: &Value) -> Result<()> {
+    fn validate_body(body: &Value, budget: Option<&PluginBudget>, attempt: u32) -> Result<()> {
         // Throttle check takes priority so callers can retry with backoff.
-        if let Some(retry_after_ms) = Self::detect_throttle(body) {
+        if Self::detect_throttle(body).is_some() {
+            let retry_after_ms = budget.map_or_else(
+                || Self::throttle_backoff(body),
+                |b| reactive_backoff_ms(b.config(), body, attempt),
+            );
             return Err(StygianError::Service(ServiceError::RateLimited {
                 retry_after_ms,
             }));
@@ -392,7 +435,57 @@ impl ScrapingService for GraphQlService {
         let auth: Option<GraphQlAuth> = if !params["auth"].is_null() && params["auth"].is_object() {
             Self::parse_auth(&params["auth"])
         } else {
-            plugin.as_ref().and_then(|p| p.default_auth())
+            // Prefer plugin-provided default auth when present; only fall back to
+            // the runtime auth port when the plugin returns None (or no plugin).
+            let plugin_auth = plugin.as_ref().and_then(|p| p.default_auth());
+            if plugin_auth.is_some() {
+                plugin_auth
+            } else if let Some(ref port) = self.auth_port {
+                match port.erased_resolve_token().await {
+                    Ok(token) => Some(GraphQlAuth {
+                        kind: GraphQlAuthKind::Bearer,
+                        token,
+                        header_name: None,
+                    }),
+                    Err(e) => {
+                        let msg = format!("auth port failed to resolve token: {e}");
+                        tracing::error!("{msg}");
+                        return Err(StygianError::Service(ServiceError::AuthenticationFailed(
+                            msg,
+                        )));
+                    }
+                }
+            } else {
+                None
+            }
+        };
+
+        // ── 4b. Lazy-init and acquire per-plugin budget ───────────────────
+        let maybe_budget: Option<PluginBudget> = if let Some(ref p) = plugin {
+            if let Some(throttle_cfg) = p.cost_throttle_config() {
+                let name = p.name().to_string();
+                let budget = {
+                    let read = self.budgets.read().await;
+                    if let Some(b) = read.get(&name) {
+                        b.clone()
+                    } else {
+                        drop(read);
+                        // Slow path: initialise under write lock with double-check
+                        // to prevent two concurrent requests both inserting a fresh
+                        // budget and one overwriting any updates the other has applied.
+                        let mut write = self.budgets.write().await;
+                        write
+                            .entry(name)
+                            .or_insert_with(|| PluginBudget::new(throttle_cfg))
+                            .clone()
+                    }
+                };
+                Some(budget)
+            } else {
+                None
+            }
+        } else {
+            None
         };
 
         // ── 5. Build headers (extra + plugin version headers) ─────────────
@@ -444,7 +537,17 @@ impl ScrapingService for GraphQlService {
                     )));
                 }
 
-                let body = self
+                // NOTE: explicit release_reservation at every exit path is required
+                // because Rust 1.93.1 does not have AsyncDrop.
+                // TODO(async-drop): replace with BudgetReservation RAII guard once
+                // AsyncDrop is stabilised on stable.
+                let reserved_cost = if let Some(ref b) = maybe_budget {
+                    pre_flight_reserve(b).await
+                } else {
+                    0.0
+                };
+
+                let body = match self
                     .post_query(
                         &url,
                         query,
@@ -453,9 +556,29 @@ impl ScrapingService for GraphQlService {
                         auth.as_ref(),
                         &extra_headers,
                     )
-                    .await?;
+                    .await
+                {
+                    Ok(b) => b,
+                    Err(e) => {
+                        if let Some(ref b) = maybe_budget {
+                            release_reservation(b, reserved_cost).await;
+                        }
+                        return Err(e);
+                    }
+                };
 
-                Self::validate_body(&body)?;
+                if let Err(e) = Self::validate_body(&body, maybe_budget.as_ref(), 0) {
+                    if let Some(ref b) = maybe_budget {
+                        release_reservation(b, reserved_cost).await;
+                    }
+                    return Err(e);
+                }
+
+                // Update proactive budget from response, then release reservation
+                if let Some(ref b) = maybe_budget {
+                    update_budget(b, &body).await;
+                    release_reservation(b, reserved_cost).await;
+                }
 
                 // Accumulate edges
                 let edges = Self::json_path(&body, &edges_path);
@@ -484,7 +607,17 @@ impl ScrapingService for GraphQlService {
             })
         } else {
             // Single-request mode
-            let body = self
+            // NOTE: explicit release_reservation at every exit path is required
+            // because Rust 1.93.1 does not have AsyncDrop.
+            // TODO(async-drop): replace with BudgetReservation RAII guard once
+            // AsyncDrop is stabilised on stable.
+            let reserved_cost = if let Some(ref b) = maybe_budget {
+                pre_flight_reserve(b).await
+            } else {
+                0.0
+            };
+
+            let body = match self
                 .post_query(
                     &url,
                     query,
@@ -493,9 +626,29 @@ impl ScrapingService for GraphQlService {
                     auth.as_ref(),
                     &extra_headers,
                 )
-                .await?;
+                .await
+            {
+                Ok(b) => b,
+                Err(e) => {
+                    if let Some(ref b) = maybe_budget {
+                        release_reservation(b, reserved_cost).await;
+                    }
+                    return Err(e);
+                }
+            };
 
-            Self::validate_body(&body)?;
+            if let Err(e) = Self::validate_body(&body, maybe_budget.as_ref(), 0) {
+                if let Some(ref b) = maybe_budget {
+                    release_reservation(b, reserved_cost).await;
+                }
+                return Err(e);
+            }
+
+            // Update proactive budget from response, then release reservation
+            if let Some(ref b) = maybe_budget {
+                update_budget(b, &body).await;
+                release_reservation(b, reserved_cost).await;
+            }
 
             let cost_meta = Self::extract_cost_metadata(&body).unwrap_or(json!(null));
             let metadata = json!({ "cost": cost_meta });
@@ -1000,6 +1153,40 @@ mod tests {
         assert!(
             matches!(err, StygianError::Service(ServiceError::InvalidResponse(ref msg)) if msg.contains("max_pages")),
             "expected pagination cap error, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn auth_port_fallback_used_when_no_params_or_plugin_auth() {
+        use crate::ports::auth::{AuthError, ErasedAuthPort};
+
+        struct StaticAuthPort(&'static str);
+
+        #[async_trait]
+        impl ErasedAuthPort for StaticAuthPort {
+            async fn erased_resolve_token(&self) -> std::result::Result<String, AuthError> {
+                Ok(self.0.to_string())
+            }
+        }
+
+        let body = simple_query_body(json!({}));
+        let request_bytes = MockGraphQlServer::run_capturing_request(body, |url| async move {
+            let svc = make_service(None).with_auth_port(
+                Arc::new(StaticAuthPort("port-token-xyz")) as Arc<dyn ErasedAuthPort>
+            );
+            let input = ServiceInput {
+                url,
+                // No `auth` field and no plugin — auth_port should supply the token
+                params: json!({ "query": "{ x }" }),
+            };
+            let _ = svc.execute(input).await;
+        })
+        .await;
+
+        let request_str = String::from_utf8_lossy(&request_bytes);
+        assert!(
+            request_str.contains("Bearer port-token-xyz"),
+            "auth_port bearer token not applied:\n{request_str}"
         );
     }
 }
