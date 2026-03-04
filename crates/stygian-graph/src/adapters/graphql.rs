@@ -332,15 +332,17 @@ impl GraphQlService {
 
     /// Validate a parsed GraphQL body (errors array, missing `data` key, throttle).
     ///
-    /// When a `budget` is supplied, uses `reactive_backoff_ms` (exponential,
-    /// config-aware) instead of the fixed-clamp fallback for throttle back-off.
+    /// When a `budget` is supplied, uses `reactive_backoff_ms` (config-aware)
+    /// instead of the fixed-clamp fallback for throttle back-off.  `attempt`
+    /// is the 0-based retry count; callers that implement a retry loop should
+    /// increment it on each attempt to get exponential back-off.
     #[allow(clippy::indexing_slicing)]
-    fn validate_body(body: &Value, budget: Option<&PluginBudget>) -> Result<()> {
+    fn validate_body(body: &Value, budget: Option<&PluginBudget>, attempt: u32) -> Result<()> {
         // Throttle check takes priority so callers can retry with backoff.
         if Self::detect_throttle(body).is_some() {
             let retry_after_ms = budget.map_or_else(
                 || Self::throttle_backoff(body),
-                |b| reactive_backoff_ms(b.config(), body, 0),
+                |b| reactive_backoff_ms(b.config(), body, attempt),
             );
             return Err(StygianError::Service(ServiceError::RateLimited {
                 retry_after_ms,
@@ -547,7 +549,7 @@ impl ScrapingService for GraphQlService {
                     )
                     .await?;
 
-                Self::validate_body(&body, maybe_budget.as_ref())?;
+                Self::validate_body(&body, maybe_budget.as_ref(), 0)?;
 
                 // Update proactive budget from response
                 if let Some(ref b) = maybe_budget {
@@ -592,7 +594,7 @@ impl ScrapingService for GraphQlService {
                 )
                 .await?;
 
-            Self::validate_body(&body, maybe_budget.as_ref())?;
+            Self::validate_body(&body, maybe_budget.as_ref(), 0)?;
 
             // Update proactive budget from response
             if let Some(ref b) = maybe_budget {
@@ -1102,6 +1104,40 @@ mod tests {
         assert!(
             matches!(err, StygianError::Service(ServiceError::InvalidResponse(ref msg)) if msg.contains("max_pages")),
             "expected pagination cap error, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn auth_port_fallback_used_when_no_params_or_plugin_auth() {
+        use crate::ports::auth::{AuthError, ErasedAuthPort};
+
+        struct StaticAuthPort(&'static str);
+
+        #[async_trait]
+        impl ErasedAuthPort for StaticAuthPort {
+            async fn erased_resolve_token(&self) -> std::result::Result<String, AuthError> {
+                Ok(self.0.to_string())
+            }
+        }
+
+        let body = simple_query_body(json!({}));
+        let request_bytes = MockGraphQlServer::run_capturing_request(body, |url| async move {
+            let svc = make_service(None).with_auth_port(
+                Arc::new(StaticAuthPort("port-token-xyz")) as Arc<dyn ErasedAuthPort>
+            );
+            let input = ServiceInput {
+                url,
+                // No `auth` field and no plugin — auth_port should supply the token
+                params: json!({ "query": "{ x }" }),
+            };
+            let _ = svc.execute(input).await;
+        })
+        .await;
+
+        let request_str = String::from_utf8_lossy(&request_bytes);
+        assert!(
+            request_str.contains("Bearer port-token-xyz"),
+            "auth_port bearer token not applied:\n{request_str}"
         );
     }
 }

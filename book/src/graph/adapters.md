@@ -251,10 +251,10 @@ For runtime-rotating credentials inject an `AuthPort`:
 
 ```rust
 use std::sync::Arc;
-use stygian_graph::adapters::graphql::GraphQlService;
+use stygian_graph::adapters::graphql::{GraphQlConfig, GraphQlService};
 use stygian_graph::ports::auth::{EnvAuthPort, ErasedAuthPort};
 
-let service = GraphQlService::new(registry)
+let service = GraphQlService::new(GraphQlConfig::default(), Some(Arc::new(registry)))
     .with_auth_port(Arc::new(EnvAuthPort::new("MY_API_TOKEN")) as Arc<dyn ErasedAuthPort>);
 ```
 

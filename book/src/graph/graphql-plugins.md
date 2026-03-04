@@ -233,7 +233,8 @@ impl GraphQlTargetPlugin for AcmeApi {
 Register it the same way as any built-in plugin:
 
 ```rust
-use stygian_graph::adapters::graphql::GraphQlPluginRegistry;
+use std::sync::Arc;
+use stygian_graph::application::graphql_plugin_registry::GraphQlPluginRegistry;
 
 let mut registry = GraphQlPluginRegistry::new();
 registry.register(Arc::new(AcmeApi { token: /* ... */ }));
