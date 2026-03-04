@@ -338,9 +338,10 @@ impl GraphQlService {
     fn validate_body(body: &Value, budget: Option<&PluginBudget>) -> Result<()> {
         // Throttle check takes priority so callers can retry with backoff.
         if Self::detect_throttle(body).is_some() {
-            let retry_after_ms = budget
-                .map(|b| reactive_backoff_ms(b.config(), body, 0))
-                .unwrap_or_else(|| Self::throttle_backoff(body));
+            let retry_after_ms = budget.map_or_else(
+                || Self::throttle_backoff(body),
+                |b| reactive_backoff_ms(b.config(), body, 0),
+            );
             return Err(StygianError::Service(ServiceError::RateLimited {
                 retry_after_ms,
             }));
@@ -471,13 +472,10 @@ impl ScrapingService for GraphQlService {
                         // to prevent two concurrent requests both inserting a fresh
                         // budget and one overwriting any updates the other has applied.
                         let mut write = self.budgets.write().await;
-                        if let Some(existing) = write.get(&name) {
-                            existing.clone()
-                        } else {
-                            let new_budget = PluginBudget::new(throttle_cfg);
-                            write.insert(name, new_budget.clone());
-                            new_budget
-                        }
+                        write
+                            .entry(name)
+                            .or_insert_with(|| PluginBudget::new(throttle_cfg))
+                            .clone()
                     }
                 };
                 pre_flight_delay(&budget).await;
