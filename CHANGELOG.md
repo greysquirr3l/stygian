@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.13] - 2026-03-04
+
+### Added
+
+- `stygian-graph`: `RateLimitConfig` (port layer) + `RequestRateLimit` / `RequestWindow` sliding-window request-count rate limiter — complements the existing leaky-bucket cost throttle; tracks up to `max_requests` in any rolling `window` duration using a `VecDeque<Instant>`; `rate_limit_acquire` sleeps until a slot is free before each request; `rate_limit_retry_after` imposes a hard block to honour server-returned `Retry-After` headers (a shorter value can never shorten an existing block); `parse_retry_after` parses integer seconds from a header string
+- `stygian-graph`: `GraphQlTargetPlugin::rate_limit_config()` default method — plugins opt in to per-plugin request-count limiting by returning a `RateLimitConfig`; operates in parallel with `cost_throttle_config()` and both can be active simultaneously
+
 ## [0.1.12] - 2026-03-04
 
 ### Added
