@@ -73,13 +73,13 @@ impl RequestWindow {
             self.timestamps.pop_front();
         }
 
-        if (self.timestamps.len() as u32) < self.config.max_requests {
+        if self.timestamps.len() < self.config.max_requests as usize {
             // Slot available — record and permit.
             self.timestamps.push_back(now);
             None
         } else {
             // Window is full; compute wait until the oldest entry rolls out.
-            let oldest = *self.timestamps.front().expect("len >= 1");
+            let &oldest = self.timestamps.front()?;
             let elapsed = now.duration_since(oldest);
             let wait = window.saturating_sub(elapsed);
             Some(wait.min(max_delay))
