@@ -153,7 +153,7 @@ impl PluginBudget {
 
     /// Return the `CostThrottleConfig` this budget was initialised from.
     #[must_use]
-    pub fn config(&self) -> &CostThrottleConfig {
+    pub const fn config(&self) -> &CostThrottleConfig {
         &self.config
     }
 }
@@ -455,7 +455,7 @@ mod tests {
             assert!((guard.pending - 400.0).abs() < f64::EPSILON);
             // projected = 1000 - 400 = 600 (approximately, ignoring sub-ms restore)
             let projected = guard.projected_available();
-            assert!(projected <= 601.0 && projected >= 599.0);
+            assert!((599.0..=601.0).contains(&projected));
         }
 
         release_reservation(&budget, r1).await;
