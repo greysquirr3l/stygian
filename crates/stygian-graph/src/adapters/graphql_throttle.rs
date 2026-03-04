@@ -16,8 +16,12 @@
 //! ```
 //!
 //! Before each request a *proactive* pre-flight delay is computed: if the
-//! projected available budget (accounting for elapsed restore time) will be
-//! too low, the caller sleeps until it recovers.  This eliminates wasted
+//! projected available budget (accounting for elapsed restore time and
+//! in-flight reservations) will be too low, the caller sleeps until it
+//! recovers.  After the delay, [`pre_flight_reserve`] atomically reserves an
+//! estimated cost against the budget so concurrent callers immediately see a
+//! reduced balance.  Call [`release_reservation`] on every exit path (success
+//! and error) to keep the pending balance accurate.  This eliminates wasted
 //! requests that would otherwise return `THROTTLED`.
 
 use std::sync::Arc;
@@ -43,6 +47,8 @@ pub struct LiveBudget {
     maximum_available: f64,
     restore_rate: f64, // points/second
     last_updated: Instant,
+    /// Points reserved for requests currently in-flight.
+    pending: f64,
 }
 
 impl LiveBudget {
@@ -54,6 +60,7 @@ impl LiveBudget {
             maximum_available: config.max_points,
             restore_rate: config.restore_per_sec,
             last_updated: Instant::now(),
+            pending: 0.0,
         }
     }
 
@@ -90,11 +97,23 @@ impl LiveBudget {
         self.last_updated = Instant::now();
     }
 
-    /// Compute the projected available budget accounting for elapsed restore time.
+    /// Compute the projected available budget accounting for elapsed restore
+    /// time and in-flight reservations.
     fn projected_available(&self) -> f64 {
         let elapsed = self.last_updated.elapsed().as_secs_f64();
         let restored = elapsed * self.restore_rate;
-        (self.currently_available + restored).min(self.maximum_available)
+        let gross = (self.currently_available + restored).min(self.maximum_available);
+        (gross - self.pending).max(0.0)
+    }
+
+    /// Reserve `cost` points for an in-flight request.
+    fn reserve(&mut self, cost: f64) {
+        self.pending += cost;
+    }
+
+    /// Release a previous [`reserve`] once the request has completed.
+    fn release(&mut self, cost: f64) {
+        self.pending = (self.pending - cost).max(0.0);
     }
 }
 
@@ -143,38 +162,49 @@ impl PluginBudget {
 // Public API
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Compute a pre-flight delay and sleep if the budget is projected to be too low.
+/// Sleep if the projected budget is too low, then atomically reserve an
+/// estimated cost for the upcoming request.
 ///
-/// Must be called **before** sending a request.  The `Mutex` guard is released
-/// before the `.await` to satisfy `Send` bounds.
+/// Returns the reserved point amount.  **Every** exit path after this call —
+/// both success and error — must call [`release_reservation`] with the returned
+/// value to prevent the pending balance growing indefinitely.
+///
+/// The `Mutex` guard is released before the `.await` to satisfy `Send` bounds.
 ///
 /// # Example
 ///
 /// ```rust
-/// use stygian_graph::adapters::graphql_throttle::{CostThrottleConfig, PluginBudget, pre_flight_delay};
+/// use stygian_graph::adapters::graphql_throttle::{
+///     CostThrottleConfig, PluginBudget, pre_flight_reserve, release_reservation,
+/// };
 ///
 /// # async fn example() {
 /// let budget = PluginBudget::new(CostThrottleConfig::default());
-/// pre_flight_delay(&budget).await;
-/// // safe to send the request now
+/// let reserved = pre_flight_reserve(&budget).await;
+/// // ... send the request ...
+/// release_reservation(&budget, reserved).await;
 /// # }
 /// ```
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-pub async fn pre_flight_delay(budget: &PluginBudget) {
+pub async fn pre_flight_reserve(budget: &PluginBudget) -> f64 {
+    let estimated_cost = budget.config.estimated_cost_per_request;
     let delay = {
-        let guard = budget.inner.lock().await;
+        let mut guard = budget.inner.lock().await;
         let projected = guard.projected_available();
         let rate = guard.restore_rate.max(1.0);
-        drop(guard);
         let min = budget.config.min_available;
-        if projected < min {
-            let deficit = min - projected;
+        let delay = if projected < min + estimated_cost {
+            let deficit = (min + estimated_cost) - projected;
             let secs = (deficit / rate) * 1.1;
             let ms = (secs * 1_000.0) as u64;
             Some(Duration::from_millis(ms.min(budget.config.max_delay_ms)))
         } else {
             None
-        }
+        };
+        // Reserve while the lock is held so concurrent callers immediately
+        // see the reduced projected balance.
+        guard.reserve(estimated_cost);
+        delay
     };
 
     if let Some(d) = delay {
@@ -184,6 +214,33 @@ pub async fn pre_flight_delay(budget: &PluginBudget) {
         );
         tokio::time::sleep(d).await;
     }
+
+    estimated_cost
+}
+
+/// Release a reservation made by [`pre_flight_reserve`].
+///
+/// Must be called on every exit path after [`pre_flight_reserve`] — both
+/// success and error — to keep the pending balance accurate.  On the success
+/// path, call [`update_budget`] first so the live balance is reconciled from
+/// the server-reported `currentlyAvailable` before the reservation is removed.
+///
+/// # Example
+///
+/// ```rust
+/// use stygian_graph::adapters::graphql_throttle::{
+///     CostThrottleConfig, PluginBudget, pre_flight_reserve, release_reservation,
+/// };
+///
+/// # async fn example() {
+/// let budget = PluginBudget::new(CostThrottleConfig::default());
+/// let reserved = pre_flight_reserve(&budget).await;
+/// release_reservation(&budget, reserved).await;
+/// # }
+/// ```
+pub async fn release_reservation(budget: &PluginBudget, cost: f64) {
+    let mut guard = budget.inner.lock().await;
+    guard.release(cost);
 }
 
 /// Update the `PluginBudget` from a completed response body.
@@ -299,6 +356,7 @@ mod tests {
             restore_per_sec: 250.0,
             min_available: 50.0,
             max_delay_ms: 10_000,
+            estimated_cost_per_request: 100.0,
         };
         let budget = LiveBudget::new(&config);
         assert_eq!(budget.currently_available, 5_000.0);
@@ -348,12 +406,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pre_flight_delay_does_not_sleep_when_budget_healthy() {
+    async fn pre_flight_reserve_does_not_sleep_when_budget_healthy() {
         let budget = PluginBudget::new(CostThrottleConfig::default());
         // Budget starts full — no delay expected.
         let before = Instant::now();
-        pre_flight_delay(&budget).await;
+        let reserved = pre_flight_reserve(&budget).await;
         assert!(before.elapsed().as_millis() < 100, "unexpected delay");
+        assert_eq!(
+            reserved,
+            CostThrottleConfig::default().estimated_cost_per_request
+        );
+        release_reservation(&budget, reserved).await;
     }
 
     #[tokio::test]
@@ -370,6 +433,36 @@ mod tests {
         update_budget(&budget, &response).await;
         let guard = budget.inner.lock().await;
         assert_eq!(guard.currently_available, 2_500.0);
+    }
+
+    #[tokio::test]
+    async fn concurrent_reservations_reduce_projected_available() {
+        let config = CostThrottleConfig {
+            max_points: 1_000.0,
+            estimated_cost_per_request: 200.0,
+            ..Default::default()
+        };
+        let budget = PluginBudget::new(config);
+
+        // Each pre_flight_reserve atomically deducts from pending, so the
+        // second caller sees a lower projected balance than the first.
+        let r1 = pre_flight_reserve(&budget).await;
+        let r2 = pre_flight_reserve(&budget).await;
+
+        {
+            let guard = budget.inner.lock().await;
+            // Two reservations of 200 → pending = 400
+            assert!((guard.pending - 400.0).abs() < f64::EPSILON);
+            // projected = 1000 - 400 = 600 (approximately, ignoring sub-ms restore)
+            let projected = guard.projected_available();
+            assert!(projected <= 601.0 && projected >= 599.0);
+        }
+
+        release_reservation(&budget, r1).await;
+        release_reservation(&budget, r2).await;
+
+        let guard = budget.inner.lock().await;
+        assert!(guard.pending < f64::EPSILON);
     }
 
     #[test]

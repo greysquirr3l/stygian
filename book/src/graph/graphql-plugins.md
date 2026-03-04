@@ -153,10 +153,11 @@ Jobber, and others) can be configured for proactive point-budget management.
 use stygian_graph::ports::graphql_plugin::CostThrottleConfig;
 
 let config = CostThrottleConfig {
-    max_points:      10_000.0,  // bucket capacity
-    restore_per_sec: 500.0,     // points restored per second
-    min_available:   50.0,      // don't send if fewer points remain
-    max_delay_ms:    30_000,    // wait at most 30 s before giving up
+    max_points:                  10_000.0,  // bucket capacity
+    restore_per_sec:             500.0,     // points restored per second
+    min_available:               50.0,      // don't send if fewer points remain
+    max_delay_ms:                30_000,    // wait at most 30 s before giving up
+    estimated_cost_per_request:  100.0,     // pessimistic per-request reservation
 };
 ```
 
@@ -166,17 +167,24 @@ let config = CostThrottleConfig {
 | `restore_per_sec` | `500.0` | Points/second restored |
 | `min_available` | `50.0` | Points threshold below which we pre-sleep |
 | `max_delay_ms` | `30_000` | Hard ceiling on proactive sleep duration (ms) |
+| `estimated_cost_per_request` | `100.0` | Pessimistic reservation per request to prevent concurrent tasks from all passing the pre-flight check simultaneously |
 
 Attach config to a plugin via `.cost_throttle(config)` on the builder, or override
 `GraphQlTargetPlugin::cost_throttle_config()` on a custom plugin implementation.
 
 ### How budget tracking works
 
-1. **Pre-flight**: `pre_flight_delay` inspects the current `LiveBudget` for the
-   plugin. If the projected available points fall below `min_available` it sleeps
-   for the exact duration needed to restore enough points, up to `max_delay_ms`.
-2. **Post-response**: `update_budget` parses `extensions.cost.throttleStatus` out
-   of the response JSON and updates the per-plugin `LiveBudget` accordingly.
+1. **Pre-flight reserve**: `pre_flight_reserve` inspects the current `LiveBudget`
+   for the plugin. If the projected available points (net of in-flight
+   reservations) fall below `min_available + estimated_cost_per_request`, it
+   sleeps for the exact duration needed to restore enough points, up to
+   `max_delay_ms`.  It then atomically reserves `estimated_cost_per_request`
+   points so concurrent tasks immediately see a reduced balance and cannot all
+   pass the pre-flight check simultaneously.
+2. **Post-response**: `update_budget` parses `extensions.cost.throttleStatus`
+   out of the response JSON and updates the per-plugin `LiveBudget` to the true
+   server-reported balance.  `release_reservation` is then called to remove the
+   in-flight reservation.
 3. **Reactive back-off**: If a request is throttled anyway (HTTP 429 or
    `extensions.cost` signals exhaustion), `reactive_backoff_ms` computes an
    exponential delay.

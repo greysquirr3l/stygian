@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 use tokio::sync::RwLock;
 
 use crate::adapters::graphql_throttle::{
-    PluginBudget, pre_flight_delay, reactive_backoff_ms, update_budget,
+    PluginBudget, pre_flight_reserve, reactive_backoff_ms, release_reservation, update_budget,
 };
 use crate::application::graphql_plugin_registry::GraphQlPluginRegistry;
 use crate::application::pipeline_parser::expand_template;
@@ -480,7 +480,6 @@ impl ScrapingService for GraphQlService {
                             .clone()
                     }
                 };
-                pre_flight_delay(&budget).await;
                 Some(budget)
             } else {
                 None
@@ -538,7 +537,17 @@ impl ScrapingService for GraphQlService {
                     )));
                 }
 
-                let body = self
+                // NOTE: explicit release_reservation at every exit path is required
+                // because Rust 1.93.1 does not have AsyncDrop.
+                // TODO(async-drop): replace with BudgetReservation RAII guard once
+                // AsyncDrop is stabilised on stable.
+                let reserved_cost = if let Some(ref b) = maybe_budget {
+                    pre_flight_reserve(b).await
+                } else {
+                    0.0
+                };
+
+                let body = match self
                     .post_query(
                         &url,
                         query,
@@ -547,13 +556,28 @@ impl ScrapingService for GraphQlService {
                         auth.as_ref(),
                         &extra_headers,
                     )
-                    .await?;
+                    .await
+                {
+                    Ok(b) => b,
+                    Err(e) => {
+                        if let Some(ref b) = maybe_budget {
+                            release_reservation(b, reserved_cost).await;
+                        }
+                        return Err(e);
+                    }
+                };
 
-                Self::validate_body(&body, maybe_budget.as_ref(), 0)?;
+                if let Err(e) = Self::validate_body(&body, maybe_budget.as_ref(), 0) {
+                    if let Some(ref b) = maybe_budget {
+                        release_reservation(b, reserved_cost).await;
+                    }
+                    return Err(e);
+                }
 
-                // Update proactive budget from response
+                // Update proactive budget from response, then release reservation
                 if let Some(ref b) = maybe_budget {
                     update_budget(b, &body).await;
+                    release_reservation(b, reserved_cost).await;
                 }
 
                 // Accumulate edges
@@ -583,7 +607,17 @@ impl ScrapingService for GraphQlService {
             })
         } else {
             // Single-request mode
-            let body = self
+            // NOTE: explicit release_reservation at every exit path is required
+            // because Rust 1.93.1 does not have AsyncDrop.
+            // TODO(async-drop): replace with BudgetReservation RAII guard once
+            // AsyncDrop is stabilised on stable.
+            let reserved_cost = if let Some(ref b) = maybe_budget {
+                pre_flight_reserve(b).await
+            } else {
+                0.0
+            };
+
+            let body = match self
                 .post_query(
                     &url,
                     query,
@@ -592,13 +626,28 @@ impl ScrapingService for GraphQlService {
                     auth.as_ref(),
                     &extra_headers,
                 )
-                .await?;
+                .await
+            {
+                Ok(b) => b,
+                Err(e) => {
+                    if let Some(ref b) = maybe_budget {
+                        release_reservation(b, reserved_cost).await;
+                    }
+                    return Err(e);
+                }
+            };
 
-            Self::validate_body(&body, maybe_budget.as_ref(), 0)?;
+            if let Err(e) = Self::validate_body(&body, maybe_budget.as_ref(), 0) {
+                if let Some(ref b) = maybe_budget {
+                    release_reservation(b, reserved_cost).await;
+                }
+                return Err(e);
+            }
 
-            // Update proactive budget from response
+            // Update proactive budget from response, then release reservation
             if let Some(ref b) = maybe_budget {
                 update_budget(b, &body).await;
+                release_reservation(b, reserved_cost).await;
             }
 
             let cost_meta = Self::extract_cost_metadata(&body).unwrap_or(json!(null));
