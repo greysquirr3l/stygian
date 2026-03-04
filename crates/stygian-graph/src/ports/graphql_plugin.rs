@@ -7,6 +7,7 @@
 //! itself.
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use crate::ports::GraphQlAuth;
 
@@ -69,6 +70,48 @@ impl Default for CostThrottleConfig {
             min_available: 50.0,
             max_delay_ms: 30_000,
             estimated_cost_per_request: 100.0,
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RateLimitConfig
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Sliding-window request-count rate-limit parameters for a GraphQL API target.
+///
+/// Enable by returning a populated [`RateLimitConfig`] from
+/// [`GraphQlTargetPlugin::rate_limit_config`].  This complements the leaky-bucket
+/// [`CostThrottleConfig`] and both can be active simultaneously.
+///
+/// # Example
+///
+/// ```rust
+/// use std::time::Duration;
+/// use stygian_graph::ports::graphql_plugin::RateLimitConfig;
+///
+/// let config = RateLimitConfig {
+///     max_requests: 100,
+///     window: Duration::from_secs(60),
+///     max_delay_ms: 30_000,
+/// };
+/// ```
+#[derive(Debug, Clone)]
+pub struct RateLimitConfig {
+    /// Maximum number of requests allowed in any rolling `window` (default: `100`).
+    pub max_requests: u32,
+    /// Rolling window duration (default: 60 seconds).
+    pub window: Duration,
+    /// Upper bound on any computed pre-flight delay in milliseconds (default: `30_000`).
+    pub max_delay_ms: u64,
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            max_requests: 100,
+            window: Duration::from_secs(60),
+            max_delay_ms: 30_000,
         }
     }
 }
@@ -200,6 +243,39 @@ pub trait GraphQlTargetPlugin: Send + Sync {
     /// }
     /// ```
     fn cost_throttle_config(&self) -> Option<CostThrottleConfig> {
+        None
+    }
+
+    /// Optional sliding-window request-count rate-limit configuration.
+    ///
+    /// Return a populated [`RateLimitConfig`] to enable the
+    /// [`RequestRateLimit`](crate::adapters::graphql_rate_limit::RequestRateLimit)
+    /// pre-flight delay mechanism in `GraphQlService`.
+    ///
+    /// The default implementation returns `None` (no request-count limiting).
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use std::collections::HashMap;
+    /// use std::time::Duration;
+    /// use stygian_graph::ports::graphql_plugin::{GraphQlTargetPlugin, RateLimitConfig};
+    /// use stygian_graph::ports::GraphQlAuth;
+    ///
+    /// struct QuotaPlugin;
+    /// impl GraphQlTargetPlugin for QuotaPlugin {
+    ///     fn name(&self) -> &str { "quota" }
+    ///     fn endpoint(&self) -> &str { "https://api.example.com/graphql" }
+    ///     fn rate_limit_config(&self) -> Option<RateLimitConfig> {
+    ///         Some(RateLimitConfig {
+    ///             max_requests: 200,
+    ///             window: Duration::from_secs(60),
+    ///             max_delay_ms: 30_000,
+    ///         })
+    ///     }
+    /// }
+    /// ```
+    fn rate_limit_config(&self) -> Option<RateLimitConfig> {
         None
     }
 }

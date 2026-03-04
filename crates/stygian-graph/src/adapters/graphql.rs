@@ -20,6 +20,7 @@ use tokio::sync::RwLock;
 use crate::adapters::graphql_throttle::{
     PluginBudget, pre_flight_reserve, reactive_backoff_ms, release_reservation, update_budget,
 };
+use crate::adapters::graphql_rate_limit::{RequestRateLimit, rate_limit_acquire};
 use crate::application::graphql_plugin_registry::GraphQlPluginRegistry;
 use crate::application::pipeline_parser::expand_template;
 use crate::domain::error::{Result, ServiceError, StygianError};
@@ -104,6 +105,8 @@ pub struct GraphQlService {
     auth_port: Option<Arc<dyn ErasedAuthPort>>,
     /// Per-plugin proactive cost-throttle budgets, keyed by plugin name.
     budgets: Arc<RwLock<HashMap<String, PluginBudget>>>,
+    /// Per-plugin sliding-window request-count rate limiters, keyed by plugin name.
+    rate_limits: Arc<RwLock<HashMap<String, RequestRateLimit>>>,
 }
 
 impl GraphQlService {
@@ -132,6 +135,7 @@ impl GraphQlService {
             plugins,
             auth_port: None,
             budgets: Arc::new(RwLock::new(HashMap::new())),
+            rate_limits: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -488,6 +492,33 @@ impl ScrapingService for GraphQlService {
             None
         };
 
+        // ── 4c. Lazy-init per-plugin request-rate limiter ─────────────────
+        let maybe_rl: Option<RequestRateLimit> = if let Some(ref p) = plugin {
+            if let Some(rl_cfg) = p.rate_limit_config() {
+                let name = p.name().to_string();
+                let rl = {
+                    let read = self.rate_limits.read().await;
+                    if let Some(r) = read.get(&name) {
+                        r.clone()
+                    } else {
+                        drop(read);
+                        // Slow path: initialise under write lock with double-check
+                        // to prevent concurrent requests from racing to insert.
+                        let mut write = self.rate_limits.write().await;
+                        write
+                            .entry(name)
+                            .or_insert_with(|| RequestRateLimit::new(rl_cfg))
+                            .clone()
+                    }
+                };
+                Some(rl)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         // ── 5. Build headers (extra + plugin version headers) ─────────────
         let mut extra_headers: HashMap<String, String> = params["headers"]
             .as_object()
@@ -541,6 +572,9 @@ impl ScrapingService for GraphQlService {
                 // because Rust 1.93.1 does not have AsyncDrop.
                 // TODO(async-drop): replace with BudgetReservation RAII guard once
                 // AsyncDrop is stabilised on stable.
+                if let Some(ref rl) = maybe_rl {
+                    rate_limit_acquire(rl).await;
+                }
                 let reserved_cost = if let Some(ref b) = maybe_budget {
                     pre_flight_reserve(b).await
                 } else {
@@ -611,6 +645,9 @@ impl ScrapingService for GraphQlService {
             // because Rust 1.93.1 does not have AsyncDrop.
             // TODO(async-drop): replace with BudgetReservation RAII guard once
             // AsyncDrop is stabilised on stable.
+            if let Some(ref rl) = maybe_rl {
+                rate_limit_acquire(rl).await;
+            }
             let reserved_cost = if let Some(ref b) = maybe_budget {
                 pre_flight_reserve(b).await
             } else {

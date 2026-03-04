@@ -39,6 +39,7 @@ pub mod graphql;
 
 /// Proactive cost-throttle management for GraphQL APIs
 pub mod graphql_throttle;
+pub mod graphql_rate_limit;
 
 /// Distributed work queue and executor adapters
 pub mod distributed;
