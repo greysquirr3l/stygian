@@ -17,7 +17,9 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use tokio::sync::RwLock;
 
-use crate::adapters::graphql_throttle::{PluginBudget, pre_flight_delay, reactive_backoff_ms, update_budget};
+use crate::adapters::graphql_throttle::{
+    PluginBudget, pre_flight_delay, reactive_backoff_ms, update_budget,
+};
 use crate::application::graphql_plugin_registry::GraphQlPluginRegistry;
 use crate::application::pipeline_parser::expand_template;
 use crate::domain::error::{Result, ServiceError, StygianError};
