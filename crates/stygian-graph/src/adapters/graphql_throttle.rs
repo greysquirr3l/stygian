@@ -18,9 +18,9 @@
 //! Before each request a *proactive* pre-flight delay is computed: if the
 //! projected available budget (accounting for elapsed restore time and
 //! in-flight reservations) will be too low, the caller sleeps until it
-//! recovers.  After the delay, [`pre_flight_reserve`] atomically reserves an
+//! recovers.  After the delay, `pre_flight_reserve` atomically reserves an
 //! estimated cost against the budget so concurrent callers immediately see a
-//! reduced balance.  Call [`release_reservation`] on every exit path (success
+//! reduced balance.  Call `release_reservation` on every exit path (success
 //! and error) to keep the pending balance accurate.  This eliminates wasted
 //! requests that would otherwise return `THROTTLED`.
 
@@ -123,7 +123,7 @@ impl LiveBudget {
 
 /// A shareable, cheaply-cloneable handle to a per-plugin `LiveBudget`.
 ///
-/// Create one per registered plugin and pass it to [`pre_flight_delay`] before
+/// Create one per registered plugin and pass it to [`pre_flight_reserve`] before
 /// each request.
 ///
 /// # Example

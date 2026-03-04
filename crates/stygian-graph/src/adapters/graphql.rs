@@ -17,10 +17,10 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use tokio::sync::RwLock;
 
+use crate::adapters::graphql_rate_limit::{RequestRateLimit, rate_limit_acquire};
 use crate::adapters::graphql_throttle::{
     PluginBudget, pre_flight_reserve, reactive_backoff_ms, release_reservation, update_budget,
 };
-use crate::adapters::graphql_rate_limit::{RequestRateLimit, rate_limit_acquire};
 use crate::application::graphql_plugin_registry::GraphQlPluginRegistry;
 use crate::application::pipeline_parser::expand_template;
 use crate::domain::error::{Result, ServiceError, StygianError};
