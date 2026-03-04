@@ -15,10 +15,13 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
+use tokio::sync::RwLock;
 
+use crate::adapters::graphql_throttle::{PluginBudget, pre_flight_delay, update_budget};
 use crate::application::graphql_plugin_registry::GraphQlPluginRegistry;
 use crate::application::pipeline_parser::expand_template;
 use crate::domain::error::{Result, ServiceError, StygianError};
+use crate::ports::auth::ErasedAuthPort;
 use crate::ports::{GraphQlAuth, GraphQlAuthKind, ScrapingService, ServiceInput, ServiceOutput};
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -95,6 +98,10 @@ pub struct GraphQlService {
     client: reqwest::Client,
     config: GraphQlConfig,
     plugins: Option<Arc<GraphQlPluginRegistry>>,
+    /// Optional runtime auth port — used when no static auth is configured.
+    auth_port: Option<Arc<dyn ErasedAuthPort>>,
+    /// Per-plugin proactive cost-throttle budgets, keyed by plugin name.
+    budgets: Arc<RwLock<HashMap<String, PluginBudget>>>,
 }
 
 impl GraphQlService {
@@ -121,7 +128,32 @@ impl GraphQlService {
             client,
             config,
             plugins,
+            auth_port: None,
+            budgets: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    /// Attach a runtime auth port.
+    ///
+    /// When set, the port's `erased_resolve_token()` will be called to obtain
+    /// a bearer token whenever `params.auth` is absent and the plugin supplies
+    /// no `default_auth`.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use std::sync::Arc;
+    /// use stygian_graph::adapters::graphql::{GraphQlService, GraphQlConfig};
+    /// use stygian_graph::ports::auth::{EnvAuthPort, ErasedAuthPort};
+    ///
+    /// let auth: Arc<dyn ErasedAuthPort> = Arc::new(EnvAuthPort::new("API_TOKEN"));
+    /// let service = GraphQlService::new(GraphQlConfig::default(), None)
+    ///     .with_auth_port(auth);
+    /// ```
+    #[must_use]
+    pub fn with_auth_port(mut self, port: Arc<dyn ErasedAuthPort>) -> Self {
+        self.auth_port = Some(port);
+        self
     }
 
     // ── Internal helpers ─────────────────────────────────────────────────────
@@ -391,8 +423,51 @@ impl ScrapingService for GraphQlService {
         // ── 4. Resolve auth ───────────────────────────────────────────────
         let auth: Option<GraphQlAuth> = if !params["auth"].is_null() && params["auth"].is_object() {
             Self::parse_auth(&params["auth"])
+        } else if let Some(ref p) = plugin {
+            p.default_auth()
+        } else if let Some(ref port) = self.auth_port {
+            // Fall back to the runtime auth port if no static auth is present
+            match port.erased_resolve_token().await {
+                Ok(token) => Some(GraphQlAuth {
+                    kind: GraphQlAuthKind::Bearer,
+                    token,
+                    header_name: None,
+                }),
+                Err(e) => {
+                    tracing::warn!("auth port failed: {e}; proceeding without auth");
+                    None
+                }
+            }
         } else {
-            plugin.as_ref().and_then(|p| p.default_auth())
+            None
+        };
+
+        // ── 4b. Lazy-init and acquire per-plugin budget ───────────────────
+        let maybe_budget: Option<PluginBudget> = if let Some(ref p) = plugin {
+            if let Some(throttle_cfg) = p.cost_throttle_config() {
+                let name = p.name().to_string();
+                // Fast path: budget already exists
+                {
+                    let read = self.budgets.read().await;
+                    if let Some(b) = read.get(&name) {
+                        let b_clone = b.clone();
+                        drop(read);
+                        pre_flight_delay(&b_clone).await;
+                        Some(b_clone)
+                    } else {
+                        drop(read);
+                        // Slow path: initialise
+                        let new_budget = PluginBudget::new(throttle_cfg);
+                        self.budgets.write().await.insert(name, new_budget.clone());
+                        pre_flight_delay(&new_budget).await;
+                        Some(new_budget)
+                    }
+                }
+            } else {
+                None
+            }
+        } else {
+            None
         };
 
         // ── 5. Build headers (extra + plugin version headers) ─────────────
@@ -457,6 +532,11 @@ impl ScrapingService for GraphQlService {
 
                 Self::validate_body(&body)?;
 
+                // Update proactive budget from response
+                if let Some(ref b) = maybe_budget {
+                    update_budget(b, &body).await;
+                }
+
                 // Accumulate edges
                 let edges = Self::json_path(&body, &edges_path);
                 if let Some(arr) = edges.as_array() {
@@ -496,6 +576,11 @@ impl ScrapingService for GraphQlService {
                 .await?;
 
             Self::validate_body(&body)?;
+
+            // Update proactive budget from response
+            if let Some(ref b) = maybe_budget {
+                update_budget(b, &body).await;
+            }
 
             let cost_meta = Self::extract_cost_metadata(&body).unwrap_or(json!(null));
             let metadata = json!({ "cost": cost_meta });

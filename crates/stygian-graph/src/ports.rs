@@ -757,3 +757,6 @@ pub mod wasm_plugin;
 
 /// Storage port — persist and retrieve pipeline results
 pub mod storage;
+
+/// Auth port — runtime token loading, expiry checking, and refresh.
+pub mod auth;

@@ -1,0 +1,158 @@
+# Full GitHub profile sync with AI analysis.
+#
+# Executes three data-fetch nodes in parallel (no interdependencies), then
+# feeds all results into a Claude analysis node that summarises developer
+# activity and open-source contributions.
+#
+# Required environment variables:
+#   GITHUB_TOKEN        — personal access token (read:user, public_repo)
+#   ANTHROPIC_API_KEY   — Claude API key (for the analyse_profile node)
+
+[[services]]
+name = "github"
+kind = "graphql"
+
+[[services]]
+name    = "claude"
+kind    = "claude"
+model   = "claude-sonnet-4-5"
+api_key = "${env:ANTHROPIC_API_KEY}"
+
+# ─── Parallel fetch layer (no depends_on — all run concurrently) ──────────────
+
+[[nodes]]
+name    = "fetch_viewer"
+service = "github"
+url     = "https://api.github.com/graphql"
+
+[nodes.params]
+operation_name = "ViewerProfile"
+query = """
+query ViewerProfile {
+  viewer {
+    id
+    login
+    name
+    email
+    bio
+    company
+    location
+    websiteUrl
+    createdAt
+    repositories { totalCount }
+    starredRepositories { totalCount }
+    followers { totalCount }
+    following { totalCount }
+  }
+}
+"""
+
+[nodes.params.auth]
+kind  = "bearer"
+token = "${env:GITHUB_TOKEN}"
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+[[nodes]]
+name    = "fetch_repositories"
+service = "github"
+url     = "https://api.github.com/graphql"
+
+[nodes.params]
+operation_name = "ListRepositories"
+query = """
+query ListRepositories($first: Int, $after: String) {
+  viewer {
+    repositories(
+      first: $first
+      after: $after
+      ownerAffiliations: [OWNER]
+      orderBy: { field: UPDATED_AT, direction: DESC }
+    ) {
+      edges {
+        node {
+          id
+          name
+          description
+          url
+          stargazerCount
+          forkCount
+          primaryLanguage { name }
+          isPrivate
+          updatedAt
+        }
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}
+"""
+
+[nodes.params.auth]
+kind  = "bearer"
+token = "${env:GITHUB_TOKEN}"
+
+[nodes.params.pagination]
+strategy       = "cursor"
+page_info_path = "data.viewer.repositories.pageInfo"
+edges_path     = "data.viewer.repositories.edges"
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+[[nodes]]
+name    = "fetch_starred"
+service = "github"
+url     = "https://api.github.com/graphql"
+
+[nodes.params]
+operation_name = "ListStarred"
+query = """
+query ListStarred($first: Int, $after: String) {
+  viewer {
+    starredRepositories(
+      first: $first
+      after: $after
+      orderBy: { field: STARRED_AT, direction: DESC }
+    ) {
+      edges {
+        node {
+          id
+          nameWithOwner
+          description
+          url
+          stargazerCount
+          primaryLanguage { name }
+        }
+        starredAt
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}
+"""
+
+[nodes.params.auth]
+kind  = "bearer"
+token = "${env:GITHUB_TOKEN}"
+
+[nodes.params.pagination]
+strategy       = "cursor"
+page_info_path = "data.viewer.starredRepositories.pageInfo"
+edges_path     = "data.viewer.starredRepositories.edges"
+
+# ─── AI analysis layer (depends on all three fetch nodes) ────────────────────
+
+[[nodes]]
+name       = "analyse_profile"
+service    = "claude"
+depends_on = ["fetch_viewer", "fetch_repositories", "fetch_starred"]
+
+[nodes.params]
+schema_file = "examples/pipelines/github/schemas/profile_summary.schema.json"
+prompt      = """
+You are a developer-profile analyst. Given the raw GitHub profile data, owned
+repositories, and starred repositories below, produce a concise structured
+summary of this developer's interests, primary languages, most active projects,
+and open-source contribution focus. Emit only valid JSON conforming to the
+profile_summary schema.
+"""

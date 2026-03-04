@@ -1,0 +1,48 @@
+[[services]]
+name = "github"
+kind = "graphql"
+
+[[nodes]]
+name    = "fetch_repositories"
+service = "github"
+url     = "https://api.github.com/graphql"
+
+[nodes.params]
+operation_name = "ListRepositories"
+query = """
+query ListRepositories($first: Int, $after: String) {
+  viewer {
+    repositories(
+      first: $first
+      after: $after
+      ownerAffiliations: [OWNER]
+      orderBy: { field: UPDATED_AT, direction: DESC }
+    ) {
+      edges {
+        node {
+          id
+          name
+          description
+          url
+          stargazerCount
+          forkCount
+          primaryLanguage { name }
+          isPrivate
+          createdAt
+          updatedAt
+        }
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}
+"""
+
+[nodes.params.auth]
+kind  = "bearer"
+token = "${env:GITHUB_TOKEN}"
+
+[nodes.params.pagination]
+strategy       = "cursor"
+page_info_path = "data.viewer.repositories.pageInfo"
+edges_path     = "data.viewer.repositories.edges"

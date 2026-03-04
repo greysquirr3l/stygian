@@ -1,0 +1,57 @@
+[[services]]
+name = "github"
+kind = "graphql"
+
+# Fetch open issues from a public repository.
+#
+# Change the variables below to target a different repository, or set
+# GITHUB_REPO_OWNER / GITHUB_REPO_NAME in your environment and edit the values
+# to reference them before running.
+
+[[nodes]]
+name    = "fetch_issues"
+service = "github"
+url     = "https://api.github.com/graphql"
+
+[nodes.params]
+operation_name = "ListIssues"
+query = """
+query ListIssues($owner: String!, $name: String!, $first: Int, $after: String) {
+  repository(owner: $owner, name: $name) {
+    issues(
+      first: $first
+      after: $after
+      states: [OPEN]
+      orderBy: { field: UPDATED_AT, direction: DESC }
+    ) {
+      edges {
+        node {
+          id
+          number
+          title
+          url
+          state
+          author { login }
+          labels(first: 10) { nodes { name color } }
+          createdAt
+          updatedAt
+        }
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}
+"""
+
+[nodes.params.auth]
+kind  = "bearer"
+token = "${env:GITHUB_TOKEN}"
+
+[nodes.params.variables]
+owner = "rust-lang"
+name  = "rust"
+
+[nodes.params.pagination]
+strategy       = "cursor"
+page_info_path = "data.repository.issues.pageInfo"
+edges_path     = "data.repository.issues.edges"

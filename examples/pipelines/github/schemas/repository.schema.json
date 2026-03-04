@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stygian/schemas/github/repository.schema.json",
+  "title": "Repository",
+  "description": "A GitHub repository record",
+  "type": "object",
+  "required": ["id", "name", "url"],
+  "properties": {
+    "id": { "type": "string", "description": "GitHub global node ID" },
+    "name": { "type": "string" },
+    "description": { "type": ["string", "null"] },
+    "url": { "type": "string", "format": "uri" },
+    "stargazerCount": { "type": "integer", "minimum": 0 },
+    "forkCount": { "type": "integer", "minimum": 0 },
+    "primaryLanguage": {
+      "type": ["object", "null"],
+      "properties": {
+        "name": { "type": "string" }
+      }
+    },
+    "isPrivate": { "type": "boolean" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

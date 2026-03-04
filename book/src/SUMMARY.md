@@ -9,6 +9,7 @@
 - [Architecture](./graph/architecture.md)
 - [Building Pipelines](./graph/pipelines.md)
 - [Built-in Adapters](./graph/adapters.md)
+- [GraphQL Plugins](./graph/graphql-plugins.md)
 - [Custom Adapters](./graph/custom-adapters.md)
 - [Distributed Execution](./graph/distributed.md)
 - [Observability](./graph/observability.md)

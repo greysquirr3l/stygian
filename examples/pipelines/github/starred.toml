@@ -1,0 +1,46 @@
+[[services]]
+name = "github"
+kind = "graphql"
+
+[[nodes]]
+name    = "fetch_starred"
+service = "github"
+url     = "https://api.github.com/graphql"
+
+[nodes.params]
+operation_name = "ListStarred"
+query = """
+query ListStarred($first: Int, $after: String) {
+  viewer {
+    starredRepositories(
+      first: $first
+      after: $after
+      orderBy: { field: STARRED_AT, direction: DESC }
+    ) {
+      edges {
+        node {
+          id
+          name
+          nameWithOwner
+          description
+          url
+          stargazerCount
+          primaryLanguage { name }
+          updatedAt
+        }
+        starredAt
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}
+"""
+
+[nodes.params.auth]
+kind  = "bearer"
+token = "${env:GITHUB_TOKEN}"
+
+[nodes.params.pagination]
+strategy       = "cursor"
+page_info_path = "data.viewer.starredRepositories.pageInfo"
+edges_path     = "data.viewer.starredRepositories.edges"
