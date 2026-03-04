@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.14] - 2026-03-04
+
+### Fixed
+
+- `stygian-graph`: corrected broken rustdoc intra-doc links in `graphql_throttle` module (`pre_flight_delay` → `pre_flight_reserve`, removed unresolvable link brackets from module-level prose)
+- `stygian-graph`: fixed `cargo fmt` import ordering in `graphql.rs` (`graphql_rate_limit` before `graphql_throttle`)
+
 ## [0.1.13] - 2026-03-04
 
 ### Added
