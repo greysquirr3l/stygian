@@ -1,6 +1,6 @@
 //! REST API scraping adapter with authentication and pagination support.
 //!
-//! Implements [`ScrapingService`] for structured REST JSON APIs. Supports:
+//! Implements [`crate::ports::ScrapingService`] for structured REST JSON APIs. Supports:
 //!
 //! - HTTP methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`
 //! - Authentication: Bearer token, HTTP Basic, API key (header or query param)
@@ -9,8 +9,8 @@
 //! - Custom request headers and query string parameters
 //! - Configurable retries with exponential backoff
 //!
-//! All per-request options live in [`ServiceInput::params`]; see the
-//! [`RestApiAdapter::execute`] docs for the full contract.
+//! All per-request options live in `ServiceInput::params`; see the
+//! `RestApiAdapter::execute` docs for the full contract.
 //!
 //! # Example
 //!
