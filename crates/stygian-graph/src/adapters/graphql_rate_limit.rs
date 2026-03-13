@@ -1,13 +1,20 @@
-//! Sliding-window request-count rate limiter for GraphQL API targets.
+//! Request-count rate limiter for GraphQL API targets with pluggable algorithms.
 //!
-//! Limits outgoing requests to `max_requests` in any rolling `window` duration.
-//! Before each request [`rate_limit_acquire`] is called; it records the current
-//! timestamp and sleeps until the oldest in-window request expires if the
-//! window is already full.
+//! Two strategies are supported via [`RateLimitStrategy`]:
+//!
+//! - **[`SlidingWindow`](RateLimitStrategy::SlidingWindow)** — limits outgoing requests to
+//!   `max_requests` in any rolling `window` duration.  Before each request
+//!   [`rate_limit_acquire`] is called; it records the current timestamp and sleeps
+//!   until the oldest in-window request expires if the window is already full.
+//!
+//! - **[`TokenBucket`](RateLimitStrategy::TokenBucket)** — refills tokens at a steady rate
+//!   (`max_requests / window`); short bursts are absorbed by the bucket capacity before
+//!   the rate is enforced.  Computes the exact wait time required to accumulate the next
+//!   token instead of sleeping speculatively.
 //!
 //! A server-returned `Retry-After` value can be applied via
 //! [`rate_limit_retry_after`], which imposes a hard block until the indicated
-//! instant irrespective of the sliding window state.
+//! instant irrespective of the active algorithm.
 //!
 //! Operates in parallel with [`graphql_throttle`](crate::adapters::graphql_throttle)
 //! (leaky-bucket cost throttle).  Both can be active simultaneously.
@@ -20,16 +27,30 @@ use tokio::sync::Mutex;
 
 /// Re-export — canonical definition lives in the ports layer.
 pub use crate::ports::graphql_plugin::RateLimitConfig;
+pub use crate::ports::graphql_plugin::RateLimitStrategy;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WindowState — per-strategy mutable inner state
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Per-strategy mutable state held inside [`RequestWindow`].
+#[derive(Debug)]
+enum WindowState {
+    /// A rolling `VecDeque` of request timestamps for the sliding-window algorithm.
+    Sliding { timestamps: VecDeque<Instant> },
+    /// Token count and last-refill timestamp for the token-bucket algorithm.
+    TokenBucket { tokens: f64, last_refill: Instant },
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RequestWindow
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Mutable inner state — a sliding window of request timestamps plus an
-/// optional hard block set by a server-returned `Retry-After` header.
+/// Mutable inner state — algorithm-specific window data plus an optional hard
+/// block set by a server-returned `Retry-After` header.
 #[derive(Debug)]
 struct RequestWindow {
-    timestamps: VecDeque<Instant>,
+    state: WindowState,
     config: RateLimitConfig,
     /// Hard block until this instant, set by [`record_retry_after`].
     blocked_until: Option<Instant>,
@@ -37,8 +58,17 @@ struct RequestWindow {
 
 impl RequestWindow {
     fn new(config: &RateLimitConfig) -> Self {
+        let state = match config.strategy {
+            RateLimitStrategy::SlidingWindow => WindowState::Sliding {
+                timestamps: VecDeque::with_capacity(config.max_requests as usize),
+            },
+            RateLimitStrategy::TokenBucket => WindowState::TokenBucket {
+                tokens: f64::from(config.max_requests),
+                last_refill: Instant::now(),
+            },
+        };
         Self {
-            timestamps: VecDeque::with_capacity(config.max_requests as usize),
+            state,
             config: config.clone(),
             blocked_until: None,
         }
@@ -46,13 +76,11 @@ impl RequestWindow {
 
     /// Try to acquire a request slot.
     ///
-    /// Prunes expired entries, then:
-    /// - Returns `None` if a slot is available (timestamp is recorded immediately).
+    /// - Returns `None` if a slot is available (the slot is claimed immediately).
     /// - Returns `Some(wait)` with the duration the caller must sleep before
     ///   retrying (capped at `config.max_delay_ms`).
     fn acquire(&mut self) -> Option<Duration> {
         let now = Instant::now();
-        let window = self.config.window;
         let max_delay = Duration::from_millis(self.config.max_delay_ms);
 
         // Check hard block imposed by a previous Retry-After response.
@@ -64,25 +92,51 @@ impl RequestWindow {
             self.blocked_until = None;
         }
 
-        // Drop timestamps that have rolled out of the window.
-        while self
-            .timestamps
-            .front()
-            .is_some_and(|t| now.duration_since(*t) >= window)
-        {
-            self.timestamps.pop_front();
-        }
+        match &mut self.state {
+            WindowState::Sliding { timestamps } => {
+                let window = self.config.window;
+                // Drop timestamps that have rolled out of the window.
+                while timestamps
+                    .front()
+                    .is_some_and(|t| now.duration_since(*t) >= window)
+                {
+                    timestamps.pop_front();
+                }
 
-        if self.timestamps.len() < self.config.max_requests as usize {
-            // Slot available — record and permit.
-            self.timestamps.push_back(now);
-            None
-        } else {
-            // Window is full; compute wait until the oldest entry rolls out.
-            let &oldest = self.timestamps.front()?;
-            let elapsed = now.duration_since(oldest);
-            let wait = window.saturating_sub(elapsed);
-            Some(wait.min(max_delay))
+                if timestamps.len() < self.config.max_requests as usize {
+                    // Slot available — record and permit.
+                    timestamps.push_back(now);
+                    None
+                } else {
+                    // Window is full; compute wait until the oldest entry rolls out.
+                    let &oldest = timestamps.front()?;
+                    let elapsed = now.duration_since(oldest);
+                    let wait = window.saturating_sub(elapsed);
+                    Some(wait.min(max_delay))
+                }
+            }
+
+            WindowState::TokenBucket {
+                tokens,
+                last_refill,
+            } => {
+                // Refill tokens proportional to elapsed time.
+                let elapsed = now.duration_since(*last_refill);
+                let rate = f64::from(self.config.max_requests) / self.config.window.as_secs_f64();
+                let refill = elapsed.as_secs_f64() * rate;
+                *tokens = (*tokens + refill).min(f64::from(self.config.max_requests));
+                *last_refill = now;
+
+                if *tokens >= 1.0 {
+                    *tokens -= 1.0;
+                    None
+                } else {
+                    // Compute exact wait until 1 token has accumulated.
+                    let wait_secs = (1.0 - *tokens) / rate;
+                    let wait = Duration::from_secs_f64(wait_secs);
+                    Some(wait.min(max_delay))
+                }
+            }
         }
     }
 
@@ -265,6 +319,16 @@ mod tests {
             max_requests,
             window: Duration::from_secs(window_secs),
             max_delay_ms: 60_000,
+            strategy: RateLimitStrategy::SlidingWindow,
+        }
+    }
+
+    fn cfg_bucket(max_requests: u32, window_secs: u64) -> RateLimitConfig {
+        RateLimitConfig {
+            max_requests,
+            window: Duration::from_secs(window_secs),
+            max_delay_ms: 60_000,
+            strategy: RateLimitStrategy::TokenBucket,
         }
     }
 
@@ -285,6 +349,7 @@ mod tests {
             max_requests: 1,
             window: Duration::from_millis(10),
             max_delay_ms: 60_000,
+            strategy: RateLimitStrategy::SlidingWindow,
         });
         assert!(w.acquire().is_none(), "first request");
         std::thread::sleep(Duration::from_millis(25));
@@ -297,9 +362,9 @@ mod tests {
     fn timestamps_recorded_immediately() {
         let mut w = RequestWindow::new(&cfg(2, 60));
         w.acquire();
-        assert_eq!(w.timestamps.len(), 1);
         w.acquire();
-        assert_eq!(w.timestamps.len(), 2);
+        // After two acquisitions the window is full.
+        assert!(w.acquire().is_some(), "third request must be blocked");
     }
 
     // 4. record_retry_after blocks subsequent acquire calls.
@@ -335,5 +400,71 @@ mod tests {
         assert_eq!(parse_retry_after("not-a-number"), None);
         assert_eq!(parse_retry_after(""), None);
         assert_eq!(parse_retry_after("  30  "), Some(30));
+    }
+
+    // ── Token-bucket strategy tests ──────────────────────────────────────────
+
+    // 7. Token bucket allows up to max_requests immediately (full bucket).
+    #[test]
+    fn token_bucket_allows_up_to_max() {
+        let mut w = RequestWindow::new(&cfg_bucket(3, 60));
+        assert!(w.acquire().is_none(), "token 1");
+        assert!(w.acquire().is_none(), "token 2");
+        assert!(w.acquire().is_none(), "token 3");
+        assert!(
+            w.acquire().is_some(),
+            "4th request must be blocked — bucket empty"
+        );
+    }
+
+    // 8. Token bucket refills over time.
+    #[test]
+    fn token_bucket_refills_after_delay() {
+        let mut w = RequestWindow::new(&RateLimitConfig {
+            // 1 token per 10 ms
+            max_requests: 1,
+            window: Duration::from_millis(10),
+            max_delay_ms: 60_000,
+            strategy: RateLimitStrategy::TokenBucket,
+        });
+        assert!(w.acquire().is_none(), "first request consumes the token");
+        assert!(w.acquire().is_some(), "bucket empty — must block");
+        std::thread::sleep(Duration::from_millis(20));
+        assert!(w.acquire().is_none(), "bucket should have refilled");
+    }
+
+    // 9. Token bucket also respects Retry-After hard blocks.
+    #[test]
+    fn token_bucket_respects_retry_after() {
+        let mut w = RequestWindow::new(&cfg_bucket(100, 60));
+        w.record_retry_after(30);
+        assert!(
+            w.acquire().is_some(),
+            "Retry-After must block even with tokens available"
+        );
+    }
+
+    // 10. Token bucket wait duration is proportional to the deficit.
+    #[test]
+    fn token_bucket_wait_is_proportional() {
+        // 60 requests / 60 s = 1 token/s.  After draining the bucket the wait
+        // for a single token should be ≈ 1 s.
+        let mut w = RequestWindow::new(&RateLimitConfig {
+            max_requests: 1,
+            window: Duration::from_secs(1),
+            max_delay_ms: 60_000,
+            strategy: RateLimitStrategy::TokenBucket,
+        });
+        w.acquire(); // consume the only token
+        let wait = w.acquire().unwrap();
+        // Wait should be close to 1 s; allow generous tolerance for slow CI.
+        assert!(
+            wait <= Duration::from_secs(1),
+            "wait {wait:?} should not exceed 1 s"
+        );
+        assert!(
+            wait >= Duration::from_millis(800),
+            "wait {wait:?} should be close to 1 s"
+        );
     }
 }

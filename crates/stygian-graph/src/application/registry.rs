@@ -405,8 +405,9 @@ mod tests {
 
     #[test]
     fn global_registry_singleton_is_same_ref() {
-        let a = global_registry() as *const ServiceRegistry;
-        let b = global_registry() as *const ServiceRegistry;
-        assert_eq!(a, b);
+        use std::ptr;
+        let a = global_registry();
+        let b = global_registry();
+        assert!(ptr::addr_eq(a, b));
     }
 }

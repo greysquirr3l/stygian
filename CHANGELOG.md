@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.15] - 2026-03-13
+
+### Added
+
+- `stygian-graph`: `RestApiAdapter` — flexible REST JSON API adapter with 5 auth schemes (Bearer, Basic, API key header/query, none), 4 pagination strategies (none, offset, cursor, RFC 8288 Link header), dot-path JSON response extraction, configurable retries with exponential backoff, and 24 unit tests; registered as `"rest-api"`
+- `stygian-graph`: `CloudflareCrawlAdapter` — delegates whole-site crawling to the Cloudflare Browser Rendering `/crawl` endpoint (open beta); polls until complete, aggregates page results, configurable poll interval and job timeout; gated behind `cloudflare-crawl` feature flag
+- `examples/rest-api-scrape.toml` — example pipeline demonstrating unauthenticated GET, Bearer-auth + Link-header pagination, and API-key + cursor pagination patterns
+
+### Fixed
+
+- `stygian-graph`: resolved all `clippy -D warnings` lint failures in `rest_api.rs` and `cloudflare_crawl.rs` — `indexing_slicing`, `map_unwrap_or`, `manual_map`, `if_not_else`, `option_if_let_else`, `unnecessary_map_or`, `cast_possible_truncation`, `ignore_without_reason`, `panic` in tests
+
 ## [0.1.14] - 2026-03-04
 
 ### Fixed

@@ -89,13 +89,15 @@ default = ["browser"]
 # Include browser automation support
 browser = ["dep:stygian-browser"]
 # Full feature set
-full = ["browser", "api", "wasm-plugins", "postgres"]
+full = ["browser", "api", "wasm-plugins", "postgres", "cloudflare-crawl"]
 # REST API server
 api = []
 # WASM plugin system (requires wasmtime — significant compile time)
 wasm-plugins = ["dep:wasmtime"]
 # PostgreSQL storage adapter
 postgres = ["dep:sqlx"]
+# Cloudflare Browser Rendering crawl adapter
+cloudflare-crawl = []
 
 [[bin]]
 name = "stygian"

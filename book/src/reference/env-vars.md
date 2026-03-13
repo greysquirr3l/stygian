@@ -11,7 +11,7 @@ variables. No recompilation required.
 |---|---|---|
 | `STYGIAN_CHROME_PATH` | auto-detect | Absolute path to Chrome or Chromium binary |
 | `STYGIAN_HEADLESS` | `true` | `false` for headed mode (displays browser window) |
-| `STYGIAN_HEADLESS_MODE` | `new` | `new` (`--headless=new`) or `legacy` (classic `--headless`; Chromium < 112 only) |
+| `STYGIAN_HEADLESS_MODE` | `new` | `new` (`--headless=new`) or `legacy` (`chrome-headless-shell`; old `--headless` removed in Chrome 132) |
 | `STYGIAN_STEALTH_LEVEL` | `advanced` | `none`, `basic`, or `advanced` |
 | `STYGIAN_POOL_MIN` | `2` | Minimum warm browser instances |
 | `STYGIAN_POOL_MAX` | `10` | Maximum concurrent browser instances |
