@@ -50,7 +50,7 @@ let config = BrowserConfig::builder()
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `headless` | `bool` | `true` | Run without visible window |
-| `headless_mode` | `HeadlessMode` | `New` | `New` = `--headless=new` (same renderer as headed Chrome); `Legacy` = classic `--headless` (Chromium < 112 only) |
+| `headless_mode` | `HeadlessMode` | `New` | `New` = `--headless=new` (full Chromium rendering, default since Chrome 112, **only mode since Chrome 132**); `Legacy` = `chrome-headless-shell` / pre-112 `--headless` |
 | `window_size` | `Option<(u32, u32)>` | `(1920, 1080)` | Browser viewport dimensions |
 | `chrome_path` | `Option<PathBuf>` | auto-detect | Path to Chrome/Chromium binary |
 | `stealth_level` | `StealthLevel` | `Advanced` | Anti-detection level |
@@ -92,7 +92,7 @@ All config values can be overridden without touching source code:
 |---|---|---|
 | `STYGIAN_CHROME_PATH` | auto-detect | Path to Chrome/Chromium binary |
 | `STYGIAN_HEADLESS` | `true` | Set `false` for headed mode |
-| `STYGIAN_HEADLESS_MODE` | `new` | `new` (`--headless=new`) or `legacy` (classic `--headless`) |
+| `STYGIAN_HEADLESS_MODE` | `new` | `new` (`--headless=new`) or `legacy` (`chrome-headless-shell`; old `--headless` removed in Chrome 132) |
 | `STYGIAN_STEALTH_LEVEL` | `advanced` | `none`, `basic`, `advanced` |
 | `STYGIAN_POOL_MIN` | `2` | Minimum warm browsers |
 | `STYGIAN_POOL_MAX` | `10` | Maximum concurrent browsers |
@@ -160,9 +160,17 @@ let config = BrowserConfig::builder()
     .build();
 ```
 
-For Chromium < 112 (rare), fall back to the legacy mode:
+For Chromium ≥ 112 (all modern Chrome / Chromium builds), `New` is the right
+choice. `Legacy` targets are rare: pre-112 Chromium or the separately distributed
+`chrome-headless-shell` binary for lightweight CI workloads where full rendering
+fidelity is not required.
+
+> **Note:** As of Chrome 132 the old `--headless` flag is removed entirely.
+> `HeadlessMode::Legacy` now maps to `chrome-headless-shell` semantics — avoid it
+> unless you are explicitly targeting that binary.
 
 ```rust,no_run
+// Only needed for Chromium < 112 or chrome-headless-shell
 let config = BrowserConfig::builder()
     .headless_mode(HeadlessMode::Legacy)
     .build();

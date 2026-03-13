@@ -195,6 +195,137 @@ same view of remaining points.
 
 ---
 
+## Request rate limiting
+
+While cost throttling manages *point budgets* returned by the server, request rate
+limiting operates entirely client-side: it counts (or tokens) before each request
+leaves the process. The two systems are complementary and can both be active at the
+same time.
+
+Enable rate limiting by returning a `RateLimitConfig` from
+`GraphQlTargetPlugin::rate_limit_config()`. The default implementation returns `None`
+(disabled).
+
+### RateLimitConfig
+
+```rust
+use std::time::Duration;
+use stygian_graph::ports::graphql_plugin::{RateLimitConfig, RateLimitStrategy};
+
+let config = RateLimitConfig {
+    max_requests: 100,                          // requests allowed per window
+    window:       Duration::from_secs(60),      // rolling window duration
+    max_delay_ms: 30_000,                       // hard cap on pre-flight sleep (ms)
+    strategy:     RateLimitStrategy::SlidingWindow,  // algorithm (see below)
+};
+```
+
+| Field | Default | Description |
+|---|---|---|
+| `max_requests` | `100` | Maximum requests allowed inside any rolling `window` |
+| `window` | `60 s` | Rolling window duration |
+| `max_delay_ms` | `30 000` | Maximum pre-flight sleep before giving up with an error |
+| `strategy` | `SlidingWindow` | Rate-limiting algorithm — see below |
+
+### RateLimitStrategy
+
+`RateLimitStrategy` selects which algorithm protects outgoing requests. Both variants
+also honour server-returned `Retry-After` headers regardless of which is active.
+
+| Variant | Behaviour | Best for |
+|---|---|---|
+| `SlidingWindow` *(default)* | Counts requests in a rolling time window; blocks new requests once `max_requests` is reached until old timestamps expire | APIs with strict fixed-window quotas (e.g. "100 req / 60 s") |
+| `TokenBucket` | Refills tokens at `max_requests / window` per second; absorbed bursts up to `max_requests` capacity before blocking | APIs that advertise burst allowances — allows short spikes then throttles gracefully |
+
+#### Sliding window example
+
+```rust
+use std::time::Duration;
+use stygian_graph::ports::graphql_plugin::{RateLimitConfig, RateLimitStrategy};
+
+// GitHub GraphQL API: 5 000 points/hour with a hard req/s ceiling
+let config = RateLimitConfig {
+    max_requests: 10,
+    window:       Duration::from_secs(1),
+    max_delay_ms: 5_000,
+    strategy:     RateLimitStrategy::SlidingWindow,
+};
+```
+
+#### Token bucket example
+
+```rust
+use std::time::Duration;
+use stygian_graph::ports::graphql_plugin::{RateLimitConfig, RateLimitStrategy};
+
+// Shopify Admin API: 2 req/s sustained, bursts up to 40
+let config = RateLimitConfig {
+    max_requests: 40,                        // bucket depth = burst capacity
+    window:       Duration::from_secs(20),   // refill rate = 40 / 20 = 2 req/s
+    max_delay_ms: 30_000,
+    strategy:     RateLimitStrategy::TokenBucket,
+};
+```
+
+### Wiring into a custom plugin
+
+```rust
+use std::time::Duration;
+use stygian_graph::ports::graphql_plugin::{
+    GraphQlTargetPlugin, RateLimitConfig, RateLimitStrategy,
+};
+
+pub struct ShopifyPlugin { token: String }
+
+impl GraphQlTargetPlugin for ShopifyPlugin {
+    fn name(&self)     -> &str { "shopify" }
+    fn endpoint(&self) -> &str { "https://my-store.myshopify.com/admin/api/2025-01/graphql.json" }
+
+    fn rate_limit_config(&self) -> Option<RateLimitConfig> {
+        Some(RateLimitConfig {
+            max_requests: 40,
+            window:       Duration::from_secs(20),
+            max_delay_ms: 30_000,
+            strategy:     RateLimitStrategy::TokenBucket,
+        })
+    }
+    // ...other methods omitted
+}
+```
+
+For `GenericGraphQlPlugin`, pass it via the builder:
+
+```rust
+use stygian_graph::adapters::graphql_plugins::generic::GenericGraphQlPlugin;
+use stygian_graph::ports::graphql_plugin::{RateLimitConfig, RateLimitStrategy};
+use std::time::Duration;
+
+let plugin = GenericGraphQlPlugin::builder()
+    .name("shopify")
+    .endpoint("https://my-store.myshopify.com/admin/api/2025-01/graphql.json")
+    .bearer_auth("${env:SHOPIFY_ACCESS_TOKEN}")
+    .rate_limit(RateLimitConfig {
+        max_requests: 40,
+        window:       Duration::from_secs(20),
+        max_delay_ms: 30_000,
+        strategy:     RateLimitStrategy::TokenBucket,
+    })
+    .build()
+    .expect("name and endpoint are required");
+```
+
+### Rate limiting vs cost throttling
+
+| | Request rate limiting | Cost throttling |
+|---|---|---|
+| What it counts | Raw request count | Query complexity points |
+| Data source | Local state only | Server `extensions.cost` response |
+| Algorithm options | Sliding window, token bucket | Leaky-bucket (token refill) |
+| Reactive to 429? | Yes — honours `Retry-After` | Yes — exponential back-off |
+| Enabled by | `rate_limit_config()` | `cost_throttle_config()` |
+
+---
+
 ## Writing a custom plugin
 
 For complex APIs — multi-tenant endpoints, per-request header mutations, non-standard

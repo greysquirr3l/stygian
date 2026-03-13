@@ -9,6 +9,9 @@
 /// HTTP scraping adapter with anti-bot capabilities
 pub mod http;
 
+/// REST API adapter — JSON APIs with auth, pagination, and data extraction
+pub mod rest_api;
+
 /// AI provider adapters
 pub mod ai;
 
@@ -49,6 +52,10 @@ pub mod graphql_plugins;
 
 /// WASM plugin adapter (feature = "wasm-plugins")
 pub mod wasm_plugin;
+
+/// Cloudflare Browser Rendering crawl adapter (feature = "cloudflare-crawl")
+#[cfg(feature = "cloudflare-crawl")]
+pub mod cloudflare_crawl;
 
 /// Output format helpers — CSV, JSONL, JSON
 pub mod output_format;

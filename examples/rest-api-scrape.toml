@@ -1,0 +1,158 @@
+# rest-api-scrape.toml
+#
+# Demonstrates the REST API adapter with three real-world patterns:
+#
+#   1. Unauthenticated GET with query params (public JSONPlaceholder API)
+#   2. Bearer token auth + Link-header pagination (GitHub Issues)
+#   3. API key header auth (abstract OpenAPI-style endpoint)
+#
+# The results from each fetch are piped into Claude for structured extraction.
+#
+# Run:
+#   GITHUB_TOKEN=ghp_... ANTHROPIC_API_KEY=sk-... stygian run examples/rest-api-scrape.toml
+
+[[services]]
+name  = "rest"
+kind  = "rest-api"
+
+[[services]]
+name  = "claude"
+kind  = "claude"
+model = "claude-opus-4-5"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pattern 1: Unauthenticated GET — public REST API, no auth needed
+# ─────────────────────────────────────────────────────────────────────────────
+
+[[nodes]]
+id      = "fetch-posts"
+service = "rest"
+url     = "https://jsonplaceholder.typicode.com/posts"
+
+  [nodes.params]
+  method = "GET"
+  query  = { "_limit" = "10", "_sort" = "id", "_order" = "desc" }
+
+  [nodes.params.response]
+  collect_as_array = true
+
+  [nodes.params.pagination]
+  strategy = "none"
+
+# Extract structured data from the raw JSON response
+
+[[nodes]]
+id         = "summarise-posts"
+service    = "claude"
+depends_on = ["fetch-posts"]
+
+  [nodes.prompt]
+  system = "You are a data analyst. Return concise summaries."
+  user   = "Summarise these 10 blog posts in a JSON array with fields: id, title, summary (max 20 words)."
+
+  [nodes.schema]
+  type = "object"
+  properties.posts.type = "array"
+  properties.posts.items.type = "object"
+  properties.posts.items.properties.id.type      = "integer"
+  properties.posts.items.properties.title.type   = "string"
+  properties.posts.items.properties.summary.type = "string"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pattern 2: Bearer auth + RFC 8288 Link-header pagination (GitHub Issues)
+#
+# Fetches up to 3 pages of open issues from the rust-lang/rust repo.
+# Replace GITHUB_TOKEN with a PAT that has repo:read scope.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[[nodes]]
+id      = "fetch-issues"
+service = "rest"
+url     = "https://api.github.com/repos/rust-lang/rust/issues"
+
+  [nodes.params]
+  method = "GET"
+  accept = "application/vnd.github+json"
+  query  = { "state" = "open", "per_page" = "30" }
+
+  [nodes.params.auth]
+  type  = "bearer"
+  token = "${env:GITHUB_TOKEN}"
+
+  [nodes.params.response]
+  data_path        = ""
+  collect_as_array = true
+
+  [nodes.params.pagination]
+  strategy  = "link_header"
+  max_pages = 3
+
+# Extract the top issues for a report
+
+[[nodes]]
+id         = "analyse-issues"
+service    = "claude"
+depends_on = ["fetch-issues"]
+
+  [nodes.prompt]
+  system = "You are a project manager reviewing open issues."
+  user   = "List the top 5 most actionable issues from this data. Return: number, title, label (bug/feature/docs), and a one-sentence action item."
+
+  [nodes.schema]
+  type = "object"
+  properties.issues.type = "array"
+  properties.issues.items.type = "object"
+  properties.issues.items.properties.number.type      = "integer"
+  properties.issues.items.properties.title.type       = "string"
+  properties.issues.items.properties.label.type       = "string"
+  properties.issues.items.properties.action_item.type = "string"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pattern 3: API key in header + cursor pagination (hypothetical products API)
+#
+# Replace MY_API_KEY with your actual API key.
+# ─────────────────────────────────────────────────────────────────────────────
+
+[[nodes]]
+id      = "fetch-products"
+service = "rest"
+url     = "https://api.example.com/v1/products"
+
+  [nodes.params]
+  method = "GET"
+
+  [nodes.params.auth]
+  type   = "api_key_header"
+  header = "X-Api-Key"
+  key    = "${env:MY_API_KEY}"
+
+  [nodes.params.response]
+  data_path        = "data"
+  collect_as_array = true
+
+  [nodes.params.pagination]
+  strategy     = "cursor"
+  cursor_field = "meta.next_cursor"
+  cursor_param = "cursor"
+  max_pages    = 10
+
+# Extract structured product list
+
+[[nodes]]
+id         = "extract-products"
+service    = "claude"
+depends_on = ["fetch-products"]
+
+  [nodes.prompt]
+  system = "You are a product data specialist."
+  user   = "Extract the product catalogue into a clean JSON array with: id, name, price_usd, category, in_stock (bool)."
+
+  [nodes.schema]
+  type = "object"
+  properties.products.type = "array"
+  properties.products.items.type = "object"
+  properties.products.items.properties.id.type        = "string"
+  properties.products.items.properties.name.type      = "string"
+  properties.products.items.properties.price_usd.type = "number"
+  properties.products.items.properties.category.type  = "string"
+  properties.products.items.properties.in_stock.type  = "boolean"

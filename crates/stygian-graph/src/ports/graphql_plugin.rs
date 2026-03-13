@@ -78,7 +78,31 @@ impl Default for CostThrottleConfig {
 // RateLimitConfig
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Sliding-window request-count rate-limit parameters for a GraphQL API target.
+/// Selects which local pre-flight algorithm guards outgoing GraphQL requests.
+///
+/// Both strategies also honour server-returned `Retry-After` headers,
+/// regardless of which algorithm is active.
+///
+/// # Example
+///
+/// ```rust
+/// use stygian_graph::ports::graphql_plugin::RateLimitStrategy;
+///
+/// let strategy = RateLimitStrategy::TokenBucket; // burst-friendly
+/// ```
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum RateLimitStrategy {
+    /// Counts requests inside a rolling time window.  Most predictable for
+    /// server-side fixed-window quotas.
+    #[default]
+    SlidingWindow,
+    /// Refills tokens at a steady rate; short bursts are absorbed by the
+    /// bucket capacity before the window limit is reached.  Better for
+    /// endpoints that advertise burst allowances.
+    TokenBucket,
+}
+
+/// Request-count rate-limit parameters for a GraphQL API target.
 ///
 /// Enable by returning a populated [`RateLimitConfig`] from
 /// [`GraphQlTargetPlugin::rate_limit_config`].  This complements the leaky-bucket
@@ -88,12 +112,13 @@ impl Default for CostThrottleConfig {
 ///
 /// ```rust
 /// use std::time::Duration;
-/// use stygian_graph::ports::graphql_plugin::RateLimitConfig;
+/// use stygian_graph::ports::graphql_plugin::{RateLimitConfig, RateLimitStrategy};
 ///
 /// let config = RateLimitConfig {
 ///     max_requests: 100,
 ///     window: Duration::from_secs(60),
 ///     max_delay_ms: 30_000,
+///     strategy: RateLimitStrategy::TokenBucket,
 /// };
 /// ```
 #[derive(Debug, Clone)]
@@ -104,6 +129,8 @@ pub struct RateLimitConfig {
     pub window: Duration,
     /// Upper bound on any computed pre-flight delay in milliseconds (default: `30_000`).
     pub max_delay_ms: u64,
+    /// Rate-limiting algorithm to use (default: [`RateLimitStrategy::SlidingWindow`]).
+    pub strategy: RateLimitStrategy,
 }
 
 impl Default for RateLimitConfig {
@@ -112,6 +139,7 @@ impl Default for RateLimitConfig {
             max_requests: 100,
             window: Duration::from_secs(60),
             max_delay_ms: 30_000,
+            strategy: RateLimitStrategy::SlidingWindow,
         }
     }
 }
@@ -271,6 +299,7 @@ pub trait GraphQlTargetPlugin: Send + Sync {
     ///             max_requests: 200,
     ///             window: Duration::from_secs(60),
     ///             max_delay_ms: 30_000,
+    ///             ..Default::default()
     ///         })
     ///     }
     /// }
