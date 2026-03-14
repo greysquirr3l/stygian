@@ -29,7 +29,7 @@ Tests live alongside their module in `src/` (unit tests) and in `crates/stygian-
 (integration tests).
 
 | Layer | Location | Approach |
-|---|---|---|
+| --- | --- | --- |
 | Domain | `src/domain/*/tests` | Pure Rust, no I/O |
 | Adapters | `src/adapters/*/tests` | Mock port implementations |
 | Application | `src/application/*/tests` | In-process service registry |
@@ -42,7 +42,7 @@ All tests in the graph crate pass without any external services.
 Browser tests fall into two categories:
 
 | Category | Attribute | Runs in CI |
-|---|---|---|
+| --- | --- | --- |
 | Pure-logic tests (config, stealth scripts, math) | none | ✅ always |
 | Integration tests (real Chrome required) | `#[ignore = "requires Chrome"]` | ❌ opt-in |
 
@@ -82,7 +82,7 @@ cargo tarpaulin -p stygian-browser --lib --ignore-tests --out Lcov
 ### Current numbers
 
 | Scope | Line coverage | Notes |
-|---|---|---|
+| --- | --- | --- |
 | **Workspace** | **65.74 %** | 2 882 / 4 384 lines · 209 tests |
 | `stygian-graph` | ~72 % | All unit and integration logic covered |
 | `stygian-browser` | structurally bounded | Chrome-gated tests excluded from CI |
@@ -90,7 +90,7 @@ cargo tarpaulin -p stygian-browser --lib --ignore-tests --out Lcov
 High-coverage modules in `stygian-graph`:
 
 | Module | Coverage |
-|---|---|
+| --- | --- |
 | `application/config.rs` | ~100 % |
 | `application/executor.rs` | ~100 % |
 | `domain/idempotency.rs` | ~100 % |
@@ -164,7 +164,7 @@ mod tests {
 The GitHub Actions CI workflow (`.github/workflows/ci.yml`) runs:
 
 | Job | Runs on | Command |
-|---|---|---|
+| --- | --- | --- |
 | `test` | `ubuntu-latest` | `cargo test --workspace --all-features` |
 | `clippy` | `ubuntu-latest` | `cargo clippy --workspace --all-features -- -D warnings` |
 | `fmt` | `ubuntu-latest` | `cargo fmt --check` |

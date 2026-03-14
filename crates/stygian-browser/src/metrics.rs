@@ -24,7 +24,7 @@
 //! ## Prometheus metrics
 //!
 //! | Name | Type | Description |
-//! |------|------|-------------|
+//! | ------ | ------ | ------------- |
 //! | `browser_pool_size` | Gauge | Number of active browser instances |
 //! | `browser_acquisition_duration_seconds` | Histogram | Time to acquire a browser |
 //! | `browser_crashes_total` | Counter | Cumulative browser crashes |

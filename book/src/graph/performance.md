@@ -66,7 +66,7 @@ good starting point.
 Stygian uses bounded `tokio::sync::mpsc` channels internally.
 
 | Channel depth | Throughput | Latency | Memory |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 1 | Low | Low | Minimal |
 | 64 (default) | Medium | Medium | Low |
 | 512 | High | Higher | Moderate |
@@ -168,7 +168,7 @@ Target ≥ 0.80 for URL-keyed caches before increasing capacity.
 ### LRU vs DashMap
 
 | | `BoundedLruCache` | `DashMapCache` |
-|---|---|---|
+| --- | --- | --- |
 | Eviction policy | LRU (capacity-based) | TTL-based (background task) |
 | Best for | Fixed working set | Time-sensitive data |
 | Concurrency overhead | Higher (LRU list mutex) | Lower (sharded map) |
@@ -182,7 +182,7 @@ is the right choice.
 ## Rayon vs Tokio
 
 | | Tokio | Rayon |
-|---|---|---|
+| --- | --- | --- |
 | Use for | I/O-bound work (network, disk) | CPU-bound work (parsing, transforms) |
 | Blocking? | No — async tasks never block threads | Yes — tasks block Rayon threads |
 | Thread pool | Shared Tokio runtime | Separate Rayon thread pool |
@@ -224,7 +224,7 @@ cargo bench -- --load-baseline v0 # compare against baseline
 Key benchmark targets:
 
 | Benchmark | What it measures |
-|---|---|
+| --- | --- |
 | `dag_executor/wave_10` | 10-node wave execution overhead |
 | `dag_executor/wave_100` | 100-node wave execution overhead |
 | `http_adapter/single` | Single HTTP request round-trip |
@@ -235,7 +235,7 @@ Key benchmark targets:
 ## Benchmarks (Apple M4 Pro)
 
 | Operation | Latency |
-|---|---|
+| --- | --- |
 | DAG executor overhead per wave | ~50 µs |
 | HTTP adapter (cached DNS) | ~2 ms |
 | Browser acquisition (warm pool) | <100 ms |

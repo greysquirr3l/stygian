@@ -3,7 +3,7 @@
 //! # Adapters
 //!
 //! | Adapter | Availability | Backing store |
-//! |---------|--------------|---------------|
+//! | --------- | -------------- | --------------- |
 //! | [`NullStorage`](storage::NullStorage) | always | no-op (tests / dry-run) |
 //! | [`FileStorage`](storage::FileStorage) | always | `.jsonl` files on local disk |
 //! | [`PostgresStorage`](storage::PostgresStorage) | `feature = "postgres"` | PostgreSQL via sqlx |

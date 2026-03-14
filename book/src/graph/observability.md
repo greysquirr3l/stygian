@@ -45,7 +45,7 @@ axum::serve(listener, app).await?;
 ### Available metrics
 
 | Metric name | Type | Labels | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `stygian_requests_total` | counter | `service`, `status` | Total requests per adapter |
 | `stygian_request_duration_seconds` | histogram | `service` | Request latency distribution |
 | `stygian_errors_total` | counter | `service`, `error_kind` | Errors by type |
@@ -108,7 +108,7 @@ tracing_subscriber::registry()
 ### Key spans
 
 | Span | Attributes | Emitted by |
-|---|---|---|
+| --- | --- | --- |
 | `dag_execute` | `pipeline_id`, `node_count`, `wave_count` | `DagExecutor` |
 | `wave_execute` | `wave`, `node_ids[]` | `DagExecutor` |
 | `service_call` | `service`, `url` | `ServiceRegistry` |

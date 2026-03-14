@@ -629,7 +629,7 @@ impl ScrapingService for RestApiAdapter {
     /// # Auth `type` values
     ///
     /// | `type` | Required fields | Description |
-    /// |---|---|---|
+    /// | --- | --- | --- |
     /// | `"bearer"` / `"oauth2"` | `token` | `Authorization: Bearer <token>` |
     /// | `"basic"` | `username`, `password` | HTTP Basic |
     /// | `"api_key_header"` | `header`, `key` | Custom header |
@@ -639,7 +639,7 @@ impl ScrapingService for RestApiAdapter {
     /// # Pagination strategies
     ///
     /// | `strategy` | Description |
-    /// |---|---|
+    /// | --- | --- |
     /// | `"none"` | Single request (default) |
     /// | `"offset"` | Increment `page_param` from `start_page` |
     /// | `"cursor"` | Extract next cursor at `cursor_field` in each response; pass it as `cursor_param` |

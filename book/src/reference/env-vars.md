@@ -8,7 +8,7 @@ variables. No recompilation required.
 ## stygian-browser
 
 | Variable | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `STYGIAN_CHROME_PATH` | auto-detect | Absolute path to Chrome or Chromium binary |
 | `STYGIAN_HEADLESS` | `true` | `false` for headed mode (displays browser window) |
 | `STYGIAN_HEADLESS_MODE` | `new` | `new` (`--headless=new`) or `legacy` (`chrome-headless-shell`; old `--headless` removed in Chrome 132) |
@@ -40,7 +40,7 @@ When `STYGIAN_CHROME_PATH` is not set, the library searches:
 ## stygian-graph
 
 | Variable | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `STYGIAN_LOG` | `info` | Alias for `RUST_LOG` if set; otherwise defers to `RUST_LOG` |
 | `STYGIAN_WORKERS` | `num_cpus * 4` | Default worker pool concurrency |
 | `STYGIAN_QUEUE_DEPTH` | `workers * 4` | Worker pool channel depth |
@@ -52,7 +52,7 @@ When `STYGIAN_CHROME_PATH` is not set, the library searches:
 ### AI provider variables
 
 | Variable | Used by |
-|---|---|
+| --- | --- |
 | `ANTHROPIC_API_KEY` | `ClaudeAdapter` |
 | `OPENAI_API_KEY` | `OpenAiAdapter` |
 | `GOOGLE_API_KEY` | `GeminiAdapter` |
@@ -62,7 +62,7 @@ When `STYGIAN_CHROME_PATH` is not set, the library searches:
 ### Distributed execution variables
 
 | Variable | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `REDIS_URL` | `redis://localhost:6379` | Redis/Valkey connection URL |
 | `REDIS_MAX_CONNECTIONS` | `20` | Redis connection pool size |
 | `STYGIAN_QUEUE_NAME` | `stygian:work` | Default work queue key |
@@ -73,7 +73,7 @@ When `STYGIAN_CHROME_PATH` is not set, the library searches:
 ## Tracing and logging
 
 | Variable | Example | Description |
-|---|---|---|
+| --- | --- | --- |
 | `RUST_LOG` | `stygian_graph=debug,stygian_browser=info` | Log level per crate |
 | `RUST_LOG` | `trace` | Enable all tracing (very verbose) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4317` | OTLP trace export endpoint |

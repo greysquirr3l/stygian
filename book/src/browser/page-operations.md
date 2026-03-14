@@ -24,7 +24,7 @@ page.navigate("https://example.com", WaitUntil::NetworkIdle, Duration::from_secs
 `WaitUntil` variants from fastest to safest:
 
 | Variant | Condition |
-|---|---|
+| --- | --- |
 | `DomContentLoaded` | HTML fully parsed; DOM ready (fires before images/stylesheets) |
 | `NetworkIdle` | Load event fired **and** ≤ 2 in-flight requests for 500 ms |
 | `Selector(css)` | `document.querySelector(selector)` returns a non-null element |

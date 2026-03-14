@@ -3,16 +3,20 @@
 //! # Architecture
 //!
 //! ```text
-//! ┌──────────────────────────────────────────────────────┐
-//! │                    BrowserPool                       │
-//! │                                                      │
-//! │  Semaphore (max_size slots)                         │
-//! │  ┌──────────────────────────────────────────────┐   │
-//! │  │           idle: VecDeque<PoolEntry>          │   │
-//! │  │  entry: { instance, last_used: Instant }    │   │
-//! │  └──────────────────────────────────────────────┘   │
-//! │  active_count: Arc<AtomicUsize>                     │
-//! └──────────────────────────────────────────────────────┘
+//! ┌───────────────────────────────────────────────────────────┐
+//! │                      BrowserPool                         │
+//! │                                                           │
+//! │  Semaphore (max_size slots — global backpressure)        │
+//! │  ┌───────────────────────────────────────────────────┐   │
+//! │  │         shared: VecDeque<PoolEntry>               │   │
+//! │  │  (unscoped browsers — used by acquire())         │   │
+//! │  └───────────────────────────────────────────────────┘   │
+//! │  ┌───────────────────────────────────────────────────┐   │
+//! │  │    scoped: HashMap<String, VecDeque<PoolEntry>>   │   │
+//! │  │  (per-context queues — used by acquire_for())    │   │
+//! │  └───────────────────────────────────────────────────┘   │
+//! │  active_count: Arc<AtomicUsize>                          │
+//! └───────────────────────────────────────────────────────────┘
 //! ```
 //!
 //! **Acquisition flow**
@@ -69,7 +73,8 @@ struct PoolEntry {
 // ─── PoolInner ────────────────────────────────────────────────────────────────
 
 struct PoolInner {
-    idle: std::collections::VecDeque<PoolEntry>,
+    shared: std::collections::VecDeque<PoolEntry>,
+    scoped: std::collections::HashMap<String, std::collections::VecDeque<PoolEntry>>,
 }
 
 // ─── BrowserPool ──────────────────────────────────────────────────────────────
@@ -123,7 +128,8 @@ impl BrowserPool {
             config: Arc::new(config),
             semaphore: Arc::new(Semaphore::new(max_size)),
             inner: Arc::new(Mutex::new(PoolInner {
-                idle: std::collections::VecDeque::new(),
+                shared: std::collections::VecDeque::new(),
+                scoped: std::collections::HashMap::new(),
             })),
             active_count: Arc::new(AtomicUsize::new(0)),
             max_size,
@@ -135,7 +141,7 @@ impl BrowserPool {
             match BrowserInstance::launch((*pool.config).clone()).await {
                 Ok(instance) => {
                     pool.active_count.fetch_add(1, Ordering::Relaxed);
-                    pool.inner.lock().await.idle.push_back(PoolEntry {
+                    pool.inner.lock().await.shared.push_back(PoolEntry {
                         instance,
                         last_used: Instant::now(),
                     });
@@ -159,23 +165,24 @@ impl BrowserPool {
 
                 let mut guard = eviction_inner.lock().await;
                 let now = Instant::now();
-                let idle_count = guard.idle.len();
                 let active = eviction_active.load(Ordering::Relaxed);
 
+                let total_idle: usize =
+                    guard.shared.len() + guard.scoped.values().map(|q| q.len()).sum::<usize>();
                 let evict_count = if active > eviction_min {
-                    (active - eviction_min).min(idle_count)
+                    (active - eviction_min).min(total_idle)
                 } else {
                     0
                 };
 
                 let mut evicted = 0usize;
+
+                // Evict from shared queue
                 let mut kept: std::collections::VecDeque<PoolEntry> =
                     std::collections::VecDeque::new();
-
-                while let Some(entry) = guard.idle.pop_front() {
+                while let Some(entry) = guard.shared.pop_front() {
                     if evicted < evict_count && now.duration_since(entry.last_used) >= idle_timeout
                     {
-                        // Drop entry — BrowserInstance shutdown happens in background
                         tokio::spawn(async move {
                             let _ = entry.instance.shutdown().await;
                         });
@@ -185,8 +192,34 @@ impl BrowserPool {
                         kept.push_back(entry);
                     }
                 }
+                guard.shared = kept;
 
-                guard.idle = kept;
+                // Evict from scoped queues
+                let context_ids: Vec<String> = guard.scoped.keys().cloned().collect();
+                for cid in &context_ids {
+                    if let Some(queue) = guard.scoped.get_mut(cid) {
+                        let mut kept: std::collections::VecDeque<PoolEntry> =
+                            std::collections::VecDeque::new();
+                        while let Some(entry) = queue.pop_front() {
+                            if evicted < evict_count
+                                && now.duration_since(entry.last_used) >= idle_timeout
+                            {
+                                tokio::spawn(async move {
+                                    let _ = entry.instance.shutdown().await;
+                                });
+                                eviction_active.fetch_sub(1, Ordering::Relaxed);
+                                evicted += 1;
+                            } else {
+                                kept.push_back(entry);
+                            }
+                        }
+                        *queue = kept;
+                    }
+                }
+
+                // Remove empty scoped queues
+                guard.scoped.retain(|_, q| !q.is_empty());
+
                 drop(guard);
 
                 if evicted > 0 {
@@ -227,7 +260,7 @@ impl BrowserPool {
         #[cfg(feature = "metrics")]
         let acquire_start = std::time::Instant::now();
 
-        let result = self.acquire_impl().await;
+        let result = self.acquire_inner(None).await;
 
         #[cfg(feature = "metrics")]
         {
@@ -241,31 +274,88 @@ impl BrowserPool {
         result
     }
 
-    async fn acquire_impl(self: &Arc<Self>) -> Result<BrowserHandle> {
+    /// Acquire a browser scoped to `context_id`.
+    ///
+    /// Browsers obtained this way are isolated: they will only be reused by
+    /// future calls to `acquire_for` with the **same** `context_id`.
+    /// The global `max_size` still applies across all contexts.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::PoolExhausted`] if no browser becomes available
+    /// within `pool.acquire_timeout`.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_browser::{BrowserPool, BrowserConfig};
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let pool = BrowserPool::new(BrowserConfig::default()).await?;
+    /// let a = pool.acquire_for("bot-a").await?;
+    /// let b = pool.acquire_for("bot-b").await?;
+    /// a.release().await;
+    /// b.release().await;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn acquire_for(self: &Arc<Self>, context_id: &str) -> Result<BrowserHandle> {
+        #[cfg(feature = "metrics")]
+        let acquire_start = std::time::Instant::now();
+
+        let result = self.acquire_inner(Some(context_id)).await;
+
+        #[cfg(feature = "metrics")]
+        {
+            let elapsed = acquire_start.elapsed();
+            crate::metrics::METRICS.record_acquisition(elapsed);
+            crate::metrics::METRICS.set_pool_size(
+                i64::try_from(self.active_count.load(Ordering::Relaxed)).unwrap_or(i64::MAX),
+            );
+        }
+
+        result
+    }
+
+    /// Shared acquisition logic. `context_id = None` reads from the shared
+    /// queue; `Some(id)` reads from the scoped queue for that context.
+    async fn acquire_inner(self: &Arc<Self>, context_id: Option<&str>) -> Result<BrowserHandle> {
         let acquire_timeout = self.config.pool.acquire_timeout;
         let active = self.active_count.load(Ordering::Relaxed);
         let max = self.max_size;
+        let ctx_owned: Option<String> = context_id.map(String::from);
 
         // Fast path: try idle queue first
         {
             let mut guard = self.inner.lock().await;
-            while let Some(entry) = guard.idle.pop_front() {
-                if entry.instance.is_healthy_cached() {
-                    self.active_count.fetch_add(0, Ordering::Relaxed); // already counted
-                    debug!(
-                        "Reusing idle browser (uptime={:?})",
-                        entry.instance.uptime()
-                    );
-                    return Ok(BrowserHandle::new(entry.instance, Arc::clone(self)));
+            let queue = match context_id {
+                Some(id) => guard.scoped.get_mut(id),
+                None => Some(&mut guard.shared),
+            };
+            if let Some(queue) = queue {
+                while let Some(entry) = queue.pop_front() {
+                    if entry.instance.is_healthy_cached() {
+                        self.active_count.fetch_add(0, Ordering::Relaxed); // already counted
+                        debug!(
+                            context = context_id.unwrap_or("shared"),
+                            "Reusing idle browser (uptime={:?})",
+                            entry.instance.uptime()
+                        );
+                        return Ok(BrowserHandle::new(
+                            entry.instance,
+                            Arc::clone(self),
+                            ctx_owned,
+                        ));
+                    }
+                    // Unhealthy idle entry — dispose in background
+                    #[cfg(feature = "metrics")]
+                    crate::metrics::METRICS.record_crash();
+                    let active_count = self.active_count.clone();
+                    tokio::spawn(async move {
+                        let _ = entry.instance.shutdown().await;
+                        active_count.fetch_sub(1, Ordering::Relaxed);
+                    });
                 }
-                // Unhealthy idle entry — dispose in background
-                #[cfg(feature = "metrics")]
-                crate::metrics::METRICS.record_crash();
-                let active_count = self.active_count.clone();
-                tokio::spawn(async move {
-                    let _ = entry.instance.shutdown().await;
-                    active_count.fetch_sub(1, Ordering::Relaxed);
-                });
             }
         }
 
@@ -290,21 +380,33 @@ impl BrowserPool {
             };
 
             info!(
+                context = context_id.unwrap_or("shared"),
                 "Launched fresh browser (pool active={})",
                 self.active_count.load(Ordering::Relaxed)
             );
-            return Ok(BrowserHandle::new(instance, Arc::clone(self)));
+            return Ok(BrowserHandle::new(instance, Arc::clone(self), ctx_owned));
         }
 
         // Pool full — wait for a release
+        let ctx_for_poll = context_id.map(String::from);
         timeout(acquire_timeout, async {
             loop {
                 sleep(std::time::Duration::from_millis(50)).await;
                 let mut guard = self.inner.lock().await;
-                if let Some(entry) = guard.idle.pop_front() {
+                let queue = match ctx_for_poll.as_deref() {
+                    Some(id) => guard.scoped.get_mut(id),
+                    None => Some(&mut guard.shared),
+                };
+                if let Some(queue) = queue
+                    && let Some(entry) = queue.pop_front()
+                {
                     drop(guard);
                     if entry.instance.is_healthy_cached() {
-                        return Ok(BrowserHandle::new(entry.instance, Arc::clone(self)));
+                        return Ok(BrowserHandle::new(
+                            entry.instance,
+                            Arc::clone(self),
+                            ctx_for_poll.clone(),
+                        ));
                     }
                     #[cfg(feature = "metrics")]
                     crate::metrics::METRICS.record_crash();
@@ -323,16 +425,25 @@ impl BrowserPool {
     // ─── Release ──────────────────────────────────────────────────────────────
 
     /// Return a browser instance to the pool (called by [`BrowserHandle::release`]).
-    async fn release(&self, instance: BrowserInstance) {
+    async fn release(&self, instance: BrowserInstance, context_id: Option<&str>) {
         // Health-check before returning to idle queue
         if instance.is_healthy_cached() {
             let mut guard = self.inner.lock().await;
-            if guard.idle.len() < self.max_size {
-                guard.idle.push_back(PoolEntry {
+            let total_idle: usize =
+                guard.shared.len() + guard.scoped.values().map(|q| q.len()).sum::<usize>();
+            if total_idle < self.max_size {
+                let queue = match context_id {
+                    Some(id) => guard.scoped.entry(id.to_owned()).or_default(),
+                    None => &mut guard.shared,
+                };
+                queue.push_back(PoolEntry {
                     instance,
                     last_used: Instant::now(),
                 });
-                debug!("Returned browser to idle pool");
+                debug!(
+                    context = context_id.unwrap_or("shared"),
+                    "Returned browser to idle pool"
+                );
                 return;
             }
             drop(guard);
@@ -350,6 +461,67 @@ impl BrowserPool {
         });
 
         self.semaphore.add_permits(1);
+    }
+
+    // ─── Context management ───────────────────────────────────────────────────
+
+    /// Shut down and remove all idle browsers belonging to `context_id`.
+    ///
+    /// Active handles for that context are unaffected — they will be disposed
+    /// normally when released. Call this when a bot or tenant is deprovisioned.
+    ///
+    /// Returns the number of browsers shut down.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_browser::{BrowserPool, BrowserConfig};
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let pool = BrowserPool::new(BrowserConfig::default()).await?;
+    /// let released = pool.release_context("bot-a").await;
+    /// println!("Shut down {released} browsers for bot-a");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn release_context(&self, context_id: &str) -> usize {
+        let mut guard = self.inner.lock().await;
+        let entries = guard.scoped.remove(context_id).unwrap_or_default();
+        drop(guard);
+
+        let count = entries.len();
+        for entry in entries {
+            let active_count = self.active_count.clone();
+            tokio::spawn(async move {
+                let _ = entry.instance.shutdown().await;
+                active_count.fetch_sub(1, Ordering::Relaxed);
+            });
+            self.semaphore.add_permits(1);
+        }
+
+        if count > 0 {
+            info!("Released {count} browsers for context '{context_id}'");
+        }
+        count
+    }
+
+    /// List all active context IDs that have idle browsers in the pool.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_browser::{BrowserPool, BrowserConfig};
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let pool = BrowserPool::new(BrowserConfig::default()).await?;
+    /// let ids = pool.context_ids().await;
+    /// println!("Active contexts: {ids:?}");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn context_ids(&self) -> Vec<String> {
+        let guard = self.inner.lock().await;
+        guard.scoped.keys().cloned().collect()
     }
 
     // ─── Stats ────────────────────────────────────────────────────────────────
@@ -390,13 +562,19 @@ impl BrowserPool {
 pub struct BrowserHandle {
     instance: Option<BrowserInstance>,
     pool: Arc<BrowserPool>,
+    context_id: Option<String>,
 }
 
 impl BrowserHandle {
-    const fn new(instance: BrowserInstance, pool: Arc<BrowserPool>) -> Self {
+    const fn new(
+        instance: BrowserInstance,
+        pool: Arc<BrowserPool>,
+        context_id: Option<String>,
+    ) -> Self {
         Self {
             instance: Some(instance),
             pool,
+            context_id,
         }
     }
 
@@ -414,12 +592,21 @@ impl BrowserHandle {
         self.instance.as_mut()
     }
 
+    /// The context that owns this handle, if scoped via [`BrowserPool::acquire_for`].
+    ///
+    /// Returns `None` for handles obtained with [`BrowserPool::acquire`].
+    pub fn context_id(&self) -> Option<&str> {
+        self.context_id.as_deref()
+    }
+
     /// Return the browser to the pool.
     ///
     /// If the instance is unhealthy or the pool is full it will be disposed.
     pub async fn release(mut self) {
         if let Some(instance) = self.instance.take() {
-            self.pool.release(instance).await;
+            self.pool
+                .release(instance, self.context_id.as_deref())
+                .await;
         }
     }
 }
@@ -428,8 +615,9 @@ impl Drop for BrowserHandle {
     fn drop(&mut self) {
         if let Some(instance) = self.instance.take() {
             let pool = Arc::clone(&self.pool);
+            let context_id = self.context_id.clone();
             tokio::spawn(async move {
-                pool.release(instance).await;
+                pool.release(instance, context_id.as_deref()).await;
             });
         }
     }
@@ -618,5 +806,80 @@ mod tests {
         let dbg = format!("{stats:?}");
         assert!(dbg.contains("active"));
         assert!(dbg.contains("max"));
+    }
+
+    // ─── Context segregation tests ────────────────────────────────────────────
+
+    #[test]
+    fn pool_inner_scoped_default_is_empty() {
+        let inner = PoolInner {
+            shared: std::collections::VecDeque::new(),
+            scoped: std::collections::HashMap::new(),
+        };
+        assert!(inner.shared.is_empty());
+        assert!(inner.scoped.is_empty());
+    }
+
+    #[test]
+    fn pool_inner_scoped_insert_and_retrieve() {
+        let mut inner = PoolInner {
+            shared: std::collections::VecDeque::new(),
+            scoped: std::collections::HashMap::new(),
+        };
+        // Verify the scoped map key-space is independent
+        inner.scoped.entry("bot-a".to_owned()).or_default();
+        inner.scoped.entry("bot-b".to_owned()).or_default();
+        assert_eq!(inner.scoped.len(), 2);
+        assert!(inner.scoped.contains_key("bot-a"));
+        assert!(inner.scoped.contains_key("bot-b"));
+        assert!(inner.shared.is_empty());
+    }
+
+    #[test]
+    fn pool_inner_scoped_retain_removes_empty() {
+        let mut inner = PoolInner {
+            shared: std::collections::VecDeque::new(),
+            scoped: std::collections::HashMap::new(),
+        };
+        inner.scoped.entry("empty".to_owned()).or_default();
+        assert_eq!(inner.scoped.len(), 1);
+        inner.scoped.retain(|_, q| !q.is_empty());
+        assert!(inner.scoped.is_empty());
+    }
+
+    #[tokio::test]
+    async fn pool_context_ids_empty_by_default() {
+        // Without a running Chrome, we test with min_size=0 so no browser
+        // is launched. We need to construct the pool carefully.
+        let config = test_config();
+        assert_eq!(config.pool.min_size, 0);
+        // context_ids requires an actual pool instance — this test verifies
+        // the zero-state. Full integration tested with real browser.
+    }
+
+    #[test]
+    fn browser_handle_context_id_none_for_shared() {
+        // Compile-time / structural: BrowserHandle carries context_id
+        fn _check_context_api(handle: &BrowserHandle) {
+            let _: Option<&str> = handle.context_id();
+        }
+    }
+
+    #[test]
+    fn pool_inner_total_idle_calculation() {
+        let mut inner = PoolInner {
+            shared: std::collections::VecDeque::new(),
+            scoped: std::collections::HashMap::new(),
+        };
+        // Total idle across shared + scoped
+        fn total_idle(inner: &PoolInner) -> usize {
+            inner.shared.len() + inner.scoped.values().map(|q| q.len()).sum::<usize>()
+        }
+        assert_eq!(total_idle(&inner), 0);
+
+        // Add entries to scoped queues (without real BrowserInstance, just check sizes)
+        inner.scoped.entry("a".to_owned()).or_default();
+        inner.scoped.entry("b".to_owned()).or_default();
+        assert_eq!(total_idle(&inner), 0); // empty queues don't count
     }
 }

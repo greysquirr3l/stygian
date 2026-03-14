@@ -31,7 +31,7 @@ let plugin = GenericGraphQlPlugin::builder()
 ### Builder reference
 
 | Method | Required | Description |
-|---|---|---|
+| --- | --- | --- |
 | `.name(impl Into<String>)` | **yes** | Plugin identifier used in the registry |
 | `.endpoint(impl Into<String>)` | **yes** | Full GraphQL endpoint URL |
 | `.bearer_auth(impl Into<String>)` | no | Shorthand: sets a `Bearer` auth token |
@@ -162,7 +162,7 @@ let config = CostThrottleConfig {
 ```
 
 | Field | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `max_points` | `10_000.0` | Total bucket capacity |
 | `restore_per_sec` | `500.0` | Points/second restored |
 | `min_available` | `50.0` | Points threshold below which we pre-sleep |
@@ -221,7 +221,7 @@ let config = RateLimitConfig {
 ```
 
 | Field | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `max_requests` | `100` | Maximum requests allowed inside any rolling `window` |
 | `window` | `60 s` | Rolling window duration |
 | `max_delay_ms` | `30 000` | Maximum pre-flight sleep before giving up with an error |
@@ -233,7 +233,7 @@ let config = RateLimitConfig {
 also honour server-returned `Retry-After` headers regardless of which is active.
 
 | Variant | Behaviour | Best for |
-|---|---|---|
+| --- | --- | --- |
 | `SlidingWindow` *(default)* | Counts requests in a rolling time window; blocks new requests once `max_requests` is reached until old timestamps expire | APIs with strict fixed-window quotas (e.g. "100 req / 60 s") |
 | `TokenBucket` | Refills tokens at `max_requests / window` per second; absorbed bursts up to `max_requests` capacity before blocking | APIs that advertise burst allowances — allows short spikes then throttles gracefully |
 
@@ -317,7 +317,7 @@ let plugin = GenericGraphQlPlugin::builder()
 ### Rate limiting vs cost throttling
 
 | | Request rate limiting | Cost throttling |
-|---|---|---|
+| --- | --- | --- |
 | What it counts | Raw request count | Query complexity points |
 | Data source | Local state only | Server `extensions.cost` response |
 | Algorithm options | Sliding window, token bucket | Leaky-bucket (token refill) |

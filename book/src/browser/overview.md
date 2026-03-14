@@ -10,8 +10,8 @@ of stealth features for bypassing modern bot-detection systems.
 ## Feature summary
 
 | Feature | Description |
-|---|---|
-| **Browser pooling** | Warm pool with configurable min/max, LRU eviction, backpressure |
+| --- | --- |
+| **Browser pooling** | Warm pool with configurable min/max, LRU eviction, backpressure, and per-context segregation |
 | **Anti-detection** | `navigator` spoofing, canvas noise, WebGL randomisation, UA patching |
 | **Headless mode** | `HeadlessMode::New` default (`--headless=new`) — shares Chrome's headed rendering pipeline, harder to fingerprint-detect |
 | **Human behaviour** | Bézier-curve mouse paths, realistic keystroke timing, typo simulation |
@@ -27,7 +27,7 @@ of stealth features for bypassing modern bot-detection systems.
 ## Use cases
 
 | Scenario | Recommended config |
-|---|---|
+| --- | --- |
 | Public HTML scraping (no bot detection) | `StealthLevel::None`, HTTP adapter preferred |
 | Single-page app rendering | `StealthLevel::Basic`, `WaitUntil::NetworkIdle` |
 | Cloudflare / DataDome protected sites | `StealthLevel::Advanced` |
@@ -69,7 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Performance targets
 
 | Operation | Target |
-|---|---|
+| --- | --- |
 | Browser acquisition (warm pool) | < 100 ms |
 | Browser launch (cold start) | < 2 s |
 | Advanced stealth injection overhead | 10–30 ms per page |
@@ -80,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Platform support
 
 | Platform | Status |
-|---|---|
+| --- | --- |
 | macOS (Apple Silicon / Intel) | Fully supported, actively tested |
 | Linux (x86-64, ARM64) | Fully supported, CI tested |
 | Windows | Depends on `chromiumoxide` backend; not actively tested |

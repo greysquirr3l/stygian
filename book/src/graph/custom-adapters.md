@@ -23,7 +23,7 @@ traits defined in `src/ports.rs`. The domain never imports adapters — only por
 ## Step 1: Choose the right port
 
 | Port | Use when |
-|---|---|
+| --- | --- |
 | `ScrapingService` | Fetching or processing content in a new way |
 | `AIProvider` | Adding a new LLM or language model API |
 | `CachePort` | Adding a new cache backend (Redis, Memcached, …) |

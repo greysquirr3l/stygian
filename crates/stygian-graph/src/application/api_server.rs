@@ -6,7 +6,7 @@
 //! # Endpoints
 //!
 //! | Method | Path | Description |
-//! |--------|------|-------------|
+//! | -------- | ------ | ------------- |
 //! | `GET` | `/health` | Liveness probe |
 //! | `GET` | `/metrics` | Prometheus metrics |
 //! | `GET` | `/` | Web dashboard (HTML) |

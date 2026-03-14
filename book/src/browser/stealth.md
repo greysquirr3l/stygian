@@ -8,7 +8,7 @@ class of bot-detection signal.
 ## Stealth levels
 
 | Level | `navigator` spoof | Canvas noise | WebGL random | CDP protection | Human behaviour |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | `None` | — | — | — | — | — |
 | `Basic` | ✓ | — | — | ✓ | — |
 | `Advanced` | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -106,7 +106,7 @@ GPU-based fingerprinting reads `RENDERER` and `VENDOR` strings from WebGL. These
 intercepted and replaced with plausible — but randomised — GPU family names:
 
 | Real value | Spoofed value (example) |
-|---|---|
+| --- | --- |
 | `ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version)` | `ANGLE (NVIDIA, ANGLE Metal Renderer: NVIDIA GeForce RTX 3070 Ti)` |
 | `Google SwiftShader` | `ANGLE (Intel, ANGLE Metal Renderer: Intel Iris Pro)` |
 
@@ -121,7 +121,7 @@ The Chrome DevTools Protocol itself can expose automation. Three modes are avail
 set via `STYGIAN_CDP_FIX_MODE` or `BrowserConfig::cdp_fix_mode`:
 
 | Mode | Protection | Compatibility |
-|---|---|---|
+| --- | --- | --- |
 | `AddBinding` (default) | Wraps calls to hide `Runtime.enable` side-effects | Best overall |
 | `IsolatedWorld` | Runs injection in a separate execution context | Moderate |
 | `EnableDisable` | Toggles enable/disable around each command | Broad |

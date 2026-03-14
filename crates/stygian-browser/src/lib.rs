@@ -56,7 +56,7 @@
 //! ## Stealth Levels
 //!
 //! | Level | `navigator` | Canvas | WebGL | CDP protect | Human behavior |
-//! |-------|:-----------:|:------:|:-----:|:-----------:|:--------------:|
+//! | ------- |:-----------:|:------:|:-----:|:-----------:|:--------------:|
 //! | `None` | — | — | — | — | — |
 //! | `Basic` | ✓ | — | — | ✓ | — |
 //! | `Advanced` | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -64,7 +64,7 @@
 //! ## Module Overview
 //!
 //! | Module | Description |
-//! |--------|-------------|
+//! | -------- | ------------- |
 //! | [`browser`] | [`BrowserInstance`] — launch, health-check, shutdown |
 //! | [`pool`] | [`BrowserPool`] + [`BrowserHandle`] — warm pool management |
 //! | [`page`] | [`PageHandle`] — navigate, eval, content, cookies |

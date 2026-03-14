@@ -48,7 +48,7 @@ let config = BrowserConfig::builder()
 ### Browser settings
 
 | Field | Type | Default | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `headless` | `bool` | `true` | Run without visible window |
 | `headless_mode` | `HeadlessMode` | `New` | `New` = `--headless=new` (full Chromium rendering, default since Chrome 112, **only mode since Chrome 132**); `Legacy` = `chrome-headless-shell` / pre-112 `--headless` |
 | `window_size` | `Option<(u32, u32)>` | `(1920, 1080)` | Browser viewport dimensions |
@@ -61,7 +61,7 @@ let config = BrowserConfig::builder()
 ### Pool settings (`PoolConfig`)
 
 | Field | Type | Default | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `min_size` | `usize` | `2` | Browsers kept warm at all times |
 | `max_size` | `usize` | `10` | Maximum concurrent browsers |
 | `idle_timeout` | `Duration` | `5 min` | Evict idle browser after this duration |
@@ -70,14 +70,14 @@ let config = BrowserConfig::builder()
 ### WebRTC settings (`WebRtcConfig`)
 
 | Field | Type | Default | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `policy` | `WebRtcPolicy` | `DisableNonProxied` | WebRTC IP leak policy |
 | `location` | `Option<ProxyLocation>` | `None` | Simulated geo-location for WebRTC |
 
 `WebRtcPolicy` variants:
 
 | Variant | Behaviour |
-|---|---|
+| --- | --- |
 | `Allow` | Default browser behaviour — real IPs may leak |
 | `DisableNonProxied` | Block direct connections; only proxied paths allowed |
 | `BlockAll` | Block all WebRTC — safest for anonymous scraping |
@@ -89,7 +89,7 @@ let config = BrowserConfig::builder()
 All config values can be overridden without touching source code:
 
 | Variable | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `STYGIAN_CHROME_PATH` | auto-detect | Path to Chrome/Chromium binary |
 | `STYGIAN_HEADLESS` | `true` | Set `false` for headed mode |
 | `STYGIAN_HEADLESS_MODE` | `new` | `new` (`--headless=new`) or `legacy` (`chrome-headless-shell`; old `--headless` removed in Chrome 132) |

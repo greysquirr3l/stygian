@@ -103,6 +103,62 @@ from the pool. This reclaims system memory when scraping activity is low.
 If eviction would drop the pool below `min_size`, eviction is skipped for those browsers
 (they stay warm).
 
+Eviction applies to both the shared queue and all per-context queues. Empty context
+queues are pruned automatically.
+
+---
+
+## Context segregation
+
+When multiple bots or tenants share a single pool, use `acquire_for()` to keep their
+browser instances isolated. Browsers acquired for one context are never returned to a
+different context.
+
+```rust,no_run
+// Bot A and Bot B use the same pool, but their browsers never mix
+let a = pool.acquire_for("bot-a").await?;
+let b = pool.acquire_for("bot-b").await?;
+
+// Each handle knows its context
+assert_eq!(a.context_id(), Some("bot-a"));
+assert_eq!(b.context_id(), Some("bot-b"));
+
+a.release().await;
+b.release().await;
+```
+
+The global `max_size` still governs total capacity across every context. If the pool is
+full, `acquire_for()` blocks just like `acquire()`.
+
+### Releasing a context
+
+When a bot or tenant is deprovisioned, drain its idle browsers:
+
+```rust,no_run
+let shut_down = pool.release_context("bot-a").await;
+println!("Closed {shut_down} browsers for bot-a");
+```
+
+Active handles for that context are unaffected; they will be disposed normally when
+released or dropped.
+
+### Listing contexts
+
+```rust,no_run
+let ids = pool.context_ids().await;
+println!("Active contexts with idle browsers: {ids:?}");
+```
+
+### Shared vs scoped
+
+| Method | Queue | Reuse scope |
+| ------- | ------- | ------------- |
+| `acquire()` | shared | any `acquire()` caller |
+| `acquire_for("x")` | scoped to `"x"` | only `acquire_for("x")` |
+
+Both paths share the same semaphore and `max_size`, so global backpressure
+is applied regardless of how browsers were acquired.
+
 ---
 
 ## Cold start behaviour

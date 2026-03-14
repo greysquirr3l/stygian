@@ -3,7 +3,7 @@
 //! Reads the following environment variables:
 //!
 //! | Variable | Default | Description |
-//! |----------|---------|-------------|
+//! | ---------- | --------- | ------------- |
 //! | `STYGIAN_API_KEY` | `"dev-key"` | API key for `/pipelines` routes |
 //! | `STYGIAN_BIND` | `"0.0.0.0:8080"` | TCP address to listen on |
 //! | `RUST_LOG` | `"info"` | Tracing filter |

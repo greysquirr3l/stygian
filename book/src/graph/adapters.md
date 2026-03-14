@@ -27,7 +27,7 @@ let adapter = HttpAdapter::with_config(HttpConfig {
 **Registered service name**: `"http"`
 
 | Config field | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `timeout` | 30 s | Per-request timeout |
 | `user_agent` | `None` | Override `User-Agent` header |
 | `follow_redirects` | `true` | Follow 3xx responses |
@@ -71,7 +71,7 @@ let input = ServiceInput {
 ### Config fields
 
 | Field | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `timeout` | 30 s | Per-request timeout |
 | `max_retries` | 3 | Retry attempts on transient errors (`429`, `5xx`, network) |
 | `retry_base_delay` | 1 s | Base for exponential backoff |
@@ -80,7 +80,7 @@ let input = ServiceInput {
 ### `ServiceInput.params` contract
 
 | Param | Required | Default | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `method` | — | `"GET"` | `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD` |
 | `body` | — | — | JSON body for `POST`/`PUT`/`PATCH` |
 | `body_raw` | — | — | Raw string body (takes precedence over `body`) |
@@ -123,7 +123,7 @@ key   = "${env:API_KEY}"
 ### Pagination strategies
 
 | Strategy | How it works | Best for |
-|---|---|---|
+| --- | --- | --- |
 | `"none"` | Single request | Simple endpoints |
 | `"offset"` | Increments `page_param` from `start_page` | REST APIs with `?page=N` |
 | `"cursor"` | Extracts next cursor from `cursor_field` (dot path), sends as `cursor_param` | GraphQL-REST hybrids, Stripe-style |
@@ -212,7 +212,7 @@ let adapter = ClaudeAdapter::new(
 **Registered service name**: `"ai_claude"`
 
 | Config field | Description |
-|---|---|
+| --- | --- |
 | `model` | Model ID (e.g. `claude-3-5-sonnet-20241022`) |
 | `max_tokens` | Max response tokens (default `4096`) |
 | `system_prompt` | Optional system-level instruction |
@@ -432,7 +432,7 @@ All per-request options are passed via `ServiceInput.params`. `account_id` and
 Cloudflare API.
 
 | Param key | Required | Default | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `account_id` | ✅ | — | Cloudflare account ID |
 | `api_token` | ✅ | — | Cloudflare API token with Browser Rendering permission |
 | `output_format` | — | `"markdown"` | `"markdown"`, `"html"`, or `"raw"` |
@@ -446,7 +446,7 @@ Cloudflare API.
 ### Config fields
 
 | Field | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `poll_interval` | 2 s | How often to poll for job completion |
 | `job_timeout` | 5 min | Hard timeout per crawl job; returns `ServiceError::Timeout` if exceeded |
 
@@ -486,7 +486,7 @@ target = "https://docs.example.com"
 ### Error mapping
 
 | Condition | `StygianError` variant |
-|---|---|
+| --- | --- |
 | Missing `account_id` or `api_token` | `ServiceError::Unavailable` |
 | Cloudflare API non-2xx | `ServiceError::Unavailable` (with CF error code) |
 | Job still pending after `job_timeout` | `ServiceError::Timeout` |

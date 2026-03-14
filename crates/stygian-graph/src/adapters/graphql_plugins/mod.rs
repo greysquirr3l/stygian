@@ -6,7 +6,7 @@
 //! # Available plugins
 //!
 //! | Module | Target | Notes |
-//! |--------|--------|---------|
+//! | -------- | -------- | --------- |
 //! | [`generic`](graphql_plugins::generic) | Any GraphQL API | Fully configurable via builder |
 //!
 //! Consumer-specific plugins (e.g. Jobber) live in the consuming application,

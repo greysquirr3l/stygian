@@ -7,7 +7,7 @@
 //! ## Configuration
 //!
 //! | Variable | Default | Description |
-//! |----------|---------|-------------|
+//! | ---------- | --------- | ------------- |
 //! | `STYGIAN_RECORD_SESSION` | `false` | Enable recording automatically |
 //! | `STYGIAN_RECORD_DIR` | `./recordings` | Output directory |
 //!

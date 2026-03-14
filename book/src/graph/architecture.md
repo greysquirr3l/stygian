@@ -45,7 +45,7 @@ Pure Rust. Only `std`, `serde`, and arithmetic/pure-data crates allowed. No `tok
 `reqwest`, no file I/O.
 
 | Type | File | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | `Pipeline` | `domain/graph.rs` | Owned graph of `Node`s and `Edge`s; wraps a `petgraph` DAG |
 | `DagExecutor` | `domain/graph.rs` | Topological sort → wave-based concurrent execution |
 | `WorkerPool` | `domain/executor.rs` | Bounded Tokio worker pool with back-pressure |
@@ -124,7 +124,7 @@ pub trait RateLimiter: Send + Sync {
 Adapters implement port traits and handle real I/O. They are **never** imported by the domain.
 
 | Adapter | Port | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `HttpAdapter` | `ScrapingService` | reqwest, UA rotation, cookie jar, retry |
 | `BrowserAdapter` | `ScrapingService` | chromiumoxide via `stygian-browser` |
 | `ClaudeProvider` | `AIProvider` | Anthropic API, streaming |
@@ -155,7 +155,7 @@ No changes to domain code are required.
 Orchestrates adapters, holds runtime configuration, and owns the `ServiceRegistry`.
 
 | Module | Role |
-|---|---|
+| --- | --- |
 | `ServiceRegistry` | Runtime map of `name → Arc<dyn ScrapingService>` |
 | `PipelineParser` | Parses JSON/TOML pipeline configs into `Pipeline` |
 | `MetricsCollector` | Prometheus counter/histogram/gauge facade |

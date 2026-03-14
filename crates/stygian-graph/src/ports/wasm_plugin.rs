@@ -28,7 +28,7 @@
 //! Preview 1 / C ABI style):
 //!
 //! | Export | Signature | Description |
-//! |--------|-----------|-------------|
+//! | -------- | ----------- | ------------- |
 //! | `plugin_name` | `() → *const u8` | Null-terminated UTF-8 name |
 //! | `plugin_execute` | `(url_ptr: i32, url_len: i32, params_ptr: i32, params_len: i32, out_ptr: *mut i32) → i32` | Execute and return output length |
 //!

@@ -3,7 +3,7 @@
 //! Three implementations available for different use-cases:
 //!
 //! | Adapter        | Eviction | TTL | Notes                        |
-//! |----------------|----------|-----|------------------------------|
+//! | ---------------- | ---------- | ----- | ------------------------------ |
 //! | `MemoryCache`  | None     | No  | Dev/test                     |
 //! | `DashMapCache` | None     | Yes | High-concurrency + background cleanup |
 //! | `BoundedLruCache` | LRU  | Yes | Capacity-bounded; `LazyLock` singleton |

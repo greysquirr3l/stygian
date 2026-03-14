@@ -6,7 +6,7 @@
 //! ## Content Routing
 //!
 //! | Content type          | Strategy                                    |
-//! |-----------------------|---------------------------------------------|
+//! | ----------------------- | --------------------------------------------- |
 //! | `text/csv`            | Parse in-process via CSV iterator           |
 //! | `application/json`    | Parse + re-format via serde_json            |
 //! | `text/xml` / `application/xml` | Lightweight attribute extraction   |

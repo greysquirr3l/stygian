@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.17] - 2026-03-14
+
+### Added
+
+- `stygian-browser`: context-scoped browser pool segregation — `BrowserPool::acquire_for(context_id)` returns browsers isolated by context (bot, tenant, etc.) so multiple consumers share one pool without cross-contamination; `release_context(id)` drains all idle browsers for a context; `context_ids()` lists active contexts; `BrowserHandle::context_id()` exposes the owning context
+- `stygian-browser`: pool eviction now walks both shared and per-context queues, pruning empty context entries automatically
+
+### Changed
+
+- `stygian-browser`: `PoolInner` internal structure changed from single `VecDeque` to shared + `HashMap<String, VecDeque>` scoped queues (no public API break — `acquire()` remains fully backward-compatible)
+
 ## [0.1.16] - 2026-03-13
 
 ### Changed

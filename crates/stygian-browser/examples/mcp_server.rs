@@ -14,7 +14,7 @@
 //! # Environment variables
 //!
 //! | Variable | Default | Description |
-//! |----------|---------|-------------|
+//! | ---------- | --------- | ------------- |
 //! | `STYGIAN_MCP_ENABLED` | `false` | Must be `true` to start the server |
 //! | `RUST_LOG` | `info` | Tracing filter (use `debug` for CDP traffic) |
 

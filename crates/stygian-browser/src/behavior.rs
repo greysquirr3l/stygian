@@ -702,7 +702,7 @@ impl InteractionSimulator {
     /// Perform a random human-like interaction matching the configured level.
     ///
     /// | Level    | Actions                                                   |
-    /// |----------|-----------------------------------------------------------|
+    /// | ---------- | ----------------------------------------------------------- |
     /// | `None`   | No-op                                                     |
     /// | `Low`    | One scroll + short pause (500–1 500 ms)                   |
     /// | `Medium` | Scroll + mouse wiggle + reading pause (1–3 s)             |

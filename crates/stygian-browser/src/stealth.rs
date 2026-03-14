@@ -333,7 +333,7 @@ impl StealthProfile {
 /// [`crate::config::StealthLevel`]:
 ///
 /// | Level      | Injected content                                                        |
-/// |------------|-------------------------------------------------------------------------|
+/// | ------------ | ------------------------------------------------------------------------- |
 /// | `None`     | Nothing                                                                 |
 /// | `Basic`    | CDP leak fix + `navigator.webdriver` removal + minimal navigator spoof  |
 /// | `Advanced` | Basic + full WebGL/navigator spoofing + fingerprint + WebRTC protection |

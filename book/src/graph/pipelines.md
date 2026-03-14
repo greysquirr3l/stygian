@@ -52,7 +52,7 @@ defined in JSON, TOML, or built programmatically in Rust.
 ### Field reference
 
 | Field | Type | Required | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `id` | string | no | Human-readable pipeline identifier |
 | `nodes[].id` | string | yes | Unique node identifier within the pipeline |
 | `nodes[].service` | string | yes | Registered service name (must exist in `ServiceRegistry`) |

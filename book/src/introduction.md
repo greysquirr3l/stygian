@@ -4,7 +4,7 @@
 crates in a single workspace.
 
 | Crate | Purpose |
-|---|---|
+| --- | --- |
 | [`stygian-graph`](./graph/architecture.md) | Graph-based scraping engine — DAG pipelines, AI extraction, distributed execution |
 | [`stygian-browser`](./browser/overview.md) | Anti-detection browser automation — stealth profiles, browser pooling, CDP automation |
 
@@ -55,7 +55,7 @@ stygian-graph = { version = "0.1", features = ["browser", "ai-claude", "distribu
 Available features:
 
 | Feature | Includes |
-|---|---|
+| --- | --- |
 | `browser` | `BrowserAdapter` backed by `stygian-browser` |
 | `ai-claude` | Anthropic Claude adapter |
 | `ai-openai` | OpenAI adapter |
@@ -138,7 +138,7 @@ Source, issues, and pull requests live at
 ## Documentation
 
 | Resource | URL |
-|---|---|
+| --- | --- |
 | This guide | [greysquirr3l.github.io/stygian](https://greysquirr3l.github.io/stygian/) |
 | API reference (`stygian-graph`) | [greysquirr3l.github.io/stygian/api/stygian_graph](https://greysquirr3l.github.io/stygian/api/stygian_graph/index.html) |
 | API reference (`stygian-browser`) | [greysquirr3l.github.io/stygian/api/stygian_browser](https://greysquirr3l.github.io/stygian/api/stygian_browser/index.html) |

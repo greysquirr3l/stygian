@@ -8,7 +8,7 @@
 //! # Techniques
 //!
 //! | Technique | Description | Reliability |
-//! |-----------|-------------|-------------|
+//! | ----------- | ------------- | ------------- |
 //! | `AddBinding` | Injects a fake binding to avoid `Runtime.enable` | High ★★★ |
 //! | `IsolatedWorld` | Runs evaluation scripts in isolated CDP contexts | Medium ★★ |
 //! | `EnableDisable` | Enable → evaluate → disable immediately | Low ★ |

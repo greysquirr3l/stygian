@@ -24,7 +24,7 @@
 //! Supported methods:
 //!
 //! | MCP Method | Description |
-//! |-----------|-------------|
+//! | ----------- | ------------- |
 //! | `initialize` | Handshake, return server capabilities |
 //! | `tools/list` | List available browser tools |
 //! | `tools/call` | Execute a browser tool |
@@ -34,7 +34,7 @@
 //! ## Tools
 //!
 //! | Tool | Parameters | Returns |
-//! |------|-----------|---------|
+//! | ------ | ----------- | --------- |
 //! | `browser_acquire` | – | `session_id: String` |
 //! | `browser_open_page` | `session_id` | `page_url: String` |
 //! | `browser_navigate` | `session_id, url, timeout_secs?` | `title, url` |
