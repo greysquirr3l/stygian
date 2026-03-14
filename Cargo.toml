@@ -6,11 +6,11 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.15"
+version = "0.1.16"
 edition = "2024"
 rust-version = "1.93.1"
 authors = ["Nick Campbell <s0ma@protonmail.com>"]
-license = "AGPL-3.0-only"
+license = "AGPL-3.0-only OR LicenseRef-Commercial"
 repository = "https://github.com/greysquirr3l/stygian"
 
 [workspace.dependencies]
@@ -24,7 +24,7 @@ async-trait = "0.1"
 rayon = "1.10"
 
 # Error handling
-thiserror = "1.0"
+thiserror = "2.0"
 anyhow = "1.0"
 
 # Serialization
@@ -33,10 +33,10 @@ serde_json = "1.0"
 toml = "0.8"
 
 # HTTP client
-reqwest = { version = "0.12", features = ["rustls-tls", "json", "cookies", "gzip", "brotli"] }
+reqwest = { version = "0.13", features = ["rustls", "json", "cookies", "gzip", "brotli"] }
 
 # HTML parsing
-scraper = "0.20"
+scraper = "0.25"
 
 # Graph algorithms
 petgraph = "0.8"
@@ -47,8 +47,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # Testing
 proptest = "1.5"
-mockall = "0.13"
-criterion = { version = "0.5", features = ["async_tokio"] }
+mockall = "0.14"
+criterion = { version = "0.8", features = ["async_tokio"] }
 
 # Browser automation (for stygian-browser)
 chromiumoxide = "=0.9.1"
@@ -59,10 +59,10 @@ parking_lot = "0.12"
 dashmap = "6"
 lru = "0.16"
 base64 = "0.22"
-prometheus-client = "0.22"
+prometheus-client = "0.24"
 figment = { version = "0.10", features = ["toml", "env"] }
 clap = { version = "4", features = ["derive"] }
-indicatif = "0.17"
+indicatif = "0.18"
 
 # API server
 axum = { version = "0.8", features = ["macros"] }

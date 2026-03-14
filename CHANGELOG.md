@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.16] - 2026-03-13
+
+### Changed
+
+- Workspace license updated to `AGPL-3.0-only OR LicenseRef-Commercial` dual licensing; added `LICENSE-COMMERCIAL.md`
+- `thiserror` 1.0 → 2.0 (unifies with chromiumoxide transitive dep)
+- `toml` pinned at 0.8 (unifies with figment; previous bump to 1.0 caused duplicate)
+- `reqwest` 0.12 → 0.13 (feature `rustls-tls` renamed to `rustls`; added `query` feature)
+- `toml` 0.8 → 1.0
+- `scraper` 0.20 → 0.25
+- `mockall` 0.13 → 0.14
+- `criterion` 0.5 → 0.8
+- `prometheus-client` 0.22 → 0.24
+- `indicatif` 0.17 → 0.18
+
 ## [0.1.15] - 2026-03-13
 
 ### Added
