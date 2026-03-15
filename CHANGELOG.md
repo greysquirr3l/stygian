@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.18] - 2026-03-15
+
+### Fixed
+
+- `stygian-graph`: `RestApiAdapter` now checks `body_raw` before `body` when both are present, matching the documented precedence contract
+- `stygian-graph`: `RestApiAdapter` 429 responses now return `ServiceError::RateLimited` with the parsed `Retry-After` value; `send_one` honours the server-specified delay instead of blind exponential backoff
+- `stygian-graph`: token-bucket rate limiter guards against `max_requests = 0` or zero-duration window configs that previously caused a division-by-zero panic via `Duration::from_secs_f64(inf)`
+- `stygian-graph`: `CloudflareCrawlAdapter::with_config` now panics with a clear message on TLS init failure instead of silently falling back to a misconfigured default `reqwest::Client`
+- `book`: Cloudflare crawl adapter metadata example corrected to `job_id`, `pages_crawled`, `output_format` (was `pages`, `url_count`)
+- `book`: `HeadlessMode::Legacy` docs across configuration and env-vars pages corrected to "classic `--headless` for Chromium < 112" (was incorrectly referencing `chrome-headless-shell` and Chrome 132 removal)
+
 ## [0.1.17] - 2026-03-14
 
 ### Added

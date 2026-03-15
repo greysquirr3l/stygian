@@ -330,12 +330,13 @@ impl RestApiAdapter {
             })
             .unwrap_or_default();
 
-        let body = if params["body"].is_null() {
-            params["body_raw"]
-                .as_str()
-                .map(|raw| RequestBody::Raw(raw.to_owned()))
-        } else {
+        // body_raw takes precedence over body (raw string vs structured JSON).
+        let body = if let Some(raw) = params["body_raw"].as_str().filter(|s| !s.is_empty()) {
+            Some(RequestBody::Raw(raw.to_owned()))
+        } else if !params["body"].is_null() {
             Some(RequestBody::Json(params["body"].clone()))
+        } else {
+            None
         };
 
         let accept = params["accept"]
@@ -438,9 +439,15 @@ impl RestApiAdapter {
 
         for attempt in 0..=self.config.max_retries {
             if attempt > 0 {
-                let delay = self.config.retry_base_delay * 2u32.saturating_pow(attempt - 1);
+                // Honour server Retry-After when available; otherwise exponential backoff.
+                let delay = match &last_err {
+                    Some(StygianError::Service(ServiceError::RateLimited { retry_after_ms })) => {
+                        Duration::from_millis(*retry_after_ms)
+                    }
+                    _ => self.config.retry_base_delay * 2u32.saturating_pow(attempt - 1),
+                };
                 tokio::time::sleep(delay).await;
-                debug!(url, attempt, "REST API retry");
+                debug!(url, attempt, ?delay, "REST API retry");
             }
 
             match self.do_send(url, spec, extra_query).await {
@@ -516,18 +523,18 @@ impl RestApiAdapter {
             .and_then(|v| v.to_str().ok())
             .map(ToOwned::to_owned);
 
-        // 429 — log retry-after hint
+        // 429 — honour server Retry-After hint via dedicated error variant.
         if status.as_u16() == 429 {
-            let retry_after = response
+            let retry_after_secs = response
                 .headers()
                 .get("retry-after")
                 .and_then(|v| v.to_str().ok())
                 .and_then(|s| s.parse::<u64>().ok())
                 .unwrap_or(5);
-            warn!(url, retry_after, "REST API rate-limited (429)");
-            return Err(StygianError::from(ServiceError::Unavailable(format!(
-                "HTTP 429 rate-limited; retry-after={retry_after}s"
-            ))));
+            warn!(url, retry_after_secs, "REST API rate-limited (429)");
+            return Err(StygianError::from(ServiceError::RateLimited {
+                retry_after_ms: retry_after_secs.saturating_mul(1000),
+            }));
         }
 
         if !status.is_success() {
@@ -565,16 +572,19 @@ impl Default for RestApiAdapter {
 
 /// Returns `true` for transient errors that are worth retrying.
 fn is_retryable(err: &StygianError) -> bool {
-    let StygianError::Service(ServiceError::Unavailable(msg)) = err else {
-        return false;
-    };
-    msg.contains("429")
-        || msg.contains("500")
-        || msg.contains("502")
-        || msg.contains("503")
-        || msg.contains("504")
-        || msg.contains("connection")
-        || msg.contains("timed out")
+    match err {
+        StygianError::Service(ServiceError::RateLimited { .. }) => true,
+        StygianError::Service(ServiceError::Unavailable(msg)) => {
+            msg.contains("429")
+                || msg.contains("500")
+                || msg.contains("502")
+                || msg.contains("503")
+                || msg.contains("504")
+                || msg.contains("connection")
+                || msg.contains("timed out")
+        }
+        _ => false,
+    }
 }
 
 // ─── ScrapingService ──────────────────────────────────────────────────────────

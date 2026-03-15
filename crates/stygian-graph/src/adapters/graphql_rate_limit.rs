@@ -120,6 +120,11 @@ impl RequestWindow {
                 tokens,
                 last_refill,
             } => {
+                // Guard: zero max_requests or zero window would produce rate=0 → inf wait.
+                if self.config.max_requests == 0 || self.config.window.is_zero() {
+                    return Some(max_delay);
+                }
+
                 // Refill tokens proportional to elapsed time.
                 let elapsed = now.duration_since(*last_refill);
                 let rate = f64::from(self.config.max_requests) / self.config.window.as_secs_f64();

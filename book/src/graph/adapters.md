@@ -457,9 +457,9 @@ Cloudflare API.
 
 ```json
 {
-  "job_id":    "some-uuid",
-  "pages":     12,
-  "url_count": 12
+  "job_id":        "some-uuid",
+  "pages_crawled": 12,
+  "output_format": "markdown"
 }
 ```
 

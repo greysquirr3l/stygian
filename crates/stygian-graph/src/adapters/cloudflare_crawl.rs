@@ -161,8 +161,7 @@ impl CloudflareCrawlAdapter {
         let client = Client::builder()
             .timeout(Duration::from_secs(60))
             .build()
-            // reqwest::ClientBuilder::build only fails on TLS init; that is not recoverable.
-            .unwrap_or_default();
+            .expect("reqwest TLS backend failed to initialize");
         Self { client, config }
     }
 
