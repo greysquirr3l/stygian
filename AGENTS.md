@@ -45,11 +45,11 @@
 
 ### Shared across both crates
 
-- Rust edition 2024, stable toolchain (1.93.1).
+- Rust edition 2024, stable toolchain (1.94.0).
 - All error types must use 'thiserror'; 'anyhow' is reserved for CLI entry points only.
 - No .unwrap() or .expect() in library code; use exhaustive error handling.
 - Async runtime: Tokio 1.49 for all I/O operations.
-- Use Rust 1.93.1 features: async closures, trait upcasting, LazyCell/LazyLock, let chains.
+- Use Rust 1.94.0 features: async closures, trait upcasting, LazyCell/LazyLock, let chains.
 - Use native 'async fn' in traits for plugin interfaces (Rust 2024).
 - Documentation: every public trait and method must have a doc comment with an example.
 - Graceful degradation: log failures, return errors, never panic in library code.

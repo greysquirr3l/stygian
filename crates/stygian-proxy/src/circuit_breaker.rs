@@ -13,7 +13,7 @@
 //! HALF_OPEN ──(failure)──► OPEN  (timer reset)
 //! ```
 
-use std::sync::atomic::{AtomicU32, AtomicU64, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const STATE_CLOSED: u8 = 0;
@@ -60,8 +60,7 @@ impl CircuitBreaker {
             STATE_CLOSED => true,
             STATE_HALF_OPEN => true,
             STATE_OPEN => {
-                let elapsed_ms =
-                    now_ms().saturating_sub(self.last_failure.load(Ordering::Acquire));
+                let elapsed_ms = now_ms().saturating_sub(self.last_failure.load(Ordering::Acquire));
                 if elapsed_ms >= self.half_open_after_ms {
                     // Try to transition Open → HalfOpen.  Another thread may
                     // get there first — both outcomes are fine: the proxy is

@@ -149,7 +149,7 @@ stygian/
 ### Setup
 
 ```bash
-# Install Rust 1.93.1+
+# Install Rust 1.94.0+
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 # Build workspace

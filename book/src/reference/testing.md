@@ -169,7 +169,7 @@ The GitHub Actions CI workflow (`.github/workflows/ci.yml`) runs:
 | `clippy` | `ubuntu-latest` | `cargo clippy --workspace --all-features -- -D warnings` |
 | `fmt` | `ubuntu-latest` | `cargo fmt --check` |
 | `docs` | `ubuntu-latest` | `cargo doc --workspace --no-deps --all-features` |
-| `msrv` | `ubuntu-latest` | `cargo +1.93.1 check --workspace` |
+| `msrv` | `ubuntu-latest` | `cargo +1.94.0 check --workspace` |
 | `cross-platform` | `windows-latest`, `macos-latest` | `cargo test --workspace` |
 
 Browser integration tests (`--include-ignored`) are **not** run in CI — they require a

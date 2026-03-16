@@ -106,10 +106,11 @@ mod tests {
     async fn bridge_returns_proxy_url_and_handle() {
         let storage = Arc::new(MemoryProxyStore::default());
         let mgr = Arc::new(
-            ProxyManager::with_round_robin(storage.clone(), ProxyConfig::default())
-                .unwrap(),
+            ProxyManager::with_round_robin(storage.clone(), ProxyConfig::default()).unwrap(),
         );
-        mgr.add_proxy(make_proxy("http://p.test:8080")).await.unwrap();
+        mgr.add_proxy(make_proxy("http://p.test:8080"))
+            .await
+            .unwrap();
 
         let bridge = ProxyManagerBridge::new(mgr);
         let (url, handle) = bridge.bind_proxy().await.unwrap();
@@ -124,11 +125,16 @@ mod tests {
         let mgr = Arc::new(
             ProxyManager::with_round_robin(
                 storage.clone(),
-                ProxyConfig { circuit_open_threshold: 1, ..ProxyConfig::default() },
+                ProxyConfig {
+                    circuit_open_threshold: 1,
+                    ..ProxyConfig::default()
+                },
             )
             .unwrap(),
         );
-        mgr.add_proxy(make_proxy("http://q.test:8080")).await.unwrap();
+        mgr.add_proxy(make_proxy("http://q.test:8080"))
+            .await
+            .unwrap();
 
         let bridge = ProxyManagerBridge::new(Arc::clone(&mgr));
         {
@@ -138,7 +144,11 @@ mod tests {
 
         // After one failure (threshold = 1) the circuit should be open.
         let stats = mgr.pool_stats().await.unwrap();
-        assert_eq!(stats.open, 1, "circuit should open after crash (open = {})", stats.open);
+        assert_eq!(
+            stats.open, 1,
+            "circuit should open after crash (open = {})",
+            stats.open
+        );
     }
 
     /// `ProxyHandle::direct()` is usable as a no-proxy binding.

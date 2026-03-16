@@ -42,7 +42,11 @@ impl HealthChecker {
         storage: Arc<dyn ProxyStoragePort>,
         health_map: HealthMap,
     ) -> Self {
-        Self { config, storage, health_map }
+        Self {
+            config,
+            storage,
+            health_map,
+        }
     }
 
     /// Spawn an infinite background task that checks proxies on every
@@ -51,11 +55,8 @@ impl HealthChecker {
     /// Cancel `token` to stop the task gracefully.  Missed ticks are skipped.
     pub fn spawn(self, token: CancellationToken) -> JoinHandle<()> {
         tokio::spawn(async move {
-            let mut interval =
-                tokio::time::interval(self.config.health_check_interval);
-            interval.set_missed_tick_behavior(
-                tokio::time::MissedTickBehavior::Skip,
-            );
+            let mut interval = tokio::time::interval(self.config.health_check_interval);
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 tokio::select! {
                     _ = token.cancelled() => {
@@ -133,12 +134,8 @@ impl HealthChecker {
         }
 
         for (id, success, latency) in updates {
-            if let Err(e) =
-                self.storage.update_metrics(id, success, latency).await
-            {
-                tracing::warn!(
-                    "health checker: metrics update failed for {id}: {e}"
-                );
+            if let Err(e) = self.storage.update_metrics(id, success, latency).await {
+                tracing::warn!("health checker: metrics update failed for {id}: {e}");
             }
         }
 
@@ -160,8 +157,7 @@ async fn do_check(
     health_url: &str,
     timeout: std::time::Duration,
 ) -> Result<u64, String> {
-    let mut proxy =
-        reqwest::Proxy::all(proxy_url).map_err(|e| e.to_string())?;
+    let mut proxy = reqwest::Proxy::all(proxy_url).map_err(|e| e.to_string())?;
     if let (Some(user), Some(pass)) = (username, password) {
         proxy = proxy.basic_auth(user, pass);
     }
@@ -222,7 +218,10 @@ mod tests {
         // Proxy 1: URL points to the mock server → health check will succeed.
         storage.add(make_proxy(&server.uri())).await.unwrap();
         // Proxy 2: invalid address → health check will fail.
-        storage.add(make_proxy("http://192.0.2.1:9999")).await.unwrap();
+        storage
+            .add(make_proxy("http://192.0.2.1:9999"))
+            .await
+            .unwrap();
 
         let health_map: HealthMap = Arc::new(RwLock::new(HashMap::new()));
         let config = ProxyConfig {
@@ -231,8 +230,7 @@ mod tests {
             health_check_timeout: Duration::from_secs(2),
             ..ProxyConfig::default()
         };
-        let checker =
-            HealthChecker::new(config, storage.clone(), health_map.clone());
+        let checker = HealthChecker::new(config, storage.clone(), health_map.clone());
         checker.check_once().await;
 
         let map = health_map.read().await;
@@ -255,8 +253,10 @@ mod tests {
         let handle = checker.spawn(token.clone());
 
         token.cancel();
-        let result =
-            tokio::time::timeout(Duration::from_secs(1), handle).await;
-        assert!(result.is_ok(), "task should exit within 1s after cancellation");
+        let result = tokio::time::timeout(Duration::from_secs(1), handle).await;
+        assert!(
+            result.is_ok(),
+            "task should exit within 1s after cancellation"
+        );
     }
 }
