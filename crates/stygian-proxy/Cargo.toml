@@ -26,6 +26,7 @@ serde       = { workspace = true }
 serde_json  = { workspace = true }
 uuid        = { workspace = true }
 ulid        = { workspace = true }
+async-trait = { workspace = true }
 
 # reqwest — socks feature is unlocked via the "socks" cargo feature
 reqwest = { workspace = true }
@@ -38,4 +39,5 @@ stygian-browser = { path = "../stygian-browser", optional = true }
 
 [dev-dependencies]
 tokio       = { workspace = true }
+tokio-test  = "0.4"
 wiremock    = "0.6"

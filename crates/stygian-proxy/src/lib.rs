@@ -39,4 +39,5 @@ pub mod browser;
 
 // Top-level re-exports
 pub use error::{ProxyError, ProxyResult};
+pub use storage::MemoryProxyStore;
 pub use types::{Proxy, ProxyConfig, ProxyMetrics, ProxyRecord, ProxyType};
