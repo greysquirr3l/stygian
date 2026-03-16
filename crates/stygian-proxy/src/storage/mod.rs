@@ -49,6 +49,13 @@ pub trait ProxyStoragePort: Send + Sync + 'static {
     /// - `success`: whether the request succeeded.
     /// - `latency_ms`: elapsed time in milliseconds.
     async fn update_metrics(&self, id: Uuid, success: bool, latency_ms: u64) -> ProxyResult<()>;
+
+    /// Return all stored proxy records paired with their live metrics reference.
+    ///
+    /// Used by [`ProxyManager`](crate::manager::ProxyManager) when building
+    /// [`ProxyCandidate`](crate::strategy::ProxyCandidate) slices so that
+    /// latency-aware strategies (e.g. least-used) see up-to-date counters.
+    async fn list_with_metrics(&self) -> ProxyResult<Vec<(ProxyRecord, Arc<ProxyMetrics>)>>;
 }
 
 /// Convenience alias for a heap-allocated, type-erased [`ProxyStoragePort`].
@@ -127,9 +134,9 @@ fn validate_proxy_url(url: &str) -> ProxyResult<()> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use std::sync::Arc;
 use crate::types::ProxyMetrics;
 
 type StoreMap = HashMap<Uuid, (ProxyRecord, Arc<ProxyMetrics>)>;
@@ -204,6 +211,10 @@ impl ProxyStoragePort for MemoryProxyStore {
             .get(&id)
             .map(|(r, _)| r.clone())
             .ok_or_else(|| crate::error::ProxyError::StorageError(format!("proxy {id} not found")))
+    }
+
+    async fn list_with_metrics(&self) -> ProxyResult<Vec<(ProxyRecord, Arc<ProxyMetrics>)>> {
+        Ok(self.inner.read().await.values().map(|(r, m)| (r.clone(), Arc::clone(m))).collect())
     }
 
     async fn update_metrics(&self, id: Uuid, success: bool, latency_ms: u64) -> ProxyResult<()> {

@@ -20,6 +20,7 @@ pub type HealthMap = Arc<RwLock<HashMap<Uuid, bool>>>;
 ///
 /// Run one check cycle with [`check_once`](HealthChecker::check_once) or launch
 /// a background task with [`spawn`](HealthChecker::spawn).
+#[derive(Clone)]
 pub struct HealthChecker {
     config: ProxyConfig,
     storage: Arc<dyn ProxyStoragePort>,
@@ -27,6 +28,11 @@ pub struct HealthChecker {
 }
 
 impl HealthChecker {
+    /// Access the shared health map (read it to filter candidates).
+    pub fn health_map(&self) -> &HealthMap {
+        &self.health_map
+    }
+
     /// Create a new checker.
     ///
     /// `health_map` should be the **same** `Arc` held by the `ProxyManager` so

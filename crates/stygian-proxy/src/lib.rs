@@ -41,6 +41,7 @@ pub mod browser;
 pub use circuit_breaker::{CircuitBreaker, STATE_CLOSED, STATE_HALF_OPEN, STATE_OPEN};
 pub use error::{ProxyError, ProxyResult};
 pub use health::{HealthChecker, HealthMap};
+pub use manager::{PoolStats, ProxyHandle, ProxyManager, ProxyManagerBuilder};
 pub use storage::MemoryProxyStore;
 pub use strategy::{
     BoxedRotationStrategy, LeastUsedStrategy, ProxyCandidate, RandomStrategy,
