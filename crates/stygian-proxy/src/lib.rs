@@ -38,6 +38,7 @@ pub mod graph;
 pub mod browser;
 
 // Top-level re-exports
+pub use circuit_breaker::{CircuitBreaker, STATE_CLOSED, STATE_HALF_OPEN, STATE_OPEN};
 pub use error::{ProxyError, ProxyResult};
 pub use health::{HealthChecker, HealthMap};
 pub use storage::MemoryProxyStore;
