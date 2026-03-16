@@ -11,7 +11,6 @@ HTTP adapters). No external database required: the in-memory backend
 supports all production workloads; persistence adapters are optional and
 unlocked via feature flags.
 
-
 ## Setup commands
 
 - Build: `cargo build -p stygian-proxy --all-features`
@@ -29,7 +28,6 @@ unlocked via feature flags.
 ## Code style
 
 - Language: rust
-
 
 ## Rules
 

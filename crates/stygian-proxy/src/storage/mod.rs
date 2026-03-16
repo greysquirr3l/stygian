@@ -70,10 +70,12 @@ pub type BoxedProxyStorage = Box<dyn ProxyStoragePort>;
 fn validate_proxy_url(url: &str) -> ProxyResult<()> {
     use crate::error::ProxyError;
 
-    let (scheme, rest) = url.split_once("://").ok_or_else(|| ProxyError::InvalidProxyUrl {
-        url: url.to_owned(),
-        reason: "missing scheme separator '://'".into(),
-    })?;
+    let (scheme, rest) = url
+        .split_once("://")
+        .ok_or_else(|| ProxyError::InvalidProxyUrl {
+            url: url.to_owned(),
+            reason: "missing scheme separator '://'".into(),
+        })?;
 
     match scheme {
         "http" | "https" => {}
@@ -83,7 +85,7 @@ fn validate_proxy_url(url: &str) -> ProxyResult<()> {
             return Err(ProxyError::InvalidProxyUrl {
                 url: url.to_owned(),
                 reason: format!("unsupported scheme '{other}'"),
-            })
+            });
         }
     }
 
@@ -112,12 +114,10 @@ fn validate_proxy_url(url: &str) -> ProxyResult<()> {
     }
 
     if !port_str.is_empty() {
-        let port: u32 = port_str
-            .parse()
-            .map_err(|_| ProxyError::InvalidProxyUrl {
-                url: url.to_owned(),
-                reason: format!("non-numeric port '{port_str}'"),
-            })?;
+        let port: u32 = port_str.parse().map_err(|_| ProxyError::InvalidProxyUrl {
+            url: url.to_owned(),
+            reason: format!("non-numeric port '{port_str}'"),
+        })?;
         if port == 0 || port > 65535 {
             return Err(ProxyError::InvalidProxyUrl {
                 url: url.to_owned(),
@@ -136,8 +136,8 @@ fn validate_proxy_url(url: &str) -> ProxyResult<()> {
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 
-use std::sync::Arc;
 use crate::types::ProxyMetrics;
+use std::sync::Arc;
 
 type StoreMap = HashMap<Uuid, (ProxyRecord, Arc<ProxyMetrics>)>;
 
@@ -187,7 +187,10 @@ impl ProxyStoragePort for MemoryProxyStore {
         validate_proxy_url(&proxy.url)?;
         let record = ProxyRecord::new(proxy);
         let metrics = Arc::new(ProxyMetrics::default());
-        self.inner.write().await.insert(record.id, (record.clone(), metrics));
+        self.inner
+            .write()
+            .await
+            .insert(record.id, (record.clone(), metrics));
         Ok(record)
     }
 
@@ -201,7 +204,13 @@ impl ProxyStoragePort for MemoryProxyStore {
     }
 
     async fn list(&self) -> ProxyResult<Vec<ProxyRecord>> {
-        Ok(self.inner.read().await.values().map(|(r, _)| r.clone()).collect())
+        Ok(self
+            .inner
+            .read()
+            .await
+            .values()
+            .map(|(r, _)| r.clone())
+            .collect())
     }
 
     async fn get(&self, id: Uuid) -> ProxyResult<ProxyRecord> {
@@ -214,7 +223,13 @@ impl ProxyStoragePort for MemoryProxyStore {
     }
 
     async fn list_with_metrics(&self) -> ProxyResult<Vec<(ProxyRecord, Arc<ProxyMetrics>)>> {
-        Ok(self.inner.read().await.values().map(|(r, m)| (r.clone(), Arc::clone(m))).collect())
+        Ok(self
+            .inner
+            .read()
+            .await
+            .values()
+            .map(|(r, m)| (r.clone(), Arc::clone(m)))
+            .collect())
     }
 
     async fn update_metrics(&self, id: Uuid, success: bool, latency_ms: u64) -> ProxyResult<()> {
@@ -226,7 +241,9 @@ impl ProxyStoragePort for MemoryProxyStore {
             .await
             .get(&id)
             .map(|(_, m)| Arc::clone(m))
-            .ok_or_else(|| crate::error::ProxyError::StorageError(format!("proxy {id} not found")))?;
+            .ok_or_else(|| {
+                crate::error::ProxyError::StorageError(format!("proxy {id} not found"))
+            })?;
 
         // Lock released before the atomic updates — no long critical section.
         metrics.requests_total.fetch_add(1, Ordering::Relaxed);
@@ -235,7 +252,9 @@ impl ProxyStoragePort for MemoryProxyStore {
         } else {
             metrics.failures.fetch_add(1, Ordering::Relaxed);
         }
-        metrics.total_latency_ms.fetch_add(latency_ms, Ordering::Relaxed);
+        metrics
+            .total_latency_ms
+            .fetch_add(latency_ms, Ordering::Relaxed);
         Ok(())
     }
 }
@@ -280,14 +299,20 @@ mod tests {
     async fn invalid_url_rejected() {
         let store = MemoryProxyStore::default();
         let err = store.add(make_proxy("not-a-url")).await.unwrap_err();
-        assert!(matches!(err, crate::error::ProxyError::InvalidProxyUrl { .. }));
+        assert!(matches!(
+            err,
+            crate::error::ProxyError::InvalidProxyUrl { .. }
+        ));
     }
 
     #[tokio::test]
     async fn invalid_url_empty_host() {
         let store = MemoryProxyStore::default();
         let err = store.add(make_proxy("http://:8080")).await.unwrap_err();
-        assert!(matches!(err, crate::error::ProxyError::InvalidProxyUrl { .. }));
+        assert!(matches!(
+            err,
+            crate::error::ProxyError::InvalidProxyUrl { .. }
+        ));
     }
 
     #[tokio::test]
@@ -295,7 +320,10 @@ mod tests {
         use tokio::task::JoinSet;
 
         let store = Arc::new(MemoryProxyStore::default());
-        let record = store.add(make_proxy("http://proxy.test:3128")).await.unwrap();
+        let record = store
+            .add(make_proxy("http://proxy.test:3128"))
+            .await
+            .unwrap();
         let id = record.id;
 
         let mut tasks = JoinSet::new();

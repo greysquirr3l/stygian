@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use async_trait::async_trait;
 
 use crate::error::ProxyResult;
-use crate::strategy::{healthy_candidates, ProxyCandidate, RotationStrategy};
+use crate::strategy::{ProxyCandidate, RotationStrategy, healthy_candidates};
 
 /// Cycles through healthy proxies in order, distributing load evenly.
 ///
@@ -47,7 +47,10 @@ impl RotationStrategy for RoundRobinStrategy {
         if healthy.is_empty() {
             return Err(ProxyError::AllProxiesUnhealthy);
         }
-        let idx = self.counter.fetch_add(1, Ordering::Relaxed).wrapping_rem(healthy.len());
+        let idx = self
+            .counter
+            .fetch_add(1, Ordering::Relaxed)
+            .wrapping_rem(healthy.len());
         Ok(healthy[idx])
     }
 }
