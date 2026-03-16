@@ -1,0 +1,41 @@
+[package]
+name        = "stygian-proxy"
+description = "High-performance, resilient proxy rotation for the Stygian scraping ecosystem."
+version.workspace     = true
+edition.workspace     = true
+rust-version.workspace = true
+authors.workspace     = true
+license.workspace     = true
+repository.workspace  = true
+keywords = ["proxy", "rotation", "scraping", "http", "socks"]
+categories = ["network-programming", "web-programming"]
+
+[features]
+default = []
+socks   = ["reqwest/socks"]
+graph   = []
+browser = ["dep:stygian-browser"]
+
+[dependencies]
+# Workspace deps
+tokio       = { workspace = true }
+tokio-util  = { workspace = true }
+thiserror   = { workspace = true }
+tracing     = { workspace = true }
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+uuid        = { workspace = true }
+ulid        = { workspace = true }
+
+# reqwest — socks feature is unlocked via the "socks" cargo feature
+reqwest = { workspace = true }
+
+# Random strategy
+rand = "0.9"
+
+# Browser integration (optional)
+stygian-browser = { path = "../stygian-browser", optional = true }
+
+[dev-dependencies]
+tokio       = { workspace = true }
+wiremock    = "0.6"

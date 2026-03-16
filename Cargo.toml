@@ -3,12 +3,13 @@ resolver = "2"
 members = [
     "crates/stygian-graph",
     "crates/stygian-browser",
+    "crates/stygian-proxy",
 ]
 
 [workspace.package]
 version = "0.1.19"
 edition = "2024"
-rust-version = "1.93.1"
+rust-version = "1.94.0"
 authors = ["Nick Campbell <s0ma@protonmail.com>"]
 license = "AGPL-3.0-only OR LicenseRef-Commercial"
 repository = "https://github.com/greysquirr3l/stygian"
