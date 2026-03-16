@@ -331,12 +331,10 @@ impl RestApiAdapter {
             .unwrap_or_default();
 
         // body_raw takes precedence over body (raw string vs structured JSON).
-        let body = if let Some(raw) = params["body_raw"].as_str().filter(|s| !s.is_empty()) {
-            Some(RequestBody::Raw(raw.to_owned()))
-        } else if !params["body"].is_null() {
-            Some(RequestBody::Json(params["body"].clone()))
-        } else {
-            None
+        let body = match params["body_raw"].as_str().filter(|s| !s.is_empty()) {
+            Some(raw) => Some(RequestBody::Raw(raw.to_owned())),
+            None if !params["body"].is_null() => Some(RequestBody::Json(params["body"].clone())),
+            None => None,
         };
 
         let accept = params["accept"]

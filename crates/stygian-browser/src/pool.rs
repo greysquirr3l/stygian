@@ -167,8 +167,12 @@ impl BrowserPool {
                 let now = Instant::now();
                 let active = eviction_active.load(Ordering::Relaxed);
 
-                let total_idle: usize =
-                    guard.shared.len() + guard.scoped.values().map(|q| q.len()).sum::<usize>();
+                let total_idle: usize = guard.shared.len()
+                    + guard
+                        .scoped
+                        .values()
+                        .map(std::collections::VecDeque::len)
+                        .sum::<usize>();
                 let evict_count = if active > eviction_min {
                     (active - eviction_min).min(total_idle)
                 } else {
@@ -220,6 +224,7 @@ impl BrowserPool {
                 // Remove empty scoped queues
                 guard.scoped.retain(|_, q| !q.is_empty());
 
+                // Explicitly drop the guard as soon as possible to avoid holding the lock longer than needed
                 drop(guard);
 
                 if evicted > 0 {
@@ -319,6 +324,7 @@ impl BrowserPool {
 
     /// Shared acquisition logic. `context_id = None` reads from the shared
     /// queue; `Some(id)` reads from the scoped queue for that context.
+    #[allow(clippy::significant_drop_tightening)] // guard scope is already minimal
     async fn acquire_inner(self: &Arc<Self>, context_id: Option<&str>) -> Result<BrowserHandle> {
         let acquire_timeout = self.config.pool.acquire_timeout;
         let active = self.active_count.load(Ordering::Relaxed);
@@ -326,37 +332,48 @@ impl BrowserPool {
         let ctx_owned: Option<String> = context_id.map(String::from);
 
         // Fast path: try idle queue first
-        {
+        let fast_result = {
             let mut guard = self.inner.lock().await;
             let queue = match context_id {
                 Some(id) => guard.scoped.get_mut(id),
                 None => Some(&mut guard.shared),
             };
+            let mut healthy: Option<BrowserInstance> = None;
+            let mut unhealthy: Vec<BrowserInstance> = Vec::new();
             if let Some(queue) = queue {
                 while let Some(entry) = queue.pop_front() {
-                    if entry.instance.is_healthy_cached() {
-                        self.active_count.fetch_add(0, Ordering::Relaxed); // already counted
-                        debug!(
-                            context = context_id.unwrap_or("shared"),
-                            "Reusing idle browser (uptime={:?})",
-                            entry.instance.uptime()
-                        );
-                        return Ok(BrowserHandle::new(
-                            entry.instance,
-                            Arc::clone(self),
-                            ctx_owned,
-                        ));
+                    if healthy.is_none() && entry.instance.is_healthy_cached() {
+                        healthy = Some(entry.instance);
+                    } else if !entry.instance.is_healthy_cached() {
+                        unhealthy.push(entry.instance);
+                    } else {
+                        // Healthy but we already found one — push back.
+                        queue.push_front(entry);
+                        break;
                     }
-                    // Unhealthy idle entry — dispose in background
-                    #[cfg(feature = "metrics")]
-                    crate::metrics::METRICS.record_crash();
-                    let active_count = self.active_count.clone();
-                    tokio::spawn(async move {
-                        let _ = entry.instance.shutdown().await;
-                        active_count.fetch_sub(1, Ordering::Relaxed);
-                    });
                 }
             }
+            (healthy, unhealthy)
+        };
+
+        // Dispose unhealthy entries outside the lock
+        for instance in fast_result.1 {
+            #[cfg(feature = "metrics")]
+            crate::metrics::METRICS.record_crash();
+            let active_count = self.active_count.clone();
+            tokio::spawn(async move {
+                let _ = instance.shutdown().await;
+                active_count.fetch_sub(1, Ordering::Relaxed);
+            });
+        }
+
+        if let Some(instance) = fast_result.0 {
+            debug!(
+                context = context_id.unwrap_or("shared"),
+                "Reusing idle browser (uptime={:?})",
+                instance.uptime()
+            );
+            return Ok(BrowserHandle::new(instance, Arc::clone(self), ctx_owned));
         }
 
         // Slow path: launch new or wait
@@ -429,8 +446,12 @@ impl BrowserPool {
         // Health-check before returning to idle queue
         if instance.is_healthy_cached() {
             let mut guard = self.inner.lock().await;
-            let total_idle: usize =
-                guard.shared.len() + guard.scoped.values().map(|q| q.len()).sum::<usize>();
+            let total_idle: usize = guard.shared.len()
+                + guard
+                    .scoped
+                    .values()
+                    .map(std::collections::VecDeque::len)
+                    .sum::<usize>();
             if total_idle < self.max_size {
                 let queue = match context_id {
                     Some(id) => guard.scoped.entry(id.to_owned()).or_default(),
@@ -867,14 +888,18 @@ mod tests {
 
     #[test]
     fn pool_inner_total_idle_calculation() {
+        fn total_idle(inner: &PoolInner) -> usize {
+            inner.shared.len()
+                + inner
+                    .scoped
+                    .values()
+                    .map(std::collections::VecDeque::len)
+                    .sum::<usize>()
+        }
         let mut inner = PoolInner {
             shared: std::collections::VecDeque::new(),
             scoped: std::collections::HashMap::new(),
         };
-        // Total idle across shared + scoped
-        fn total_idle(inner: &PoolInner) -> usize {
-            inner.shared.len() + inner.scoped.values().map(|q| q.len()).sum::<usize>()
-        }
         assert_eq!(total_idle(&inner), 0);
 
         // Add entries to scoped queues (without real BrowserInstance, just check sizes)

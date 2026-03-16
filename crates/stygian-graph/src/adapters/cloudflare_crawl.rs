@@ -22,7 +22,7 @@
 //! use serde_json::json;
 //!
 //! # tokio::runtime::Runtime::new().unwrap().block_on(async {
-//! let adapter = CloudflareCrawlAdapter::new();
+//! let adapter = CloudflareCrawlAdapter::new().unwrap();
 //! let input = ServiceInput {
 //!     url: "https://docs.example.com".to_string(),
 //!     params: json!({
@@ -112,7 +112,7 @@ impl Default for CloudflareCrawlConfig {
 /// use serde_json::json;
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let adapter = CloudflareCrawlAdapter::new();
+/// let adapter = CloudflareCrawlAdapter::new().unwrap();
 /// let input = ServiceInput {
 ///     url: "https://docs.example.com".to_string(),
 ///     params: json!({
@@ -136,9 +136,9 @@ impl CloudflareCrawlAdapter {
     ///
     /// ```
     /// use stygian_graph::adapters::cloudflare_crawl::CloudflareCrawlAdapter;
-    /// let adapter = CloudflareCrawlAdapter::new();
+    /// let adapter = CloudflareCrawlAdapter::new().unwrap();
     /// ```
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self> {
         Self::with_config(CloudflareCrawlConfig::default())
     }
 
@@ -155,14 +155,14 @@ impl CloudflareCrawlAdapter {
     /// let adapter = CloudflareCrawlAdapter::with_config(CloudflareCrawlConfig {
     ///     poll_interval: Duration::from_secs(5),
     ///     job_timeout:   Duration::from_secs(600),
-    /// });
+    /// }).unwrap();
     /// ```
-    pub fn with_config(config: CloudflareCrawlConfig) -> Self {
+    pub fn with_config(config: CloudflareCrawlConfig) -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(60))
             .build()
-            .expect("reqwest TLS backend failed to initialize");
-        Self { client, config }
+            .map_err(|e| ServiceError::Unavailable(format!("reqwest client init failed: {e}")))?;
+        Ok(Self { client, config })
     }
 
     // ── Private helpers ──────────────────────────────────────────────────────
@@ -326,12 +326,6 @@ impl CloudflareCrawlAdapter {
     }
 }
 
-impl Default for CloudflareCrawlAdapter {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[async_trait]
 impl ScrapingService for CloudflareCrawlAdapter {
     /// Submit a crawl job to Cloudflare, poll until complete, and return
@@ -357,7 +351,7 @@ impl ScrapingService for CloudflareCrawlAdapter {
     /// use serde_json::json;
     ///
     /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-    /// let adapter = CloudflareCrawlAdapter::new();
+    /// let adapter = CloudflareCrawlAdapter::new().unwrap();
     /// let input = ServiceInput {
     ///     url: "https://docs.example.com".to_string(),
     ///     params: json!({
@@ -524,7 +518,7 @@ mod tests {
 
     #[tokio::test]
     async fn execute_missing_account_id_returns_error() {
-        let adapter = CloudflareCrawlAdapter::new();
+        let adapter = CloudflareCrawlAdapter::new().unwrap();
         let input = ServiceInput {
             url: "https://example.com".to_string(),
             params: json!({ "api_token": "tok" }),
@@ -534,7 +528,7 @@ mod tests {
 
     #[tokio::test]
     async fn execute_missing_api_token_returns_error() {
-        let adapter = CloudflareCrawlAdapter::new();
+        let adapter = CloudflareCrawlAdapter::new().unwrap();
         let input = ServiceInput {
             url: "https://example.com".to_string(),
             params: json!({ "account_id": "acc" }),
@@ -559,7 +553,8 @@ mod tests {
         let adapter = CloudflareCrawlAdapter::with_config(CloudflareCrawlConfig {
             poll_interval: Duration::from_secs(3),
             job_timeout: Duration::from_secs(120),
-        });
+        })
+        .expect("test: client init");
 
         let input = ServiceInput {
             url: "https://example.com".to_string(),
