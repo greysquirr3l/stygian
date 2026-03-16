@@ -39,6 +39,7 @@ pub mod browser;
 
 // Top-level re-exports
 pub use error::{ProxyError, ProxyResult};
+pub use health::{HealthChecker, HealthMap};
 pub use storage::MemoryProxyStore;
 pub use strategy::{
     BoxedRotationStrategy, LeastUsedStrategy, ProxyCandidate, RandomStrategy,
