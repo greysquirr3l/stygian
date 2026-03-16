@@ -201,9 +201,17 @@ impl ProxyManager {
     // ── Pool mutations ────────────────────────────────────────────────────────
 
     /// Add a proxy and register a circuit breaker for it.  Returns the new ID.
+    ///
+    /// The `circuit_breakers` write lock is held for the duration of the storage
+    /// write.  This is intentional: [`acquire_proxy`](Self::acquire_proxy) holds
+    /// a read lock on the same map while it inspects candidates, so it cannot
+    /// proceed past that point until both the storage record *and* its CB entry
+    /// exist.  Without this ordering a concurrent `acquire_proxy` could select
+    /// the new proxy before its CB was registered, breaking failure accounting.
     pub async fn add_proxy(&self, proxy: Proxy) -> ProxyResult<Uuid> {
+        let mut cb_map = self.circuit_breakers.write().await;
         let record = self.storage.add(proxy).await?;
-        self.circuit_breakers.write().await.insert(
+        cb_map.insert(
             record.id,
             Arc::new(CircuitBreaker::new(
                 self.config.circuit_open_threshold,
@@ -267,36 +275,17 @@ impl ProxyManager {
             })
             .collect();
 
-        // health_map is only needed for candidate construction; drop it before
-        // we potentially need to upgrade circuit_breakers to a write lock below.
         drop(health_map);
-
         let selected = self.strategy.select(&candidates).await?;
         let id = selected.id;
 
-        // Fast path: CB is always present for proxies added via add_proxy().
-        // Slow path: add_proxy() has a two-step write — it inserts into storage,
-        // awaits, then inserts the CB.  Another task can select the proxy in that
-        // window and reach here with no CB entry.  If we handed back an ephemeral
-        // CB the failure count would be lost on handle drop and the circuit could
-        // never open.  Instead we persist a real CB via entry().or_insert_with()
-        // which is a no-op if add_proxy() finishes before we acquire the write lock.
-        let cb = if let Some(cb) = cb_map.get(&id).cloned() {
-            drop(cb_map);
-            cb
-        } else {
-            drop(cb_map);
-            let new_cb = Arc::new(CircuitBreaker::new(
-                self.config.circuit_open_threshold,
-                self.config.circuit_half_open_after.as_millis() as u64,
-            ));
-            self.circuit_breakers
-                .write()
-                .await
-                .entry(id)
-                .or_insert_with(|| Arc::clone(&new_cb))
-                .clone()
-        };
+        // add_proxy() holds the circuit_breakers write lock for the full duration
+        // of its storage write, so every proxy visible in candidates is guaranteed
+        // to have a CB entry by the time we reach here.
+        let cb = cb_map
+            .get(&id)
+            .cloned()
+            .ok_or(ProxyError::PoolExhausted)?;
 
         let url = with_metrics
             .iter()
