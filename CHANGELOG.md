@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.19] - 2026-03-15
+
+### Changed
+
+- `stygian-graph`: `CloudflareCrawlAdapter::new()` and `with_config()` now return `Result<Self>` instead of panicking on reqwest TLS init failure; `Default` impl removed (breaking change for direct construction)
+
+### Fixed
+
+- `stygian-graph`: `RestApiAdapter::parse_spec` body selection uses `match` instead of `if let/else` chain (lint)
+- `stygian-browser`: `BrowserPool::acquire_inner` fast path drops mutex guard before spawning disposal tasks, reducing lock contention under unhealthy-pool conditions
+
 ## [0.1.18] - 2026-03-15
 
 ### Fixed
