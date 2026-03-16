@@ -53,7 +53,7 @@ fn input(url: &str) -> ServiceInput {
 #[ignore = "requires network access to crawllab.dev"]
 async fn status_200_returns_ok() {
     let result = no_retry_adapter()
-        .execute(input("https://crawllab.dev/status/200"))
+        .execute(input("https://crawllab.dev/200"))
         .await;
     assert!(result.is_ok(), "expected Ok for HTTP 200, got: {result:?}");
     let out = result.unwrap();
@@ -68,7 +68,7 @@ async fn status_200_returns_ok() {
 #[ignore = "requires network access to crawllab.dev"]
 async fn status_404_returns_unavailable_error() {
     let err = no_retry_adapter()
-        .execute(input("https://crawllab.dev/status/404"))
+        .execute(input("https://crawllab.dev/404"))
         .await
         .expect_err("expected Err for HTTP 404");
 
@@ -91,7 +91,7 @@ async fn status_404_returns_unavailable_error() {
 #[ignore = "requires network access to crawllab.dev"]
 async fn status_429_returns_rate_limited_error() {
     let err = no_retry_adapter()
-        .execute(input("https://crawllab.dev/status/429"))
+        .execute(input("https://crawllab.dev/429"))
         .await
         .expect_err("expected Err for HTTP 429");
 
@@ -106,7 +106,7 @@ async fn status_429_returns_rate_limited_error() {
 #[ignore = "requires network access to crawllab.dev"]
 async fn status_500_returns_unavailable_error() {
     let err = no_retry_adapter()
-        .execute(input("https://crawllab.dev/status/500"))
+        .execute(input("https://crawllab.dev/500"))
         .await
         .expect_err("expected Err for HTTP 500");
 

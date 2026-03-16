@@ -126,7 +126,7 @@ async fn browser_navigates_status_200() -> Result<(), Box<dyn std::error::Error>
     let mut page = instance.new_page().await?;
 
     page.navigate(
-        "https://crawllab.dev/status/200",
+        "https://crawllab.dev/200",
         WaitUntil::DomContentLoaded,
         Duration::from_secs(15),
     )
