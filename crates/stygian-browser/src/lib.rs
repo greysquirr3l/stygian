@@ -1,5 +1,6 @@
 //! # stygian-browser
 //!
+#![doc = include_str!("../README.md")]
 #![allow(clippy::multiple_crate_versions)]
 #![deny(unsafe_code)] // All unsafe usage is confined to #[cfg(test)] modules with explicit #[allow]
 //! High-performance, anti-detection browser automation library for Rust.
@@ -107,7 +108,7 @@ pub mod recorder;
 
 // Re-exports for convenience
 pub use browser::BrowserInstance;
-pub use config::{BrowserConfig, HeadlessMode};
+pub use config::{BrowserConfig, HeadlessMode, StealthLevel};
 pub use error::{BrowserError, Result};
 pub use page::{PageHandle, ResourceFilter, WaitUntil};
 pub use pool::{BrowserHandle, BrowserPool, PoolStats};

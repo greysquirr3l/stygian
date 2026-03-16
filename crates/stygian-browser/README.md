@@ -63,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let handle = pool.acquire().await?;
 
     // Open a tab and navigate
-    let mut page = handle.browser().new_page().await?;
+    let mut page = handle.browser().unwrap().new_page().await?;
     page.navigate(
         "https://example.com",
         WaitUntil::Selector("body".to_string()),
@@ -244,7 +244,7 @@ use std::time::Duration;
 # async fn run() -> stygian_browser::error::Result<()> {
 let pool = BrowserPool::new(BrowserConfig::default()).await?;
 let handle = pool.acquire().await?;
-let mut page = handle.browser().new_page().await?;
+let mut page = handle.browser().unwrap().new_page().await?;
 
 // Block images/fonts to speed up text-only scraping
 page.set_resource_filter(ResourceFilter::block_media()).await?;

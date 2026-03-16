@@ -5,6 +5,11 @@
 //! the session.  This module implements three mitigation techniques and patches
 //! the `__puppeteer_evaluation_script__` / `pptr://` Source URL leakage.
 //!
+//! An additional pass cleans well-known automation artifacts regardless of
+//! mode: ChromeDriver `cdc_` / `_cdc_` globals, Chromium headless
+//! `domAutomation` / `domAutomationController` bindings, and any document-level
+//! `$cdc_`-prefixed properties.
+//!
 //! # Techniques
 //!
 //! | Technique | Description | Reliability |
@@ -27,6 +32,7 @@
 //!
 //! - <https://github.com/rebrowser/rebrowser-patches>
 //! - <https://github.com/nickcampbell18/undetected-chromedriver>
+//! - <https://github.com/Redrrx/browser-js-dumper>
 //!
 //! # Example
 //!
@@ -176,7 +182,10 @@ impl CdpProtection {
         // 1. Remove navigator.webdriver
         parts.push(REMOVE_WEBDRIVER);
 
-        // 2. Mode-specific Runtime.enable mitigation
+        // 2. Clean well-known automation artifacts (cdc_, domAutomation, etc.)
+        parts.push(AUTOMATION_ARTIFACTS_CLEANUP);
+
+        // 3. Mode-specific Runtime.enable mitigation
         match self.mode {
             CdpFixMode::AddBinding => parts.push(ADD_BINDING_FIX),
             CdpFixMode::IsolatedWorld => parts.push(ISOLATED_WORLD_NOTE),
@@ -184,7 +193,7 @@ impl CdpProtection {
             CdpFixMode::None => {}
         }
 
-        // 3. Source URL patching
+        // 4. Source URL patching
         let source_url_patch = self.build_source_url_patch();
         let mut script = parts.join("\n\n");
         if !source_url_patch.is_empty() {
@@ -242,6 +251,44 @@ Object.defineProperty(navigator, 'webdriver', {
     get: () => undefined,
     configurable: true,
 });
+";
+
+/// Clean well-known browser automation artifacts that anti-bot systems probe.
+///
+/// Covers:
+/// - ChromeDriver-specific `cdc_` / `_cdc_` prefixed window globals
+/// - Chromium `domAutomation` / `domAutomationController` bindings injected by
+///   internal `--dom-automation-controller-bindings` launch flags
+/// - Document-level `$cdc_`-prefixed properties left by ChromeDriver
+const AUTOMATION_ARTIFACTS_CLEANUP: &str = r"
+// Remove automation-specific window globals and document artifacts
+(function() {
+    // ChromeDriver injects cdc_adoQpoasnfa76pfcZLmcfl_Array,
+    // cdc_adoQpoasnfa76pfcZLmcfl_Promise, _cdc_asdjflasutopfhvcZLmcfl_, etc.
+    // Delete any property whose name starts with 'cdc_' or '_cdc_'.
+    try {
+        Object.getOwnPropertyNames(window).forEach(function(prop) {
+            if (prop.startsWith('cdc_') || prop.startsWith('_cdc_')) {
+                try { delete window[prop]; } catch(_) {}
+            }
+        });
+    } catch(_) {}
+
+    // Chromium headless-mode automation controller bindings.
+    try { delete window.domAutomation; } catch(_) {}
+    try { delete window.domAutomationController; } catch(_) {}
+
+    // Document-level $cdc_ artifact (ChromeDriver adds this on the document).
+    try {
+        if (typeof document !== 'undefined') {
+            Object.getOwnPropertyNames(document).forEach(function(prop) {
+                if (prop.startsWith('$cdc_') || prop.startsWith('cdc_')) {
+                    try { delete document[prop]; } catch(_) {}
+                }
+            });
+        }
+    } catch(_) {}
+})();
 ";
 
 /// addBinding technique: prevents `Runtime.enable` detection by using a
@@ -356,5 +403,34 @@ mod tests {
         // Instead verify the None variant maps correctly from its known string
         assert_eq!(CdpFixMode::None, CdpFixMode::None);
         assert_ne!(CdpFixMode::None, CdpFixMode::AddBinding);
+    }
+
+    #[test]
+    fn automation_artifact_cleanup_included_in_all_active_modes() {
+        for mode in [
+            CdpFixMode::AddBinding,
+            CdpFixMode::IsolatedWorld,
+            CdpFixMode::EnableDisable,
+        ] {
+            let p = CdpProtection::new(mode, None);
+            let script = p.build_injection_script();
+            // cdc_ prefix cleanup must be present
+            assert!(
+                script.contains("cdc_"),
+                "mode {mode:?} missing cdc_ cleanup"
+            );
+            // domAutomation cleanup must be present
+            assert!(
+                script.contains("domAutomation"),
+                "mode {mode:?} missing domAutomation cleanup"
+            );
+        }
+    }
+
+    #[test]
+    fn automation_artifact_cleanup_absent_in_none_mode() {
+        let p = CdpProtection::new(CdpFixMode::None, None);
+        let script = p.build_injection_script();
+        assert!(script.is_empty());
     }
 }
