@@ -4,8 +4,8 @@
 //! breakers into a single ergonomic API.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::Serialize;
 use tokio::sync::RwLock;
@@ -18,8 +18,8 @@ use crate::error::{ProxyError, ProxyResult};
 use crate::health::{HealthChecker, HealthMap};
 use crate::storage::ProxyStoragePort;
 use crate::strategy::{
-    BoxedRotationStrategy, LeastUsedStrategy, ProxyCandidate, RandomStrategy,
-    RoundRobinStrategy, WeightedStrategy,
+    BoxedRotationStrategy, LeastUsedStrategy, ProxyCandidate, RandomStrategy, RoundRobinStrategy,
+    WeightedStrategy,
 };
 use crate::types::{Proxy, ProxyConfig};
 
@@ -56,7 +56,24 @@ pub struct ProxyHandle {
 
 impl ProxyHandle {
     fn new(proxy_url: String, circuit_breaker: Arc<CircuitBreaker>) -> Self {
-        Self { proxy_url, circuit_breaker, succeeded: AtomicBool::new(false) }
+        Self {
+            proxy_url,
+            circuit_breaker,
+            succeeded: AtomicBool::new(false),
+        }
+    }
+
+    /// Create a no-proxy handle used when no proxy manager is configured.
+    ///
+    /// The handle targets an empty URL and uses a noop circuit breaker that
+    /// can never trip; its Drop records a success so there are no false failures.
+    pub fn direct() -> Self {
+        let noop_cb = Arc::new(CircuitBreaker::new(u32::MAX, u64::MAX));
+        Self {
+            proxy_url: String::new(),
+            circuit_breaker: noop_cb,
+            succeeded: AtomicBool::new(true),
+        }
     }
 
     /// Signal that the request succeeded.
@@ -236,10 +253,7 @@ impl ProxyManager {
             .iter()
             .map(|(record, metrics)| {
                 // New proxies default to healthy until the first check fails.
-                let healthy = health_map
-                    .get(&record.id)
-                    .copied()
-                    .unwrap_or(true);
+                let healthy = health_map.get(&record.id).copied().unwrap_or(true);
                 let available = cb_map
                     .get(&record.id)
                     .map(|cb| cb.is_available())
@@ -287,11 +301,19 @@ impl ProxyManager {
             if health_map.get(&r.id).copied().unwrap_or(true) {
                 healthy += 1;
             }
-            if cb_map.get(&r.id).map(|cb| !cb.is_available()).unwrap_or(false) {
+            if cb_map
+                .get(&r.id)
+                .map(|cb| !cb.is_available())
+                .unwrap_or(false)
+            {
                 open += 1;
             }
         }
-        Ok(PoolStats { total, healthy, open })
+        Ok(PoolStats {
+            total,
+            healthy,
+            open,
+        })
     }
 }
 
@@ -336,8 +358,7 @@ impl ProxyManagerBuilder {
             .strategy
             .unwrap_or_else(|| Arc::new(RoundRobinStrategy::default()));
         let config = self.config.unwrap_or_default();
-        let health_map: HealthMap =
-            Arc::new(RwLock::new(HashMap::new()));
+        let health_map: HealthMap = Arc::new(RwLock::new(HashMap::new()));
         let health_checker = HealthChecker::new(
             config.clone(),
             Arc::clone(&storage),
@@ -386,12 +407,16 @@ mod tests {
     #[tokio::test]
     async fn round_robin_distribution() {
         let store = storage();
-        let mgr =
-            ProxyManager::with_round_robin(store.clone(), ProxyConfig::default())
-                .unwrap();
-        mgr.add_proxy(make_proxy("http://a.test:8080")).await.unwrap();
-        mgr.add_proxy(make_proxy("http://b.test:8080")).await.unwrap();
-        mgr.add_proxy(make_proxy("http://c.test:8080")).await.unwrap();
+        let mgr = ProxyManager::with_round_robin(store.clone(), ProxyConfig::default()).unwrap();
+        mgr.add_proxy(make_proxy("http://a.test:8080"))
+            .await
+            .unwrap();
+        mgr.add_proxy(make_proxy("http://b.test:8080"))
+            .await
+            .unwrap();
+        mgr.add_proxy(make_proxy("http://c.test:8080"))
+            .await
+            .unwrap();
 
         let mut seen = HashSet::new();
         for _ in 0..10 {
@@ -408,10 +433,16 @@ mod tests {
         let store = storage();
         let mgr = ProxyManager::with_round_robin(
             store.clone(),
-            ProxyConfig { circuit_open_threshold: 1, ..ProxyConfig::default() },
+            ProxyConfig {
+                circuit_open_threshold: 1,
+                ..ProxyConfig::default()
+            },
         )
         .unwrap();
-        let id = mgr.add_proxy(make_proxy("http://x.test:8080")).await.unwrap();
+        let id = mgr
+            .add_proxy(make_proxy("http://x.test:8080"))
+            .await
+            .unwrap();
 
         // Manually trip the circuit breaker.
         {
@@ -433,10 +464,16 @@ mod tests {
         let store = storage();
         let mgr = ProxyManager::with_round_robin(
             store.clone(),
-            ProxyConfig { circuit_open_threshold: 1, ..ProxyConfig::default() },
+            ProxyConfig {
+                circuit_open_threshold: 1,
+                ..ProxyConfig::default()
+            },
         )
         .unwrap();
-        let id = mgr.add_proxy(make_proxy("http://y.test:8080")).await.unwrap();
+        let id = mgr
+            .add_proxy(make_proxy("http://y.test:8080"))
+            .await
+            .unwrap();
 
         {
             let _h = mgr.acquire_proxy().await.unwrap();
@@ -452,10 +489,11 @@ mod tests {
     #[tokio::test]
     async fn handle_success_keeps_closed() {
         let store = storage();
-        let mgr =
-            ProxyManager::with_round_robin(store.clone(), ProxyConfig::default())
-                .unwrap();
-        let id = mgr.add_proxy(make_proxy("http://z.test:8080")).await.unwrap();
+        let mgr = ProxyManager::with_round_robin(store.clone(), ProxyConfig::default()).unwrap();
+        let id = mgr
+            .add_proxy(make_proxy("http://z.test:8080"))
+            .await
+            .unwrap();
 
         let h = mgr.acquire_proxy().await.unwrap();
         h.mark_success();

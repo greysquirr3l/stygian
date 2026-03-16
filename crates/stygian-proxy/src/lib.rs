@@ -44,7 +44,13 @@ pub use health::{HealthChecker, HealthMap};
 pub use manager::{PoolStats, ProxyHandle, ProxyManager, ProxyManagerBuilder};
 pub use storage::MemoryProxyStore;
 pub use strategy::{
-    BoxedRotationStrategy, LeastUsedStrategy, ProxyCandidate, RandomStrategy,
-    RotationStrategy, RoundRobinStrategy, WeightedStrategy,
+    BoxedRotationStrategy, LeastUsedStrategy, ProxyCandidate, RandomStrategy, RotationStrategy,
+    RoundRobinStrategy, WeightedStrategy,
 };
 pub use types::{Proxy, ProxyConfig, ProxyMetrics, ProxyRecord, ProxyType};
+
+#[cfg(feature = "graph")]
+pub use graph::{BoxedProxyManager, NoopProxyManager, ProxyManagerPort};
+
+#[cfg(feature = "browser")]
+pub use browser::{BrowserProxySource, ProxyManagerBridge};
