@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-16
+
+### Added
+
+- `stygian-graph`: `OpenApiAdapter` — OpenAPI 3.x introspection adapter (`kind = "openapi"`)
+  - Fetches and caches parsed OpenAPI specs (JSON or YAML) per spec URL for the lifetime of the adapter
+  - Resolves operations by `operationId` (e.g. `"listPets"`) or `"METHOD /path"` syntax (e.g. `"GET /pet/findByStatus"`)
+  - Binds `params.args` to path parameters (substituted into the URL template), query parameters, and request body
+  - Delegates all HTTP calls to the inner `RestApiAdapter`, inheriting full auth support, retries, and 429 handling
+  - Optional proactive rate limiting via `params.rate_limit` (sliding-window or token-bucket, same shape as GraphQL rate limiter)
+  - `params.server.url` overrides `servers[0].url` from the spec at runtime
+  - Two new workspace dependencies: `openapiv3 = "1"`, `serde_yaml = "0.9"` (always compiled; pure Rust)
+- `book`: OpenAPI adapter section added to [Built-in Adapters](./graph/adapters.md)
+
 ## [0.1.20] - 2026-03-16
 
 ### Added

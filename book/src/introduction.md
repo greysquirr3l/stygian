@@ -40,8 +40,8 @@ Add both crates to `Cargo.toml`:
 
 ```toml
 [dependencies]
-stygian-graph   = "0.1"
-stygian-browser = "0.1"   # optional — only needed for JS-rendered pages
+stygian-graph   = "0.2"
+stygian-browser = "0.2"   # optional — only needed for JS-rendered pages
 tokio            = { version = "1", features = ["full"] }
 serde_json       = "1"
 ```
@@ -49,7 +49,7 @@ serde_json       = "1"
 Enable optional feature groups on `stygian-graph`:
 
 ```toml
-stygian-graph = { version = "0.1", features = ["browser", "ai-claude", "distributed"] }
+stygian-graph = { version = "0.2", features = ["browser", "ai-claude", "distributed"] }
 ```
 
 Available features:

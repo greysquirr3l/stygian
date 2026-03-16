@@ -30,15 +30,14 @@ High-performance, graph-based web scraping engine treating pipelines as DAGs wit
 
 ```toml
 [dependencies]
-stygian-graph = "0.1"
-tokio = { version = "1", features = ["full"] }
+stygian-graph = "0.2"tokio = { version = "1", features = ["full"] }
 serde_json = "1"
 ```
 
 Enable optional features:
 
 ```toml
-stygian-graph = { version = "0.1", features = ["browser", "ai-claude", "distributed"] }
+stygian-graph = { version = "0.2", features = ["browser", "ai-claude", "distributed"] }
 ```
 
 ---

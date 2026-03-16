@@ -26,21 +26,20 @@ High-performance, resilient proxy rotation for the Stygian scraping ecosystem.
 
 ```toml
 [dependencies]
-stygian-proxy = "0.1"
-tokio = { version = "1", features = ["full"] }
+stygian-proxy = "0.2"tokio = { version = "1", features = ["full"] }
 ```
 
 Enable optional features:
 
 ```toml
 # SOCKS4/5 proxy support
-stygian-proxy = { version = "0.1", features = ["socks"] }
+stygian-proxy = { version = "0.2", features = ["socks"] }
 
 # Integration with stygian-graph HTTP adapters
-stygian-proxy = { version = "0.1", features = ["graph"] }
+stygian-proxy = { version = "0.2", features = ["graph"] }
 
 # Integration with stygian-browser pool
-stygian-proxy = { version = "0.1", features = ["browser"] }
+stygian-proxy = { version = "0.2", features = ["browser"] }
 ```
 
 ---
@@ -179,8 +178,8 @@ cancel_token.cancel();
 With the `graph` feature, the pool implements `ProxyManagerPort` so stygian-graph adapters can rotate proxies per-request:
 
 ```toml
-stygian-proxy = { version = "0.1", features = ["graph"] }
-stygian-graph = "0.1"
+stygian-proxy = { version = "0.2", features = ["graph"] }
+stygian-graph = "0.2"
 ```
 
 ```rust,no_run
@@ -199,8 +198,8 @@ let manager = ProxyManager::with_round_robin(Arc::new(MemoryProxyStore::default(
 With the `browser` feature, `BrowserProxySource` feeds live pool proxies into stygian-browser contexts:
 
 ```toml
-stygian-proxy = { version = "0.1", features = ["browser"] }
-stygian-browser = "0.1"
+stygian-proxy = { version = "0.2", features = ["browser"] }
+stygian-browser = "0.2"
 ```
 
 ```rust,no_run

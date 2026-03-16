@@ -6,7 +6,7 @@
 //! the `__puppeteer_evaluation_script__` / `pptr://` Source URL leakage.
 //!
 //! An additional pass cleans well-known automation artifacts regardless of
-//! mode: ChromeDriver `cdc_` / `_cdc_` globals, Chromium headless
+//! mode: `ChromeDriver` `cdc_` / `_cdc_` globals, Chromium headless
 //! `domAutomation` / `domAutomationController` bindings, and any document-level
 //! `$cdc_`-prefixed properties.
 //!
@@ -31,7 +31,7 @@
 //! # Reference
 //!
 //! - <https://github.com/rebrowser/rebrowser-patches>
-//! - <https://github.com/nickcampbell18/undetected-chromedriver>
+//! - <https://github.com/greysquirr3l/undetected-chromedriver>
 //! - <https://github.com/Redrrx/browser-js-dumper>
 //!
 //! # Example
@@ -259,7 +259,7 @@ Object.defineProperty(navigator, 'webdriver', {
 /// - ChromeDriver-specific `cdc_` / `_cdc_` prefixed window globals
 /// - Chromium `domAutomation` / `domAutomationController` bindings injected by
 ///   internal `--dom-automation-controller-bindings` launch flags
-/// - Document-level `$cdc_`-prefixed properties left by ChromeDriver
+/// - Document-level `$cdc_`-prefixed properties left by `ChromeDriver`
 const AUTOMATION_ARTIFACTS_CLEANUP: &str = r"
 // Remove automation-specific window globals and document artifacts
 (function() {

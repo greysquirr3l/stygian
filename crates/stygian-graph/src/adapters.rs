@@ -40,6 +40,9 @@ pub mod mock_ai;
 /// GraphQL API adapter — generic ScrapingService for any GraphQL endpoint
 pub mod graphql;
 
+/// OpenAPI 3.x introspection adapter — resolves operations from an OpenAPI spec and delegates to RestApiAdapter
+pub mod openapi;
+
 pub mod graphql_rate_limit;
 /// Proactive cost-throttle management for GraphQL APIs
 pub mod graphql_throttle;

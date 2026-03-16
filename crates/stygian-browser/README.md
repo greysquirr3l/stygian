@@ -31,7 +31,7 @@ for bypassing modern anti-bot systems: Cloudflare, DataDome, PerimeterX, Akamai.
 [dependencies]
 stygian-browser = { path = "../crates/stygian-browser" }   # workspace
 # or once published to crates.io:
-# stygian-browser = "0.1"
+# stygian-browser = "0.2"
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -40,7 +40,7 @@ Enable (or disable) stealth features:
 ```toml
 [dependencies]
 # stealth is the default feature; disable for a minimal build
-stygian-browser = { version = "0.1", default-features = false }
+stygian-browser = { version = "0.2", default-features = false }
 ```
 
 ---

@@ -99,8 +99,8 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-stygian-graph = "0.1"
-stygian-browser = "0.1"  # optional, for JavaScript rendering
+stygian-graph = "0.2"
+stygian-browser = "0.2"  # optional, for JavaScript rendering
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -230,6 +230,6 @@ Built with:
 
 ---
 
-**Status**: Active development | Version 0.1.15 | Rust 2024 edition | 694 tests | Linux + macOS
+**Status**: Active development | Version 0.2.0 | Rust 2024 edition | Linux + macOS
 
 For detailed documentation, see the [project docs site](https://greysquirr3l.github.io/stygian).

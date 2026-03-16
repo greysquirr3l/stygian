@@ -166,6 +166,173 @@ max_pages    = 50
 
 ---
 
+## OpenAPI Adapter
+
+Purpose-built for APIs with an [OpenAPI 3.x](https://spec.openapis.org/oas/v3.0.0)
+specification document. At runtime the adapter fetches and caches the spec, resolves the
+target operation by `operationId` or `"METHOD /path"` syntax, binds arguments to path/
+query/body parameters, and delegates the actual HTTP call to the inner `RestApiAdapter`.
+
+```rust
+use stygian_graph::adapters::openapi::{OpenApiAdapter, OpenApiConfig};
+use stygian_graph::adapters::rest_api::RestApiConfig;
+use stygian_graph::ports::{ScrapingService, ServiceInput};
+use serde_json::json;
+use std::time::Duration;
+
+let adapter = OpenApiAdapter::with_config(OpenApiConfig {
+    rest: RestApiConfig {
+        timeout:     Duration::from_secs(20),
+        max_retries: 3,
+        ..Default::default()
+    },
+});
+
+let input = ServiceInput {
+    url: "https://petstore3.swagger.io/api/v3/openapi.json".to_string(),
+    params: json!({
+        "operation": "findPetsByStatus",
+        "args": { "status": "available" },
+        "auth": { "type": "api_key_header", "header": "api_key", "key": "${env:PETSTORE_API_KEY}" },
+    }),
+};
+// let output = adapter.execute(input).await?;
+```
+
+**Registered service name**: `"openapi"`
+
+### `ServiceInput` contract
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `url` | ✅ | URL of the OpenAPI spec document (`.json` or `.yaml`) |
+| `params.operation` | ✅ | `operationId` (e.g. `"listPets"`) **or** `"METHOD /path"` (e.g. `"GET /pet/findByStatus"`) |
+| `params.args` | — | Key/value map of path, query, and body arguments (all merged; adapter classifies them) |
+| `params.auth` | — | Same shape as [REST API auth](#authentication) |
+| `params.server.url` | — | Override spec's `servers[0].url` at runtime |
+| `params.rate_limit` | — | Proactive rate throttle (see below) |
+
+### Operation resolution
+
+```toml
+# By operationId
+[nodes.params]
+operation = "listPets"
+
+# By HTTP method + path
+[nodes.params]
+operation = "GET /pet/findByStatus"
+```
+
+### Argument binding
+
+The adapter classifies each key in `params.args` against the operation's declared
+parameters:
+
+| Parameter location | What happens |
+| --- | --- |
+| `in: path` | Value is substituted into the URL template (`{petId}` → `42`) |
+| `in: query` | Value is appended to the query string |
+| `in: body` (requestBody) | All remaining keys are collected into the JSON request body |
+
+```toml
+[nodes.params]
+operation = "getPetById"
+
+[nodes.params.args]
+petId = 42          # path parameter — substituted into /pet/{petId}
+```
+
+### Rate limiting
+
+Two independent layers operate simultaneously:
+
+1. **Proactive** — optional `params.rate_limit` block enforced before the HTTP call:
+
+```toml
+[nodes.params.rate_limit]
+max_requests = 100
+window_secs  = 60
+strategy     = "token_bucket"  # or "sliding_window" (default)
+max_delay_ms = 30000
+```
+
+2. **Reactive** — inherited from `RestApiAdapter`: a `429` response with a `Retry-After`
+   header causes an automatic sleep-and-retry without any additional configuration.
+
+### Spec caching
+
+The parsed `OpenAPI` document is cached per spec URL for the lifetime of the adapter
+instance (or any clone of it — all clones share the same cache `Arc`). The cache is
+populated on the first call and reused on every subsequent call, so spec fetching is
+a one-time cost per URL.
+
+### Full TOML example
+
+```toml
+[[services]]
+name = "openapi"
+kind = "openapi"
+
+# Unauthenticated list
+[[nodes]]
+id      = "list-pets"
+service = "openapi"
+url     = "https://petstore3.swagger.io/api/v3/openapi.json"
+
+[nodes.params]
+operation = "findPetsByStatus"
+
+[nodes.params.args]
+status = "available"
+
+# API key auth + server override + proactive rate limit
+[[nodes]]
+id      = "get-pet"
+service = "openapi"
+url     = "https://petstore3.swagger.io/api/v3/openapi.json"
+
+[nodes.params]
+operation = "getPetById"
+
+[nodes.params.args]
+petId = 1
+
+[nodes.params.auth]
+type   = "api_key_header"
+header = "api_key"
+key    = "${env:PETSTORE_API_KEY}"
+
+[nodes.params.server]
+url = "https://petstore3.swagger.io/api/v3"
+
+[nodes.params.rate_limit]
+max_requests = 50
+window_secs  = 60
+strategy     = "token_bucket"
+```
+
+### Output
+
+`ServiceOutput.data` — pretty-printed JSON string returned by the resolved endpoint.
+
+`ServiceOutput.metadata`:
+
+```json
+{
+  "url":              "https://...",
+  "page_count":       1,
+  "openapi_spec_url": "https://petstore3.swagger.io/api/v3/openapi.json",
+  "operation_id":     "findPetsByStatus",
+  "method":           "GET",
+  "path_template":    "/pet/findByStatus",
+  "server_url":       "https://petstore3.swagger.io/api/v3",
+  "resolved_url":     "https://petstore3.swagger.io/api/v3/pet/findByStatus"
+}
+```
+
+---
+
 ## Browser Adapter
 
 Delegates to `stygian-browser` for JavaScript-rendered pages. Requires the `browser`

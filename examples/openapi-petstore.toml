@@ -1,0 +1,96 @@
+# openapi-petstore.toml
+#
+# Demonstrates the OpenAPI introspection adapter against the public Petstore v3 demo.
+#
+# The adapter fetches and caches the OpenAPI spec, then resolves operations by
+# operationId and delegates the actual HTTP call to the inner REST adapter.
+#
+# Three authentication patterns are shown:
+#
+#   1.  No auth    — public list endpoint
+#   2.  API-key header — per the Petstore spec's securitySchemes
+#   3.  Bearer token   — if the API were secured with OAuth2 / JWT
+#
+# Run:
+#   PETSTORE_API_KEY=special-key stygian run examples/openapi-petstore.toml
+
+[[services]]
+name = "openapi"
+kind = "openapi"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pattern 1: Unauthenticated — list pets with status filter
+# ─────────────────────────────────────────────────────────────────────────────
+
+[[nodes]]
+id      = "list-available-pets"
+service = "openapi"
+url     = "https://petstore3.swagger.io/api/v3/openapi.json"
+
+[nodes.params]
+operation = "findPetsByStatus"
+
+[nodes.params.args]
+status = "available"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pattern 2: API key header auth
+# ─────────────────────────────────────────────────────────────────────────────
+
+[[nodes]]
+id      = "get-pet-by-id"
+service = "openapi"
+url     = "https://petstore3.swagger.io/api/v3/openapi.json"
+
+[nodes.params]
+operation = "getPetById"
+
+[nodes.params.args]
+petId = 1
+
+[nodes.params.auth]
+type   = "api_key_header"
+header = "api_key"
+key    = "${env:PETSTORE_API_KEY}"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pattern 3: Bearer token + server override + proactive rate limit
+# ─────────────────────────────────────────────────────────────────────────────
+
+[[nodes]]
+id      = "list-pets-with-rate-limit"
+service = "openapi"
+url     = "https://petstore3.swagger.io/api/v3/openapi.json"
+
+[nodes.params]
+operation = "findPetsByStatus"
+
+[nodes.params.args]
+status = "sold"
+
+[nodes.params.auth]
+type  = "bearer"
+token = "${env:PETSTORE_BEARER_TOKEN}"
+
+[nodes.params.server]
+url = "https://petstore3.swagger.io/api/v3"
+
+[nodes.params.rate_limit]
+max_requests = 10
+window_secs  = 60
+strategy     = "token_bucket"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pattern 4: Method + path syntax instead of operationId
+# ─────────────────────────────────────────────────────────────────────────────
+
+[[nodes]]
+id      = "delete-pet-by-method-path"
+service = "openapi"
+url     = "https://petstore3.swagger.io/api/v3/openapi.json"
+
+[nodes.params]
+operation = "GET /pet/findByStatus"
+
+[nodes.params.args]
+status = "pending"

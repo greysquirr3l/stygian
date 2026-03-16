@@ -62,8 +62,12 @@ uuid.workspace = true
 # Output formats
 csv.workspace = true
 
+# OpenAPI spec parsing (always included — pure Rust)
+openapiv3.workspace = true
+serde_yaml.workspace = true
+
 # Browser automation (optional)
-stygian-browser = { path = "../stygian-browser", version = "0.1", optional = true }
+stygian-browser = { path = "../stygian-browser", version = "0.2", optional = true }
 
 # WASM plugins (optional)
 wasmtime = { workspace = true, optional = true }
