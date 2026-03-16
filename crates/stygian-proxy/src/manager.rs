@@ -267,15 +267,36 @@ impl ProxyManager {
             })
             .collect();
 
+        // health_map is only needed for candidate construction; drop it before
+        // we potentially need to upgrade circuit_breakers to a write lock below.
+        drop(health_map);
+
         let selected = self.strategy.select(&candidates).await?;
         let id = selected.id;
 
-        let cb = cb_map.get(&id).cloned().unwrap_or_else(|| {
-            Arc::new(CircuitBreaker::new(
+        // Fast path: CB is always present for proxies added via add_proxy().
+        // Slow path: add_proxy() has a two-step write — it inserts into storage,
+        // awaits, then inserts the CB.  Another task can select the proxy in that
+        // window and reach here with no CB entry.  If we handed back an ephemeral
+        // CB the failure count would be lost on handle drop and the circuit could
+        // never open.  Instead we persist a real CB via entry().or_insert_with()
+        // which is a no-op if add_proxy() finishes before we acquire the write lock.
+        let cb = if let Some(cb) = cb_map.get(&id).cloned() {
+            drop(cb_map);
+            cb
+        } else {
+            drop(cb_map);
+            let new_cb = Arc::new(CircuitBreaker::new(
                 self.config.circuit_open_threshold,
                 self.config.circuit_half_open_after.as_millis() as u64,
-            ))
-        });
+            ));
+            self.circuit_breakers
+                .write()
+                .await
+                .entry(id)
+                .or_insert_with(|| Arc::clone(&new_cb))
+                .clone()
+        };
 
         let url = with_metrics
             .iter()
