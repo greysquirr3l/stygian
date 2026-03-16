@@ -37,6 +37,22 @@ When `STYGIAN_CHROME_PATH` is not set, the library searches:
 
 ---
 
+## stygian-proxy
+
+`stygian-proxy` is configured by constructing `ProxyConfig` directly in code.
+There are no environment variable overrides; pass the struct to
+`ProxyManager::with_round_robin` or `ProxyManager::with_strategy`.
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `health_check_url` | `https://httpbin.org/ip` | URL probed to verify proxy liveness |
+| `health_check_interval` | `60 s` | How often the background task runs |
+| `health_check_timeout` | `5 s` | Per-probe HTTP timeout |
+| `circuit_open_threshold` | `5` | Consecutive failures before circuit opens |
+| `circuit_half_open_after` | `30 s` | Cooldown before attempting recovery |
+
+---
+
 ## stygian-graph
 
 | Variable | Default | Description |

@@ -27,6 +27,15 @@
 
 ---
 
+# Proxy Rotation
+
+- [Overview](./proxy/overview.md)
+- [Rotation Strategies](./proxy/strategies.md)
+- [Health Checking & Circuit Breaker](./proxy/health-circuit-breaker.md)
+- [Ecosystem Integrations](./proxy/integrations.md)
+
+---
+
 # Reference
 
 - [Environment Variables](./reference/env-vars.md)
