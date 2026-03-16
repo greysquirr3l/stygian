@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.20] - 2026-03-16
+
+### Added
+
+- `stygian-proxy`: new crate — high-performance, resilient proxy pool with per-proxy circuit breakers, configurable rotation strategies (round-robin, random, weighted, failover), SOCKS4/5 support, health scoring, and in-memory storage; `socks` feature enables SOCKS proxy types via reqwest
+- `stygian-proxy`: `CircuitBreaker` per-proxy state machine — open/half-open/closed transitions with configurable failure threshold and recovery window; wired into `ProxyManager::acquire_proxy` so unhealthy proxies are skipped automatically
+- `stygian-proxy`: `ProxyManager` — unified pool orchestrator exposing `add_proxy`, `remove_proxy`, `acquire_proxy`, `release_proxy`, and `pool_stats`; every operation is traced and metered
+- `stygian-proxy`: `ProxyBrowserPool` — `browser` feature flag wires the proxy pool into `stygian-browser`; browsers are launched with a live proxy from the pool and the proxy is re-evaluated on browser release
+- `stygian-graph`: `RestApiAdapter` proxy integration via stygian-proxy (`graph` feature on stygian-proxy)
+- `book`: `stygian-proxy` mdBook module added — architecture overview, circuit breaker semantics, rotation strategies, and browser/graph integration guides
+
+### Changed
+
+- Workspace MSRV updated to Rust 1.94.0 (aligned with stable feature usage: async closures, `LazyLock`, let chains)
+
+### Fixed
+
+- `stygian-proxy`: eliminated TOCTOU race in `add_proxy` — the `circuit_breakers` write lock is now held for the full duration of `storage.add()`, ensuring `acquire_proxy` can never observe a proxy record without a corresponding circuit breaker
+- `stygian-browser`: CDP protection removes `cdc_*` and `domAutomation` automation artifact properties from `window` on every navigation, reducing fingerprint surface for Akamai/PerimeterX detectors
+
+### Tests
+
+- `stygian-graph`: 12 live integration tests against crawllab.dev (all `#[ignore]`) — status code classification (200/404/429/500), redirect following, redirect cycle detection, JSON/text/HTML content types, 204 No Content, and paginated forum endpoint
+- `stygian-browser`: 4 live browser integration tests against crawllab.dev (all `#[ignore]`) — inline JS rendering, external script rendering, basic navigation, and JS eval with stealth verification
+
 ## [0.1.19] - 2026-03-15
 
 ### Changed
