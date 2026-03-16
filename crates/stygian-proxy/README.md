@@ -48,13 +48,14 @@ stygian-proxy = { version = "0.1", features = ["browser"] }
 ## Quick Start
 
 ```rust,no_run
-use stygian_proxy::{ProxyManager, Proxy, types::ProxyType};
+use stygian_proxy::{ProxyManager, MemoryProxyStore, Proxy, types::{ProxyType, ProxyConfig}};
+use std::sync::Arc;
 use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Build a pool with round-robin rotation
-    let manager = ProxyManager::with_round_robin(Default::default())?;
+    let manager = ProxyManager::with_round_robin(Arc::new(MemoryProxyStore::default()), ProxyConfig::default())?;
 
     // Add proxies
     manager.add_proxy(Proxy {
@@ -105,17 +106,20 @@ Custom strategies implement `RotationStrategy`:
 
 ```rust,no_run
 use stygian_proxy::strategy::{RotationStrategy, ProxyCandidate};
+use stygian_proxy::error::ProxyResult;
+use async_trait::async_trait;
 
 #[derive(Debug)]
 struct MyStrategy;
 
+#[async_trait]
 impl RotationStrategy for MyStrategy {
-    fn select<'a>(&self, candidates: &'a [ProxyCandidate]) -> Option<&'a ProxyCandidate> {
+    async fn select<'a>(&self, candidates: &'a [ProxyCandidate]) -> ProxyResult<&'a ProxyCandidate> {
         // pick the candidate with the best success rate
         candidates.iter().max_by(|a, b| {
             a.metrics.success_rate().partial_cmp(&b.metrics.success_rate())
                 .unwrap_or(std::cmp::Ordering::Equal)
-        })
+        }).ok_or(stygian_proxy::error::ProxyError::AllProxiesUnhealthy)
     }
 }
 ```
@@ -127,7 +131,8 @@ impl RotationStrategy for MyStrategy {
 Each proxy has its own `CircuitBreaker`. After `circuit_open_threshold` consecutive failures the breaker opens, and the proxy is excluded from rotation for `circuit_half_open_after`. After that window the proxy is tried once in HalfOpen state — a success closes it; another failure reopens it.
 
 ```rust,no_run
-use stygian_proxy::{ProxyManager, types::ProxyConfig};
+use stygian_proxy::{ProxyManager, MemoryProxyStore, types::ProxyConfig};
+use std::sync::Arc;
 use std::time::Duration;
 
 let config = ProxyConfig {
@@ -138,7 +143,7 @@ let config = ProxyConfig {
     ..Default::default()
 };
 
-let manager = ProxyManager::with_round_robin(config)?;
+let manager = ProxyManager::with_round_robin(Arc::new(MemoryProxyStore::default()), config)?;
 ```
 
 If a `ProxyHandle` is dropped without calling `mark_success()`, the circuit breaker records a failure automatically.
@@ -150,7 +155,8 @@ If a `ProxyHandle` is dropped without calling `mark_success()`, the circuit brea
 `ProxyManager::start()` spawns a background task that probes each proxy on a configurable interval and updates per-proxy health scores:
 
 ```rust,no_run
-use stygian_proxy::{ProxyManager, types::ProxyConfig};
+use stygian_proxy::{ProxyManager, MemoryProxyStore, types::ProxyConfig};
+use std::sync::Arc;
 use std::time::Duration;
 
 let config = ProxyConfig {
@@ -159,7 +165,7 @@ let config = ProxyConfig {
     ..Default::default()
 };
 
-let manager = ProxyManager::with_round_robin(config)?;
+let manager = ProxyManager::with_round_robin(Arc::new(MemoryProxyStore::default()), config)?;
 let (cancel_token, health_task) = manager.start();
 
 // Graceful shutdown
@@ -178,9 +184,11 @@ stygian-graph = "0.1"
 ```
 
 ```rust,no_run
-use stygian_proxy::{ProxyManager, graph::ProxyManagerPort};
+use stygian_proxy::{ProxyManager, MemoryProxyStore, graph::ProxyManagerPort};
+use stygian_proxy::types::ProxyConfig;
+use std::sync::Arc;
 
-let manager = ProxyManager::with_round_robin(Default::default())?;
+let manager = ProxyManager::with_round_robin(Arc::new(MemoryProxyStore::default()), ProxyConfig::default())?;
 // Pass as Arc<dyn ProxyManagerPort> to RestApiAdapter or HttpAdapter
 ```
 
@@ -196,10 +204,12 @@ stygian-browser = "0.1"
 ```
 
 ```rust,no_run
-use stygian_proxy::{ProxyManager, browser::ProxyManagerBridge};
+use stygian_proxy::{ProxyManager, MemoryProxyStore, browser::ProxyManagerBridge};
+use stygian_proxy::types::ProxyConfig;
 use stygian_browser::BrowserConfig;
+use std::sync::Arc;
 
-let manager = std::sync::Arc::new(ProxyManager::with_round_robin(Default::default())?);
+let manager = Arc::new(ProxyManager::with_round_robin(Arc::new(MemoryProxyStore::default()), ProxyConfig::default())?);
 let bridge = ProxyManagerBridge::new(manager);
 // bridge.next_proxy_url().await? → inject into BrowserConfig::proxy
 ```

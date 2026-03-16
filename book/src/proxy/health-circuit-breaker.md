@@ -17,7 +17,6 @@ slow or timing-out proxy does not delay checks for healthy ones.
 
 ```rust,no_run
 use std::sync::Arc;
-use tokio_util::sync::CancellationToken;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
 
 let storage = Arc::new(MemoryProxyStore::default());
@@ -31,11 +30,10 @@ let manager = Arc::new(
     ProxyManager::with_round_robin(storage, config)?
 );
 
-let token = CancellationToken::new();
-manager.start_health_checker(token.clone());
+let (cancel, _task) = manager.start();
 
 // When shutting down:
-token.cancel();
+cancel.cancel();
 ```
 
 ### On-demand check

@@ -282,10 +282,7 @@ impl ProxyManager {
         // add_proxy() holds the circuit_breakers write lock for the full duration
         // of its storage write, so every proxy visible in candidates is guaranteed
         // to have a CB entry by the time we reach here.
-        let cb = cb_map
-            .get(&id)
-            .cloned()
-            .ok_or(ProxyError::PoolExhausted)?;
+        let cb = cb_map.get(&id).cloned().ok_or(ProxyError::PoolExhausted)?;
 
         let url = with_metrics
             .iter()

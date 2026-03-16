@@ -35,7 +35,6 @@ Build a pool and make a request:
 
 ```rust,no_run
 use std::sync::Arc;
-use tokio_util::sync::CancellationToken;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
 use stygian_proxy::types::{Proxy, ProxyType};
 
@@ -57,8 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }).await?;
 
     // Start background health checks
-    let token = CancellationToken::new();
-    manager.start_health_checker(token.clone());
+    let (cancel, _task) = manager.start();
 
     // Acquire a proxy for a request
     let handle = manager.acquire_proxy().await?;
@@ -67,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Signal success — omitting this counts as a failure toward the circuit breaker
     handle.mark_success();
 
-    token.cancel(); // stop health checker
+    cancel.cancel(); // stop health checker
     Ok(())
 }
 ```

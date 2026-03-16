@@ -47,11 +47,12 @@ use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
 use stygian_proxy::strategy::RandomStrategy;
 
 let storage = Arc::new(MemoryProxyStore::default());
-let manager = ProxyManager::with_strategy(
-    storage,
-    ProxyConfig::default(),
-    Arc::new(RandomStrategy),
-).unwrap();
+let manager = ProxyManager::builder()
+    .storage(storage)
+    .strategy(Arc::new(RandomStrategy))
+    .config(ProxyConfig::default())
+    .build()
+    .unwrap();
 ```
 
 ---
@@ -88,11 +89,12 @@ use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
 use stygian_proxy::strategy::LeastUsedStrategy;
 
 let storage = Arc::new(MemoryProxyStore::default());
-let manager = ProxyManager::with_strategy(
-    storage,
-    ProxyConfig::default(),
-    Arc::new(LeastUsedStrategy),
-).unwrap();
+let manager = ProxyManager::builder()
+    .storage(storage)
+    .strategy(Arc::new(LeastUsedStrategy))
+    .config(ProxyConfig::default())
+    .build()
+    .unwrap();
 ```
 
 ---
@@ -128,7 +130,7 @@ impl RotationStrategy for BestSuccessRateStrategy {
 }
 ```
 
-Pass it to `ProxyManager::with_strategy(storage, config, Arc::new(BestSuccessRateStrategy))`.
+Pass it to `ProxyManager::builder().storage(storage).strategy(Arc::new(BestSuccessRateStrategy)).config(config).build().unwrap()`.
 
 ---
 
