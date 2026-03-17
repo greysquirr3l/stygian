@@ -57,6 +57,12 @@
 //!
 //! - `browser` (default): Include stygian-browser for JavaScript rendering
 //! - `full`: All features enabled
+//!
+//! ## Request Signing
+//!
+//! Use [`ports::signing::SigningPort`] + [`adapters::signing::HttpSigningAdapter`] to attach
+//! HMAC signatures, AWS Sig V4, OAuth 1.0a, or Frida RPC tokens to any outbound request.
+//! No feature flag required — zero additional dependencies.
 
 #![warn(missing_docs, rustdoc::broken_intra_doc_links)]
 #![deny(unsafe_code)]

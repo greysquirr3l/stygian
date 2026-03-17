@@ -690,6 +690,9 @@ impl Fingerprint {
         }
 
         parts.push(audio_fingerprint_script());
+        parts.push(connection_spoof_script());
+        parts.push(battery_spoof_script());
+        parts.push(plugins_spoof_script());
 
         format!("(function() {{\n{}\n}})();", parts.join("\n\n"))
     }
@@ -936,7 +939,12 @@ fn screen_script((width, height): (u32, u32)) -> String {
   _defineScreen('availWidth',  {width});
   _defineScreen('availHeight', {avail_height});
   _defineScreen('colorDepth',  24);
-  _defineScreen('pixelDepth',  24);"
+  _defineScreen('pixelDepth',  24);
+  // outerWidth/outerHeight: headless Chrome may return 0; spoof to viewport size.
+  try {{
+    Object.defineProperty(window, 'outerWidth',  {{ get: () => {width},  configurable: true }});
+    Object.defineProperty(window, 'outerHeight', {{ get: () => {height}, configurable: true }});
+  }} catch(_) {{}}"
     )
 }
 
@@ -1021,6 +1029,119 @@ fn audio_fingerprint_script() -> String {
       for (let i = 0; i < arr.length; i++) {
         arr[i] += (Math.random() - 0.5) * 1e-7;
       }
+    };
+  })();"
+        .to_string()
+}
+
+/// Spoof the `NetworkInformation` API (`navigator.connection`) so headless sessions
+/// report a realistic `WiFi` connection rather than the undefined/zero-RTT default
+/// that Akamai Bot Manager v3 uses as a headless indicator.
+fn connection_spoof_script() -> String {
+    // _seed is 0–996; derived from performance.timeOrigin (epoch ms with sub-ms
+    // precision) so the RTT/downlink values vary realistically across sessions.
+    r"  // NetworkInformation API spoof (navigator.connection)
+  (function() {
+    const _seed = Math.floor(performance.timeOrigin % 997);
+    const conn = {
+      rtt:           50 + _seed % 100,
+      downlink:      5 + _seed % 15,
+      effectiveType: '4g',
+      type:          'wifi',
+      saveData:      false,
+      onchange:      null,
+      ontypechange:  null,
+      addEventListener:    function() {},
+      removeEventListener: function() {},
+      dispatchEvent:       function() { return true; },
+    };
+    try {
+      Object.defineProperty(navigator, 'connection', {
+        get: () => conn,
+        enumerable: true,
+        configurable: false,
+      });
+    } catch (_) {}
+  })();"
+        .to_string()
+}
+
+/// Normalize `navigator.getBattery()` away from the suspicious fully-charged
+/// headless default (`level: 1.0`, `charging: true`) that many bot detectors
+/// flag.  Resolves to a realistic mid-charge, discharging state.
+/// Spoof `navigator.plugins` and `navigator.mimeTypes`.
+///
+/// An empty `PluginArray` (length 0) is the single most-flagged headless
+/// indicator on services like pixelscan.net and Akamai Bot Manager.  Real
+/// Chrome always exposes at least the built-in PDF Viewer plugin.
+fn plugins_spoof_script() -> String {
+    r"  // navigator.plugins / mimeTypes — empty array = instant headless flag
+  (function() {
+    // Build minimal objects that survive instanceof checks.
+    var mime0 = { type: 'application/pdf', description: 'Portable Document Format', suffixes: 'pdf', enabledPlugin: null };
+    var mime1 = { type: 'text/pdf',        description: 'Portable Document Format', suffixes: 'pdf', enabledPlugin: null };
+    var pdfPlugin = {
+      name: 'PDF Viewer',
+      description: 'Portable Document Format',
+      filename: 'internal-pdf-viewer',
+      length: 2,
+      0: mime0, 1: mime1,
+      item: function(i) { return [mime0, mime1][i] || null; },
+      namedItem: function(n) {
+        if (n === 'application/pdf') return mime0;
+        if (n === 'text/pdf')        return mime1;
+        return null;
+      },
+    };
+    mime0.enabledPlugin = pdfPlugin;
+    mime1.enabledPlugin = pdfPlugin;
+
+    var fakePlugins = {
+      length: 1,
+      0: pdfPlugin,
+      item: function(i) { return i === 0 ? pdfPlugin : null; },
+      namedItem: function(n) { return n === 'PDF Viewer' ? pdfPlugin : null; },
+      refresh: function() {},
+    };
+    var fakeMimes = {
+      length: 2,
+      0: mime0, 1: mime1,
+      item: function(i) { return [mime0, mime1][i] || null; },
+      namedItem: function(n) {
+        if (n === 'application/pdf') return mime0;
+        if (n === 'text/pdf')        return mime1;
+        return null;
+      },
+    };
+
+    try {
+      Object.defineProperty(navigator, 'plugins',   { get: function() { return fakePlugins; }, configurable: false });
+      Object.defineProperty(navigator, 'mimeTypes', { get: function() { return fakeMimes; },   configurable: false });
+    } catch(_) {}
+  })();"
+        .to_string()
+}
+
+fn battery_spoof_script() -> String {
+    r"  // Battery API normalization (navigator.getBattery)
+  (function() {
+    if (typeof navigator.getBattery !== 'function') return;
+    const _seed = Math.floor(performance.timeOrigin % 997);
+    const battery = {
+      charging:        false,
+      chargingTime:    Infinity,
+      dischargingTime: 3600 + _seed * 7,
+      level:           0.65 + (_seed % 30) / 100,
+      onchargingchange:        null,
+      onchargingtimechange:    null,
+      ondischargingtimechange: null,
+      onlevelchange:           null,
+      addEventListener:    function() {},
+      removeEventListener: function() {},
+      dispatchEvent:       function() { return true; },
+    };
+    navigator.getBattery = function() {
+      return Promise.resolve(battery);
     };
   })();"
         .to_string()

@@ -760,3 +760,6 @@ pub mod storage;
 
 /// Auth port — runtime token loading, expiry checking, and refresh.
 pub mod auth;
+
+/// Signing port — attach HMAC, OAuth 1.0a, AWS Sig V4, or Frida RPC signatures to requests.
+pub mod signing;

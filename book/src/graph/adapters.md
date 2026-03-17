@@ -658,3 +658,31 @@ target = "https://docs.example.com"
 | Cloudflare API non-2xx | `ServiceError::Unavailable` (with CF error code) |
 | Job still pending after `job_timeout` | `ServiceError::Timeout` |
 | Unexpected response shape | `ServiceError::InvalidResponse` |
+
+---
+
+## Request signing adapters
+
+The `SigningPort` trait lets any adapter attach signatures, HMAC tokens,
+device attestation headers, or OAuth material to outbound requests without
+coupling the adapter to the scheme.
+
+| Adapter | Use case |
+| --- | --- |
+| `NoopSigningAdapter` | Passthrough — no headers added; useful as a default or in unit tests |
+| `HttpSigningAdapter` | Delegate to any external sidecar (Frida RPC bridge, AWS SigV4 server, OAuth 1.0a service, …) |
+
+```rust
+use std::sync::Arc;
+use stygian_graph::adapters::signing::{HttpSigningAdapter, HttpSigningConfig};
+use stygian_graph::ports::signing::ErasedSigningPort;
+
+let signer: Arc<dyn ErasedSigningPort> = Arc::new(
+    HttpSigningAdapter::new(HttpSigningConfig {
+        endpoint: "http://localhost:27042/sign".to_string(),
+        ..Default::default()
+    })
+);
+```
+
+See [Request Signing](./signing.md) for the full sidecar wire format, Frida RPC bridge example, and guide to implementing a pure-Rust `SigningPort`.

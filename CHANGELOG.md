@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-03-17
+
+### Added
+
+- `stygian-browser`: `Navigator.prototype.webdriver` prototype-level patch — previously only the
+  instance property was overridden; scanners such as pixelscan.net and Akamai probe
+  `Object.getOwnPropertyDescriptor(Navigator.prototype, 'webdriver')` directly,
+  so the prototype getter is now also patched on every new document context
+- `stygian-browser`: Network Information API spoofing — `navigator.connection` (previously
+  `null` in headless, an immediate detection signal) is replaced with a realistic
+  `NetworkInformation`-like object (`effectiveType: "4g"`, `type: "wifi"`, seeded
+  `downlink`/`rtt` values stable within a session)
+- `stygian-browser`: Battery Status API spoofing — `navigator.getBattery()` (previously
+  `null` in headless) now resolves with a plausible disconnected-battery state; `level`,
+  `dischargingTime` are seeded from `performance.timeOrigin` to vary across sessions
+- `stygian-browser`: `examples/scraper_cli.rs` — generic CLI scraper using `StealthLevel::Advanced`,
+  `WaitUntil::NetworkIdle`; emits structured JSON (title, description, headings, links,
+  text excerpt, timing); successfully scrapes Cloudflare-protected sites (CNN.com, etc.)
+- `stygian-browser`: `examples/pixelscan_check.rs` — targeted pixelscan.net fingerprint scan
+  example; polls until client-side result cards settle; extracts verdict, per-card pass/fail
+  status, hardware/font/UA detail sections, and live `nav_signals` for stealth regression testing
+- `stygian-graph`: `SigningPort` trait — request-signing abstraction for attaching HMAC tokens,
+  AWS Signature V4, OAuth 1.0a, device attestation tokens, or any per-request auth material
+  without coupling adapters to signing scheme
+- `stygian-graph`: `NoopSigningAdapter` — passthrough signer for testing and optional-signer defaults
+- `stygian-graph`: `HttpSigningAdapter` — delegates signing to any external sidecar over HTTP POST
+  (e.g. a Frida RPC bridge exposing a `/sign` endpoint); configurable timeout and retries
+- `book`: stealth guide updated — prototype-level webdriver patch, Network Information API
+  spoofing, and Battery Status API spoofing sections added
+
+### Fixed
+
+- `stygian-browser`: `outerWidth`/`outerHeight` now set via `screen_script` injection to match
+  the spoofed screen resolution (headless Chrome returns `0` without this)
+- `stygian-browser`: `navigator.plugins` spoofed with a realistic 5-entry `PluginArray`
+  (PDF Viewer entries + `navigator.mimeTypes` with 2 entries), eliminating the
+  empty-plugins headless signal
+
 ## [0.2.0] - 2026-03-16
 
 ### Added

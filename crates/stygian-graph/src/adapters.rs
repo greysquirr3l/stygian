@@ -62,3 +62,7 @@ pub mod cloudflare_crawl;
 
 /// Output format helpers — CSV, JSONL, JSON
 pub mod output_format;
+
+/// Request signing adapters — Noop passthrough and HTTP sidecar bridge.
+/// Covers Frida RPC, AWS Sig V4, OAuth 1.0a, custom HMAC, and device attestation.
+pub mod signing;

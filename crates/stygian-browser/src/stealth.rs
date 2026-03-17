@@ -257,7 +257,19 @@ impl StealthProfile {
       }} catch (_) {{}}
     }};
 
-    // Remove the webdriver flag entirely
+    // Remove the webdriver flag at both the prototype and instance levels.
+    // Some anti-bot checks (e.g. pixelscan) probe Navigator.prototype directly
+    // via Object.getOwnPropertyDescriptor(Navigator.prototype, 'webdriver'), so
+    // we must patch both; configurable:true on the prototype is intentional —
+    // Navigator.prototype properties are configurable in Chrome and must remain
+    // so to avoid errors if any polyfill attempts a second defineProperty call.
+    try {{
+      Object.defineProperty(Navigator.prototype, 'webdriver', {{
+        get: () => undefined,
+        enumerable: true,
+        configurable: true,
+      }});
+    }} catch (_) {{}}
     defineReadOnly(navigator, 'webdriver', undefined);
 
     // Platform / identity

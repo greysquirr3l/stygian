@@ -27,6 +27,7 @@ traits defined in `src/ports.rs`. The domain never imports adapters — only por
 | `ScrapingService` | Fetching or processing content in a new way |
 | `AIProvider` | Adding a new LLM or language model API |
 | `CachePort` | Adding a new cache backend (Redis, Memcached, …) |
+| `SigningPort` | Attaching signatures, HMAC tokens, or authentication material to outgoing requests |
 
 `PlaywrightService` fetches rendered HTML, so it implements `ScrapingService`.
 

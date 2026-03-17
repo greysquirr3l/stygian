@@ -67,6 +67,13 @@ Executed on every new document context before any page script runs.
 - Aligns `navigator.hardwareConcurrency` and `navigator.deviceMemory` with the
   chosen device fingerprint
 
+Two layers of protection prevent `webdriver` detection:
+
+1. **Instance patch** — `Object.defineProperty(navigator, 'webdriver', { get: () => undefined })` hides the flag from direct access (`navigator.webdriver === undefined`).
+2. **Prototype patch** — `Object.defineProperty(Navigator.prototype, 'webdriver', ...)` hides the underlying getter from `Object.getOwnPropertyDescriptor(Navigator.prototype, 'webdriver')`, which some scanners (e.g. pixelscan.net, Akamai) probe directly.
+
+Both patches are injected into every new document context before any page script runs.
+
 The fingerprint is drawn from statistically-weighted device profiles:
 
 ```rust
@@ -165,6 +172,42 @@ let typer = TypingSimulator::new()
 
 typer.type_into(&page, "#search-input", "rust async web scraping").await?;
 ```
+
+---
+
+## Network Information API spoofing
+
+`navigator.connection` (Network Information API) reveals connection quality and type.  
+Headless browsers return `null` here, which is an immediate headless signal on connection-aware scanners.
+
+`Advanced` stealth injects a realistic `NetworkInformation`-like object:
+
+| Property | Spoofed value |
+| --- | --- |
+| `effectiveType` | `"4g"` |
+| `type` | `"wifi"` |
+| `downlink` | Seeded from `performance.timeOrigin` (stable per session, ≈ 10 Mbps range) |
+| `rtt` | Seeded jitter (50–100 ms range) |
+| `saveData` | `false` |
+
+---
+
+## Battery Status API spoofing
+
+`navigator.getBattery()` returns `null` in headless Chrome — a clear automation signal
+for scanners that enumerate battery state.
+
+`Advanced` stealth overrides `getBattery()` to resolve with a plausible disconnected-battery state:
+
+| Property | Spoofed value |
+| --- | --- |
+| `charging` | `false` |
+| `chargingTime` | `Infinity` |
+| `dischargingTime` | Seeded (≈ 3600–7200 s) |
+| `level` | Seeded (0.65–0.95) |
+
+The seed values are derived from `performance.timeOrigin` so they are stable within a page
+load but differ across sessions, preventing replay detection.
 
 ---
 
