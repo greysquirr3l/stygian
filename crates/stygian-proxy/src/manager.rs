@@ -246,7 +246,7 @@ impl ProxyManager {
     ///
     /// Builds [`ProxyCandidate`] entries from current storage, consulting the
     /// health map and each proxy's circuit breaker to set the `healthy` flag.
-    /// Delegates selection to the configured [`RotationStrategy`].
+    /// Delegates selection to the configured [`crate::strategy::RotationStrategy`].
     pub async fn acquire_proxy(&self) -> ProxyResult<ProxyHandle> {
         let with_metrics = self.storage.list_with_metrics().await?;
         if with_metrics.is_empty() {

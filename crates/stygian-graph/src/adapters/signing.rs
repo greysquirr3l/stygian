@@ -1,11 +1,11 @@
 //! Request signing adapters.
 //!
-//! Provides concrete [`SigningPort`] implementations:
+//! Provides concrete [`crate::ports::signing::SigningPort`] implementations:
 //!
 //! | Adapter | Use case |
 //! |---|---|
-//! | [`NoopSigningAdapter`] | Testing / no-op passthrough |
-//! | [`HttpSigningAdapter`] | Delegate to any external signing sidecar over HTTP |
+//! | [`crate::adapters::signing::NoopSigningAdapter`] | Testing / no-op passthrough |
+//! | [`crate::adapters::signing::HttpSigningAdapter`] | Delegate to any external signing sidecar over HTTP |
 //!
 //! # Frida RPC bridge example
 //!
@@ -22,7 +22,7 @@
 //!
 //! # AWS Signature V4 / custom HMAC
 //!
-//! Implement [`SigningPort`] directly, or point [`HttpSigningAdapter`] at a
+//! Implement [`crate::ports::signing::SigningPort`] directly, or point [`crate::adapters::signing::HttpSigningAdapter`] at a
 //! lightweight signing sidecar that handles key material and algorithm details.
 
 use std::collections::HashMap;

@@ -9,7 +9,7 @@ use crate::types::{Proxy, ProxyRecord};
 /// Abstract storage interface for persisting and querying proxy records.
 ///
 /// Implementors must be `Send + Sync + 'static` to support concurrent access
-/// across async tasks. The trait is object-safe via [`async_trait`].
+/// across async tasks. The trait is object-safe via [`macro@async_trait`].
 ///
 /// # Example
 /// ```rust,no_run

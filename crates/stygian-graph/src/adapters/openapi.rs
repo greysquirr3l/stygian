@@ -6,10 +6,10 @@
 //! 1. Fetches and parses the spec, caching it for the lifetime of the adapter.
 //! 2. Resolves the target operation by `operationId` or `"METHOD /path"`.
 //! 3. Binds `params.args` to path parameters, query parameters, and request body.
-//! 4. Delegates the concrete HTTP call to the inner [`RestApiAdapter`].
+//! 4. Delegates the concrete HTTP call to the inner [`crate::adapters::rest_api::RestApiAdapter`].
 //!
 //! An optional proactive rate limit (`params.rate_limit`) is enforced before
-//! each request; reactive 429 handling is inherited from [`RestApiAdapter`].
+//! each request; reactive 429 handling is inherited from [`crate::adapters::rest_api::RestApiAdapter`].
 //!
 //! # `ServiceInput` contract
 //!
@@ -18,7 +18,7 @@
 //! | `url` | string | URL of the OpenAPI spec (JSON or YAML) |
 //! | `params.operation` | string | `operationId` **or** `"METHOD /path"` |
 //! | `params.args` | object | Path / query / body args (merged) |
-//! | `params.auth` | object | Same shape as [`RestApiAdapter`] |
+//! | `params.auth` | object | Same shape as [`crate::adapters::rest_api::RestApiAdapter`] |
 //! | `params.server.url` | string | Override the spec's `servers[0].url` |
 //! | `params.rate_limit` | object | Optional proactive throttle |
 //!

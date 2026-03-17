@@ -63,7 +63,7 @@ pub struct ProxyCandidate {
 pub trait RotationStrategy: Send + Sync + 'static {
     /// Select one candidate from `candidates`.
     ///
-    /// Returns [`ProxyError::AllProxiesUnhealthy`] when every candidate has
+    /// Returns [`crate::error::ProxyError::AllProxiesUnhealthy`] when every candidate has
     /// `healthy == false`.
     async fn select<'a>(&self, candidates: &'a [ProxyCandidate])
     -> ProxyResult<&'a ProxyCandidate>;
