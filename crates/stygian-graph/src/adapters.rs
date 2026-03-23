@@ -106,3 +106,7 @@ pub mod csv_source;
 /// S3-compatible object storage adapter (feature = "object-storage")
 #[cfg(feature = "object-storage")]
 pub mod storage_s3;
+
+/// Axum-based webhook trigger adapter (feature = "api")
+#[cfg(feature = "api")]
+pub mod webhook;
