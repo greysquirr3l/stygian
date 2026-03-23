@@ -1,0 +1,102 @@
+# webhook-triggered.toml
+#
+# Start a webhook listener, wait for an inbound POST, extract the URL from
+# the payload, fetch the target page, and run LLM extraction on it.
+#
+# Demonstrates the webhook trigger adapter for event-driven pipeline
+# execution — e.g. triggered by GitHub webhooks, Stripe events, or
+# custom integrations.
+#
+# Run:
+#   ANTHROPIC_API_KEY=sk-... stygian run examples/webhook-triggered.toml
+#
+# Then trigger with:
+#   curl -X POST http://localhost:3001/webhooks/trigger \
+#     -H 'Content-Type: application/json' \
+#     -d '{"url": "https://example.com/page-to-scrape", "source": "manual"}'
+#
+# With HMAC verification:
+#   curl -X POST http://localhost:3001/webhooks/trigger \
+#     -H 'Content-Type: application/json' \
+#     -H 'X-Hub-Signature-256: sha256=<computed-hmac>' \
+#     -d '{"url": "https://example.com", "source": "github"}'
+#
+# Prerequisites:
+#   - Anthropic API key for extraction
+#   - Build with: cargo build --features "api"
+
+# ── Service declarations ──────────────────────────────────────────────────────
+
+[[services]]
+name = "webhook"
+kind = "webhook-trigger"
+
+[[services]]
+name = "http"
+kind = "http"
+
+[[services]]
+name  = "claude"
+kind  = "claude"
+model = "claude-haiku-4-5"
+
+# ── Step 1: Wait for an inbound webhook event ────────────────────────────────
+#
+# The webhook adapter starts an axum HTTP server and waits for a POST request.
+# It verifies HMAC-SHA256 signatures when a secret is configured.
+# Body size is limited to 1 MiB by default.
+
+[[nodes]]
+name    = "wait-for-event"
+service = "webhook"
+url     = "127.0.0.1:3001"
+
+[nodes.params]
+path_prefix  = "/webhooks"
+timeout_secs = 300               # Wait up to 5 minutes for an event
+# secret     = "my-hmac-secret"  # Uncomment to require HMAC verification
+
+# ── Step 2: Fetch the URL from the webhook payload ──────────────────────────
+
+[[nodes]]
+name       = "fetch"
+service    = "http"
+depends_on = ["wait-for-event"]
+
+# URL is extracted from the webhook event body JSON
+
+# ── Step 3: Extract structured data from the fetched page ────────────────────
+
+[[nodes]]
+name       = "extract"
+service    = "claude"
+depends_on = ["fetch"]
+
+[nodes.prompt]
+system = "You are a web page analysis assistant."
+user   = """Analyse this web page and extract:
+- page_title
+- main_content (first 500 words)
+- page_type (article, product, landing-page, documentation, other)
+- language (ISO 639-1 code)
+- key_links (up to 10 important outbound links)"""
+
+[nodes.schema]
+type = "object"
+
+[nodes.schema.properties.page_title]
+type = "string"
+
+[nodes.schema.properties.main_content]
+type = "string"
+
+[nodes.schema.properties.page_type]
+type = "string"
+enum = ["article", "product", "landing-page", "documentation", "other"]
+
+[nodes.schema.properties.language]
+type = "string"
+
+[nodes.schema.properties.key_links]
+type = "array"
+items.type = "string"

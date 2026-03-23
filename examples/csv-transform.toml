@@ -1,0 +1,85 @@
+# csv-transform.toml
+#
+# Read a CSV file, transform each row through LLM extraction, and output
+# enriched structured data.
+#
+# Demonstrates the CSV/TSV data source adapter reading structured input
+# and feeding rows into an AI extraction pipeline.
+#
+# Run:
+#   ANTHROPIC_API_KEY=sk-... stygian run examples/csv-transform.toml
+#
+# Prerequisites:
+#   - A CSV file at the path specified below (or change the URL)
+#   - Anthropic API key for enrichment
+
+# ── Service declarations ──────────────────────────────────────────────────────
+
+[[services]]
+name = "csv-source"
+kind = "csv"
+
+[[services]]
+name  = "claude"
+kind  = "claude"
+model = "claude-haiku-4-5"
+
+# ── Step 1: Read CSV data ─────────────────────────────────────────────────────
+#
+# The CSV adapter implements DataSourcePort. It reads CSV or TSV files from
+# local paths or HTTP URLs and outputs each row as structured JSON.
+#
+# Supports:
+#   - Automatic delimiter detection (comma, tab, semicolon, pipe)
+#   - Header row configuration
+#   - Encoding detection
+#   - Row limit and offset for pagination
+
+[[nodes]]
+name    = "read-csv"
+service = "csv-source"
+url     = "file:///path/to/companies.csv"
+
+[nodes.params]
+# delimiter = ","        # Auto-detected if omitted
+has_header  = true        # First row is header (default: true)
+# skip_rows = 0          # Skip N rows before header
+# max_rows  = 1000       # Limit number of rows processed
+# encoding  = "utf-8"    # Force encoding (auto-detected if omitted)
+
+# ── Step 2: Enrich each company record with AI ───────────────────────────────
+
+[[nodes]]
+name       = "enrich"
+service    = "claude"
+depends_on = ["read-csv"]
+
+[nodes.prompt]
+system = "You are a business data enrichment assistant."
+user   = """Given this company record, enrich it with:
+- industry_sector: primary industry classification
+- company_size: startup / sme / enterprise (based on any available signals)
+- description: one-sentence description of what the company does
+- website_category: e-commerce / saas / marketplace / media / other
+
+Input record: {{input}}"""
+
+[nodes.schema]
+type = "object"
+
+[nodes.schema.properties.company_name]
+type = "string"
+
+[nodes.schema.properties.industry_sector]
+type = "string"
+
+[nodes.schema.properties.company_size]
+type = "string"
+enum = ["startup", "sme", "enterprise"]
+
+[nodes.schema.properties.description]
+type = "string"
+
+[nodes.schema.properties.website_category]
+type = "string"
+enum = ["e-commerce", "saas", "marketplace", "media", "other"]

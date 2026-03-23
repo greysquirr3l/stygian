@@ -1,0 +1,92 @@
+# rss-monitor.toml
+#
+# Poll an RSS/Atom feed, filter entries added since the last run, extract
+# structured data from each article, and store the results.
+#
+# Demonstrates the RSS/Atom feed source adapter with date filtering
+# and LLM-powered content extraction.
+#
+# Run:
+#   ANTHROPIC_API_KEY=sk-... stygian run examples/rss-monitor.toml
+#
+# Prerequisites:
+#   - Anthropic API key for extraction
+
+# ── Service declarations ──────────────────────────────────────────────────────
+
+[[services]]
+name = "rss"
+kind = "rss-feed"
+
+[[services]]
+name = "http"
+kind = "http"
+
+[services.rate_limit]
+requests_per_second = 2
+burst               = 5
+
+[[services]]
+name  = "claude"
+kind  = "claude"
+model = "claude-haiku-4-5"
+
+# ── Step 1: Fetch and parse the RSS feed ──────────────────────────────────────
+#
+# The RSS adapter supports RSS 1.0, RSS 2.0, and Atom formats.
+# Output: JSON array of feed items with title, link, published, summary, etc.
+
+[[nodes]]
+name    = "poll-feed"
+service = "rss"
+url     = "https://hnrss.org/newest?points=100"
+
+# Filter to entries from the last 24 hours, limit to 20 items
+[nodes.params]
+since = "24h"
+limit = 20
+
+# ── Step 2: Fetch each article linked from the feed ──────────────────────────
+
+[[nodes]]
+name       = "fetch-article"
+service    = "http"
+depends_on = ["poll-feed"]
+
+# URL is injected from feed item link
+
+# ── Step 3: Extract structured data from the article ─────────────────────────
+
+[[nodes]]
+name       = "extract"
+service    = "claude"
+depends_on = ["fetch-article"]
+
+[nodes.prompt]
+system = "You are a news analysis assistant."
+user   = """Summarise this article in 2-3 sentences. Extract:
+- title
+- main_topic (one of: tech, science, business, culture, other)
+- key_entities (list of people, companies, or technologies mentioned)
+- sentiment (positive, negative, neutral)"""
+
+[nodes.schema]
+type = "object"
+
+[nodes.schema.properties.title]
+type = "string"
+
+[nodes.schema.properties.summary]
+type = "string"
+
+[nodes.schema.properties.main_topic]
+type = "string"
+enum = ["tech", "science", "business", "culture", "other"]
+
+[nodes.schema.properties.key_entities]
+type = "array"
+items.type = "string"
+
+[nodes.schema.properties.sentiment]
+type = "string"
+enum = ["positive", "negative", "neutral"]

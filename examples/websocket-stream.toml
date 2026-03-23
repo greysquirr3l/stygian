@@ -1,0 +1,87 @@
+# websocket-stream.toml
+#
+# Connect to a WebSocket API, collect messages in real-time, and extract
+# structured data from batches using an LLM.
+#
+# Demonstrates the WebSocket stream source adapter for real-time data
+# ingestion from WebSocket-based APIs (crypto prices, live feeds, etc.).
+#
+# Run:
+#   ANTHROPIC_API_KEY=sk-... stygian run examples/websocket-stream.toml
+#
+# Prerequisites:
+#   - A WebSocket endpoint (this example uses a public echo or crypto feed)
+#   - Anthropic API key for extraction
+
+# ── Service declarations ──────────────────────────────────────────────────────
+
+[[services]]
+name = "ws"
+kind = "websocket"
+
+[[services]]
+name  = "claude"
+kind  = "claude"
+model = "claude-haiku-4-5"
+
+# ── Step 1: Connect to WebSocket and collect messages ─────────────────────────
+#
+# The WebSocket adapter implements StreamSourcePort. It connects, optionally
+# sends a subscribe message, and collects messages until the batch limit or
+# timeout is reached.
+
+[[nodes]]
+name    = "stream"
+service = "ws"
+url     = "wss://ws.coincap.io/prices?assets=bitcoin,ethereum,solana"
+
+[nodes.params]
+# Collect up to 50 messages or stop after 30 seconds
+max_messages = 50
+timeout_secs = 30
+
+# Optional: send a subscribe message on connect
+# subscribe_message = '{"type": "subscribe", "channels": ["ticker"]}'
+
+# ── Step 2: Analyse the collected price data ──────────────────────────────────
+
+[[nodes]]
+name       = "analyse"
+service    = "claude"
+depends_on = ["stream"]
+
+[nodes.prompt]
+system = "You are a financial data analyst."
+user   = """Analyse these cryptocurrency price updates. For each asset, determine:
+- current_price (latest value)
+- price_trend (rising, falling, stable)
+- volatility (high, medium, low)
+- message_count (how many updates received)
+
+Return a summary object with an entry per asset."""
+
+[nodes.schema]
+type = "object"
+
+[nodes.schema.properties.assets]
+type = "array"
+
+[nodes.schema.properties.assets.items.type]
+type = "object"
+
+[nodes.schema.properties.assets.items.properties.name]
+type = "string"
+
+[nodes.schema.properties.assets.items.properties.current_price]
+type = "number"
+
+[nodes.schema.properties.assets.items.properties.price_trend]
+type = "string"
+enum = ["rising", "falling", "stable"]
+
+[nodes.schema.properties.assets.items.properties.volatility]
+type = "string"
+enum = ["high", "medium", "low"]
+
+[nodes.schema.properties.assets.items.properties.message_count]
+type = "integer"

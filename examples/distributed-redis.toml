@@ -1,0 +1,120 @@
+# distributed-redis.toml
+#
+# Multi-worker pipeline using Redis Streams for distributed work distribution
+# and Redis/Valkey for shared caching. Demonstrates production-grade horizontal
+# scaling across multiple stygian workers.
+#
+# Run (start multiple workers to see distributed execution):
+#   REDIS_URL=redis://127.0.0.1:6379 \
+#   ANTHROPIC_API_KEY=sk-... \
+#     stygian run examples/distributed-redis.toml
+#
+# Prerequisites:
+#   - Redis or Valkey instance (docker-compose up -d valkey)
+#   - Anthropic API key for extraction
+#   - Build with: cargo build --features "redis"
+#
+# Architecture:
+#   Worker 1 ───┐                    ┌─── Worker 1
+#   Worker 2 ───┤ Redis Streams ────>├─── Worker 2
+#   Worker 3 ───┘  (work queue)      └─── Worker 3
+#                       │
+#                  Redis/Valkey
+#                   (shared cache)
+
+# ── Service declarations ──────────────────────────────────────────────────────
+
+[[services]]
+name = "redis-cache"
+kind = "cache-redis"
+
+# Redis connection for shared caching across all workers
+[services.config]
+url        = "redis://127.0.0.1:6379"
+prefix     = "stygian:cache"     # Key namespace to avoid collisions
+pool_size  = 4                   # Connection pool size per worker
+
+[[services]]
+name = "work-queue"
+kind = "distributed-redis"
+
+# Redis Streams configuration for work distribution
+[services.config]
+url               = "redis://127.0.0.1:6379"
+stream_name       = "stygian:pipeline:distributed-demo"
+consumer_group    = "workers"
+max_retries       = 3            # Move to DLQ after 3 failed attempts
+claim_timeout_ms  = 30000        # Reclaim stuck tasks after 30s
+pool_size         = 4
+
+[[services]]
+name = "sitemap"
+kind = "sitemap"
+
+[[services]]
+name = "http"
+kind = "http"
+
+[services.rate_limit]
+requests_per_second = 10
+burst               = 20
+
+[[services]]
+name  = "claude"
+kind  = "claude"
+model = "claude-haiku-4-5"
+
+# ── Step 1: Discover URLs from sitemap ────────────────────────────────────────
+#
+# The sitemap adapter discovers URLs and enqueues them into the Redis Streams
+# work queue. Each worker picks up tasks via competing-consumer pattern.
+
+[[nodes]]
+name    = "discover"
+service = "sitemap"
+url     = "https://example.com/sitemap.xml"
+
+# ── Step 2: Fetch pages (distributed across workers) ─────────────────────────
+#
+# Multiple workers pull URLs from the queue and fetch them in parallel.
+# Redis cache deduplicates already-fetched URLs across workers.
+
+[[nodes]]
+name       = "fetch"
+service    = "http"
+depends_on = ["discover"]
+cache      = "redis-cache"
+
+[nodes.cache_config]
+ttl_secs = 3600                  # Cache fetched pages for 1 hour
+
+# ── Step 3: Extract structured data ──────────────────────────────────────────
+#
+# Each worker processes its fetched pages through Claude for extraction.
+# Results are deduped via the shared cache.
+
+[[nodes]]
+name       = "extract"
+service    = "claude"
+depends_on = ["fetch"]
+cache      = "redis-cache"
+
+[nodes.cache_config]
+ttl_secs = 7200                  # Cache extraction results for 2 hours
+
+[nodes.prompt]
+system = "You are a data extraction assistant."
+user   = "Extract the page title, main content summary, and any structured data (tables, lists, prices) from this page."
+
+[nodes.schema]
+type = "object"
+
+[nodes.schema.properties.title]
+type = "string"
+
+[nodes.schema.properties.summary]
+type = "string"
+
+[nodes.schema.properties.structured_data]
+type = "array"
+items.type = "object"

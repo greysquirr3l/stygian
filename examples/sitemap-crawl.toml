@@ -1,0 +1,108 @@
+# sitemap-crawl.toml
+#
+# Discover URLs from a sitemap, fan-out to HTTP fetch and AI extraction,
+# then store results to S3-compatible object storage.
+#
+# This pipeline demonstrates the sitemap discovery adapter feeding URLs
+# into parallel fetches with LLM-powered extraction, landing structured
+# data in S3/MinIO/R2.
+#
+# Run:
+#   ANTHROPIC_API_KEY=sk-... \
+#   AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
+#     stygian run examples/sitemap-crawl.toml
+#
+# Prerequisites:
+#   - S3-compatible storage (MinIO, AWS S3, Cloudflare R2)
+#   - Anthropic API key for extraction
+#   - Build with: cargo build --features "object-storage"
+
+# ── Service declarations ──────────────────────────────────────────────────────
+
+[[services]]
+name = "sitemap-source"
+kind = "sitemap"
+
+[[services]]
+name = "http"
+kind = "http"
+
+[services.rate_limit]
+requests_per_second = 5
+burst               = 10
+
+[[services]]
+name  = "claude"
+kind  = "claude"
+model = "claude-haiku-4-5"
+
+[[services]]
+name = "s3-store"
+kind = "storage-s3"
+
+# S3-compatible endpoint configuration
+[services.config]
+bucket    = "stygian-output"
+region    = "us-east-1"
+endpoint  = "http://localhost:9000"   # MinIO local or S3 endpoint
+prefix    = "sitemap-crawl"
+path_style = true                     # Required for MinIO; false for AWS S3
+
+# ── Step 1: Discover URLs from the sitemap ────────────────────────────────────
+#
+# The sitemap adapter parses <urlset> and <sitemapindex> XML.
+# Handles gzipped sitemaps (.xml.gz) transparently.
+
+[[nodes]]
+name    = "discover"
+service = "sitemap-source"
+url     = "https://example.com/sitemap.xml"
+
+# Optional: filter URLs modified in the last 7 days
+[nodes.params]
+lastmod_after = "2025-06-01"
+
+# ── Step 2: Fetch each discovered URL ─────────────────────────────────────────
+
+[[nodes]]
+name       = "fetch"
+service    = "http"
+depends_on = ["discover"]
+
+# URL is injected from the upstream sitemap discovery output
+
+# ── Step 3: Extract structured data with AI ───────────────────────────────────
+
+[[nodes]]
+name       = "extract"
+service    = "claude"
+depends_on = ["fetch"]
+
+[nodes.prompt]
+system = "You are a data extraction assistant. Extract the main content from this page."
+user   = "Extract the page title, main content text, publication date, and author."
+
+[nodes.schema]
+type = "object"
+
+[nodes.schema.properties.title]
+type = "string"
+
+[nodes.schema.properties.content]
+type = "string"
+
+[nodes.schema.properties.published_date]
+type = "string"
+
+[nodes.schema.properties.author]
+type = "string"
+
+# ── Step 4: Store extracted data in S3 ────────────────────────────────────────
+
+[[nodes]]
+name       = "store"
+service    = "s3-store"
+depends_on = ["extract"]
+
+[nodes.params]
+action = "store"
