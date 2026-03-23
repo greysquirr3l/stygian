@@ -92,3 +92,6 @@ pub mod sitemap;
 
 /// RSS/Atom feed source adapter
 pub mod rss_feed;
+
+/// WebSocket stream source adapter
+pub mod websocket;

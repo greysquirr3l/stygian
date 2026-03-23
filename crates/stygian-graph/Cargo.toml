@@ -34,6 +34,9 @@ toml.workspace = true
 # HTTP client
 reqwest = { workspace = true, features = ["rustls", "json", "query", "cookies", "gzip", "brotli"] }
 
+# WebSocket client
+tokio-tungstenite.workspace = true
+
 # HTML parsing
 scraper.workspace = true
 
@@ -49,6 +52,7 @@ ulid.workspace = true
 parking_lot.workspace = true
 dashmap.workspace = true
 lru.workspace = true
+base64.workspace = true
 figment.workspace = true
 clap.workspace = true
 indicatif.workspace = true
