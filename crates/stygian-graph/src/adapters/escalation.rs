@@ -45,7 +45,11 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
+use async_trait::async_trait;
+
+use crate::domain::error::{Result, ServiceError, StygianError};
 use crate::ports::escalation::{EscalationPolicy, EscalationTier, ResponseContext};
+use crate::ports::{ScrapingService, ServiceInput, ServiceOutput};
 
 // ── EscalationConfig ─────────────────────────────────────────────────────────
 
@@ -217,6 +221,181 @@ impl EscalationPolicy for DefaultEscalationPolicy {
 
     fn max_tier(&self) -> EscalationTier {
         self.config.max_tier
+    }
+}
+
+// ── domain_from_url ──────────────────────────────────────────────────────────
+
+/// Extract the hostname from a URL, stripping scheme, path, and port.
+///
+/// Returns the original string unchanged if it contains no scheme.
+fn domain_from_url(url: &str) -> &str {
+    let after_scheme = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+        .unwrap_or(url);
+    // strip path
+    let host_port = after_scheme
+        .split_once('/')
+        .map_or(after_scheme, |(h, _)| h);
+    // strip port
+    host_port.split_once(':').map_or(host_port, |(h, _)| h)
+}
+
+// ── EscalatingScrapingService ─────────────────────────────────────────────────
+
+/// A [`ScrapingService`] that tries multiple tiers in sequence, escalating
+/// from lightweight HTTP to a full stealth browser when anti-bot protections
+/// are detected.
+///
+/// Register it in the pipeline service registry under `"http_escalating"` so
+/// that pipeline nodes can use `"service": "http_escalating"` in their config.
+///
+/// Tier services are added via [`with_tier`](Self::with_tier).  If a tier has
+/// no service configured the next available higher tier is used automatically.
+///
+/// # Example
+///
+/// ```no_run
+/// use std::sync::Arc;
+/// use stygian_graph::adapters::escalation::{
+///     DefaultEscalationPolicy, EscalationConfig, EscalatingScrapingService,
+/// };
+/// use stygian_graph::adapters::http::HttpAdapter;
+/// use stygian_graph::ports::escalation::EscalationTier;
+///
+/// let policy = DefaultEscalationPolicy::new(EscalationConfig::default());
+/// let svc = EscalatingScrapingService::new(policy)
+///     .with_tier(EscalationTier::HttpPlain, Arc::new(HttpAdapter::new()));
+/// ```
+pub struct EscalatingScrapingService {
+    tier_services: HashMap<EscalationTier, Arc<dyn ScrapingService>>,
+    policy: DefaultEscalationPolicy,
+}
+
+impl EscalatingScrapingService {
+    /// Create an escalating service with no tier services registered.
+    ///
+    /// Use [`with_tier`](Self::with_tier) to register a service for each tier.
+    pub fn new(policy: DefaultEscalationPolicy) -> Self {
+        Self {
+            tier_services: HashMap::new(),
+            policy,
+        }
+    }
+
+    /// Register a concrete service for an escalation tier (builder style).
+    pub fn with_tier(mut self, tier: EscalationTier, service: Arc<dyn ScrapingService>) -> Self {
+        self.tier_services.insert(tier, service);
+        self
+    }
+
+    /// Return the service registered at `tier`, or the next highest available tier.
+    fn service_at_or_above(
+        &self,
+        tier: EscalationTier,
+    ) -> Option<(EscalationTier, &Arc<dyn ScrapingService>)> {
+        let mut current = Some(tier);
+        while let Some(t) = current {
+            if let Some(svc) = self.tier_services.get(&t) {
+                return Some((t, svc));
+            }
+            current = t.next();
+        }
+        None
+    }
+}
+
+#[async_trait]
+impl ScrapingService for EscalatingScrapingService {
+    async fn execute(&self, input: ServiceInput) -> Result<ServiceOutput> {
+        let host = domain_from_url(&input.url).to_string();
+        let mut current_tier = self.policy.initial_tier_for_domain(&host);
+        let mut escalation_path: Vec<EscalationTier> = Vec::new();
+
+        loop {
+            // Resolve nearest configured service at or above the requested tier
+            let (actual_tier, service) =
+                self.service_at_or_above(current_tier).ok_or_else(|| {
+                    StygianError::Service(ServiceError::Unavailable(format!(
+                        "no service configured for escalation tier '{}' or above",
+                        current_tier
+                    )))
+                })?;
+
+            if actual_tier != current_tier {
+                tracing::debug!(
+                    requested = %current_tier,
+                    resolved  = %actual_tier,
+                    "no service at requested tier, using next available"
+                );
+                current_tier = actual_tier;
+            }
+
+            match service.execute(input.clone()).await {
+                Ok(output) => {
+                    let status = output
+                        .metadata
+                        .get("status_code")
+                        .and_then(|v| v.as_u64())
+                        .map_or(200, |s| s as u16);
+                    let ctx =
+                        DefaultEscalationPolicy::context_from_body(status, &output.data);
+
+                    if let Some(next_tier) = self.policy.should_escalate(&ctx, current_tier) {
+                        escalation_path.push(current_tier);
+                        current_tier = next_tier;
+                        continue;
+                    }
+
+                    // Accepted — record learning-cache entry and annotate metadata
+                    self.policy.record_tier_success(&host, current_tier);
+
+                    let mut metadata = output.metadata;
+                    if let Some(obj) = metadata.as_object_mut() {
+                        obj.insert(
+                            "escalation_tier".to_string(),
+                            serde_json::Value::String(current_tier.to_string()),
+                        );
+                        obj.insert(
+                            "escalation_path".to_string(),
+                            serde_json::Value::Array(
+                                escalation_path
+                                    .iter()
+                                    .map(|t| serde_json::Value::String(t.to_string()))
+                                    .collect(),
+                            ),
+                        );
+                    }
+
+                    return Ok(ServiceOutput {
+                        data: output.data,
+                        metadata,
+                    });
+                }
+
+                Err(e) => {
+                    // Service error — escalate to next tier if still within bounds
+                    match current_tier.next().filter(|&t| t <= self.policy.max_tier()) {
+                        Some(next_tier) => {
+                            tracing::info!(
+                                tier  = %current_tier,
+                                next  = %next_tier,
+                                error = %e,
+                                "service error, escalating to next tier"
+                            );
+                            escalation_path.push(current_tier);
+                            current_tier = next_tier;
+                        }
+                        None => return Err(e),
+                    }
+                }
+            }
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        "http_escalating"
     }
 }
 
@@ -460,5 +639,183 @@ mod tests {
         assert!(is_perimeterx_challenge("var _pxParam1 = 'abc'"));
         assert!(has_captcha_marker("www.google.com/recaptcha/api.js"));
         assert!(has_captcha_marker("turnstile.cloudflare.com"));
+    }
+
+    // ── domain_from_url ───────────────────────────────────────────────────────
+
+    #[test]
+    fn domain_from_url_strips_scheme_and_path() {
+        assert_eq!(domain_from_url("https://example.com/path?q=1"), "example.com");
+        assert_eq!(domain_from_url("http://sub.example.com/"), "sub.example.com");
+    }
+
+    #[test]
+    fn domain_from_url_strips_port() {
+        assert_eq!(domain_from_url("https://example.com:8443/api"), "example.com");
+    }
+
+    #[test]
+    fn domain_from_url_no_scheme_passes_through() {
+        // No scheme — returns the string as-is (best-effort)
+        let raw = "example.com/path";
+        let result = domain_from_url(raw);
+        assert!(!result.contains("http"));
+    }
+
+    // ── EscalatingScrapingService ─────────────────────────────────────────────
+
+    /// Minimal mock service for testing escalation.
+    struct MockService {
+        body: &'static str,
+        status: u16,
+    }
+
+    #[async_trait]
+    impl ScrapingService for MockService {
+        async fn execute(&self, _input: ServiceInput) -> crate::domain::error::Result<ServiceOutput> {
+            Ok(ServiceOutput {
+                data: self.body.to_string(),
+                metadata: serde_json::json!({ "status_code": self.status }),
+            })
+        }
+        fn name(&self) -> &'static str {
+            "mock"
+        }
+    }
+
+    /// Service that always returns an error.
+    struct FailingService;
+
+    #[async_trait]
+    impl ScrapingService for FailingService {
+        async fn execute(&self, _input: ServiceInput) -> crate::domain::error::Result<ServiceOutput> {
+            Err(StygianError::Service(ServiceError::Unavailable(
+                "blocked".into(),
+            )))
+        }
+        fn name(&self) -> &'static str {
+            "failing"
+        }
+    }
+
+    fn test_input() -> ServiceInput {
+        ServiceInput {
+            url: "https://example.com/data".to_string(),
+            params: serde_json::Value::Null,
+        }
+    }
+
+    #[tokio::test]
+    async fn escalating_service_returns_ok_on_clean_response() {
+        let policy = DefaultEscalationPolicy::new(EscalationConfig::default());
+        let svc = EscalatingScrapingService::new(policy).with_tier(
+            EscalationTier::HttpPlain,
+            Arc::new(MockService {
+                body: "<html>hello</html>",
+                status: 200,
+            }),
+        );
+        let output = svc.execute(test_input()).await.unwrap();
+        assert_eq!(
+            output.metadata["escalation_tier"].as_str().unwrap(),
+            "http_plain"
+        );
+        let path = output.metadata["escalation_path"].as_array().unwrap();
+        assert!(path.is_empty());
+    }
+
+    #[tokio::test]
+    async fn escalating_service_escalates_on_cf_challenge() {
+        let policy = DefaultEscalationPolicy::new(EscalationConfig::default());
+        let svc = EscalatingScrapingService::new(policy)
+            .with_tier(
+                EscalationTier::HttpPlain,
+                Arc::new(MockService {
+                    body: "<html><title>Just a moment...</title></html>",
+                    status: 200,
+                }),
+            )
+            .with_tier(
+                EscalationTier::HttpTlsProfiled,
+                Arc::new(MockService {
+                    body: "<html>real content</html>",
+                    status: 200,
+                }),
+            );
+        let output = svc.execute(test_input()).await.unwrap();
+        assert_eq!(
+            output.metadata["escalation_tier"].as_str().unwrap(),
+            "http_tls_profiled"
+        );
+        let path = output.metadata["escalation_path"].as_array().unwrap();
+        assert_eq!(path.len(), 1);
+        assert_eq!(path[0].as_str().unwrap(), "http_plain");
+    }
+
+    #[tokio::test]
+    async fn escalating_service_escalates_on_service_error() {
+        let policy = DefaultEscalationPolicy::new(EscalationConfig::default());
+        let svc = EscalatingScrapingService::new(policy)
+            .with_tier(EscalationTier::HttpPlain, Arc::new(FailingService))
+            .with_tier(
+                EscalationTier::BrowserBasic,
+                Arc::new(MockService {
+                    body: "<html>recovered</html>",
+                    status: 200,
+                }),
+            );
+        let output = svc.execute(test_input()).await.unwrap();
+        assert_eq!(
+            output.metadata["escalation_tier"].as_str().unwrap(),
+            "browser_basic"
+        );
+    }
+
+    #[tokio::test]
+    async fn escalating_service_returns_error_when_all_tiers_fail() {
+        let policy = DefaultEscalationPolicy::new(EscalationConfig {
+            max_tier: EscalationTier::BrowserBasic,
+            ..EscalationConfig::default()
+        });
+        let svc = EscalatingScrapingService::new(policy)
+            .with_tier(EscalationTier::HttpPlain, Arc::new(FailingService))
+            .with_tier(EscalationTier::BrowserBasic, Arc::new(FailingService));
+
+        assert!(svc.execute(test_input()).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn escalating_service_no_services_returns_error() {
+        let policy = DefaultEscalationPolicy::new(EscalationConfig::default());
+        let svc = EscalatingScrapingService::new(policy);
+        assert!(svc.execute(test_input()).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn escalating_service_updates_domain_cache_on_success() {
+        let policy = DefaultEscalationPolicy::new(EscalationConfig::default());
+        let svc = EscalatingScrapingService::new(policy.clone())
+            .with_tier(
+                EscalationTier::HttpPlain,
+                Arc::new(MockService {
+                    body: "<html><title>Just a moment...</title></html>",
+                    status: 200,
+                }),
+            )
+            .with_tier(
+                EscalationTier::HttpTlsProfiled,
+                Arc::new(MockService {
+                    body: "<html>ok</html>",
+                    status: 200,
+                }),
+            );
+
+        svc.execute(test_input()).await.unwrap();
+
+        // Domain cache should now remember HttpTlsProfiled
+        assert_eq!(
+            policy.initial_tier_for_domain("example.com"),
+            EscalationTier::HttpTlsProfiled
+        );
     }
 }

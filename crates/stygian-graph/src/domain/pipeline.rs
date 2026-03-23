@@ -129,6 +129,7 @@ impl PipelineUnvalidated {
         let mut node_map: HashMap<String, usize> = HashMap::new();
         let valid_services = [
             "http",
+            "http_escalating",
             "browser",
             "ai_claude",
             "ai_openai",
