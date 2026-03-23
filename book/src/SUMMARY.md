@@ -9,6 +9,7 @@
 - [Architecture](./graph/architecture.md)
 - [Building Pipelines](./graph/pipelines.md)
 - [Built-in Adapters](./graph/adapters.md)
+- [Production Adapters](./graph/production-adapters.md)
 - [Request Signing](./graph/signing.md)
 - [GraphQL Plugins](./graph/graphql-plugins.md)
 - [Custom Adapters](./graph/custom-adapters.md)
