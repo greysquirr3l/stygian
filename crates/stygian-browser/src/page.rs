@@ -830,6 +830,81 @@ impl PageHandle {
     }
 }
 
+// ─── Stealth diagnostics ──────────────────────────────────────────────────────
+
+#[cfg(feature = "stealth")]
+impl PageHandle {
+    /// Run all built-in stealth detection checks against the current page.
+    ///
+    /// Iterates [`crate::diagnostic::all_checks`], evaluates each check's
+    /// JavaScript via CDP `Runtime.evaluate`, and returns an aggregate
+    /// [`crate::diagnostic::DiagnosticReport`].
+    ///
+    /// Failed scripts (due to JS exceptions or deserialization errors) are
+    /// recorded as failing checks and do **not** abort the whole run.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error only if the underlying CDP transport fails entirely.
+    /// Individual check failures are captured in the report.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # async fn run() -> stygian_browser::error::Result<()> {
+    /// use stygian_browser::{BrowserPool, BrowserConfig};
+    /// use stygian_browser::page::WaitUntil;
+    /// use std::time::Duration;
+    ///
+    /// let pool = BrowserPool::new(BrowserConfig::default()).await?;
+    /// let handle = pool.acquire().await?;
+    /// let browser = handle.browser().expect("valid browser");
+    /// let mut page = browser.new_page().await?;
+    /// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(10)).await?;
+    ///
+    /// let report = page.verify_stealth().await?;
+    /// println!("Stealth: {}/{} checks passed", report.passed_count, report.checks.len());
+    /// for failure in report.failures() {
+    ///     eprintln!("  FAIL  {}: {}", failure.description, failure.details);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn verify_stealth(&self) -> Result<crate::diagnostic::DiagnosticReport> {
+        use crate::diagnostic::{CheckResult, DiagnosticReport, all_checks};
+
+        let mut results: Vec<CheckResult> = Vec::new();
+
+        for check in all_checks() {
+            let result = match self.eval::<String>(check.script).await {
+                Ok(json) => check.parse_output(&json),
+                Err(e) => {
+                    tracing::warn!(
+                        check = ?check.id,
+                        error = %e,
+                        "stealth check script failed during evaluation"
+                    );
+                    CheckResult {
+                        id: check.id,
+                        description: check.description.to_string(),
+                        passed: false,
+                        details: format!("script error: {e}"),
+                    }
+                }
+            };
+            tracing::debug!(
+                check = ?result.id,
+                passed = result.passed,
+                details = %result.details,
+                "stealth check result"
+            );
+            results.push(result);
+        }
+
+        Ok(DiagnosticReport::new(results))
+    }
+}
+
 impl Drop for PageHandle {
     fn drop(&mut self) {
         warn!("PageHandle dropped without explicit close(); spawning cleanup task");
