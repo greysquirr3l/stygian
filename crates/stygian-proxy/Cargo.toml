@@ -36,7 +36,7 @@ reqwest = { workspace = true }
 rand = "0.9"
 
 # Browser integration (optional)
-stygian-browser = { path = "../stygian-browser", version = "0.2", optional = true }
+stygian-browser = { path = "../stygian-browser", version = "0.3", optional = true }
 
 [dev-dependencies]
 tokio       = { workspace = true }

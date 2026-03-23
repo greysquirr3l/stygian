@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-03-22
+
 ### Added
 
 - `stygian-graph`: `BudgetGuard` RAII wrapper for GraphQL query cost tracking — acquires
@@ -34,6 +36,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AgentRequest`/`AgentResponse` for wrapping AI provider calls
 - `stygian-graph`: `AgentSource` adapter — delegates to any `Arc<dyn AIProvider>` for
   LLM-backed data extraction and transformation
+- `stygian-graph`: Redis/Valkey `CachePort` adapter — connection-pooled cache backend with
+  key namespacing via configurable prefix and per-entry TTL; feature-gated behind `redis`
+- `stygian-graph`: Sitemap/Sitemap-index `ScrapingService` adapter — XML parsing with gzip
+  support, priority/changefreq filtering, and recursive sitemap index traversal
+- `stygian-graph`: RSS/Atom feed `ScrapingService` adapter — `feed-rs` parsing with item
+  filtering by date/count, returning structured `ScrapingResult` entries
+- `stygian-graph`: WebSocket `StreamSourcePort` adapter — reconnection with exponential
+  backoff, auth headers, message filtering, and configurable ping/pong
+- `stygian-graph`: CSV/TSV `DataSourcePort` adapter — configurable delimiters, header
+  mapping, row skip/limit, and streaming reads via the `csv` crate
+- `stygian-graph`: S3-compatible object storage `StoragePort` adapter — `rust-s3` backend
+  with list/get/put/delete/exists operations; feature-gated behind `object-storage`
+- `stygian-graph`: Redis Streams `WorkQueuePort` adapter — consumer groups, idle message
+  claiming, and connection pooling; feature-gated behind `redis`
+- `stygian-graph`: `WebhookTrigger` port trait — event-driven trigger abstraction with
+  `start_listening`, `stop_listening`, and async event stream
+- `stygian-graph`: Axum webhook trigger adapter — HTTP listener with HMAC-SHA256 signature
+  verification, broadcast channels, health endpoint; feature-gated behind `api`
+- `examples`: 6 pipeline configuration examples — `sitemap-crawl.toml`, `rss-monitor.toml`,
+  `websocket-stream.toml`, `csv-transform.toml`, `webhook-triggered.toml`,
+  `distributed-redis.toml`
+- `book`: production adapters chapter with config references, feature flags table, Mermaid
+  architecture diagrams, and "choosing the right backend" decision trees
+
+### Fixed
+
+- `book`: corrected documentation inaccuracies in production adapter config params to match
+  actual implementation (Redis cache, Redis work queue, CSV, WebSocket, sitemap field names
+  and types)
+- `book`: fixed `distributed.md` usage example and feature flag references
+
+### Security
+
+- Updated `aws-lc-sys` 0.38 → 0.39 (RUSTSEC-2026-0044, RUSTSEC-2026-0048)
+- Updated `rustls-webpki` 0.103.9 → 0.103.10 (RUSTSEC-2026-0049)
 
 ## [0.2.1] - 2026-03-17
 
