@@ -127,10 +127,10 @@ impl DocumentSource {
                     }
                     Ok(meta) if meta.is_file() => {
                         if let Some(pattern) = glob {
-                            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                                if Self::glob_matches(pattern, name) {
-                                    out.push(path);
-                                }
+                            if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                                && Self::glob_matches(pattern, name)
+                            {
+                                out.push(path);
                             }
                         } else {
                             out.push(path);
@@ -143,10 +143,10 @@ impl DocumentSource {
                 Box::pin(Self::walk_dir(&path, recursive, glob, out)).await?;
             } else if ft.is_file() {
                 if let Some(pattern) = glob {
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        if Self::glob_matches(pattern, name) {
-                            out.push(path);
-                        }
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                        && Self::glob_matches(pattern, name)
+                    {
+                        out.push(path);
                     }
                 } else {
                     out.push(path);

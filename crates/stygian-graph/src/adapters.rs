@@ -82,3 +82,7 @@ pub mod stream;
 
 /// LLM agent source adapter — wraps AIProvider as a pipeline node
 pub mod agent_source;
+
+/// Redis / Valkey cache adapter (feature = "redis")
+#[cfg(feature = "redis")]
+pub mod cache_redis;

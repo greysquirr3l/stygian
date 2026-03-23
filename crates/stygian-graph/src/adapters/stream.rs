@@ -111,10 +111,10 @@ impl StreamSourcePort for SseSource {
                 // Empty line = event boundary in SSE
                 if let Some(event) = Self::parse_event(&current_frame) {
                     events.push(event);
-                    if let Some(max) = max_events {
-                        if events.len() >= max {
-                            break;
-                        }
+                    if let Some(max) = max_events
+                        && events.len() >= max
+                    {
+                        break;
                     }
                 }
                 current_frame.clear();
@@ -125,10 +125,10 @@ impl StreamSourcePort for SseSource {
         }
 
         // Handle final event if no trailing blank line
-        if !current_frame.is_empty() {
-            if let Some(event) = Self::parse_event(&current_frame) {
-                events.push(event);
-            }
+        if !current_frame.is_empty()
+            && let Some(event) = Self::parse_event(&current_frame)
+        {
+            events.push(event);
         }
 
         Ok(events)

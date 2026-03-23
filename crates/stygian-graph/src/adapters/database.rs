@@ -141,10 +141,10 @@ impl DataSourcePort for DatabaseSource {
             }
             results.push(Value::Object(obj));
 
-            if let Some(limit) = params.limit {
-                if results.len() as u64 >= limit {
-                    break;
-                }
+            if let Some(limit) = params.limit
+                && results.len() as u64 >= limit
+            {
+                break;
             }
         }
 

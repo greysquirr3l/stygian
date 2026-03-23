@@ -78,6 +78,10 @@ wasmtime = { workspace = true, optional = true }
 # Database (optional)
 sqlx = { workspace = true, optional = true }
 
+# Redis / Valkey (optional)
+redis = { workspace = true, optional = true }
+deadpool-redis = { workspace = true, optional = true }
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tokio-test = "0.4"
@@ -96,7 +100,9 @@ default = ["browser"]
 # Include browser automation support
 browser = ["dep:stygian-browser"]
 # Full feature set
-full = ["browser", "api", "wasm-plugins", "postgres", "cloudflare-crawl"]
+full = ["browser", "api", "wasm-plugins", "postgres", "cloudflare-crawl", "redis"]
+# Redis / Valkey cache adapter
+redis = ["dep:redis", "dep:deadpool-redis"]
 # REST API server
 api = []
 # WASM plugin system (requires wasmtime — significant compile time)

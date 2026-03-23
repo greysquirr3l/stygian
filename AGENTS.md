@@ -2,27 +2,17 @@
 
 ## Project
 
-**stygian** — A monorepo containing two Rust crates:
-
-1. **stygian-graph** — High-performance, graph-based scraping engine treating pipelines
-   as DAGs with pluggable service modules (HTTP fetchers, LLM extractors, headless browsers).
-   Built with hexagonal architecture for extreme concurrency and extensibility.
-
-2. **stygian-browser** — Anti-detection browser automation library built on Chrome DevTools
-   Protocol with stealth features to bypass modern anti-bot systems. Features browser pooling and
-   resource management for scalability.
+stygian — Additional adapters and infrastructure implementations for Stygian's hexagonal
+architecture. Fills production gaps in caching, storage, streaming, discovery,
+and distributed execution by implementing existing port traits with real backends.
 
 ## Setup commands
 
-- Build all: `cargo build --workspace`
-- Build graph: `cargo build -p stygian-graph`
-- Build browser: `cargo build -p stygian-browser`
-- Test all: `cargo test --workspace`
-- Lint all: `cargo clippy --workspace -- -D warnings`
+- Build: `cargo build --workspace --all-features`
+- Test: `cargo test --workspace --all-features`
+- Lint: `cargo clippy --workspace --all-features -- -D warnings`
 
-## Architecture
-
-### stygian-graph: Hexagonal (Ports & Adapters)
+## Architecture: Hexagonal
 
 - Domain layer must have zero I/O dependencies
 - All external interactions go through port traits
@@ -30,57 +20,45 @@
 - New capabilities require a new port trait before an adapter
 - Depend inward: adapters → ports ← domain
 
-### stygian-browser: Modular
-
-- Each module is self-contained with its own models, handlers, and storage
-- Modules communicate through well-defined public interfaces
-- Shared code goes in common modules
-- Prefer module-level encapsulation over cross-cutting layers
-
 ## Code style
 
 - Language: rust
 
 ## Rules
 
-### Shared across both crates
-
 - Rust edition 2024, stable toolchain (1.94.0).
-- All error types must use 'thiserror'; 'anyhow' is reserved for CLI entry points only.
-- No .unwrap() or .expect() in library code; use exhaustive error handling.
-- Async runtime: Tokio 1.49 for all I/O operations.
-- Use Rust 1.94.0 features: async closures, trait upcasting, LazyCell/LazyLock, let chains.
-- Use native 'async fn' in traits for plugin interfaces (Rust 2024).
-- Documentation: every public trait and method must have a doc comment with an example.
-- Graceful degradation: log failures, return errors, never panic in library code.
-
-### stygian-graph specific
 
 - Hexagonal Architecture (Ports & Adapters): Domain core is isolated from infrastructure concerns.
+
 - Workspace structure: domain (business logic), ports (trait definitions), adapters (implementations), application (orchestration).
+
 - Domain layer NEVER imports from adapters; use dependency inversion via ports.
-- Apply advanced patterns: Typestate for pipeline stages, Phantom types for zero-cost safety, Interior mutability for caching.
-- Concurrency: Tokio for I/O-bound, Rayon for CPU-bound, worker pools with backpressure.
-- Zero-cost abstractions: avoid unnecessary Arcs/Boxed traits where generics suffice.
-- Library versions: tokio 1.49, reqwest 0.13, petgraph 0.8, serde 1.0.210, rayon 1.10, scraper 0.20.
-- AI provider support: Claude (Anthropic), ChatGPT (OpenAI), Gemini (Google), GitHub Copilot, Ollama (local).
+
+- Use Rust 1.94.0 features: async closures, trait upcasting, LazyCell/LazyLock, let chains.
+
+- Use native 'async fn' in traits for the plugin interface (Rust 2024).
+
+- All error types must use 'thiserror'; 'anyhow' is reserved for CLI entry points only.
+
+- No .unwrap() or .expect() in library code; use exhaustive error handling.
+
+- Library versions: tokio 1.49, reqwest 0.13, serde 1.0, sqlx 0.8.
+
+- Feature-gate optional dependencies: redis behind 'redis', object storage behind 'object-storage', etc.
+
 - Idempotence: All operations must be safely retryable with idempotency keys.
+
 - Security-first: Authorization checks at repository level, fail-secure by default.
 
-### stygian-browser specific
+- Documentation: every public trait and method must have a doc comment with an example.
 
-- Use chromiumoxide crate for CDP automation (async, type-safe bindings).
-- Thread-safe browser pool using `Arc<RwLock<Pool>>` or `tokio::sync::RwLock`.
-- Configuration via environment variables for runtime flexibility.
-- Anti-detection techniques must be toggleable via stealth profiles.
-- Browser instances must be reusable to avoid cold start penalties.
-- Performance targets: <100ms browser acquisition from warm pool, <2s from cold start.
-- Memory management: Monitor heap size, close unused tabs, prevent leaks.
-- Testing: Mock CDP protocol for unit tests, real browser for integration tests.
+- Every new adapter MUST implement the corresponding port trait AND ScrapingService where appropriate.
+
+- Cross-platform: handle path separators, case sensitivity, and encoding differences across OS targets.
 
 ## Testing instructions
 
-- Run `cargo test --workspace` before committing
+- Run `cargo test --workspace --all-features` before committing
 - Every new public function needs at least one test
 - Fix all test failures before marking a task complete
 

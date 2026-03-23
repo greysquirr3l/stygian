@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `stygian-graph`: `BudgetGuard` RAII wrapper for GraphQL query cost tracking — acquires
+  budget on creation and guarantees release via `Drop`, eliminating leaked budget on
+  early returns or panics; `GraphqlAdapter` refactored to use guard at both paginated
+  and single-request paths
+- `stygian-graph`: API discovery types — `JsonType`, `PaginationStyle`, `ResponseShape`,
+  and `DiscoveryReport` in `domain::discovery` for representing discovered API structure
+  and capabilities
+- `stygian-graph`: `OpenApiGenerator` — generates OpenAPI 3.0 specs from `DiscoveryReport`
+  with configurable `SpecConfig` (title, version, server URL); outputs `openapiv3::OpenAPI`
+- `stygian-graph`: `DataSourcePort` trait — database-backed data source abstraction with
+  `QueryParams`, `query()`, and `healthcheck()` methods
+- `stygian-graph`: `DatabaseSource` adapter — PostgreSQL implementation of `DataSourcePort`
+  via `sqlx::PgPool`; feature-gated behind `postgres`
+- `stygian-graph`: `DocumentSourcePort` trait — file system document source abstraction with
+  `DocumentQuery`, `Document`, glob pattern matching, and MIME type filtering
+- `stygian-graph`: `DocumentSource` adapter — local filesystem implementation with
+  case-insensitive glob/MIME matching and symlink following for cross-platform compatibility
+- `stygian-graph`: `StreamSourcePort` trait — streaming data source abstraction with
+  `StreamEvent` and `subscribe()` returning a pinned async stream
+- `stygian-graph`: `SseSource` adapter — Server-Sent Events implementation of
+  `StreamSourcePort` via `reqwest`
+- `stygian-graph`: `AgentSourcePort` trait — AI agent interaction abstraction with
+  `AgentRequest`/`AgentResponse` for wrapping AI provider calls
+- `stygian-graph`: `AgentSource` adapter — delegates to any `Arc<dyn AIProvider>` for
+  LLM-backed data extraction and transformation
+
 ## [0.2.1] - 2026-03-17
 
 ### Added

@@ -89,17 +89,6 @@ impl CachePort for MemoryCache {
     }
 }
 
-/// Redis cache adapter
-///
-/// Production-ready cache adapter using Redis as the backend.
-/// Supports TTL expiration and distributed caching.
-///
-/// # Note
-///
-/// This is a placeholder for future implementation.
-/// Requires redis-rs dependency.
-pub struct RedisCache;
-
 // ─── TTL entry ────────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
