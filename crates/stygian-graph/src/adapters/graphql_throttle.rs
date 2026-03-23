@@ -20,9 +20,30 @@
 //! in-flight reservations) will be too low, the caller sleeps until it
 //! recovers.  After the delay, `pre_flight_reserve` atomically reserves an
 //! estimated cost against the budget so concurrent callers immediately see a
-//! reduced balance.  Call `release_reservation` on every exit path (success
-//! and error) to keep the pending balance accurate.  This eliminates wasted
-//! requests that would otherwise return `THROTTLED`.
+//! reduced balance.
+//!
+//! ## `BudgetGuard` (RAII)
+//!
+//! [`BudgetGuard`] wraps `pre_flight_reserve` + `release_reservation` into a
+//! scope-based guard so callers no longer need to track every exit path
+//! manually.  Call [`BudgetGuard::acquire`] before the request and
+//! [`BudgetGuard::release`] on the success path.  If `release()` is never
+//! called (e.g. early return or `?` propagation), the `Drop` impl spawns a
+//! background task to release the reservation as a safety net.
+//!
+//! ```no_run
+//! use stygian_graph::adapters::graphql_throttle::{
+//!     CostThrottleConfig, PluginBudget, BudgetGuard,
+//! };
+//!
+//! # async fn example() {
+//! let budget = PluginBudget::new(CostThrottleConfig::default());
+//! let guard = BudgetGuard::acquire(&budget).await;
+//! // ... send request ...
+//! guard.release().await; // explicit async release on success path
+//! // If this line is never reached, Drop releases via tokio::spawn.
+//! # }
+//! ```
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -155,6 +176,123 @@ impl PluginBudget {
     #[must_use]
     pub const fn config(&self) -> &CostThrottleConfig {
         &self.config
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BudgetGuard (RAII)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// RAII guard that automatically releases a budget reservation on drop.
+///
+/// Wraps [`pre_flight_reserve`] and [`release_reservation`] into a
+/// scope-based guard so callers no longer need to track every exit path
+/// manually.
+///
+/// On the **success path**, call [`release`](BudgetGuard::release) for a
+/// clean async release.  If `release()` is never called (early return, `?`
+/// propagation, panic), the [`Drop`] impl spawns a background Tokio task to
+/// release the reservation — this is the safety net.
+///
+/// Once `AsyncDrop` stabilises on stable Rust, the explicit `release()`
+/// method can be removed and the async cleanup will happen transparently.
+///
+/// # Example
+///
+/// ```no_run
+/// use stygian_graph::adapters::graphql_throttle::{
+///     CostThrottleConfig, PluginBudget, BudgetGuard,
+/// };
+///
+/// # async fn example() {
+/// let budget = PluginBudget::new(CostThrottleConfig::default());
+/// let guard = BudgetGuard::acquire(&budget).await;
+/// // ... send request ...
+/// guard.release().await; // explicit async release on success path
+/// # }
+/// ```
+pub struct BudgetGuard {
+    /// The budget handle.  Set to `None` after explicit `release()`.
+    budget: Option<PluginBudget>,
+    /// Reserved cost to release.
+    cost: f64,
+}
+
+impl BudgetGuard {
+    /// Acquire a reservation from `budget`, sleeping if the projected balance
+    /// is too low.
+    ///
+    /// Returns a guard that will release the reservation when dropped or when
+    /// [`release`](Self::release) is called.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_graph::adapters::graphql_throttle::{
+    ///     CostThrottleConfig, PluginBudget, BudgetGuard,
+    /// };
+    ///
+    /// # async fn example() {
+    /// let budget = PluginBudget::new(CostThrottleConfig::default());
+    /// let guard = BudgetGuard::acquire(&budget).await;
+    /// // reservation is now held
+    /// guard.release().await;
+    /// # }
+    /// ```
+    pub async fn acquire(budget: &PluginBudget) -> Self {
+        let cost = pre_flight_reserve(budget).await;
+        Self {
+            budget: Some(budget.clone()),
+            cost,
+        }
+    }
+
+    /// The reserved cost held by this guard.
+    #[must_use]
+    pub fn cost(&self) -> f64 {
+        self.cost
+    }
+
+    /// Explicitly release the reservation (async, preferred on success path).
+    ///
+    /// After calling this, the guard's `Drop` impl becomes a no-op.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_graph::adapters::graphql_throttle::{
+    ///     CostThrottleConfig, PluginBudget, BudgetGuard,
+    /// };
+    ///
+    /// # async fn example() {
+    /// let budget = PluginBudget::new(CostThrottleConfig::default());
+    /// let guard = BudgetGuard::acquire(&budget).await;
+    /// guard.release().await;
+    /// # }
+    /// ```
+    pub async fn release(mut self) {
+        if let Some(budget) = self.budget.take() {
+            release_reservation(&budget, self.cost).await;
+        }
+    }
+}
+
+impl Drop for BudgetGuard {
+    fn drop(&mut self) {
+        if let Some(budget) = self.budget.take() {
+            let cost = self.cost;
+            // Safety-net: spawn a background task to release the reservation.
+            // This is the fallback for early returns / `?` / panic unwinds.
+            // Once AsyncDrop stabilises this can be replaced with a proper
+            // async drop implementation.
+            tokio::spawn(async move {
+                release_reservation(&budget, cost).await;
+                tracing::debug!(
+                    cost,
+                    "BudgetGuard: reservation released via Drop safety-net"
+                );
+            });
+        }
     }
 }
 
@@ -505,5 +643,42 @@ mod tests {
         }}}});
         let ms = reactive_backoff_ms(&config, &body, 10);
         assert_eq!(ms, 1_000);
+    }
+
+    #[tokio::test]
+    async fn budget_guard_releases_on_explicit_release() {
+        let budget = PluginBudget::new(CostThrottleConfig::default());
+        let guard = BudgetGuard::acquire(&budget).await;
+        let cost = guard.cost();
+        assert!(cost > 0.0);
+
+        // Pending should be non-zero while guard is held
+        {
+            let inner = budget.inner.lock().await;
+            assert!(inner.pending >= cost);
+        }
+
+        guard.release().await;
+
+        // Pending should be back to zero
+        let inner = budget.inner.lock().await;
+        assert!(inner.pending < f64::EPSILON);
+    }
+
+    #[tokio::test]
+    async fn budget_guard_releases_on_drop() {
+        let budget = PluginBudget::new(CostThrottleConfig::default());
+
+        {
+            let _guard = BudgetGuard::acquire(&budget).await;
+            // guard drops here without explicit release()
+        }
+
+        // Give the spawned task a moment to run
+        tokio::task::yield_now().await;
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        let inner = budget.inner.lock().await;
+        assert!(inner.pending < f64::EPSILON, "Drop should have released");
     }
 }
