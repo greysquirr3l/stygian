@@ -29,7 +29,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::domain::error::Result;
 use crate::ports::agent_source::{AgentRequest, AgentResponse, AgentSourcePort};
@@ -86,7 +86,10 @@ impl AgentSourcePort for AgentSource {
         // (the provider returns JSON matching the "schema", which here is the
         // caller's parameters object — giving the provider guidance on what to
         // generate).
-        let schema = if request.parameters.is_null() || request.parameters.is_object() && request.parameters.as_object().is_some_and(|m| m.is_empty()) {
+        let schema = if request.parameters.is_null()
+            || request.parameters.is_object()
+                && request.parameters.as_object().is_some_and(|m| m.is_empty())
+        {
             json!({"type": "object", "properties": {"response": {"type": "string"}}})
         } else {
             request.parameters.clone()
@@ -183,10 +186,7 @@ mod tests {
         // MockAIProvider returns {"mock": true, ...} so content will be the
         // JSON serialisation of the full output (no "response" key).
         assert!(!resp.content.is_empty());
-        assert_eq!(
-            resp.metadata["provider"].as_str(),
-            Some("mock-ai"),
-        );
+        assert_eq!(resp.metadata["provider"].as_str(), Some("mock-ai"),);
     }
 
     #[tokio::test]
