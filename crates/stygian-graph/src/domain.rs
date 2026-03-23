@@ -15,6 +15,9 @@ pub mod executor;
 /// Idempotency tracking system
 pub mod idempotency;
 
+/// API discovery types (response shape, pagination, field inference)
+pub mod discovery;
+
 /// Domain error types
 pub mod error {
     use thiserror::Error;
