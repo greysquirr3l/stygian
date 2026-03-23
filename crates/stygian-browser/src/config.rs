@@ -593,6 +593,35 @@ impl BrowserConfigBuilder {
         self
     }
 
+    /// Add Chrome launch flags that constrain TLS to match a [`TlsProfile`].
+    ///
+    /// Appends version-constraint flags (e.g. `--ssl-version-max=tls1.2`)
+    /// to the extra args list. See [`chrome_tls_args`] for details on what
+    /// Chrome can and cannot control via flags.
+    ///
+    /// [`TlsProfile`]: crate::tls::TlsProfile
+    /// [`chrome_tls_args`]: crate::tls::chrome_tls_args
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_browser::BrowserConfig;
+    /// use stygian_browser::tls::CHROME_131;
+    ///
+    /// let cfg = BrowserConfig::builder()
+    ///     .tls_profile(&CHROME_131)
+    ///     .build();
+    /// // Chrome 131 supports both TLS 1.2 and 1.3 — no extra flags needed.
+    /// ```
+    #[cfg(feature = "stealth")]
+    #[must_use]
+    pub fn tls_profile(mut self, profile: &crate::tls::TlsProfile) -> Self {
+        self.config
+            .args
+            .extend(crate::tls::chrome_tls_args(profile));
+        self
+    }
+
     /// Set the stealth level.
     #[must_use]
     pub const fn stealth_level(mut self, level: StealthLevel) -> Self {

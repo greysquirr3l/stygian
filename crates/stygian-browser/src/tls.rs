@@ -1107,6 +1107,58 @@ pub static EDGE_131: LazyLock<TlsProfile> = LazyLock::new(|| TlsProfile {
     alpn_protocols: vec![AlpnProtocol::H2, AlpnProtocol::Http11],
 });
 
+// ── Chrome launch flags ──────────────────────────────────────────────────────
+
+/// Return Chrome launch flags that constrain TLS behaviour to approximate this
+/// profile's protocol-version range.
+///
+/// # What flags control
+///
+/// | Flag | Effect |
+/// |---|---|
+/// | `--ssl-version-max` | Cap the highest advertised TLS version |
+/// | `--ssl-version-min` | Raise the lowest advertised TLS version |
+///
+/// # What flags **cannot** control
+///
+/// Chrome's TLS stack (BoringSSL) hard-codes the following in its compiled binary:
+///
+/// - **Cipher-suite ordering** — set by `ssl_cipher_apply_rule` at build time.
+/// - **Extension ordering** — emitted in a fixed order by BoringSSL.
+/// - **Supported-group ordering** — set at build time.
+///
+/// For precise JA3/JA4 matching, a patched Chromium build or an external TLS
+/// proxy (see [`to_rustls_config`](TlsProfile::to_rustls_config)) is required.
+///
+/// # When to use each approach
+///
+/// | Detection layer | Handled by |
+/// |---|---|
+/// | JavaScript leaks | CDP stealth scripts (see [`stealth`](super::stealth)) |
+/// | CDP signals | [`CdpFixMode`](super::cdp_protection::CdpFixMode) |
+/// | TLS fingerprint | **Flags (this fn)** — version only; full control needs rustls or patched Chrome |
+pub fn chrome_tls_args(profile: &TlsProfile) -> Vec<String> {
+    let has_12 = profile.tls_versions.contains(&TlsVersion::Tls12);
+    let has_13 = profile.tls_versions.contains(&TlsVersion::Tls13);
+
+    let mut args = Vec::new();
+
+    match (has_12, has_13) {
+        // TLS 1.2 only — cap to prevent Chrome advertising 1.3.
+        (true, false) => {
+            args.push("--ssl-version-max=tls1.2".to_string());
+        }
+        // TLS 1.3 only — raise floor so Chrome skips 1.2.
+        (false, true) => {
+            args.push("--ssl-version-min=tls1.3".to_string());
+        }
+        // Both supported or empty — Chrome's defaults are fine.
+        _ => {}
+    }
+
+    args
+}
+
 // ── rustls integration ───────────────────────────────────────────────────────
 //
 // Feature-gated behind `tls-config`. Builds a rustls `ClientConfig` from a
@@ -1459,6 +1511,59 @@ mod tests {
         assert_eq!(SupportedGroup::X25519.iana_value(), 0x001d);
         assert_eq!(SupportedGroup::SecP256r1.iana_value(), 0x0017);
         assert_eq!(SupportedGroup::X25519Kyber768.iana_value(), 0x6399);
+    }
+
+    // ── Chrome TLS flags tests ─────────────────────────────────────────
+
+    #[test]
+    fn chrome_131_tls_args_empty() {
+        // Chrome 131 supports both TLS 1.2 and 1.3 — no extra flags needed.
+        let args = chrome_tls_args(&CHROME_131);
+        assert!(args.is_empty(), "expected no flags, got: {args:?}");
+    }
+
+    #[test]
+    fn tls12_only_profile_caps_version() {
+        let profile = TlsProfile {
+            name: "TLS12-only".to_string(),
+            cipher_suites: vec![CipherSuiteId::TLS_AES_128_GCM_SHA256],
+            tls_versions: vec![TlsVersion::Tls12],
+            extensions: vec![],
+            supported_groups: vec![],
+            signature_algorithms: vec![],
+            alpn_protocols: vec![],
+        };
+        let args = chrome_tls_args(&profile);
+        assert_eq!(args, vec!["--ssl-version-max=tls1.2"]);
+    }
+
+    #[test]
+    fn tls13_only_profile_raises_floor() {
+        let profile = TlsProfile {
+            name: "TLS13-only".to_string(),
+            cipher_suites: vec![CipherSuiteId::TLS_AES_128_GCM_SHA256],
+            tls_versions: vec![TlsVersion::Tls13],
+            extensions: vec![],
+            supported_groups: vec![],
+            signature_algorithms: vec![],
+            alpn_protocols: vec![],
+        };
+        let args = chrome_tls_args(&profile);
+        assert_eq!(args, vec!["--ssl-version-min=tls1.3"]);
+    }
+
+    #[test]
+    fn builder_tls_profile_integration() {
+        let cfg = crate::BrowserConfig::builder()
+            .tls_profile(&CHROME_131)
+            .build();
+        // Chrome 131 has both versions — no TLS flags added.
+        let tls_flags: Vec<_> = cfg
+            .effective_args()
+            .into_iter()
+            .filter(|a| a.starts_with("--ssl-version"))
+            .collect();
+        assert!(tls_flags.is_empty(), "unexpected TLS flags: {tls_flags:?}");
     }
 
     // ── rustls integration tests ─────────────────────────────────────────
