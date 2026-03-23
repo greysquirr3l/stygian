@@ -95,3 +95,6 @@ pub mod rss_feed;
 
 /// WebSocket stream source adapter
 pub mod websocket;
+
+/// CSV/TSV data source adapter
+pub mod csv_source;
