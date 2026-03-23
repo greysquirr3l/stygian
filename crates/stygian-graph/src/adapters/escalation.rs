@@ -339,8 +339,7 @@ impl ScrapingService for EscalatingScrapingService {
                         .get("status_code")
                         .and_then(|v| v.as_u64())
                         .map_or(200, |s| s as u16);
-                    let ctx =
-                        DefaultEscalationPolicy::context_from_body(status, &output.data);
+                    let ctx = DefaultEscalationPolicy::context_from_body(status, &output.data);
 
                     if let Some(next_tier) = self.policy.should_escalate(&ctx, current_tier) {
                         escalation_path.push(current_tier);
@@ -645,13 +644,22 @@ mod tests {
 
     #[test]
     fn domain_from_url_strips_scheme_and_path() {
-        assert_eq!(domain_from_url("https://example.com/path?q=1"), "example.com");
-        assert_eq!(domain_from_url("http://sub.example.com/"), "sub.example.com");
+        assert_eq!(
+            domain_from_url("https://example.com/path?q=1"),
+            "example.com"
+        );
+        assert_eq!(
+            domain_from_url("http://sub.example.com/"),
+            "sub.example.com"
+        );
     }
 
     #[test]
     fn domain_from_url_strips_port() {
-        assert_eq!(domain_from_url("https://example.com:8443/api"), "example.com");
+        assert_eq!(
+            domain_from_url("https://example.com:8443/api"),
+            "example.com"
+        );
     }
 
     #[test]
@@ -672,7 +680,10 @@ mod tests {
 
     #[async_trait]
     impl ScrapingService for MockService {
-        async fn execute(&self, _input: ServiceInput) -> crate::domain::error::Result<ServiceOutput> {
+        async fn execute(
+            &self,
+            _input: ServiceInput,
+        ) -> crate::domain::error::Result<ServiceOutput> {
             Ok(ServiceOutput {
                 data: self.body.to_string(),
                 metadata: serde_json::json!({ "status_code": self.status }),
@@ -688,7 +699,10 @@ mod tests {
 
     #[async_trait]
     impl ScrapingService for FailingService {
-        async fn execute(&self, _input: ServiceInput) -> crate::domain::error::Result<ServiceOutput> {
+        async fn execute(
+            &self,
+            _input: ServiceInput,
+        ) -> crate::domain::error::Result<ServiceOutput> {
             Err(StygianError::Service(ServiceError::Unavailable(
                 "blocked".into(),
             )))

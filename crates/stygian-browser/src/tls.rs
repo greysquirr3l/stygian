@@ -1167,6 +1167,7 @@ pub fn chrome_tls_args(profile: &TlsProfile) -> Vec<String> {
 
 #[cfg(feature = "tls-config")]
 mod rustls_config {
+    #[allow(clippy::wildcard_imports)]
     use super::*;
     use std::sync::Arc;
 
@@ -1351,6 +1352,7 @@ pub use rustls_config::{TlsClientConfig, TlsConfigError};
 
 #[cfg(feature = "tls-config")]
 mod reqwest_client {
+    #[allow(clippy::wildcard_imports)]
     use super::*;
     use std::sync::Arc;
 
@@ -1710,6 +1712,7 @@ mod tests {
         }
 
         #[test]
+        #[allow(clippy::indexing_slicing)]
         fn alpn_order_matches_profile() {
             let config = CHROME_131.to_rustls_config().unwrap();
             let alpn = &config.inner().alpn_protocols;

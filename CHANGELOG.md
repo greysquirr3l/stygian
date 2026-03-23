@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-23
+
+### Added
+
+- `stygian-browser`: TLS fingerprint profiles — `TlsProfile` domain type with JA3/JA4
+  representation; built-in profiles for Chrome 131, Firefox 133, Safari 18, and Edge 131;
+  `random_weighted()` for session-varied selection
+- `stygian-browser`: rustls `ClientConfig` builder — `TlsProfile::to_rustls_config()`
+  maps profile cipher suites, ALPN, and TLS version ordering into a rustls config;
+  feature-gated behind `tls-config`
+- `stygian-browser`: `build_profiled_client()` — constructs a `reqwest::Client` with a
+  fully profiled TLS fingerprint and optional proxy URL; `default_user_agent()` returns
+  the UA string matching the chosen profile
+- `stygian-browser`: Chrome launch flags for TLS consistency — `chrome_tls_args()` emits
+  `--cipher-suite-blacklist` and related flags so the browser's TLS matches the profile
+- `stygian-browser`: Stealth diagnostic module — 10 JavaScript detection checks
+  (`WebDriverFlag`, `ChromeObject`, `PluginCount`, `LanguagesPresent`, `CanvasConsistency`,
+  `WebGlVendor`, `AutomationGlobals`, `OuterWindowSize`, `HeadlessUserAgent`,
+  `NotificationPermission`) with JSON output, `DetectionCheck::parse_output()`, and
+  `DiagnosticReport` aggregation (`is_clean()`, `coverage_pct()`, `failures()`);
+  feature-gated behind `stealth`
+- `stygian-browser`: `PageHandle::verify_stealth()` — runs all diagnostic checks via CDP
+  `Runtime.evaluate`, returns a `DiagnosticReport`; individual script errors are captured
+  as failed checks (non-fatal) so the full report is always returned
+- `stygian-proxy`: sticky session support — `StickyPolicy` enum (`Disabled` / `Domain {
+  ttl }`), `SessionMap` with `bind()` / `lookup()` / `unbind()` / `purge_expired()`,
+  and `acquire_for_domain()` on `ProxyManager` to pin a domain to a proxy for the session TTL
+- `stygian-graph`: `EscalationPolicy` port trait — `EscalationTier` enum (HttpPlain →
+  HttpTlsProfiled → BrowserBasic → BrowserAdvanced), `ResponseContext`, and async
+  `select_tier()` / `record_tier_success()` / `record_failure()` methods
+- `stygian-graph`: `DefaultEscalationPolicy` — per-domain tier learning cache with
+  challenge/CAPTCHA detection (Cloudflare, DataDome, PerimeterX); configurable
+  `max_tier`, `base_tier`, and `cache_ttl`
+- `stygian-graph`: `EscalatingScrapingService` — graph service adapter registered as
+  `"http_escalating"` that drives tier promotion automatically and annotates node
+  metadata with `escalation_tier` and `escalation_path`
+- `book`: three new mdBook chapters — `browser/stealth-v2.md` (TLS profiles, JA3/JA4,
+  `verify_stealth()` API, 10-check detection landscape), `proxy/sticky-sessions.md`
+  (session lifecycle, `acquire_for_domain()`, failure handling), `graph/escalation.md`
+  (tier comparison, `EscalationPolicy` trait, `DefaultEscalationPolicy` challenge detection)
+- `examples`: four stealth v2 pipeline configs — `tls-profiled-scrape.toml`,
+  `escalation-pipeline.toml`, `sticky-proxy-session.toml`, `stealth-audit.toml`
+
+### Fixed
+
+- `stygian-browser`: clippy warnings in `diagnostic.rs` — `is_clean()` promoted to
+  `const fn`, `cast_precision_loss` suppressed with allow annotation, `indexing_slicing`
+  suppressed in test module, `needless_collect` eliminated in test assertion
+- `stygian-browser`: clippy warnings in `tls.rs` — `wildcard_imports` suppressed in
+  `mod rustls_config` and `mod reqwest_client` inner modules, `indexing_slicing`
+  suppressed in ALPN order test
+
 ## [0.3.0] - 2026-03-22
 
 ### Added

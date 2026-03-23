@@ -4097,6 +4097,7 @@ dependencies = [
  "parking_lot",
  "prometheus-client",
  "proptest",
+ "reqwest 0.13.2",
  "rustls",
  "serde",
  "serde_json",

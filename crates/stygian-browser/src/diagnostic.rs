@@ -51,7 +51,7 @@ pub enum CheckId {
     LanguagesPresent,
     /// Canvas `toDataURL()` must return non-trivial image data.
     CanvasConsistency,
-    /// WebGL vendor/renderer must not contain the "SwiftShader" software-renderer marker.
+    /// WebGL vendor/renderer must not contain the `SwiftShader` software-renderer marker.
     WebGlVendor,
     /// No automation-specific globals (`__puppeteer__`, `__playwright`, etc.) must be present.
     AutomationGlobals,
@@ -118,11 +118,13 @@ impl DiagnosticReport {
     }
 
     /// Returns `true` when every check passed.
-    pub fn is_clean(&self) -> bool {
+    #[must_use]
+    pub const fn is_clean(&self) -> bool {
         self.failed_count == 0
     }
 
     /// Percentage of checks that passed (0.0–100.0).
+    #[allow(clippy::cast_precision_loss)]
     pub fn coverage_pct(&self) -> f64 {
         if self.checks.is_empty() {
             return 0.0;
@@ -338,7 +340,7 @@ static CHECKS: &[DetectionCheck] = &[
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use std::collections::HashSet;
@@ -351,7 +353,11 @@ mod tests {
     #[test]
     fn all_checks_have_unique_ids() {
         let ids: HashSet<_> = all_checks().iter().map(|c| c.id).collect();
-        assert_eq!(ids.len(), all_checks().len(), "duplicate check ids detected");
+        assert_eq!(
+            ids.len(),
+            all_checks().len(),
+            "duplicate check ids detected"
+        );
     }
 
     #[test]
@@ -439,8 +445,7 @@ mod tests {
         assert!(!report.is_clean());
         assert_eq!(report.failed_count, 2);
         assert_eq!(report.passed_count, 8);
-        let failures: Vec<_> = report.failures().collect();
-        assert_eq!(failures.len(), 2);
+        assert_eq!(report.failures().count(), 2);
     }
 
     #[test]
