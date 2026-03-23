@@ -1,0 +1,75 @@
+# tls-profiled-scrape.toml
+#
+# HTTP scraping with a browser-authentic TLS fingerprint.
+#
+# By default, Rust HTTP clients (reqwest + rustls) present a fingerprint
+# that is trivially distinguishable from Chrome at the TLS handshake layer.
+# Sites using Cloudflare, Akamai, or Datadome reject these connections with
+# 403 or silently return bot-detection pages.
+#
+# This pipeline uses the built-in Chrome 131 TLS profile to produce a
+# ClientHello whose JA3/JA4 hashes match a real Chrome browser session.
+# The User-Agent is automatically aligned to the same browser.
+#
+# When to use:
+#   - Target performs TLS fingerprint checks but does not require JavaScript.
+#   - You want the lowest possible latency (no browser overhead).
+#   - Use as the HttpTlsProfiled tier in an escalation pipeline.
+#
+# Run:
+#   stygian run examples/tls-profiled-scrape.toml
+
+[[services]]
+name = "http-chrome-tls"
+kind = "http"
+
+# Apply the Chrome 131 TLS fingerprint to all connections made by this service.
+# The User-Agent is automatically set to the matching Chrome UA string.
+[services.tls]
+profile = "chrome_131"   # built-in: chrome_131 | firefox_133 | safari_18 | edge_131
+
+# Align the User-Agent with the TLS profile.
+# Anti-bot systems cross-correlate UA ↔ TLS fingerprint.
+[services.headers]
+User-Agent      = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+Accept          = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+Accept-Language = "en-US,en;q=0.9"
+Accept-Encoding = "gzip, deflate, br"
+Sec-Fetch-Dest  = "document"
+Sec-Fetch-Mode  = "navigate"
+Sec-Fetch-Site  = "none"
+Sec-Fetch-User  = "?1"
+
+[services.cookies]
+enabled = true
+jar_strategy = "per-domain"
+
+[services.retry]
+max_attempts  = 3
+base_delay_ms = 1_000
+jitter        = true
+
+[[services]]
+name  = "claude"
+kind  = "claude"
+model = "claude-haiku-4-5"
+
+# ── Pipeline ──────────────────────────────────────────────────────────────────
+
+[[nodes]]
+name    = "fetch-page"
+service = "http-chrome-tls"
+url     = "https://example.com"
+
+[[nodes]]
+name       = "extract-data"
+service    = "claude"
+depends_on = ["fetch-page"]
+
+[nodes.prompt]
+user = "Extract the main content from this page as structured JSON."
+
+[nodes.schema]
+type = "object"
+properties.title.type       = "string"
+properties.description.type = "string"

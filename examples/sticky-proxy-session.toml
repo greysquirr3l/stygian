@@ -1,0 +1,109 @@
+# sticky-proxy-session.toml
+#
+# Login flow with a sticky proxy session.
+#
+# Most e-commerce and SaaS sites tie session cookies to the originating IP.
+# If the proxy rotates between the login POST and the authenticated GET,
+# the cookie becomes invalid and the site logs you out (or triggers a 401).
+#
+# Sticky sessions fix this by binding the domain to one proxy for the TTL
+# duration.  All requests to "store.example.com" in this pipeline reuse the
+# same exit IP until the TTL expires.
+#
+# Sticky session lifecycle for a single domain:
+#
+#   1. First acquire_for_domain("store.example.com")
+#      → strategy selects a proxy, session is bound for `ttl_secs`
+#   2. Subsequent acquire_for_domain("store.example.com") within TTL
+#      → same proxy returned from session cache
+#   3. If the proxy request fails without mark_success()
+#      → session is invalidated, next call picks a fresh proxy
+#   4. After TTL expires
+#      → next call picks a fresh proxy and binds a new session
+#
+# Run:
+#   PROXY_URL=http://user:pass@proxy:8080 stygian run examples/sticky-proxy-session.toml
+
+[[services]]
+name = "http-sticky"
+kind = "http"
+
+# Sticky session proxy configuration.
+[services.proxy]
+url   = "${PROXY_URL}"   # resolved from environment at runtime
+rotation = "per-domain"  # one proxy per domain, rotated across domains
+
+# Bind the domain to one proxy for 10 minutes (600 seconds).
+# The TTL should cover your full login-to-checkout flow with headroom.
+[services.proxy.sticky_session]
+ttl_secs = 600
+
+# Add realistic browser headers alongside the sticky proxy.
+[services.headers]
+User-Agent        = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+Accept            = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+Accept-Language   = "en-US,en;q=0.9"
+Accept-Encoding   = "gzip, deflate, br"
+Sec-Fetch-Dest    = "document"
+Sec-Fetch-Mode    = "navigate"
+Sec-Fetch-Site    = "same-origin"
+
+[services.cookies]
+enabled      = true
+jar_strategy = "per-domain"   # cookies are kept across all nodes for the same domain
+
+[services.retry]
+max_attempts  = 2
+base_delay_ms = 500
+jitter        = true
+
+[[services]]
+name  = "claude"
+kind  = "claude"
+model = "claude-haiku-4-5"
+
+# ── Wave 0: load the login page (establishes CSRF token cookie) ───────────────
+
+[[nodes]]
+name    = "load-login-page"
+service = "http-sticky"
+url     = "https://store.example.com/login"
+
+# ── Wave 1: submit credentials ────────────────────────────────────────────────
+
+[[nodes]]
+name       = "submit-login"
+service    = "http-sticky"
+depends_on = ["load-login-page"]
+
+[nodes.params]
+method = "POST"
+url    = "https://store.example.com/session"
+# CSRF token extracted from the login page response.
+form   = { username = "${env:STORE_USER}", password = "${env:STORE_PASS}" }
+
+# ── Wave 2: authenticated scrape ──────────────────────────────────────────────
+
+[[nodes]]
+name       = "fetch-account"
+service    = "http-sticky"
+depends_on = ["submit-login"]
+url        = "https://store.example.com/account/orders"
+
+# ── Wave 3: extract order history ─────────────────────────────────────────────
+
+[[nodes]]
+name       = "extract-orders"
+service    = "claude"
+depends_on = ["fetch-account"]
+
+[nodes.prompt]
+user = "Extract the order history from the HTML. Return a JSON array of orders."
+
+[nodes.schema]
+type = "array"
+items.type = "object"
+items.properties.order_id.type  = "string"
+items.properties.date.type      = "string"
+items.properties.total.type     = "string"
+items.properties.status.type    = "string"

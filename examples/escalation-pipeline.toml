@@ -1,0 +1,88 @@
+# escalation-pipeline.toml
+#
+# Tiered escalation: start cheap, escalate only when blocked.
+#
+# The "http_escalating" service tries tiers in order:
+#
+#   HttpPlain → HttpTlsProfiled → BrowserBasic → BrowserAdvanced
+#
+# Each tier is only attempted when the previous tier returned a 403,
+# a 429, a Cloudflare/DataDome/PerimeterX challenge page, or a CAPTCHA.
+# The pipeline stops as soon as a clean response is obtained.
+#
+# The service learns per domain: once BrowserBasic succeeds for
+# shop.example.com, it skips HttpPlain on the next request and starts
+# at BrowserBasic, saving round-trip latency.
+#
+# Cost comparison (approximate):
+#   HttpPlain        ~5 ms    — connection + response time only
+#   HttpTlsProfiled  ~5 ms    — same, with browser-authentic TLS handshake
+#   BrowserBasic     ~800 ms  — browser launch + navigation
+#   BrowserAdvanced  ~1.5 s   — full stealth initialisation
+#
+# Outcome metadata per node:
+#   escalation_tier: "browser_basic"
+#   escalation_path: ["http_plain","http_tls_profiled"]
+#
+# Run:
+#   stygian run examples/escalation-pipeline.toml
+
+[[services]]
+name = "http_escalating"
+kind = "http_escalating"
+
+# Escalation policy configuration.
+[services.escalation]
+# Highest tier to attempt.  Options: http_plain | http_tls_profiled | browser_basic | browser_advanced
+max_tier = "browser_advanced"
+
+# Starting tier for domains not yet in the learning cache.
+base_tier = "http_plain"
+
+# How long to cache the minimum tier for a domain (seconds).
+# Default: 3600 (1 hour).  Set lower for rapidly-changing bot policies.
+cache_ttl_secs = 1800
+
+# HTTP service used for the HttpPlain tier.
+[services.escalation.http_plain]
+timeout_secs    = 10
+follow_redirects = true
+
+# HTTP service used for the HttpTlsProfiled tier.
+[services.escalation.http_tls_profiled]
+tls_profile = "chrome_131"
+
+# Browser config used for BrowserBasic and BrowserAdvanced tiers.
+[services.escalation.browser]
+headless = true            # "new" headless mode (HeadlessMode::New)
+stealth  = "advanced"      # full stealth: canvas noise, WebGL spoof, CDP protection
+
+[[services]]
+name  = "claude"
+kind  = "claude"
+model = "claude-haiku-4-5"
+
+# ── Pipeline ──────────────────────────────────────────────────────────────────
+
+[[nodes]]
+name    = "fetch-protected"
+service = "http_escalating"
+url     = "https://shop.example.com/products"
+
+[[nodes]]
+name       = "extract-products"
+service    = "claude"
+depends_on = ["fetch-protected"]
+
+[nodes.prompt]
+user = """
+Extract all product listings from the HTML. Return a JSON array.
+Each object should have: name, price, availability.
+"""
+
+[nodes.schema]
+type = "array"
+items.type = "object"
+items.properties.name.type         = "string"
+items.properties.price.type        = "string"
+items.properties.availability.type = "string"

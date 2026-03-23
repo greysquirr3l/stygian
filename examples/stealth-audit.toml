@@ -1,0 +1,98 @@
+# stealth-audit.toml
+#
+# Stealth self-diagnostic: verify your browser session passes all detection checks.
+#
+# This pipeline launches a browser with Advanced stealth, navigates to a neutral
+# page, runs the full 10-check detection suite via verify_stealth(), and emits
+# the DiagnosticReport as structured JSON output.
+#
+# The 10 checks cover:
+#   webdriver_flag       — navigator.webdriver is undefined
+#   chrome_object        — window.chrome has expected structure
+#   plugin_count         — navigator.plugins.length > 0
+#   languages_present    — navigator.languages is non-empty
+#   canvas_consistency   — canvas toDataURL() works and is non-empty
+#   web_gl_vendor        — WebGL renderer string is non-empty
+#   automation_globals   — no __webdriver_evaluate / _phantom / callPhantom globals
+#   outer_window_size    — window.outerWidth > 0
+#   headless_user_agent  — userAgent does not contain "HeadlessChrome"
+#   notification_permission — Notification.permission is not "denied"
+#
+# Use this pipeline to:
+#   - Verify your stealth configuration before a production run.
+#   - Diagnose which checks fail after a Chromium or stealth library update.
+#   - CI smoke-test: fail the pipeline if report.is_clean == false.
+#
+# Run:
+#   stygian run examples/stealth-audit.toml
+
+[[services]]
+name = "browser-stealth"
+kind = "browser"
+
+[services.browser]
+# HeadlessMode::New — shares the headed Chrome rendering pipeline.
+# Much harder to fingerprint-detect than legacy --headless.
+headless = true
+headless_mode = "new"
+
+# Full stealth: navigator spoofing, canvas noise, WebGL randomisation,
+# CDP leak protection, Network/Battery API spoofing, human-behaviour simulation.
+stealth = "advanced"
+
+# CDP fix mode: wraps Runtime.enable side-effects.
+cdp_fix_mode = "add_binding"
+
+# Viewport consistent with a desktop device profile.
+viewport_width  = 1920
+viewport_height = 1080
+
+[[services]]
+name  = "claude"
+kind  = "claude"
+model = "claude-haiku-4-5"
+
+# ── Wave 0: navigate to a neutral page to establish realistic browser state ────
+
+[[nodes]]
+name    = "warm-up"
+service = "browser-stealth"
+url     = "https://example.com"
+
+# ── Wave 1: run the stealth self-diagnostic ────────────────────────────────────
+
+[[nodes]]
+name       = "stealth-diagnostic"
+service    = "browser-stealth"
+depends_on = ["warm-up"]
+
+[nodes.action]
+# Built-in action: run PageHandle::verify_stealth() and return the DiagnosticReport.
+type   = "verify_stealth"
+# Fail fast: if any check fails, the node returns an error.
+strict = false   # set to true to abort the pipeline on any failed check
+
+# ── Wave 2: summarise the report ──────────────────────────────────────────────
+
+[[nodes]]
+name       = "summarise-report"
+service    = "claude"
+depends_on = ["stealth-diagnostic"]
+
+[nodes.prompt]
+user = """
+The stealth diagnostic report is provided as JSON input.
+Summarise the results in plain English:
+- List any failed checks and explain what they indicate.
+- If all checks passed, confirm the session appears undetectable.
+- Suggest remediation steps for any failures.
+"""
+
+[nodes.schema]
+type = "object"
+properties.is_clean.type       = "boolean"
+properties.passed_count.type   = "integer"
+properties.failed_count.type   = "integer"
+properties.summary.type        = "string"
+properties.remediation.type    = "array"
+properties.remediation.items.type = "string"
