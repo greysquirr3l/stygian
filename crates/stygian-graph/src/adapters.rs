@@ -89,3 +89,6 @@ pub mod cache_redis;
 
 /// Sitemap / sitemap-index source adapter
 pub mod sitemap;
+
+/// RSS/Atom feed source adapter
+pub mod rss_feed;

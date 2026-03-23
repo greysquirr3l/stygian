@@ -73,6 +73,9 @@ uuid = { version = "1", features = ["v4", "serde"] }
 # Data pipeline
 csv = "1.3"
 
+# Feed parsing (RSS/Atom)
+feed-rs = "2.3"
+
 # XML parsing
 quick-xml = { version = "0.37", features = ["serialize"] }
 

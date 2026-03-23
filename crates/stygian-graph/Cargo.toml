@@ -62,6 +62,9 @@ uuid.workspace = true
 # Output formats
 csv.workspace = true
 
+# Feed parsing (RSS/Atom)
+feed-rs.workspace = true
+
 # XML parsing
 quick-xml.workspace = true
 
