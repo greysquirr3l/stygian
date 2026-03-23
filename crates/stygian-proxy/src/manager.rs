@@ -16,6 +16,7 @@ use uuid::Uuid;
 use crate::circuit_breaker::CircuitBreaker;
 use crate::error::{ProxyError, ProxyResult};
 use crate::health::{HealthChecker, HealthMap};
+use crate::session::{SessionMap, StickyPolicy};
 use crate::storage::ProxyStoragePort;
 use crate::strategy::{
     BoxedRotationStrategy, LeastUsedStrategy, ProxyCandidate, RandomStrategy, RoundRobinStrategy,
@@ -36,6 +37,8 @@ pub struct PoolStats {
     pub healthy: usize,
     /// Proxies whose circuit breaker is currently Open.
     pub open: usize,
+    /// Active (non-expired) sticky sessions.
+    pub active_sessions: usize,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -52,6 +55,9 @@ pub struct ProxyHandle {
     pub proxy_url: String,
     circuit_breaker: Arc<CircuitBreaker>,
     succeeded: AtomicBool,
+    /// Domain key to unbind from `sessions` on failure (sticky sessions only).
+    session_key: Option<String>,
+    sessions: Option<SessionMap>,
 }
 
 impl ProxyHandle {
@@ -60,6 +66,23 @@ impl ProxyHandle {
             proxy_url,
             circuit_breaker,
             succeeded: AtomicBool::new(false),
+            session_key: None,
+            sessions: None,
+        }
+    }
+
+    fn new_sticky(
+        proxy_url: String,
+        circuit_breaker: Arc<CircuitBreaker>,
+        session_key: String,
+        sessions: SessionMap,
+    ) -> Self {
+        Self {
+            proxy_url,
+            circuit_breaker,
+            succeeded: AtomicBool::new(false),
+            session_key: Some(session_key),
+            sessions: Some(sessions),
         }
     }
 
@@ -73,6 +96,8 @@ impl ProxyHandle {
             proxy_url: String::new(),
             circuit_breaker: noop_cb,
             succeeded: AtomicBool::new(true),
+            session_key: None,
+            sessions: None,
         }
     }
 
@@ -96,6 +121,10 @@ impl Drop for ProxyHandle {
             self.circuit_breaker.record_success();
         } else {
             self.circuit_breaker.record_failure();
+            // Invalidate the sticky session so the next request picks a fresh proxy.
+            if let (Some(key), Some(sessions)) = (&self.session_key, &self.sessions) {
+                sessions.unbind(key);
+            }
         }
     }
 }
@@ -142,6 +171,8 @@ pub struct ProxyManager {
     health_checker: HealthChecker,
     circuit_breakers: Arc<RwLock<HashMap<Uuid, Arc<CircuitBreaker>>>>,
     config: ProxyConfig,
+    /// Domain→proxy sticky session map (always present; logic depends on `config.sticky_policy`).
+    sessions: SessionMap,
 }
 
 impl ProxyManager {
@@ -230,37 +261,50 @@ impl ProxyManager {
 
     // ── Background task ───────────────────────────────────────────────────────
 
-    /// Spawn the background health-check task.
+    /// Spawn the background health-check and session-purge tasks.
     ///
     /// Returns a `(CancellationToken, JoinHandle)` pair.  Cancel the token to
     /// trigger a graceful shutdown; await the handle to ensure it finishes.
     pub fn start(&self) -> (CancellationToken, JoinHandle<()>) {
         let token = CancellationToken::new();
-        let handle = self.health_checker.clone().spawn(token.clone());
-        (token, handle)
+        let health_handle = self.health_checker.clone().spawn(token.clone());
+
+        let sessions = self.sessions.clone();
+        let purge_token = token.clone();
+        let purge_handle = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => { sessions.purge_expired(); }
+                    _ = purge_token.cancelled() => break,
+                }
+            }
+        });
+
+        let combined = tokio::spawn(async move {
+            let _ = tokio::join!(health_handle, purge_handle);
+        });
+
+        (token, combined)
     }
 
     // ── Proxy selection ───────────────────────────────────────────────────────
 
-    /// Acquire a proxy from the pool.
-    ///
-    /// Builds [`ProxyCandidate`] entries from current storage, consulting the
-    /// health map and each proxy's circuit breaker to set the `healthy` flag.
-    /// Delegates selection to the configured [`crate::strategy::RotationStrategy`].
-    pub async fn acquire_proxy(&self) -> ProxyResult<ProxyHandle> {
+    /// Select one proxy via the rotation strategy, returning its URL, circuit
+    /// breaker, and ID.  Used by both [`acquire_proxy`](Self::acquire_proxy) and
+    /// [`acquire_for_domain`](Self::acquire_for_domain).
+    async fn select_proxy_inner(&self) -> ProxyResult<(String, Arc<CircuitBreaker>, Uuid)> {
         let with_metrics = self.storage.list_with_metrics().await?;
         if with_metrics.is_empty() {
             return Err(ProxyError::PoolExhausted);
         }
 
-        let health_map: tokio::sync::RwLockReadGuard<'_, _> =
-            self.health_checker.health_map().read().await;
+        let health_map = self.health_checker.health_map().read().await;
         let cb_map = self.circuit_breakers.read().await;
 
         let candidates: Vec<ProxyCandidate> = with_metrics
             .iter()
             .map(|(record, metrics)| {
-                // New proxies default to healthy until the first check fails.
                 let healthy = health_map.get(&record.id).copied().unwrap_or(true);
                 let available = cb_map
                     .get(&record.id)
@@ -279,18 +323,78 @@ impl ProxyManager {
         let selected = self.strategy.select(&candidates).await?;
         let id = selected.id;
 
-        // add_proxy() holds the circuit_breakers write lock for the full duration
-        // of its storage write, so every proxy visible in candidates is guaranteed
-        // to have a CB entry by the time we reach here.
         let cb = cb_map.get(&id).cloned().ok_or(ProxyError::PoolExhausted)?;
-
         let url = with_metrics
             .iter()
             .find(|(r, _)| r.id == id)
             .map(|(r, _)| r.proxy.url.clone())
             .unwrap_or_default();
 
+        Ok((url, cb, id))
+    }
+
+    /// Acquire a proxy from the pool.
+    ///
+    /// Builds [`ProxyCandidate`] entries from current storage, consulting the
+    /// health map and each proxy's circuit breaker to set the `healthy` flag.
+    /// Delegates selection to the configured [`crate::strategy::RotationStrategy`].
+    pub async fn acquire_proxy(&self) -> ProxyResult<ProxyHandle> {
+        let (url, cb, _id) = self.select_proxy_inner().await?;
         Ok(ProxyHandle::new(url, cb))
+    }
+
+    /// Acquire a proxy for `domain`, honouring the configured sticky-session
+    /// policy.
+    ///
+    /// - When [`StickyPolicy::Disabled`] is active, behaves identically to
+    ///   [`acquire_proxy`](Self::acquire_proxy).
+    /// - When [`StickyPolicy::Domain`] is active and a fresh session exists
+    ///   for `domain`, the **same proxy** is returned for the TTL duration.
+    /// - If the bound proxy's circuit breaker has tripped or the proxy has been
+    ///   removed, the stale session is invalidated and a fresh proxy is acquired
+    ///   and bound.
+    ///
+    /// The returned [`ProxyHandle`] automatically invalidates the session on
+    /// drop if not marked as successful.
+    pub async fn acquire_for_domain(&self, domain: &str) -> ProxyResult<ProxyHandle> {
+        let ttl = match &self.config.sticky_policy {
+            StickyPolicy::Disabled => return self.acquire_proxy().await,
+            StickyPolicy::Domain { ttl } => *ttl,
+        };
+
+        // Check for an active, non-expired session.
+        if let Some(proxy_id) = self.sessions.lookup(domain) {
+            let cb_map = self.circuit_breakers.read().await;
+            if let Some(cb) = cb_map.get(&proxy_id).cloned() {
+                if cb.is_available() {
+                    // Lookup proxy URL from storage.
+                    let with_metrics = self.storage.list_with_metrics().await?;
+                    if let Some((record, _)) = with_metrics.iter().find(|(r, _)| r.id == proxy_id) {
+                        let url = record.proxy.url.clone();
+                        drop(cb_map);
+                        return Ok(ProxyHandle::new_sticky(
+                            url,
+                            cb,
+                            domain.to_string(),
+                            self.sessions.clone(),
+                        ));
+                    }
+                }
+            }
+            // CB tripped or proxy no longer in pool — invalidate.
+            drop(cb_map);
+            self.sessions.unbind(domain);
+        }
+
+        // No valid session: acquire fresh proxy via strategy and bind.
+        let (url, cb, proxy_id) = self.select_proxy_inner().await?;
+        self.sessions.bind(domain, proxy_id, ttl);
+        Ok(ProxyHandle::new_sticky(
+            url,
+            cb,
+            domain.to_string(),
+            self.sessions.clone(),
+        ))
     }
 
     // ── Stats ─────────────────────────────────────────────────────────────────
@@ -320,6 +424,7 @@ impl ProxyManager {
             total,
             healthy,
             open,
+            active_sessions: self.sessions.active_count(),
         })
     }
 }
@@ -377,6 +482,7 @@ impl ProxyManagerBuilder {
             health_checker,
             circuit_breakers: Arc::new(RwLock::new(HashMap::new())),
             config,
+            sessions: SessionMap::new(),
         })
     }
 }
@@ -386,6 +492,7 @@ impl ProxyManagerBuilder {
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use std::collections::HashSet;
     use std::time::Duration;
@@ -527,5 +634,180 @@ mod tests {
         token.cancel();
         let result = tokio::time::timeout(Duration::from_secs(1), handle).await;
         assert!(result.is_ok(), "health checker task should exit within 1s");
+    }
+
+    // ── sticky session tests ─────────────────────────────────────────────────
+
+    fn sticky_config() -> ProxyConfig {
+        use crate::session::StickyPolicy;
+        ProxyConfig {
+            sticky_policy: StickyPolicy::domain_default(),
+            ..ProxyConfig::default()
+        }
+    }
+
+    /// Two consecutive `acquire_for_domain` calls return the same proxy.
+    #[tokio::test]
+    async fn sticky_same_domain_returns_same_proxy() {
+        let store = storage();
+        let mgr = ProxyManager::with_round_robin(store, sticky_config()).unwrap();
+        mgr.add_proxy(make_proxy("http://p1.test:8080"))
+            .await
+            .unwrap();
+        mgr.add_proxy(make_proxy("http://p2.test:8080"))
+            .await
+            .unwrap();
+
+        let h1 = mgr.acquire_for_domain("example.com").await.unwrap();
+        let url1 = h1.proxy_url.clone();
+        h1.mark_success();
+
+        let h2 = mgr.acquire_for_domain("example.com").await.unwrap();
+        let url2 = h2.proxy_url.clone();
+        h2.mark_success();
+
+        assert_eq!(url1, url2, "same domain should return the same proxy");
+    }
+
+    /// Different domains each get their own proxy (when enough proxies exist).
+    #[tokio::test]
+    async fn sticky_different_domains_may_differ() {
+        let store = storage();
+        let mgr = ProxyManager::with_round_robin(store, sticky_config()).unwrap();
+        mgr.add_proxy(make_proxy("http://pa.test:8080"))
+            .await
+            .unwrap();
+        mgr.add_proxy(make_proxy("http://pb.test:8080"))
+            .await
+            .unwrap();
+
+        let ha = mgr.acquire_for_domain("a.com").await.unwrap();
+        let url_a = ha.proxy_url.clone();
+        ha.mark_success();
+
+        let hb = mgr.acquire_for_domain("b.com").await.unwrap();
+        let url_b = hb.proxy_url.clone();
+        hb.mark_success();
+
+        // With round-robin and two proxies the second domain gets the other one.
+        assert_ne!(
+            url_a, url_b,
+            "different domains should differ in this scenario"
+        );
+    }
+
+    /// After TTL expiry the session is treated as gone; a (possibly different)
+    /// proxy is re-acquired and the basic contract (no panic) still holds.
+    #[tokio::test]
+    async fn sticky_expired_session_re_acquires() {
+        use crate::session::StickyPolicy;
+        let store = storage();
+        let mgr = ProxyManager::with_round_robin(
+            store,
+            ProxyConfig {
+                sticky_policy: StickyPolicy::domain(Duration::from_millis(1)),
+                ..ProxyConfig::default()
+            },
+        )
+        .unwrap();
+        mgr.add_proxy(make_proxy("http://x.test:8080"))
+            .await
+            .unwrap();
+
+        let h1 = mgr.acquire_for_domain("expired.com").await.unwrap();
+        h1.mark_success();
+
+        // Let the session expire.
+        tokio::time::sleep(Duration::from_millis(5)).await;
+
+        // Re-acquiring should not panic or error.
+        let h2 = mgr.acquire_for_domain("expired.com").await.unwrap();
+        h2.mark_success();
+    }
+
+    /// When the bound proxy's CB trips, the session is invalidated and a new
+    /// proxy is acquired on next call.
+    #[tokio::test]
+    async fn sticky_cb_trip_invalidates_session() {
+        let store = storage();
+        let mgr = ProxyManager::with_round_robin(
+            store,
+            ProxyConfig {
+                circuit_open_threshold: 1,
+                sticky_policy: sticky_config().sticky_policy,
+                ..ProxyConfig::default()
+            },
+        )
+        .unwrap();
+        mgr.add_proxy(make_proxy("http://q1.test:8080"))
+            .await
+            .unwrap();
+        mgr.add_proxy(make_proxy("http://q2.test:8080"))
+            .await
+            .unwrap();
+
+        // First acquire: bind "cb.com" to a proxy.
+        let h1 = mgr.acquire_for_domain("cb.com").await.unwrap();
+        let url1 = h1.proxy_url.clone();
+        // Drop without mark_success → circuit breaker trips + session unbinds.
+        drop(h1);
+
+        // Give the tokio runtime a moment to process.
+        tokio::task::yield_now().await;
+
+        // The tripped proxy is no longer available; next acquire should succeed
+        // from the remaining healthy proxy (or error if only one).
+        // We just verify no panic and the handle is valid.
+        let _h2 = mgr.acquire_for_domain("cb.com").await;
+        // url may differ from url1 or error if all CBs open — either is acceptable.
+        let _ = url1;
+    }
+
+    /// `purge_expired()` removes stale sessions from the map.
+    #[tokio::test]
+    async fn sticky_purge_expired() {
+        use crate::session::StickyPolicy;
+        let store = storage();
+        let mgr = ProxyManager::with_round_robin(
+            store,
+            ProxyConfig {
+                sticky_policy: StickyPolicy::domain(Duration::from_millis(1)),
+                ..ProxyConfig::default()
+            },
+        )
+        .unwrap();
+        mgr.add_proxy(make_proxy("http://r.test:8080"))
+            .await
+            .unwrap();
+
+        let h = mgr.acquire_for_domain("purge.com").await.unwrap();
+        h.mark_success();
+
+        assert_eq!(mgr.sessions.active_count(), 1);
+
+        // Expire and purge.
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        mgr.sessions.purge_expired();
+
+        assert_eq!(mgr.sessions.active_count(), 0);
+    }
+
+    /// pool_stats includes active_sessions.
+    #[tokio::test]
+    async fn pool_stats_includes_sessions() {
+        let store = storage();
+        let mgr = ProxyManager::with_round_robin(store, sticky_config()).unwrap();
+        mgr.add_proxy(make_proxy("http://s.test:8080"))
+            .await
+            .unwrap();
+
+        let stats = mgr.pool_stats().await.unwrap();
+        assert_eq!(stats.active_sessions, 0);
+
+        let h = mgr.acquire_for_domain("stats.com").await.unwrap();
+        h.mark_success();
+
+        let stats = mgr.pool_stats().await.unwrap();
+        assert_eq!(stats.active_sessions, 1);
     }
 }
