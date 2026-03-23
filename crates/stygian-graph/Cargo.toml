@@ -62,6 +62,12 @@ uuid.workspace = true
 # Output formats
 csv.workspace = true
 
+# XML parsing
+quick-xml.workspace = true
+
+# Compression
+flate2.workspace = true
+
 # OpenAPI spec parsing (always included — pure Rust)
 openapiv3.workspace = true
 serde_yaml.workspace = true

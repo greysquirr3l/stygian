@@ -73,6 +73,12 @@ uuid = { version = "1", features = ["v4", "serde"] }
 # Data pipeline
 csv = "1.3"
 
+# XML parsing
+quick-xml = { version = "0.37", features = ["serialize"] }
+
+# Compression
+flate2 = "1.1"
+
 # OpenAPI spec parsing
 openapiv3 = "1"
 serde_yaml = "0.9"

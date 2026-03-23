@@ -86,3 +86,6 @@ pub mod agent_source;
 /// Redis / Valkey cache adapter (feature = "redis")
 #[cfg(feature = "redis")]
 pub mod cache_redis;
+
+/// Sitemap / sitemap-index source adapter
+pub mod sitemap;
