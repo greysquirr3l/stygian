@@ -15,7 +15,7 @@ categories = ["web-programming", "development-tools"]
 [features]
 default = ["stealth"]
 stealth = []
-tls-config = ["stealth", "dep:rustls", "dep:webpki-roots"]
+tls-config = ["stealth", "dep:rustls", "dep:webpki-roots", "dep:reqwest"]
 full = ["stealth", "mcp", "metrics", "tls-config"]
 mcp = ["dep:base64"]
 metrics = ["dep:prometheus-client"]
@@ -50,6 +50,9 @@ tracing = { workspace = true }
 # TLS configuration: build custom rustls ClientConfig from TLS profiles
 rustls = { workspace = true, optional = true }
 webpki-roots = { workspace = true, optional = true }
+
+# HTTP client: build TLS-profiled reqwest clients
+reqwest = { workspace = true, optional = true }
 
 # MCP feature: base64 encoding for screenshot data
 base64 = { workspace = true, optional = true }

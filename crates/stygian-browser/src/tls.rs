@@ -1343,6 +1343,131 @@ mod rustls_config {
 #[cfg(feature = "tls-config")]
 pub use rustls_config::{TlsClientConfig, TlsConfigError};
 
+// ── reqwest integration ──────────────────────────────────────────────────────
+//
+// Feature-gated behind `tls-config`. Builds a `reqwest::Client` that uses a
+// TLS-profiled `ClientConfig` so that HTTP-only scraping paths present a
+// browser-consistent TLS fingerprint.
+
+#[cfg(feature = "tls-config")]
+mod reqwest_client {
+    use super::*;
+    use std::sync::Arc;
+
+    /// Error building a TLS-profiled reqwest client.
+    #[derive(Debug, thiserror::Error)]
+    #[non_exhaustive]
+    pub enum TlsClientError {
+        /// Failed to build the underlying rustls `ClientConfig`.
+        #[error(transparent)]
+        TlsConfig(#[from] super::rustls_config::TlsConfigError),
+
+        /// reqwest rejected the builder configuration.
+        #[error("reqwest client: {0}")]
+        Reqwest(#[from] reqwest::Error),
+    }
+
+    /// Return a User-Agent string that matches the given TLS profile's browser.
+    ///
+    /// Anti-bot systems cross-reference the `User-Agent` header against the
+    /// TLS fingerprint. Sending a Chrome TLS profile with a Firefox `User-Agent`
+    /// is a strong detection signal.
+    ///
+    /// # Matching logic
+    ///
+    /// | Profile name contains | User-Agent |
+    /// |---|---|
+    /// | `"Chrome"` | Chrome 131 on Windows 10 |
+    /// | `"Firefox"` | Firefox 133 on Windows 10 |
+    /// | `"Safari"` | Safari 18 on macOS 14.7 |
+    /// | `"Edge"` | Edge 131 on Windows 10 |
+    /// | *(other)* | Chrome 131 on Windows 10 (safe fallback) |
+    pub fn default_user_agent(profile: &TlsProfile) -> &'static str {
+        let name = profile.name.to_ascii_lowercase();
+        if name.contains("firefox") {
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0"
+        } else if name.contains("safari") && !name.contains("chrome") {
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15"
+        } else if name.contains("edge") {
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0"
+        } else {
+            // Chrome is the default / fallback.
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        }
+    }
+
+    /// Select the built-in [`TlsProfile`] that best matches a
+    /// [`DeviceProfile`](crate::fingerprint::DeviceProfile).
+    ///
+    /// | Device | Selected Profile |
+    /// |---|---|
+    /// | `DesktopWindows` | [`CHROME_131`] |
+    /// | `DesktopMac` | [`SAFARI_18`] |
+    /// | `DesktopLinux` | [`FIREFOX_133`] |
+    /// | `MobileAndroid` | [`CHROME_131`] |
+    /// | `MobileIOS` | [`SAFARI_18`] |
+    pub fn profile_for_device(device: &crate::fingerprint::DeviceProfile) -> &'static TlsProfile {
+        use crate::fingerprint::DeviceProfile;
+        match device {
+            DeviceProfile::DesktopWindows | DeviceProfile::MobileAndroid => &CHROME_131,
+            DeviceProfile::DesktopMac | DeviceProfile::MobileIOS => &SAFARI_18,
+            DeviceProfile::DesktopLinux => &FIREFOX_133,
+        }
+    }
+
+    /// Build a [`reqwest::Client`] whose TLS `ClientHello` matches
+    /// `profile`.
+    ///
+    /// The returned client:
+    /// - Uses [`TlsProfile::to_rustls_config`] for cipher-suite ordering,
+    ///   key-exchange groups, ALPN, and protocol versions.
+    /// - Sets the `User-Agent` header to match the profile's browser
+    ///   (via [`default_user_agent`]).
+    /// - Enables cookie storage, gzip, and brotli decompression.
+    /// - Routes through `proxy_url` when provided.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TlsClientError`] if the TLS profile cannot be converted
+    /// to a rustls config or if reqwest rejects the builder configuration.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_browser::tls::{build_profiled_client, CHROME_131};
+    ///
+    /// let client = build_profiled_client(&CHROME_131, None).unwrap();
+    /// ```
+    pub fn build_profiled_client(
+        profile: &TlsProfile,
+        proxy_url: Option<&str>,
+    ) -> Result<reqwest::Client, TlsClientError> {
+        let tls_config = profile.to_rustls_config()?;
+
+        // Unwrap the Arc — we're the sole owner after `to_rustls_config`.
+        let rustls_cfg =
+            Arc::try_unwrap(tls_config.into_inner()).unwrap_or_else(|arc| (*arc).clone());
+
+        let mut builder = reqwest::Client::builder()
+            .use_preconfigured_tls(rustls_cfg)
+            .user_agent(default_user_agent(profile))
+            .cookie_store(true)
+            .gzip(true)
+            .brotli(true);
+
+        if let Some(url) = proxy_url {
+            builder = builder.proxy(reqwest::Proxy::all(url)?);
+        }
+
+        Ok(builder.build()?)
+    }
+}
+
+#[cfg(feature = "tls-config")]
+pub use reqwest_client::{
+    TlsClientError, build_profiled_client, default_user_agent, profile_for_device,
+};
+
 // ── tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1630,6 +1755,70 @@ mod tests {
             let arc: std::sync::Arc<rustls::ClientConfig> = config.into();
             // Should be valid — just verify it doesn't panic.
             assert!(!arc.alpn_protocols.is_empty());
+        }
+    }
+
+    // ── reqwest client tests ─────────────────────────────────────────
+
+    #[cfg(feature = "tls-config")]
+    mod reqwest_tests {
+        use super::super::*;
+
+        #[test]
+        fn build_profiled_client_no_proxy() {
+            let client = build_profiled_client(&CHROME_131, None);
+            assert!(
+                client.is_ok(),
+                "should build a client without error: {:?}",
+                client.err()
+            );
+        }
+
+        #[test]
+        fn build_profiled_client_all_profiles() {
+            for profile in [&*CHROME_131, &*FIREFOX_133, &*SAFARI_18, &*EDGE_131] {
+                let result = build_profiled_client(profile, None);
+                assert!(
+                    result.is_ok(),
+                    "profile '{}' should produce a valid client: {:?}",
+                    profile.name,
+                    result.err()
+                );
+            }
+        }
+
+        #[test]
+        fn default_user_agent_matches_browser() {
+            assert!(default_user_agent(&CHROME_131).contains("Chrome/131"));
+            assert!(default_user_agent(&FIREFOX_133).contains("Firefox/133"));
+            assert!(default_user_agent(&SAFARI_18).contains("Safari/605"));
+            assert!(default_user_agent(&EDGE_131).contains("Edg/131"));
+        }
+
+        #[test]
+        fn profile_for_device_mapping() {
+            use crate::fingerprint::DeviceProfile;
+
+            assert_eq!(
+                profile_for_device(&DeviceProfile::DesktopWindows).name,
+                "Chrome 131"
+            );
+            assert_eq!(
+                profile_for_device(&DeviceProfile::DesktopMac).name,
+                "Safari 18"
+            );
+            assert_eq!(
+                profile_for_device(&DeviceProfile::DesktopLinux).name,
+                "Firefox 133"
+            );
+            assert_eq!(
+                profile_for_device(&DeviceProfile::MobileAndroid).name,
+                "Chrome 131"
+            );
+            assert_eq!(
+                profile_for_device(&DeviceProfile::MobileIOS).name,
+                "Safari 18"
+            );
         }
     }
 }
