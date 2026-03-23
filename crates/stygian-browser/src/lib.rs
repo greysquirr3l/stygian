@@ -94,6 +94,9 @@ pub mod behavior;
 pub mod fingerprint;
 
 #[cfg(feature = "stealth")]
+pub mod tls;
+
+#[cfg(feature = "stealth")]
 pub mod webrtc;
 
 #[cfg(feature = "mcp")]
