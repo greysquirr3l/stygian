@@ -775,3 +775,6 @@ pub mod stream_source;
 
 /// Agent source port — use an LLM as a pipeline data source
 pub mod agent_source;
+
+/// Webhook trigger port — accept inbound HTTP webhooks that start pipelines
+pub mod webhook;

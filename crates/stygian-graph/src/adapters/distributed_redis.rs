@@ -371,9 +371,7 @@ impl WorkQueuePort for RedisWorkQueue {
                 "status": "in_progress",
                 "worker_id": self.config.consumer_name,
             });
-            let _ = conn
-                .set::<_, _, ()>(&meta_key, meta.to_string())
-                .await;
+            let _ = conn.set::<_, _, ()>(&meta_key, meta.to_string()).await;
 
             debug!(task_id = %task.id, consumer = %self.config.consumer_name, "dequeued task");
             return Ok(Some(task));
@@ -393,9 +391,7 @@ impl WorkQueuePort for RedisWorkQueue {
         conn.set::<_, _, ()>(&result_key, &output_str)
             .await
             .map_err(|e| {
-                StygianError::Cache(CacheError::WriteFailed(format!(
-                    "SET result failed: {e}"
-                )))
+                StygianError::Cache(CacheError::WriteFailed(format!("SET result failed: {e}")))
             })?;
 
         // Update status to completed
@@ -405,9 +401,7 @@ impl WorkQueuePort for RedisWorkQueue {
             && let Ok(mut meta) = serde_json::from_str::<serde_json::Value>(&raw)
         {
             meta["status"] = serde_json::json!("completed");
-            let _ = conn
-                .set::<_, _, ()>(&meta_key, meta.to_string())
-                .await;
+            let _ = conn.set::<_, _, ()>(&meta_key, meta.to_string()).await;
         }
 
         info!(task_id = %task_id, "task acknowledged (completed)");
@@ -451,9 +445,7 @@ impl WorkQueuePort for RedisWorkQueue {
                 "error": error_msg,
                 "attempt": attempt,
             });
-            let _ = conn
-                .set::<_, _, ()>(&meta_key, meta.to_string())
-                .await;
+            let _ = conn.set::<_, _, ()>(&meta_key, meta.to_string()).await;
 
             warn!(task_id = %task_id, %error_msg, attempt, "task dead-lettered after max retries");
         } else {
@@ -463,9 +455,7 @@ impl WorkQueuePort for RedisWorkQueue {
                 "error": error_msg,
                 "attempt": attempt + 1,
             });
-            let _ = conn
-                .set::<_, _, ()>(&meta_key, meta.to_string())
-                .await;
+            let _ = conn.set::<_, _, ()>(&meta_key, meta.to_string()).await;
 
             error!(task_id = %task_id, attempt = attempt + 1, %error_msg, "task failed, will retry");
         }
@@ -496,10 +486,7 @@ impl WorkQueuePort for RedisWorkQueue {
         let status = match status_str {
             "pending" => TaskStatus::Pending,
             "in_progress" => TaskStatus::InProgress {
-                worker_id: meta["worker_id"]
-                    .as_str()
-                    .unwrap_or("unknown")
-                    .to_string(),
+                worker_id: meta["worker_id"].as_str().unwrap_or("unknown").to_string(),
             },
             "completed" => {
                 // Fetch the actual output from the results key
@@ -558,10 +545,7 @@ impl WorkQueuePort for RedisWorkQueue {
             let node_name = meta["node_name"].as_str().unwrap_or("").to_string();
 
             // Extract task_id from key: "{stream}:tasks:{task_id}"
-            let task_id = key
-                .rsplit(':')
-                .next()
-                .unwrap_or("");
+            let task_id = key.rsplit(':').next().unwrap_or("");
             let result_key = self.result_key(task_id);
             let output_raw: Option<String> = conn.get(&result_key).await.unwrap_or(None);
             let output = output_raw
@@ -647,10 +631,7 @@ mod tests {
             format!("{stream_name}:results:{task_id}"),
             "stygian:tasks:results:abc-123"
         );
-        assert_eq!(
-            format!("{stream_name}:dlq"),
-            "stygian:tasks:dlq"
-        );
+        assert_eq!(format!("{stream_name}:dlq"), "stygian:tasks:dlq");
     }
 
     #[test]
