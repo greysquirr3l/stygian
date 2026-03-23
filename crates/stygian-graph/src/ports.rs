@@ -778,3 +778,6 @@ pub mod agent_source;
 
 /// Webhook trigger port — accept inbound HTTP webhooks that start pipelines
 pub mod webhook;
+
+/// Tiered request escalation port — decide when to escalate from plain HTTP to browser
+pub mod escalation;
