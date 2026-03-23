@@ -95,6 +95,9 @@ sqlx = { workspace = true, optional = true }
 redis = { workspace = true, optional = true }
 deadpool-redis = { workspace = true, optional = true }
 
+# S3-compatible object storage (optional)
+rust-s3 = { workspace = true, optional = true }
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util", "macros"] }
 tokio-test = "0.4"
@@ -113,9 +116,11 @@ default = ["browser"]
 # Include browser automation support
 browser = ["dep:stygian-browser"]
 # Full feature set
-full = ["browser", "api", "wasm-plugins", "postgres", "cloudflare-crawl", "redis"]
+full = ["browser", "api", "wasm-plugins", "postgres", "cloudflare-crawl", "redis", "object-storage"]
 # Redis / Valkey cache adapter
 redis = ["dep:redis", "dep:deadpool-redis"]
+# S3-compatible object storage adapter
+object-storage = ["dep:rust-s3"]
 # REST API server
 api = []
 # WASM plugin system (requires wasmtime — significant compile time)

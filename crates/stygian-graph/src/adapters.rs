@@ -98,3 +98,7 @@ pub mod websocket;
 
 /// CSV/TSV data source adapter
 pub mod csv_source;
+
+/// S3-compatible object storage adapter (feature = "object-storage")
+#[cfg(feature = "object-storage")]
+pub mod storage_s3;

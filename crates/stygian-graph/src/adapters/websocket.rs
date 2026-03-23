@@ -21,8 +21,8 @@ use futures::stream::StreamExt;
 use serde_json::json;
 use std::time::Duration;
 use tokio::time::timeout;
-use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
 use crate::domain::error::{Result, ServiceError, StygianError};
 use crate::ports::stream_source::{StreamEvent, StreamSourcePort};
@@ -96,7 +96,10 @@ impl WebSocketSource {
         if let Some(t) = params.get("timeout_secs").and_then(|v| v.as_u64()) {
             cfg.timeout_secs = t;
         }
-        if let Some(r) = params.get("max_reconnect_attempts").and_then(|v| v.as_u64()) {
+        if let Some(r) = params
+            .get("max_reconnect_attempts")
+            .and_then(|v| v.as_u64())
+        {
             cfg.max_reconnect_attempts = r as u32;
         }
         cfg
@@ -159,8 +162,10 @@ impl WebSocketSource {
         let mut events = Vec::new();
         let mut frame_idx: u64 = 0;
 
-        while let Some(msg_result) =
-            timeout(Duration::from_secs(cfg.timeout_secs), read.next()).await.ok().flatten()
+        while let Some(msg_result) = timeout(Duration::from_secs(cfg.timeout_secs), read.next())
+            .await
+            .ok()
+            .flatten()
         {
             match msg_result {
                 Ok(msg) => {
@@ -366,7 +371,10 @@ mod tests {
             "max_reconnect_attempts": 5
         });
         let cfg = source.config_from_params(&params);
-        assert_eq!(cfg.subscribe_message.as_deref(), Some("{\"action\":\"sub\"}"));
+        assert_eq!(
+            cfg.subscribe_message.as_deref(),
+            Some("{\"action\":\"sub\"}")
+        );
         assert_eq!(cfg.bearer_token.as_deref(), Some("tok123"));
         assert_eq!(cfg.timeout_secs, 60);
         assert_eq!(cfg.max_reconnect_attempts, 5);

@@ -21,7 +21,7 @@
 //! ```
 
 use async_trait::async_trait;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::io::Read;
 use std::path::Path;
 
@@ -179,10 +179,7 @@ fn extract_csv_params(params: &Value) -> (Delimiter, usize, Option<u64>, bool) {
         .map(Delimiter::from_str)
         .unwrap_or(Delimiter::Comma);
 
-    let skip = params
-        .get("skip")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as usize;
+    let skip = params.get("skip").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
 
     let limit = params.get("limit").and_then(|v| v.as_u64());
 
@@ -314,8 +311,7 @@ mod tests {
     #[test]
     fn parse_csv_with_headers() {
         let reader = Cursor::new(CSV_DATA);
-        let rows =
-            CsvSource::parse_reader(reader, Delimiter::Comma, true, 0, None).expect("parse");
+        let rows = CsvSource::parse_reader(reader, Delimiter::Comma, true, 0, None).expect("parse");
         assert_eq!(rows.len(), 3);
         assert_eq!(rows[0]["name"], "Alice");
         assert_eq!(rows[0]["age"], "30");
@@ -358,8 +354,7 @@ mod tests {
     #[test]
     fn skip_rows() {
         let reader = Cursor::new(CSV_DATA);
-        let rows =
-            CsvSource::parse_reader(reader, Delimiter::Comma, true, 1, None).expect("parse");
+        let rows = CsvSource::parse_reader(reader, Delimiter::Comma, true, 1, None).expect("parse");
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0]["name"], "Bob");
         assert_eq!(rows[1]["name"], "Charlie");
@@ -378,8 +373,7 @@ mod tests {
     fn strip_utf8_bom() {
         let csv = "\u{FEFF}name,age\nAlice,30\n";
         let reader = Cursor::new(csv);
-        let rows =
-            CsvSource::parse_reader(reader, Delimiter::Comma, true, 0, None).expect("parse");
+        let rows = CsvSource::parse_reader(reader, Delimiter::Comma, true, 0, None).expect("parse");
         assert_eq!(rows.len(), 1);
         // Key should NOT have the BOM
         assert!(rows[0].get("name").is_some(), "BOM should be stripped");
@@ -389,8 +383,7 @@ mod tests {
     fn pipe_delimiter() {
         let csv = "a|b|c\n1|2|3\n";
         let reader = Cursor::new(csv);
-        let rows =
-            CsvSource::parse_reader(reader, Delimiter::Pipe, true, 0, None).expect("parse");
+        let rows = CsvSource::parse_reader(reader, Delimiter::Pipe, true, 0, None).expect("parse");
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0]["a"], "1");
         assert_eq!(rows[0]["b"], "2");
@@ -410,8 +403,7 @@ mod tests {
     fn empty_csv_returns_empty() {
         let csv = "name,age\n";
         let reader = Cursor::new(csv);
-        let rows =
-            CsvSource::parse_reader(reader, Delimiter::Comma, true, 0, None).expect("parse");
+        let rows = CsvSource::parse_reader(reader, Delimiter::Comma, true, 0, None).expect("parse");
         assert!(rows.is_empty());
     }
 
