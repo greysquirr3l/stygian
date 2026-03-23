@@ -110,3 +110,7 @@ pub mod storage_s3;
 /// Axum-based webhook trigger adapter (feature = "api")
 #[cfg(feature = "api")]
 pub mod webhook;
+
+/// Default tiered escalation policy with challenge detection (feature = "escalation")
+#[cfg(feature = "escalation")]
+pub mod escalation;

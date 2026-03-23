@@ -133,6 +133,8 @@ wasm-plugins = ["dep:wasmtime"]
 postgres = ["dep:sqlx"]
 # Cloudflare Browser Rendering crawl adapter
 cloudflare-crawl = []
+# Default tiered escalation policy adapter
+escalation = []
 
 [[bin]]
 name = "stygian"
