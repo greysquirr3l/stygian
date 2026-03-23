@@ -66,6 +66,9 @@ csv.workspace = true
 openapiv3.workspace = true
 serde_yaml.workspace = true
 
+# IndexMap (matching openapiv3's version)
+indexmap.workspace = true
+
 # Browser automation (optional)
 stygian-browser = { path = "../stygian-browser", version = "0.2", optional = true }
 

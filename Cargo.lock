@@ -3726,6 +3726,7 @@ dependencies = [
  "dashmap",
  "figment",
  "futures",
+ "indexmap 1.9.3",
  "indicatif",
  "lru",
  "mockall",

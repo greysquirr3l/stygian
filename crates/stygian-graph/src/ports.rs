@@ -763,3 +763,15 @@ pub mod auth;
 
 /// Signing port — attach HMAC, OAuth 1.0a, AWS Sig V4, or Frida RPC signatures to requests.
 pub mod signing;
+
+/// Database source port — query databases as pipeline data sources
+pub mod data_source;
+
+/// Document source port — read files from the local file system
+pub mod document_source;
+
+/// Stream source port — consume SSE, WebSocket, or message queue feeds
+pub mod stream_source;
+
+/// Agent source port — use an LLM as a pipeline data source
+pub mod agent_source;

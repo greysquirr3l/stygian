@@ -66,3 +66,19 @@ pub mod output_format;
 /// Request signing adapters — Noop passthrough and HTTP sidecar bridge.
 /// Covers Frida RPC, AWS Sig V4, OAuth 1.0a, custom HMAC, and device attestation.
 pub mod signing;
+
+/// OpenAPI spec generator from API discovery reports
+pub mod openapi_gen;
+
+/// PostgreSQL database source adapter (feature = "postgres")
+#[cfg(feature = "postgres")]
+pub mod database;
+
+/// File system / document source adapter
+pub mod document;
+
+/// Server-Sent Events stream source adapter
+pub mod stream;
+
+/// LLM agent source adapter — wraps AIProvider as a pipeline node
+pub mod agent_source;
