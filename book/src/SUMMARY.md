@@ -14,6 +14,7 @@
 - [GraphQL Plugins](./graph/graphql-plugins.md)
 - [Custom Adapters](./graph/custom-adapters.md)
 - [Distributed Execution](./graph/distributed.md)
+- [Tiered Escalation](./graph/escalation.md)
 - [Observability](./graph/observability.md)
 - [Performance Tuning](./graph/performance.md)
 
@@ -24,6 +25,7 @@
 - [Overview](./browser/overview.md)
 - [Configuration](./browser/configuration.md)
 - [Stealth & Anti-Detection](./browser/stealth.md)
+- [Stealth v2 — TLS & Diagnostics](./browser/stealth-v2.md)
 - [Browser Pool](./browser/pool.md)
 - [Page Operations](./browser/page-operations.md)
 
@@ -33,6 +35,7 @@
 
 - [Overview](./proxy/overview.md)
 - [Rotation Strategies](./proxy/strategies.md)
+- [Sticky Sessions](./proxy/sticky-sessions.md)
 - [Health Checking & Circuit Breaker](./proxy/health-circuit-breaker.md)
 - [Ecosystem Integrations](./proxy/integrations.md)
 
