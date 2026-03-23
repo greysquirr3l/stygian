@@ -27,6 +27,7 @@ pub mod circuit_breaker;
 pub mod error;
 pub mod health;
 pub mod manager;
+pub mod session;
 pub mod storage;
 pub mod strategy;
 pub mod types;
@@ -42,6 +43,7 @@ pub use circuit_breaker::{CircuitBreaker, STATE_CLOSED, STATE_HALF_OPEN, STATE_O
 pub use error::{ProxyError, ProxyResult};
 pub use health::{HealthChecker, HealthMap};
 pub use manager::{PoolStats, ProxyHandle, ProxyManager, ProxyManagerBuilder};
+pub use session::{SessionMap, StickyPolicy};
 pub use storage::MemoryProxyStore;
 pub use strategy::{
     BoxedRotationStrategy, LeastUsedStrategy, ProxyCandidate, RandomStrategy, RotationStrategy,

@@ -218,6 +218,9 @@ pub struct ProxyConfig {
     /// How long to wait in OPEN before transitioning to HALF-OPEN (seconds).
     #[serde(with = "serde_duration_secs")]
     pub circuit_half_open_after: Duration,
+    /// Sticky-session policy for domain→proxy binding.
+    #[serde(default)]
+    pub sticky_policy: crate::session::StickyPolicy,
 }
 
 impl Default for ProxyConfig {
@@ -228,6 +231,7 @@ impl Default for ProxyConfig {
             health_check_timeout: Duration::from_secs(5),
             circuit_open_threshold: 5,
             circuit_half_open_after: Duration::from_secs(30),
+            sticky_policy: crate::session::StickyPolicy::default(),
         }
     }
 }

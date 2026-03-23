@@ -1121,10 +1121,10 @@ pub static EDGE_131: LazyLock<TlsProfile> = LazyLock::new(|| TlsProfile {
 ///
 /// # What flags **cannot** control
 ///
-/// Chrome's TLS stack (BoringSSL) hard-codes the following in its compiled binary:
+/// Chrome's TLS stack (`BoringSSL`) hard-codes the following in its compiled binary:
 ///
 /// - **Cipher-suite ordering** — set by `ssl_cipher_apply_rule` at build time.
-/// - **Extension ordering** — emitted in a fixed order by BoringSSL.
+/// - **Extension ordering** — emitted in a fixed order by `BoringSSL`.
 /// - **Supported-group ordering** — set at build time.
 ///
 /// For precise JA3/JA4 matching, a patched Chromium build or an external TLS

@@ -29,7 +29,7 @@
 
 | Task | Status | Notes |
 |---|---|---|
-| T16 — Sticky Session Domain Types & Policy | `[~]` | |
+| T16 — Sticky Session Domain Types & Policy | `[x]` | |
 | T17 — ProxyManager Sticky Session Integration | `[ ]` | Depends on T16 |
 
 ---
