@@ -160,47 +160,47 @@ impl fmt::Display for TlsVersion {
 pub struct TlsExtensionId(pub u16);
 
 impl TlsExtensionId {
-    /// server_name (SNI).
+    /// `server_name` (SNI).
     pub const SERVER_NAME: Self = Self(0);
-    /// extended_master_secret.
+    /// `extended_master_secret`.
     pub const EXTENDED_MASTER_SECRET: Self = Self(23);
-    /// encrypt_then_mac.
+    /// `encrypt_then_mac`.
     pub const ENCRYPT_THEN_MAC: Self = Self(22);
-    /// session_ticket.
+    /// `session_ticket`.
     pub const SESSION_TICKET: Self = Self(35);
-    /// signature_algorithms.
+    /// `signature_algorithms`.
     pub const SIGNATURE_ALGORITHMS: Self = Self(13);
-    /// supported_versions.
+    /// `supported_versions`.
     pub const SUPPORTED_VERSIONS: Self = Self(43);
-    /// psk_key_exchange_modes.
+    /// `psk_key_exchange_modes`.
     pub const PSK_KEY_EXCHANGE_MODES: Self = Self(45);
-    /// key_share.
+    /// `key_share`.
     pub const KEY_SHARE: Self = Self(51);
-    /// supported_groups (a.k.a. elliptic_curves).
+    /// `supported_groups` (a.k.a. `elliptic_curves`).
     pub const SUPPORTED_GROUPS: Self = Self(10);
-    /// ec_point_formats.
+    /// `ec_point_formats`.
     pub const EC_POINT_FORMATS: Self = Self(11);
-    /// application_layer_protocol_negotiation.
+    /// `application_layer_protocol_negotiation`.
     pub const ALPN: Self = Self(16);
-    /// status_request (OCSP stapling).
+    /// `status_request` (OCSP stapling).
     pub const STATUS_REQUEST: Self = Self(5);
-    /// signed_certificate_timestamp.
+    /// `signed_certificate_timestamp`.
     pub const SIGNED_CERTIFICATE_TIMESTAMP: Self = Self(18);
-    /// compress_certificate.
+    /// `compress_certificate`.
     pub const COMPRESS_CERTIFICATE: Self = Self(27);
-    /// application_settings (ALPS).
+    /// `application_settings` (ALPS).
     pub const APPLICATION_SETTINGS: Self = Self(17513);
-    /// renegotiation_info.
+    /// `renegotiation_info`.
     pub const RENEGOTIATION_INFO: Self = Self(0xff01);
-    /// delegated_credentials.
+    /// `delegated_credentials`.
     pub const DELEGATED_CREDENTIALS: Self = Self(34);
-    /// record_size_limit.
+    /// `record_size_limit`.
     pub const RECORD_SIZE_LIMIT: Self = Self(28);
     /// padding.
     pub const PADDING: Self = Self(21);
-    /// pre_shared_key.
+    /// `pre_shared_key`.
     pub const PRE_SHARED_KEY: Self = Self(41);
-    /// post_handshake_auth.
+    /// `post_handshake_auth`.
     pub const POST_HANDSHAKE_AUTH: Self = Self(49);
 }
 
@@ -231,7 +231,7 @@ pub enum SupportedGroup {
     SecP384r1,
     /// secp521r1 / P-521 (0x0019).
     SecP521r1,
-    /// X25519Kyber768Draft00 — post-quantum hybrid (0x6399).
+    /// `X25519Kyber768Draft00` — post-quantum hybrid (0x6399).
     X25519Kyber768,
     /// FFDHE2048 (0x0100).
     Ffdhe2048,
@@ -282,27 +282,27 @@ impl fmt::Display for SupportedGroup {
 pub struct SignatureAlgorithm(pub u16);
 
 impl SignatureAlgorithm {
-    /// ecdsa_secp256r1_sha256.
+    /// `ecdsa_secp256r1_sha256`.
     pub const ECDSA_SECP256R1_SHA256: Self = Self(0x0403);
-    /// rsa_pss_rsae_sha256.
+    /// `rsa_pss_rsae_sha256`.
     pub const RSA_PSS_RSAE_SHA256: Self = Self(0x0804);
-    /// rsa_pkcs1_sha256.
+    /// `rsa_pkcs1_sha256`.
     pub const RSA_PKCS1_SHA256: Self = Self(0x0401);
-    /// ecdsa_secp384r1_sha384.
+    /// `ecdsa_secp384r1_sha384`.
     pub const ECDSA_SECP384R1_SHA384: Self = Self(0x0503);
-    /// rsa_pss_rsae_sha384.
+    /// `rsa_pss_rsae_sha384`.
     pub const RSA_PSS_RSAE_SHA384: Self = Self(0x0805);
-    /// rsa_pkcs1_sha384.
+    /// `rsa_pkcs1_sha384`.
     pub const RSA_PKCS1_SHA384: Self = Self(0x0501);
-    /// rsa_pss_rsae_sha512.
+    /// `rsa_pss_rsae_sha512`.
     pub const RSA_PSS_RSAE_SHA512: Self = Self(0x0806);
-    /// rsa_pkcs1_sha512.
+    /// `rsa_pkcs1_sha512`.
     pub const RSA_PKCS1_SHA512: Self = Self(0x0601);
-    /// ecdsa_secp521r1_sha512.
+    /// `ecdsa_secp521r1_sha512`.
     pub const ECDSA_SECP521R1_SHA512: Self = Self(0x0603);
-    /// rsa_pkcs1_sha1 (legacy).
+    /// `rsa_pkcs1_sha1` (legacy).
     pub const RSA_PKCS1_SHA1: Self = Self(0x0201);
-    /// ecdsa_sha1 (legacy).
+    /// `ecdsa_sha1` (legacy).
     pub const ECDSA_SHA1: Self = Self(0x0203);
 }
 
@@ -356,7 +356,7 @@ impl fmt::Display for AlpnProtocol {
 
 // ── TLS profile ──────────────────────────────────────────────────────────────
 
-/// A complete TLS fingerprint profile matching a real browser's ClientHello.
+/// A complete TLS fingerprint profile matching a real browser's `ClientHello`.
 ///
 /// The ordering of cipher suites, extensions, and supported groups matters —
 /// anti-bot systems compare these orderings against known browser signatures.
@@ -375,11 +375,11 @@ impl fmt::Display for AlpnProtocol {
 pub struct TlsProfile {
     /// Human-readable profile name (e.g. `"Chrome 131"`).
     pub name: String,
-    /// Ordered cipher-suite list from the ClientHello.
+    /// Ordered cipher-suite list from the `ClientHello`.
     pub cipher_suites: Vec<CipherSuiteId>,
     /// Supported TLS protocol versions.
     pub tls_versions: Vec<TlsVersion>,
-    /// Ordered extension list from the ClientHello.
+    /// Ordered extension list from the `ClientHello`.
     pub extensions: Vec<TlsExtensionId>,
     /// Supported named groups (elliptic curves / key exchange).
     pub supported_groups: Vec<SupportedGroup>,
@@ -425,6 +425,11 @@ impl fmt::Display for Ja3Hash {
 ///
 /// This is a minimal, self-contained MD5 implementation used only for JA3 hash
 /// computation. It avoids pulling in an external crate for a single use-site.
+#[allow(
+    clippy::many_single_char_names,
+    clippy::too_many_lines,
+    clippy::indexing_slicing
+)]
 fn md5_hex(data: &[u8]) -> String {
     // Per-round shift amounts.
     const S: [u32; 64] = [
@@ -517,10 +522,12 @@ fn md5_hex(data: &[u8]) -> String {
 
     for chunk in msg.chunks_exact(64) {
         let mut m = [0u32; 16];
-        for (i, word) in m.iter_mut().enumerate() {
-            let off = i * 4;
-            *word =
-                u32::from_le_bytes([chunk[off], chunk[off + 1], chunk[off + 2], chunk[off + 3]]);
+        for (word, quad) in m.iter_mut().zip(chunk.chunks_exact(4)) {
+            // chunks_exact(4) on a 64-byte slice always yields exactly 16
+            // four-byte slices, so try_into never fails here.
+            if let Ok(bytes) = <[u8; 4]>::try_from(quad) {
+                *word = u32::from_le_bytes(bytes);
+            }
         }
 
         let (mut a, mut b, mut c, mut d) = (a0, b0, c0, d0);
@@ -588,6 +595,16 @@ impl fmt::Display for Ja4 {
 }
 
 // ── profile methods ──────────────────────────────────────────────────────────
+
+/// Truncate a hex string to at most `n` characters on a char boundary.
+///
+/// Returns the full string when it is shorter than `n`.
+fn truncate_hex(s: &str, n: usize) -> &str {
+    // Hex strings are ASCII so floor_char_boundary is equivalent to min(n, len),
+    // but this is safe for any UTF-8 string.
+    let end = s.len().min(n);
+    &s[..end]
+}
 
 /// GREASE values that must be ignored during JA3/JA4 computation.
 const GREASE_VALUES: &[u16] = &[
@@ -667,10 +684,10 @@ impl TlsProfile {
 
     /// Compute the JA4 fingerprint for this profile.
     ///
-    /// JA4 format (JA4_a section):
+    /// JA4 format (`JA4_a` section):
     /// `{q}{version}{sni}{cipher_count:02}{ext_count:02}_{alpn}_{sorted_cipher_hash}_{sorted_ext_hash}`
     ///
-    /// This implements the JA4_a (raw fingerprint) portion. Sorted cipher and
+    /// This implements the `JA4_a` (raw fingerprint) portion. Sorted cipher and
     /// extension hashes use the first 12 hex characters of the SHA-256 —
     /// approximated here by truncated MD5 since we already have that
     /// implementation and the goal is fingerprint *representation*, not
@@ -738,7 +755,8 @@ impl TlsProfile {
             .map(|c| format!("{c:04x}"))
             .collect::<Vec<_>>()
             .join(",");
-        let cipher_hash = &md5_hex(cipher_str.as_bytes())[..12];
+        let cipher_hash_full = md5_hex(cipher_str.as_bytes());
+        let cipher_hash = truncate_hex(&cipher_hash_full, 12);
 
         // Section c: sorted extensions (GREASE + SNI + ALPN stripped),
         // comma-separated, hashed, first 12 hex chars.
@@ -758,7 +776,8 @@ impl TlsProfile {
             .map(|e| format!("{e:04x}"))
             .collect::<Vec<_>>()
             .join(",");
-        let ext_hash = &md5_hex(ext_str.as_bytes())[..12];
+        let ext_hash_full = md5_hex(ext_str.as_bytes());
+        let ext_hash = truncate_hex(&ext_hash_full, 12);
 
         Ja4 {
             fingerprint: format!("{section_a}_{cipher_hash}_{ext_hash}"),
@@ -785,7 +804,7 @@ impl TlsProfile {
     /// let profile = TlsProfile::random_weighted(42);
     /// assert!(!profile.name.is_empty());
     /// ```
-    pub fn random_weighted(seed: u64) -> &'static TlsProfile {
+    pub fn random_weighted(seed: u64) -> &'static Self {
         // Step 1: pick OS (Windows 70%, Mac 20%, Linux 10%).
         let os_roll = rng(seed, 97) % 100;
 
@@ -814,7 +833,7 @@ impl TlsProfile {
 /// Google Chrome 131 TLS fingerprint profile.
 ///
 /// Cipher suites, extensions, and groups sourced from real Chrome 131
-/// ClientHello captures.
+/// `ClientHello` captures.
 ///
 /// # Example
 ///
@@ -1088,9 +1107,194 @@ pub static EDGE_131: LazyLock<TlsProfile> = LazyLock::new(|| TlsProfile {
     alpn_protocols: vec![AlpnProtocol::H2, AlpnProtocol::Http11],
 });
 
+// ── rustls integration ───────────────────────────────────────────────────────
+//
+// Feature-gated behind `tls-config`. Builds a rustls `ClientConfig` from a
+// `TlsProfile` to produce network connections whose TLS `ClientHello` matches
+// the profile's cipher-suite, key-exchange-group, ALPN, and version ordering.
+
+#[cfg(feature = "tls-config")]
+mod rustls_config {
+    use super::*;
+    use std::sync::Arc;
+
+    /// Error building a rustls [`ClientConfig`](rustls::ClientConfig) from a
+    /// [`TlsProfile`].
+    #[derive(Debug, thiserror::Error)]
+    #[non_exhaustive]
+    pub enum TlsConfigError {
+        /// None of the profile's cipher suites are supported by the rustls
+        /// crypto backend.
+        #[error("no supported cipher suites in profile '{0}'")]
+        NoCipherSuites(String),
+
+        /// rustls rejected the protocol version or configuration.
+        #[error("rustls configuration: {0}")]
+        Rustls(#[from] rustls::Error),
+    }
+
+    /// Wrapper around `Arc<rustls::ClientConfig>` built from a [`TlsProfile`].
+    ///
+    /// Pass the inner config to
+    /// `reqwest::ClientBuilder::use_preconfigured_tls` (T14) or use it
+    /// directly with `tokio-rustls`.
+    #[derive(Debug, Clone)]
+    pub struct TlsClientConfig(Arc<rustls::ClientConfig>);
+
+    impl TlsClientConfig {
+        /// Borrow the inner `ClientConfig`.
+        pub fn inner(&self) -> &rustls::ClientConfig {
+            &self.0
+        }
+
+        /// Unwrap into the shared `Arc<ClientConfig>`.
+        pub fn into_inner(self) -> Arc<rustls::ClientConfig> {
+            self.0
+        }
+    }
+
+    impl From<TlsClientConfig> for Arc<rustls::ClientConfig> {
+        fn from(cfg: TlsClientConfig) -> Self {
+            cfg.0
+        }
+    }
+
+    impl TlsProfile {
+        /// Build a rustls `ClientConfig` matching this profile.
+        ///
+        /// Cipher suites and key-exchange groups are reordered to match the
+        /// profile. Entries not supported by the `aws-lc-rs` crypto backend
+        /// are silently skipped (a `tracing::warn` is emitted for each).
+        ///
+        /// # Errors
+        ///
+        /// Returns [`TlsConfigError::NoCipherSuites`] when *none* of the
+        /// profile's cipher suites are available in the backend.
+        ///
+        /// # rustls extension control
+        ///
+        /// rustls emits most TLS extensions automatically:
+        ///
+        /// - `supported_versions`, `key_share`, `signature_algorithms`,
+        ///   `supported_groups`, `server_name`, `psk_key_exchange_modes`, and
+        ///   `ec_point_formats` are managed internally.
+        /// - **ALPN** — set from [`alpn_protocols`](TlsProfile::alpn_protocols)
+        ///   (order-sensitive for fingerprinting).
+        /// - **Cipher suite order** — set via custom `CryptoProvider`.
+        /// - **Key-exchange group order** — set via custom `CryptoProvider`.
+        /// - **TLS version** — constrained to the profile's `tls_versions`.
+        ///
+        /// Extensions like `compress_certificate`, `application_settings`,
+        /// `delegated_credentials`, and `signed_certificate_timestamp` are
+        /// not configurable in rustls and are emitted (or not) based on the
+        /// library version.
+        pub fn to_rustls_config(&self) -> Result<TlsClientConfig, TlsConfigError> {
+            let default = rustls::crypto::aws_lc_rs::default_provider();
+
+            // ── cipher suites ──
+            let suite_map: std::collections::HashMap<u16, rustls::SupportedCipherSuite> = default
+                .cipher_suites
+                .iter()
+                .map(|cs| (u16::from(cs.suite()), *cs))
+                .collect();
+
+            let ordered_suites: Vec<rustls::SupportedCipherSuite> = self
+                .cipher_suites
+                .iter()
+                .filter_map(|id| {
+                    suite_map.get(&id.0).copied().or_else(|| {
+                        tracing::warn!(
+                            cipher_suite_id = id.0,
+                            profile = %self.name,
+                            "cipher suite not supported by rustls aws-lc-rs backend, skipping"
+                        );
+                        None
+                    })
+                })
+                .collect();
+
+            if ordered_suites.is_empty() {
+                return Err(TlsConfigError::NoCipherSuites(self.name.clone()));
+            }
+
+            // ── key-exchange groups ──
+            let group_map: std::collections::HashMap<
+                u16,
+                &'static dyn rustls::crypto::SupportedKxGroup,
+            > = default
+                .kx_groups
+                .iter()
+                .map(|g| (u16::from(g.name()), *g))
+                .collect();
+
+            let ordered_groups: Vec<&'static dyn rustls::crypto::SupportedKxGroup> = self
+                .supported_groups
+                .iter()
+                .filter_map(|sg| {
+                    group_map.get(&sg.iana_value()).copied().or_else(|| {
+                        tracing::warn!(
+                            group_id = sg.iana_value(),
+                            profile = %self.name,
+                            "key-exchange group not supported by rustls, skipping"
+                        );
+                        None
+                    })
+                })
+                .collect();
+
+            // Fall back to provider defaults when no profile groups matched.
+            let kx_groups = if ordered_groups.is_empty() {
+                default.kx_groups.clone()
+            } else {
+                ordered_groups
+            };
+
+            // ── custom CryptoProvider ──
+            let provider = rustls::crypto::CryptoProvider {
+                cipher_suites: ordered_suites,
+                kx_groups,
+                ..default
+            };
+
+            // ── TLS versions ──
+            let versions: Vec<&'static rustls::SupportedProtocolVersion> = self
+                .tls_versions
+                .iter()
+                .map(|v| match v {
+                    TlsVersion::Tls12 => &rustls::version::TLS12,
+                    TlsVersion::Tls13 => &rustls::version::TLS13,
+                })
+                .collect();
+
+            // ── root certificate store ──
+            let mut root_store = rustls::RootCertStore::empty();
+            root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+
+            // ── build ClientConfig ──
+            let mut config = rustls::ClientConfig::builder_with_provider(Arc::new(provider))
+                .with_protocol_versions(&versions)?
+                .with_root_certificates(root_store)
+                .with_no_client_auth();
+
+            // ── ALPN ──
+            config.alpn_protocols = self
+                .alpn_protocols
+                .iter()
+                .map(|p| p.as_str().as_bytes().to_vec())
+                .collect();
+
+            Ok(TlsClientConfig(Arc::new(config)))
+        }
+    }
+}
+
+#[cfg(feature = "tls-config")]
+pub use rustls_config::{TlsClientConfig, TlsConfigError};
+
 // ── tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::panic, clippy::unwrap_used)]
 mod tests {
     use super::*;
 
@@ -1187,7 +1391,7 @@ mod tests {
                 "Firefox 133" => firefox_count += 1,
                 "Edge 131" => edge_count += 1,
                 "Safari 18" => safari_count += 1,
-                other => panic!("unexpected profile: {other}"),
+                other => unreachable!("unexpected profile: {other}"),
             }
         }
 
@@ -1216,8 +1420,8 @@ mod tests {
     #[test]
     fn serde_roundtrip() {
         let profile: &TlsProfile = &CHROME_131;
-        let json = serde_json::to_string(profile).expect("serialize");
-        let deserialized: TlsProfile = serde_json::from_str(&json).expect("deserialize");
+        let json = serde_json::to_string(profile).unwrap();
+        let deserialized: TlsProfile = serde_json::from_str(&json).unwrap();
         assert_eq!(profile, &deserialized);
     }
 
@@ -1255,5 +1459,72 @@ mod tests {
         assert_eq!(SupportedGroup::X25519.iana_value(), 0x001d);
         assert_eq!(SupportedGroup::SecP256r1.iana_value(), 0x0017);
         assert_eq!(SupportedGroup::X25519Kyber768.iana_value(), 0x6399);
+    }
+
+    // ── rustls integration tests ─────────────────────────────────────────
+
+    #[cfg(feature = "tls-config")]
+    mod rustls_tests {
+        use super::super::*;
+
+        #[test]
+        fn chrome_131_config_builds_successfully() {
+            let config = CHROME_131.to_rustls_config().unwrap();
+            // The inner ClientConfig should be accessible.
+            let inner = config.inner();
+            // ALPN must be set.
+            assert!(
+                !inner.alpn_protocols.is_empty(),
+                "ALPN protocols should be set"
+            );
+        }
+
+        #[test]
+        fn alpn_order_matches_profile() {
+            let config = CHROME_131.to_rustls_config().unwrap();
+            let alpn = &config.inner().alpn_protocols;
+            assert_eq!(alpn.len(), 2);
+            assert_eq!(alpn[0], b"h2");
+            assert_eq!(alpn[1], b"http/1.1");
+        }
+
+        #[test]
+        fn all_builtin_profiles_produce_valid_configs() {
+            for profile in [&*CHROME_131, &*FIREFOX_133, &*SAFARI_18, &*EDGE_131] {
+                let result = profile.to_rustls_config();
+                assert!(
+                    result.is_ok(),
+                    "profile '{}' should produce a valid config: {:?}",
+                    profile.name,
+                    result.err()
+                );
+            }
+        }
+
+        #[test]
+        fn unsupported_only_suites_returns_error() {
+            let profile = TlsProfile {
+                name: "Bogus".to_string(),
+                cipher_suites: vec![CipherSuiteId(0xFFFF)],
+                tls_versions: vec![TlsVersion::Tls13],
+                extensions: vec![],
+                supported_groups: vec![],
+                signature_algorithms: vec![],
+                alpn_protocols: vec![],
+            };
+            let err = profile.to_rustls_config().unwrap_err();
+            assert!(
+                err.to_string().contains("no supported cipher suites"),
+                "expected NoCipherSuites, got: {err}"
+            );
+        }
+
+        #[test]
+        fn into_arc_conversion() {
+            let config = CHROME_131.to_rustls_config().unwrap();
+            let arc: std::sync::Arc<rustls::ClientConfig> = config.into();
+            // Should be valid — just verify it doesn't panic.
+            assert!(!arc.alpn_protocols.is_empty());
+        }
     }
 }

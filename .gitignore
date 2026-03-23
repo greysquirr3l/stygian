@@ -86,3 +86,4 @@ tasks/
 .vscode/
 
 reference_materials/
+crates/stygian-proxy/docs

@@ -17,7 +17,7 @@
 | Task | Status | Notes |
 |---|---|---|
 | T12 — TLS Profile Domain Types & JA3/JA4 Representation | `[x]` | |
-| T13 — rustls ClientConfig Builder from TLS Profiles | `[ ]` | Depends on T12 |
+| T13 — rustls ClientConfig Builder from TLS Profiles | `[x]` | |
 | T14 — reqwest Client Builder with TLS Profile Support | `[ ]` | Depends on T13 |
 | T15 — Chrome Launch Flags for TLS Consistency | `[ ]` | Depends on T12 |
 
@@ -29,7 +29,7 @@
 
 | Task | Status | Notes |
 |---|---|---|
-| T16 — Sticky Session Domain Types & Policy | `[ ]` | |
+| T16 — Sticky Session Domain Types & Policy | `[~]` | |
 | T17 — ProxyManager Sticky Session Integration | `[ ]` | Depends on T16 |
 
 ---

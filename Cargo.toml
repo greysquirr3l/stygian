@@ -73,6 +73,10 @@ axum = { version = "0.8", features = ["macros"] }
 tower-http = { version = "0.6", features = ["cors", "trace", "compression-full"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 
+# TLS configuration
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12"] }
+webpki-roots = "0.26"
+
 # Cryptography (webhook signature verification)
 hmac = "0.12"
 sha2 = "0.10"
