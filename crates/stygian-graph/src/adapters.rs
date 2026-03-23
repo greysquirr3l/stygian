@@ -87,6 +87,10 @@ pub mod agent_source;
 #[cfg(feature = "redis")]
 pub mod cache_redis;
 
+/// Redis Streams work queue adapter (feature = "redis")
+#[cfg(feature = "redis")]
+pub mod distributed_redis;
+
 /// Sitemap / sitemap-index source adapter
 pub mod sitemap;
 
