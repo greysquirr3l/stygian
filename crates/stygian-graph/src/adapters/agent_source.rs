@@ -1,6 +1,6 @@
-//! Agent source adapter — wraps an [`AIProvider`] as a pipeline data source.
+//! Agent source adapter — wraps an [`AIProvider`](crate::ports::AIProvider) as a pipeline data source.
 //!
-//! Implements [`AgentSourcePort`] and [`ScrapingService`] so that an LLM can
+//! Implements [`AgentSourcePort`](crate::ports::agent_source::AgentSourcePort) and [`ScrapingService`](crate::ports::ScrapingService) so that an LLM can
 //! be used as a node in the DAG pipeline.  Unlike the AI adapters (which
 //! *extract* structured data from existing content), this adapter *generates*
 //! content by executing a user-supplied prompt.

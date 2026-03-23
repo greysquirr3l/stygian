@@ -1,10 +1,10 @@
 //! Webhook trigger adapter — axum-based HTTP listener.
 //!
-//! Implements [`WebhookTrigger`] with an embedded axum server that accepts
+//! Implements [`WebhookTrigger`](crate::ports::webhook::WebhookTrigger) with an embedded axum server that accepts
 //! inbound webhooks, verifies HMAC-SHA256 signatures, enforces body-size limits,
-//! and emits [`WebhookEvent`]s via a channel.
+//! and emits [`WebhookEvent`](crate::ports::webhook::WebhookEvent)s via a channel.
 //!
-//! Also implements [`ScrapingService`] so a pipeline node can start a webhook
+//! Also implements [`ScrapingService`](crate::ports::ScrapingService) so a pipeline node can start a webhook
 //! listener and wait for the next event as input.
 //!
 //! # Feature gate

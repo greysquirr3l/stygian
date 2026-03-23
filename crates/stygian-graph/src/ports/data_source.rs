@@ -1,6 +1,6 @@
 //! Database source port — query databases as pipeline data sources.
 //!
-//! Defines the [`DataSourcePort`] trait for executing queries against
+//! Defines the [`DataSourcePort`](crate::ports::data_source::DataSourcePort) trait for executing queries against
 //! relational or document databases and returning results as
 //! [`serde_json::Value`] rows.
 //!

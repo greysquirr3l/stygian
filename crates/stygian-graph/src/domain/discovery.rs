@@ -1,7 +1,7 @@
 //! API discovery domain types.
 //!
 //! Provides generic types for reverse-engineering undocumented REST APIs.
-//! An API prober builds a [`DiscoveryReport`] by analysing JSON responses
+//! An API prober builds a [`DiscoveryReport`](crate::domain::discovery::DiscoveryReport) by analysing JSON responses
 //! from target endpoints; the report can then be fed to
 //! [`OpenApiGenerator`](crate::adapters::openapi_gen::OpenApiGenerator) to
 //! produce an [`openapiv3::OpenAPI`] specification.

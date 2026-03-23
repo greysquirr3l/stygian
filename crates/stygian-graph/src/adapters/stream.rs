@@ -1,6 +1,6 @@
 //! Server-Sent Events (SSE) stream adapter.
 //!
-//! Implements [`StreamSourcePort`] and [`ScrapingService`] for consuming
+//! Implements [`StreamSourcePort`](crate::ports::stream_source::StreamSourcePort) and [`ScrapingService`](crate::ports::ScrapingService) for consuming
 //! SSE event streams via HTTP.  Uses `reqwest` for the underlying connection.
 //!
 //! # Example

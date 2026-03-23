@@ -1,4 +1,4 @@
-//! Redis / Valkey [`CachePort`] adapter
+//! Redis / Valkey [`CachePort`](crate::ports::CachePort) adapter
 //!
 //! Feature-gated behind `redis`. Uses [`deadpool_redis`] for async connection
 //! pooling and supports optional key-prefix namespacing so multiple tenants can

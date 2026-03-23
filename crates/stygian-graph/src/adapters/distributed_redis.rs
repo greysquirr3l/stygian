@@ -1,11 +1,11 @@
-//! Redis Streams [`WorkQueuePort`] adapter
+//! Redis Streams [`WorkQueuePort`](crate::ports::work_queue::WorkQueuePort) adapter
 //!
 //! Production-grade distributed work queue backed by Redis Streams with
 //! consumer groups, dead-letter queues, and stuck-task reclamation.
 //!
 //! # Feature gate
 //!
-//! Requires `feature = "redis"` (shared with [`RedisCache`](super::cache_redis)).
+//! Requires `feature = "redis"` (shared with [`RedisCache`](crate::adapters::cache_redis::RedisCache)).
 //!
 //! # Architecture
 //!
@@ -106,7 +106,7 @@ impl RedisWorkQueue {
         Ok(queue)
     }
 
-    /// Create from an existing pool (share pool with [`RedisCache`](super::cache_redis)).
+    /// Create from an existing pool (share pool with [`RedisCache`](crate::adapters::cache_redis::RedisCache)).
     pub async fn from_pool(pool: Pool, config: RedisWorkQueueConfig) -> Result<Self> {
         let queue = Self { pool, config };
         queue.ensure_consumer_group().await?;

@@ -1,4 +1,4 @@
-//! RSS / Atom feed [`ScrapingService`] adapter
+//! RSS / Atom feed [`ScrapingService`](crate::ports::ScrapingService) adapter
 //!
 //! Parses RSS 1.0, RSS 2.0, Atom, and JSON Feed formats via the `feed-rs`
 //! crate, returning feed items as structured JSON for downstream pipeline nodes.

@@ -1,6 +1,6 @@
 //! Document source port — read local files as pipeline data sources.
 //!
-//! Defines the [`DocumentSourcePort`] trait for reading documents (CSV, JSON,
+//! Defines the [`DocumentSourcePort`](crate::ports::document_source::DocumentSourcePort) trait for reading documents (CSV, JSON,
 //! Markdown, plain text, etc.) from the local file system and returning their
 //! content for downstream processing.
 //!

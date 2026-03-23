@@ -1,6 +1,6 @@
 //! WebSocket stream source adapter.
 //!
-//! Implements [`StreamSourcePort`] and [`ScrapingService`] for consuming
+//! Implements [`StreamSourcePort`](crate::ports::stream_source::StreamSourcePort) and [`ScrapingService`](crate::ports::ScrapingService) for consuming
 //! WebSocket feeds.  Uses `tokio-tungstenite` for the underlying connection.
 //!
 //! # Example

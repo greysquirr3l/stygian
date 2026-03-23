@@ -1,4 +1,4 @@
-//! Sitemap / sitemap-index [`ScrapingService`] adapter
+//! Sitemap / sitemap-index [`ScrapingService`](crate::ports::ScrapingService) adapter
 //!
 //! Parses XML sitemaps (`<urlset>`) and sitemap index files (`<sitemapindex>`),
 //! emitting discovered URLs with metadata for downstream pipeline nodes.

@@ -1,6 +1,6 @@
 //! Webhook trigger port — accept inbound HTTP requests that start pipelines.
 //!
-//! Defines the [`WebhookTrigger`] trait and associated types.  The port contains
+//! Defines the [`WebhookTrigger`](crate::ports::webhook::WebhookTrigger) trait and associated types.  The port contains
 //! **zero** infrastructure dependencies: adapters (e.g. axum, actix) implement
 //! the trait with real HTTP servers.
 //!

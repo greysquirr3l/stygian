@@ -1,6 +1,6 @@
 //! File system document source adapter.
 //!
-//! Implements [`DocumentSourcePort`] and [`ScrapingService`] for reading files
+//! Implements [`DocumentSourcePort`](crate::ports::document_source::DocumentSourcePort) and [`ScrapingService`](crate::ports::ScrapingService) for reading files
 //! from the local file system.  Supports glob-based file discovery, recursive
 //! directory traversal, and MIME-type detection.
 //!

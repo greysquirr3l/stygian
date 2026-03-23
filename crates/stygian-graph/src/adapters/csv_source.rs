@@ -1,4 +1,4 @@
-//! CSV / TSV [`DataSourcePort`] and [`ScrapingService`] adapter.
+//! CSV / TSV [`DataSourcePort`](crate::ports::data_source::DataSourcePort) and [`ScrapingService`](crate::ports::ScrapingService) adapter.
 //!
 //! Reads structured data from CSV or TSV files, returning rows as JSON objects
 //! with column names from the header row as keys.

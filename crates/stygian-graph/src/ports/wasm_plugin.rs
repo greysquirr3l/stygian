@@ -1,7 +1,7 @@
 //! WASM plugin port — dynamic plugin system
 //!
 //! Defines the interface for loading and executing WebAssembly plugins that
-//! implement the [`ScrapingService`] interface.  Any language that compiles to
+//! implement the [`ScrapingService`](crate::ports::ScrapingService) interface.  Any language that compiles to
 //! WASM + WASI can be used to write a Stygian plugin.
 //!
 //! # Architecture

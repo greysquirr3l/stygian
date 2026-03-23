@@ -1,6 +1,6 @@
 //! Database source adapter — queries PostgreSQL as a pipeline data source.
 //!
-//! Implements [`DataSourcePort`] and [`ScrapingService`] so database queries
+//! Implements [`DataSourcePort`](crate::ports::data_source::DataSourcePort) and [`ScrapingService`](crate::ports::ScrapingService) so database queries
 //! can participate in a DAG pipeline as a first-class node.
 //!
 //! Requires the `postgres` feature flag (`sqlx` dependency).

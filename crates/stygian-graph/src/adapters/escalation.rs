@@ -1,14 +1,14 @@
 //! Default escalation policy adapter.
 //!
-//! Implements [`EscalationPolicy`] with:
+//! Implements [`EscalationPolicy`](crate::ports::escalation::EscalationPolicy) with:
 //! - Automatic challenge detection (Cloudflare, DataDome, PerimeterX, CAPTCHA)
 //! - Per-domain tier cache (learning cache with configurable TTL)
 //! - Configurable `max_tier` and `base_tier`
 //!
 //! # Challenge detection
 //!
-//! [`DefaultEscalationPolicy::context_from_body`] inspects the response body
-//! for well-known markers and populates a [`ResponseContext`] automatically.
+//! [`DefaultEscalationPolicy::context_from_body`](crate::adapters::escalation::DefaultEscalationPolicy::context_from_body) inspects the response body
+//! for well-known markers and populates a [`ResponseContext`](crate::ports::escalation::ResponseContext) automatically.
 //! Both `has_cloudflare_challenge` and DataDome/PerimeterX markers map to the
 //! `has_cloudflare_challenge` field (treated as "any anti-bot challenge").
 //!
@@ -38,8 +38,8 @@
 //! assert!(policy.should_escalate(&ctx, EscalationTier::HttpPlain).is_some());
 //! ```
 //!
-//! [`record_tier_success`]: DefaultEscalationPolicy::record_tier_success
-//! [`initial_tier_for_domain`]: DefaultEscalationPolicy::initial_tier_for_domain
+//! [`record_tier_success`]: crate::adapters::escalation::DefaultEscalationPolicy::record_tier_success
+//! [`initial_tier_for_domain`]: crate::adapters::escalation::DefaultEscalationPolicy::initial_tier_for_domain
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};

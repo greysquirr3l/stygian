@@ -1,6 +1,6 @@
 //! Tiered request escalation port.
 //!
-//! Defines the [`EscalationPolicy`] trait for deciding when and how to
+//! Defines the [`EscalationPolicy`](crate::ports::escalation::EscalationPolicy) trait for deciding when and how to
 //! escalate a failed request from a lightweight tier (plain HTTP) to a
 //! heavier one (TLS-profiled HTTP, basic browser, advanced browser).
 //!
@@ -11,10 +11,10 @@
 //!
 //! | Tier | Description |
 //! |---|---|
-//! | [`HttpPlain`](EscalationTier::HttpPlain) | Standard HTTP client, no stealth |
-//! | [`HttpTlsProfiled`](EscalationTier::HttpTlsProfiled) | HTTP with TLS fingerprint matching |
-//! | [`BrowserBasic`](EscalationTier::BrowserBasic) | Headless browser with basic stealth |
-//! | [`BrowserAdvanced`](EscalationTier::BrowserAdvanced) | Full stealth browser (CDP fixes, JS patches) |
+//! | [`HttpPlain`](crate::ports::escalation::EscalationTier::HttpPlain) | Standard HTTP client, no stealth |
+//! | [`HttpTlsProfiled`](crate::ports::escalation::EscalationTier::HttpTlsProfiled) | HTTP with TLS fingerprint matching |
+//! | [`BrowserBasic`](crate::ports::escalation::EscalationTier::BrowserBasic) | Headless browser with basic stealth |
+//! | [`BrowserAdvanced`](crate::ports::escalation::EscalationTier::BrowserAdvanced) | Full stealth browser (CDP fixes, JS patches) |
 //!
 //! # Example
 //!

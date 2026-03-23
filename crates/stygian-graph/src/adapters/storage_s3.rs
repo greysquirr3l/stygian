@@ -1,9 +1,9 @@
 //! S3-compatible object storage adapter.
 //!
-//! Implements [`StoragePort`] for AWS S3, MinIO, Cloudflare R2, DigitalOcean Spaces,
+//! Implements [`StoragePort`](crate::ports::storage::StoragePort) for AWS S3, MinIO, Cloudflare R2, DigitalOcean Spaces,
 //! and any S3-compatible endpoint.
 //!
-//! Also implements [`ScrapingService`] so objects stored in S3 can be used as pipeline
+//! Also implements [`ScrapingService`](crate::ports::ScrapingService) so objects stored in S3 can be used as pipeline
 //! input sources.
 //!
 //! # Feature gate
@@ -18,7 +18,7 @@
 //! # Authentication
 //!
 //! Reads `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` from the environment (or
-//! from the [`S3StorageConfig`]).  For non-AWS providers set `endpoint` to your
+//! from the [`S3StorageConfig`](crate::adapters::storage_s3::S3StorageConfig)).  For non-AWS providers set `endpoint` to your
 //! custom S3-compatible URL (MinIO, R2, Spaces, Backblaze B2, etc.).
 
 use crate::domain::error::{Result, ServiceError, StygianError};

@@ -24,10 +24,10 @@
 //!
 //! ## `BudgetGuard` (RAII)
 //!
-//! [`BudgetGuard`] wraps `pre_flight_reserve` + `release_reservation` into a
+//! [`BudgetGuard`](crate::adapters::graphql_throttle::BudgetGuard) wraps `pre_flight_reserve` + `release_reservation` into a
 //! scope-based guard so callers no longer need to track every exit path
-//! manually.  Call [`BudgetGuard::acquire`] before the request and
-//! [`BudgetGuard::release`] on the success path.  If `release()` is never
+//! manually.  Call [`BudgetGuard::acquire`](crate::adapters::graphql_throttle::BudgetGuard::acquire) before the request and
+//! [`BudgetGuard::release`](crate::adapters::graphql_throttle::BudgetGuard::release) on the success path.  If `release()` is never
 //! called (e.g. early return or `?` propagation), the `Drop` impl spawns a
 //! background task to release the reservation as a safety net.
 //!
