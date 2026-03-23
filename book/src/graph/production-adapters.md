@@ -52,9 +52,9 @@ graph LR
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
 | `url` | `String` | `"redis://127.0.0.1:6379"` | Redis connection URL |
-| `prefix` | `String` | `"stygian"` | Key namespace prefix |
+| `key_prefix` | `Option<String>` | `None` | Key namespace prefix for isolation |
 | `pool_size` | `usize` | `8` | Connection pool size |
-| `default_ttl_secs` | `u64` | `3600` | Default TTL for cached entries |
+| `default_ttl` | `Option<Duration>` | `None` | Default TTL when `set()` receives `ttl = None` |
 
 ### Operations
 
@@ -71,8 +71,8 @@ name = "cache"
 kind = "cache-redis"
 
 [services.config]
-url    = "redis://127.0.0.1:6379"
-prefix = "myapp:cache"
+url        = "redis://127.0.0.1:6379"
+key_prefix = "myapp:cache"
 
 [[nodes]]
 name    = "fetch"
@@ -115,7 +115,7 @@ graph LR
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
 | `lastmod_after` | `String` (ISO 8601) | none | Only include URLs modified after this date |
-| `max_depth` | `u32` | `3` | Max recursion depth for sitemap index |
+| `max_depth` | `usize` | `3` | Max recursion depth for sitemap index |
 
 ### Output format
 
@@ -205,7 +205,6 @@ graph LR
 | `max_messages` | `u32` | `100` | Stop after collecting N messages |
 | `timeout_secs` | `u64` | `60` | Max seconds to wait for messages |
 | `subscribe_message` | `String` | none | JSON message sent on connect (e.g. channel subscription) |
-| `ping_interval_secs` | `u64` | `30` | WebSocket ping keepalive interval |
 
 ---
 
@@ -225,10 +224,9 @@ and row pagination.
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
 | `delimiter` | `String` | auto-detect | Column delimiter (`,`, `\t`, `;`, `\|`) |
-| `has_header` | `bool` | `true` | Whether the first row is a header |
-| `skip_rows` | `u32` | `0` | Skip N rows before the header |
-| `max_rows` | `u32` | none | Limit number of rows processed |
-| `encoding` | `String` | auto-detect | Force character encoding |
+| `has_headers` | `bool` | `true` | Whether the first row contains column names |
+| `skip` | `usize` | `0` | Skip N rows before the header |
+| `limit` | `Option<u64>` | none | Limit number of rows processed |
 
 ---
 
@@ -313,11 +311,13 @@ graph TB
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
 | `url` | `String` | `"redis://127.0.0.1:6379"` | Redis connection URL |
-| `stream_name` | `String` | `"stygian:work"` | Redis stream key |
-| `consumer_group` | `String` | `"workers"` | Consumer group name |
+| `stream_name` | `String` | `"stygian:tasks"` | Redis stream key |
+| `group_name` | `String` | `"stygian-workers"` | Consumer group name |
+| `consumer_name` | `String` | `"{hostname}:{pid}"` | Unique consumer name (auto-generated) |
 | `max_retries` | `u32` | `3` | Max retries before dead-letter |
-| `claim_timeout_ms` | `u64` | `30000` | Reclaim stuck tasks after this duration |
-| `pool_size` | `usize` | `4` | Connection pool size |
+| `block_timeout_ms` | `usize` | `1000` | Block timeout for XREADGROUP |
+| `idle_threshold_ms` | `usize` | `30000` | Reclaim stuck tasks after this duration |
+| `pool_size` | `usize` | `8` | Connection pool size |
 
 ### Operations
 
@@ -325,7 +325,7 @@ graph TB
 - **Dequeue**: `XREADGROUP` with consumer group (competing-consumer pattern)
 - **Acknowledge**: `XACK` + metadata update on success; retry counter on failure
 - **Dead-letter**: After `max_retries`, task moved to `{stream}:dlq`
-- **Reclaim**: `XCLAIM` for tasks idle longer than `claim_timeout_ms`
+- **Reclaim**: `XCLAIM` for tasks idle longer than `idle_threshold_ms`
 
 Consumer names are `{hostname}:{pid}` for traceability.
 

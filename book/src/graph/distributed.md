@@ -35,22 +35,27 @@ docker run -d --name valkey -p 6379:6379 valkey/valkey:8
 docker run -d --name redis -p 6379:6379 redis:7
 ```
 
-### 2. Enable the `distributed` feature
+### 2. Enable the `redis` feature
 
 ```toml
 # Cargo.toml
-stygian-graph = { version = "0.1", features = ["distributed"] }
+stygian-graph = { version = "0.1", features = ["redis"] }
 ```
 
 ### 3. Create a work queue and executor
 
 ```rust
-use stygian_graph::adapters::{DistributedDagExecutor, RedisWorkQueue};
+use stygian_graph::adapters::distributed_redis::{RedisWorkQueue, RedisWorkQueueConfig};
+use stygian_graph::adapters::distributed::DistributedDagExecutor;
 use stygian_graph::application::registry::ServiceRegistry;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let queue    = RedisWorkQueue::new("redis://localhost:6379").await?;
+    let config = RedisWorkQueueConfig {
+        url: "redis://localhost:6379".into(),
+        ..Default::default()
+    };
+    let queue    = RedisWorkQueue::new(config).await?;
     let registry = ServiceRegistry::default_with_env()?;
 
     // Spawn 10 concurrent workers on this process

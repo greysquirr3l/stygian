@@ -686,3 +686,21 @@ let signer: Arc<dyn ErasedSigningPort> = Arc::new(
 ```
 
 See [Request Signing](./signing.md) for the full sidecar wire format, Frida RPC bridge example, and guide to implementing a pure-Rust `SigningPort`.
+
+---
+
+## Additional production adapters
+
+Beyond the core adapters above, stygian ships production-grade adapters for
+caching, discovery, streaming, cloud storage, distributed queues, and webhooks.
+These are documented in the [Production Adapters](./production-adapters.md)
+chapter and include:
+
+- **Redis/Valkey Cache** — distributed `CachePort` (feature: `redis`)
+- **Sitemap / Sitemap Index Source** — XML sitemap discovery
+- **RSS / Atom Feed Source** — feed parsing with `feed-rs`
+- **WebSocket Stream Source** — real-time `StreamSourcePort`
+- **CSV / TSV Data Source** — structured file input
+- **S3-Compatible Object Storage** — `StoragePort` for S3/MinIO/R2 (feature: `object-storage`)
+- **Redis Streams Work Queue** — distributed `WorkQueuePort` (feature: `redis`)
+- **Webhook Trigger** — axum-based HTTP listener (feature: `api`)
