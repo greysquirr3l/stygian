@@ -72,6 +72,15 @@ fn ok_response(id: &Value, result: Value) -> Value {
 // ─── Active handle store ──────────────────────────────────────────────────────
 
 /// Active proxy handles keyed by ULID token, waiting for explicit release.
+///
+/// # Leak note
+///
+/// TODO: implement a TTL-based cleanup mechanism for orphaned handles.
+/// Handle entries are removed only on `proxy_release`.  If a client crashes or
+/// loses the token, the stored `ProxyHandle` remains in memory until the server
+/// exits.  This is acceptable for typical scraping workloads (sessions are
+/// short-lived and servers are restarted regularly), but a production deployment
+/// that expects long uptimes should add a TTL-based cleanup background task.
 type HandleStore = Arc<Mutex<HashMap<String, ProxyHandle>>>;
 
 // ─── Server ───────────────────────────────────────────────────────────────────

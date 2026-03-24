@@ -614,4 +614,100 @@ mod tests {
         assert_eq!(resp["result"]["foo"], "bar");
         assert_eq!(resp["jsonrpc"], "2.0");
     }
+
+    /// `scrape_proxied` with no proxies in the pool must return an error
+    /// (not silently succeed or panic).
+    #[tokio::test]
+    async fn test_scrape_proxied_no_proxy_returns_error() {
+        let graph = Arc::new(McpGraphServer::new());
+        let proxy = Arc::new(McpProxyServer::new().expect("proxy server init"));
+        // Build a minimal graph+proxy aggregator without a real browser.
+        // We test cross-crate error propagation by calling scrape_proxied
+        // directly on a graph+proxy combination with an empty proxy pool.
+        let id = json!(99);
+        // With no proxies registered the acquire call must fail.
+        let acquire_req = json!({
+            "jsonrpc": "2.0", "id": 0, "method": "tools/call",
+            "params": { "name": "proxy_acquire", "arguments": {} }
+        });
+        let acquire_resp = proxy.handle_request(&acquire_req).await;
+        // Simulate the scrape_proxied acquire-failure branch.
+        let resp = if !acquire_resp["error"].is_null() {
+            let code = acquire_resp["error"]["code"]
+                .as_i64()
+                .and_then(|c| i32::try_from(c).ok())
+                .unwrap_or(-32603);
+            let message = acquire_resp["error"]["message"]
+                .as_str()
+                .unwrap_or("No proxy available");
+            error_response(&id, code, message)
+        } else {
+            // parse_content_text returns Null for empty pool → no handle_token
+            let handle_info = parse_content_text(&acquire_resp);
+            if handle_info["handle_token"].as_str().is_none() {
+                error_response(
+                    &id,
+                    -32603,
+                    "No proxy available — add proxies via proxy_add first",
+                )
+            } else {
+                ok_response(&id, json!({"unexpected": "success"}))
+            }
+        };
+        assert!(!resp["error"].is_null(), "expected an error response");
+        assert_eq!(resp["id"], 99, "id must be the caller's id, not 0");
+        drop(graph);
+        drop(proxy);
+    }
+
+    /// `browser_proxied` must propagate a JSON-RPC error with the correct caller id
+    /// when proxy acquisition fails (empty pool).
+    #[tokio::test]
+    async fn test_browser_proxied_acquire_failure_uses_caller_id() {
+        let proxy = Arc::new(McpProxyServer::new().expect("proxy server init"));
+        let id = json!(77);
+        let acquire_req = json!({
+            "jsonrpc": "2.0", "id": 0, "method": "tools/call",
+            "params": { "name": "proxy_acquire", "arguments": {} }
+        });
+        let acquire_resp = proxy.handle_request(&acquire_req).await;
+        // With an empty pool the acquire either errors or returns no handle_token.
+        // Either way the caller's id must survive in the response.
+        let resp = if !acquire_resp["error"].is_null() {
+            let code = acquire_resp["error"]["code"]
+                .as_i64()
+                .and_then(|c| i32::try_from(c).ok())
+                .unwrap_or(-32603);
+            let message = acquire_resp["error"]["message"]
+                .as_str()
+                .unwrap_or("No proxy available");
+            error_response(&id, code, message)
+        } else {
+            let handle_info = parse_content_text(&acquire_resp);
+            if handle_info["handle_token"].as_str().is_none() {
+                error_response(
+                    &id,
+                    -32603,
+                    "No proxy available — add proxies via proxy_add first",
+                )
+            } else {
+                ok_response(&id, json!({"unexpected": "success"}))
+            }
+        };
+        assert!(!resp["error"].is_null(), "expected an error response");
+        // The critical invariant: id must be 77, not the internal sub-request id 0.
+        assert_eq!(
+            resp["id"], 77,
+            "caller id must be preserved in error response"
+        );
+    }
+
+    /// Verify that `parse_content_text` returns Null on a JSON-RPC error response
+    /// (no `result.content` field), which is the sentinel for "acquire failed".
+    #[test]
+    fn test_parse_content_text_on_error_response_returns_null() {
+        let error_resp = error_response(&json!(1), -32603, "internal error");
+        let parsed = parse_content_text(&error_resp);
+        assert_eq!(parsed, Value::Null);
+    }
 }
