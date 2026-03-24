@@ -29,8 +29,8 @@
 //!   pipeline_*        verify, release
 //! ```
 //!
-//! Tools are prefixed by crate: `graph::scrape`, `browser::browser_acquire`,
-//! `proxy::proxy_add`.  The aggregator itself adds two cross-crate tools:
+//! Tools are prefixed by crate: `graph_scrape`, `browser_acquire`,
+//! `proxy_add`.  The aggregator itself adds two cross-crate tools:
 //!
 //! | Tool | Description |
 //! | ---- | ----------- |

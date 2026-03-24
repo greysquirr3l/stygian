@@ -8,7 +8,7 @@
 
 ```toml
 [dependencies]
-stygian-proxy = { version = "0.4", features = ["mcp"] }
+stygian-proxy = { version = "0.5.0", features = ["mcp"] }
 ```
 
 The proxy MCP server is primarily designed to be used through the [aggregator](./aggregator.md),
@@ -39,7 +39,7 @@ Register a new proxy in the pool.
 | Parameter | Type | Required | Description |
 | --------- | ---- | -------- | ----------- |
 | `url` | string | ✓ | Proxy URL — e.g. `http://proxy:8080` or `socks5://user:pass@host:1080` |
-| `proxy_type` | string | | `Http` \| `Https` \| `Socks4` \| `Socks5` (default: inferred from URL scheme) |
+| `proxy_type` | string | | `http` \| `https` \| `socks4` \| `socks5` (default: inferred from the URL scheme) |
 | `username` | string | | Proxy username |
 | `password` | string | | Proxy password |
 | `weight` | integer | | Selection weight for weighted rotation (default: 1) |

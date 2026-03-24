@@ -283,12 +283,24 @@ impl McpAggregator {
             None => return error_response(id, -32602, "Missing 'url'"),
         };
 
+        let timeout_secs = args["timeout_secs"].as_u64().unwrap_or(30);
+
         // 1. Acquire a proxy from the pool.
         let acquire_req = json!({
             "jsonrpc": "2.0", "id": 0, "method": "tools/call",
             "params": { "name": "proxy_acquire", "arguments": {} }
         });
         let acquire_resp = self.proxy.handle_request(&acquire_req).await;
+        // Propagate a real error from proxy_acquire before falling back to the generic message.
+        if !acquire_resp["error"].is_null() {
+            return error_response(
+                id,
+                -32603,
+                acquire_resp["error"]["message"]
+                    .as_str()
+                    .unwrap_or("No proxy available — add proxies via proxy_add first"),
+            );
+        }
         let handle_info = parse_content_text(&acquire_resp);
         let handle_token = match handle_info["handle_token"].as_str() {
             Some(t) => t.to_string(),
@@ -308,12 +320,12 @@ impl McpAggregator {
             }
         };
 
-        // 2. Scrape via the acquired proxy.
+        // 2. Scrape via the acquired proxy, forwarding the caller's timeout.
         let scrape_req = json!({
             "jsonrpc": "2.0", "id": 0, "method": "tools/call",
             "params": {
                 "name": "scrape",
-                "arguments": { "url": url, "proxy_url": proxy_url }
+                "arguments": { "url": url, "proxy_url": proxy_url, "timeout_secs": timeout_secs }
             }
         });
         let scrape_resp = self.graph.handle_request(&scrape_req).await;
@@ -350,6 +362,15 @@ impl McpAggregator {
             "params": { "name": "proxy_acquire", "arguments": {} }
         });
         let acquire_resp = self.proxy.handle_request(&acquire_req).await;
+        if !acquire_resp["error"].is_null() {
+            return error_response(
+                id,
+                -32603,
+                acquire_resp["error"]["message"]
+                    .as_str()
+                    .unwrap_or("No proxy available — add proxies via proxy_add first"),
+            );
+        }
         let handle_info = parse_content_text(&acquire_resp);
         let handle_token = match handle_info["handle_token"].as_str() {
             Some(t) => t.to_string(),
@@ -395,6 +416,28 @@ impl McpAggregator {
         let nav_resp = self.browser.dispatch(&nav_req).await;
         let nav_ok = nav_resp["error"].is_null();
 
+        // Short-circuit: if navigation failed, release resources and propagate the error.
+        if !nav_ok {
+            let _ = self
+                .browser
+                .dispatch(&json!({
+                    "jsonrpc": "2.0", "id": 0, "method": "tools/call",
+                    "params": {
+                        "name": "browser_release",
+                        "arguments": { "session_id": session_id }
+                    }
+                }))
+                .await;
+            release_proxy(&self.proxy, &handle_token, false).await;
+            return error_response(
+                id,
+                -32603,
+                nav_resp["error"]["message"]
+                    .as_str()
+                    .unwrap_or("Browser navigation failed"),
+            );
+        }
+
         // 4. Capture HTML content.
         let content_req = json!({
             "jsonrpc": "2.0", "id": 0, "method": "tools/call",
@@ -404,6 +447,7 @@ impl McpAggregator {
             }
         });
         let content_resp = self.browser.dispatch(&content_req).await;
+        let content_ok = content_resp["error"].is_null();
 
         // 5. Release browser session.
         let _ = self
@@ -417,12 +461,31 @@ impl McpAggregator {
             }))
             .await;
 
-        // 6. Release proxy.
-        release_proxy(&self.proxy, &handle_token, nav_ok).await;
+        // 6. Release proxy — success only if both nav and content succeeded.
+        release_proxy(&self.proxy, &handle_token, content_ok).await;
 
-        // 7. Return combined result.
-        let nav_text = nav_resp["result"]["content"][0]["text"].clone();
-        let html_text = content_resp["result"]["content"][0]["text"].clone();
+        if !content_ok {
+            return error_response(
+                id,
+                -32603,
+                content_resp["error"]["message"]
+                    .as_str()
+                    .unwrap_or("Browser content retrieval failed"),
+            );
+        }
+
+        // 7. Return combined result — parse sub-tool text fields as JSON to avoid
+        //    double-encoded strings in the aggregated output.
+        let nav_text_raw = &nav_resp["result"]["content"][0]["text"];
+        let html_text_raw = &content_resp["result"]["content"][0]["text"];
+        let nav_json = nav_text_raw
+            .as_str()
+            .and_then(|s| serde_json::from_str::<Value>(s).ok())
+            .unwrap_or_else(|| nav_text_raw.clone());
+        let html_json = html_text_raw
+            .as_str()
+            .and_then(|s| serde_json::from_str::<Value>(s).ok())
+            .unwrap_or_else(|| html_text_raw.clone());
 
         ok_response(
             id,
@@ -430,8 +493,8 @@ impl McpAggregator {
                 "content": [{
                     "type": "text",
                     "text": serde_json::to_string(&json!({
-                        "navigation": nav_text,
-                        "html":       html_text
+                        "navigation": nav_json,
+                        "html":       html_json
                     }))
                     .unwrap_or_default()
                 }]

@@ -9,11 +9,11 @@ proxy pools without writing any Rust code.
 
 ## Deployment modes
 
-| Mode | Crate | When to use |
-| ---- | ----- | ----------- |
-| **Graph MCP** | `stygian-graph --features mcp` | Scraping pipelines and DAG execution only |
-| **Browser MCP** | `stygian-browser --features mcp` | Browser automation only |
-| **Proxy MCP** | `stygian-proxy --features mcp` | Proxy pool management only |
+| Mode | Crate / deployment | When to use |
+| ---- | ------------------ | ----------- |
+| **Graph MCP** | `stygian-graph` (embed `McpGraphServer` in your binary) | Scraping pipelines and DAG execution only |
+| **Browser MCP** | `stygian-browser` (embed `McpBrowserServer` in your binary) | Browser automation only |
+| **Proxy MCP** | `stygian-proxy` (embed `McpProxyServer` in your binary) | Proxy pool management only |
 | **Aggregator** | `stygian-mcp` (binary) | All capabilities in one server — recommended |
 
 For most LLM agent integrations, run the **aggregator** — it merges all three tool surfaces into

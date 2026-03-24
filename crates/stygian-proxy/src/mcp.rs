@@ -9,7 +9,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! stygian-proxy = { version = "0.4", features = ["mcp"] }
+//! stygian-proxy = { version = "0.5", features = ["mcp"] }
 //! ```
 //!
 //! ## Protocol
@@ -21,8 +21,8 @@
 //! | `initialize` | Handshake, return server capabilities |
 //! | `tools/list` | List available proxy tools |
 //! | `tools/call` | Execute a proxy tool |
-//! | `resources/list` | List proxies in the pool as resources |
-//! | `resources/read` | Read pool statistics |
+//! | `resources/list` | List available resources (currently `proxy://pool/stats`) |
+//! | `resources/read` | Read a resource (e.g. pool statistics from `proxy://pool/stats`) |
 //!
 //! ## Tools
 //!
@@ -126,7 +126,7 @@ impl McpProxyServer {
         info!("stygian-proxy MCP server starting");
 
         // Launch background health-check + session-purge tasks.
-        let (_token, _bg) = self.manager.start();
+        let (mgr_token, bg) = self.manager.start();
 
         let stdin = tokio::io::stdin();
         let mut reader = BufReader::new(stdin);
@@ -163,6 +163,8 @@ impl McpProxyServer {
         }
 
         self.cancel.cancel();
+        mgr_token.cancel();
+        let _ = bg.await;
         info!("stygian-proxy MCP server stopped");
         Ok(())
     }
@@ -353,13 +355,36 @@ impl McpProxyServer {
             return error_response(id, -32602, "Missing required parameter: url");
         };
 
-        let proxy_type = match args["proxy_type"].as_str().unwrap_or("http") {
-            "https" => ProxyType::Https,
-            _ => ProxyType::Http,
+        let proxy_type = {
+            // Prefer the explicit `proxy_type` argument; otherwise infer from the URL scheme.
+            let explicit = args["proxy_type"].as_str();
+            let scheme = url.split_once("://").map(|(s, _)| s);
+            let type_str = explicit.or(scheme).unwrap_or("http").to_ascii_lowercase();
+            match type_str.as_str() {
+                "https" => ProxyType::Https,
+                #[cfg(feature = "socks")]
+                "socks4" | "socks4a" => ProxyType::Socks4,
+                #[cfg(feature = "socks")]
+                "socks5" | "socks" => ProxyType::Socks5,
+                "http" => ProxyType::Http,
+                other => {
+                    return error_response(
+                        id,
+                        -32602,
+                        &format!("Unsupported proxy_type or URL scheme: {other}"),
+                    );
+                }
+            }
         };
         let username = args["username"].as_str().map(str::to_string);
         let password = args["password"].as_str().map(str::to_string);
-        let weight = args["weight"].as_u64().map_or(1, |w| w as u32);
+        let weight = match args["weight"].as_u64() {
+            Some(w) if w <= u64::from(u32::MAX) => w as u32,
+            Some(_) => {
+                return error_response(id, -32602, "Invalid parameter: weight out of range");
+            }
+            None => 1,
+        };
         let tags: Vec<String> = args["tags"]
             .as_array()
             .map(|arr| {

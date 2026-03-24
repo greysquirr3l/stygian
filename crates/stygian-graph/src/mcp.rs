@@ -9,13 +9,21 @@
 //!
 //! ```toml
 //! [dependencies]
-//! stygian-graph = { version = "0.4", features = ["mcp"] }
+//! stygian-graph = { version = "0.5.0", features = ["mcp"] }
 //! ```
 //!
 //! ## Running the server
 //!
-//! ```sh
-//! cargo run --bin stygian-graph-mcp --features mcp -p stygian-graph
+//! Add `stygian-graph` as a dependency with the `mcp` feature and call
+//! `McpGraphServer::run()` from your own binary:
+//!
+//! ```rust,no_run
+//! use stygian_graph::mcp::McpGraphServer;
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     McpGraphServer::new().run().await
+//! }
 //! ```
 //!
 //! ## Protocol
@@ -390,7 +398,8 @@ impl McpGraphServer {
             return error_response(id, -32602, "Missing required parameter: url");
         };
 
-        // Build params JSON from explicit fields, then merge any leftover args
+        // Build params JSON from explicit fields only; extra keys in `args` are intentionally
+        // not forwarded — the REST adapter only reads the fields it recognises.
         let mut params = json!({});
         if let Some(method) = args["method"].as_str() {
             params["method"] = json!(method);
@@ -914,7 +923,7 @@ depends_on = ["fetch"]
     }
 
     #[test]
-    fn scrape_missing_url_returns_error() {
+    fn pipeline_validate_missing_toml_returns_error() {
         // Test is sync — just check param validation path
         let server = McpGraphServer::new();
         let id = json!(1);

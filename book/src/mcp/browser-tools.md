@@ -8,7 +8,7 @@
 
 ```toml
 [dependencies]
-stygian-browser = { version = "0.4", features = ["mcp"] }
+stygian-browser = { version = "0.5.0", features = ["mcp"] }
 ```
 
 To run as a standalone MCP server:
@@ -43,10 +43,10 @@ cold launch.
 
 | Parameter | Type | Required | Description |
 | --------- | ---- | -------- | ----------- |
-| `stealth_level` | string | | `None` \| `Basic` \| `Advanced` (default: `Advanced`) |
-| `tls_profile` | string | | TLS fingerprint profile name — e.g. `chrome_120`, `firefox_120` |
-| `webrtc_policy` | string | | `Block` \| `Proxy` \| `Allow` (default from pool config) |
-| `cdp_fix_mode` | string | | CDP leak mitigation mode |
+| `stealth_level` | string | | `none` \| `basic` \| `advanced` (default: `advanced`) |
+| `tls_profile` | string | | TLS fingerprint profile name — e.g. `chrome131`, `firefox133`, `safari18`, `edge131` |
+| `webrtc_policy` | string | | `allow_all` \| `disable_non_proxied` \| `block_all` (default from pool config) |
+| `cdp_fix_mode` | string | | CDP leak mitigation mode: `addBinding` \| `isolatedWorld` \| `enableDisable` \| `none` |
 | `proxy` | string | | Proxy URL for this session — e.g. `http://user:pass@proxy:8080` |
 
 **Returns:**
@@ -55,8 +55,8 @@ cold launch.
 {
   "session_id": "01HV4...",
   "config": {
-    "stealth_level": "Advanced",
-    "tls_profile": "chrome_120"
+    "stealth_level": "advanced",
+    "tls_profile": "chrome131"
   }
 }
 ```

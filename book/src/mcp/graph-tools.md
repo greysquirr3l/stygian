@@ -8,13 +8,19 @@
 
 ```toml
 [dependencies]
-stygian-graph = { version = "0.4", features = ["mcp"] }
+stygian-graph = { version = "0.5.0", features = ["mcp"] }
 ```
 
-To run as a standalone MCP server (without the aggregator):
+To use as a standalone MCP server (without the aggregator), embed `McpGraphServer` in
+your own binary:
 
-```sh
-cargo run --bin stygian-graph-mcp --features mcp -p stygian-graph
+```rust,no_run
+use stygian_graph::mcp::McpGraphServer;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    McpGraphServer::new().run().await
+}
 ```
 
 When using the [aggregator](./aggregator.md), all tools are prefixed with `graph_`
