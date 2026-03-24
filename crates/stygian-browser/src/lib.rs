@@ -124,6 +124,7 @@ pub use stealth::{NavigatorProfile, StealthConfig, StealthProfile};
 
 #[cfg(feature = "stealth")]
 pub use behavior::InteractionLevel;
+#[cfg(feature = "stealth")]
 pub use fingerprint::{BrowserKind, DeviceProfile};
 
 #[cfg(feature = "stealth")]

@@ -365,20 +365,20 @@ impl ProxyManager {
         // Check for an active, non-expired session.
         if let Some(proxy_id) = self.sessions.lookup(domain) {
             let cb_map = self.circuit_breakers.read().await;
-            if let Some(cb) = cb_map.get(&proxy_id).cloned() {
-                if cb.is_available() {
-                    // Lookup proxy URL from storage.
-                    let with_metrics = self.storage.list_with_metrics().await?;
-                    if let Some((record, _)) = with_metrics.iter().find(|(r, _)| r.id == proxy_id) {
-                        let url = record.proxy.url.clone();
-                        drop(cb_map);
-                        return Ok(ProxyHandle::new_sticky(
-                            url,
-                            cb,
-                            domain.to_string(),
-                            self.sessions.clone(),
-                        ));
-                    }
+            if let Some(cb) = cb_map.get(&proxy_id).cloned()
+                && cb.is_available()
+            {
+                // Lookup proxy URL from storage.
+                let with_metrics = self.storage.list_with_metrics().await?;
+                if let Some((record, _)) = with_metrics.iter().find(|(r, _)| r.id == proxy_id) {
+                    let url = record.proxy.url.clone();
+                    drop(cb_map);
+                    return Ok(ProxyHandle::new_sticky(
+                        url,
+                        cb,
+                        domain.to_string(),
+                        self.sessions.clone(),
+                    ));
                 }
             }
             // CB tripped or proxy no longer in pool — invalidate.

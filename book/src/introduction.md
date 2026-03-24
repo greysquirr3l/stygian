@@ -1,12 +1,14 @@
 # Introduction
 
-**stygian** is a high-performance web scraping toolkit for Rust, delivered as two complementary
+**stygian** is a high-performance web scraping toolkit for Rust, delivered as four complementary
 crates in a single workspace.
 
 | Crate | Purpose |
 | --- | --- |
 | [`stygian-graph`](./graph/architecture.md) | Graph-based scraping engine — DAG pipelines, AI extraction, distributed execution |
 | [`stygian-browser`](./browser/overview.md) | Anti-detection browser automation — stealth profiles, browser pooling, CDP automation |
+| [`stygian-proxy`](./proxy/overview.md) | Proxy pool management — rotation strategies, circuit breakers, sticky sessions |
+| [`stygian-mcp`](./mcp/overview.md) | Unified [Model Context Protocol](./mcp/overview.md) server — LLM agent integration |
 
 Both crates share a common philosophy: **zero-cost abstractions, extreme composability, and
 secure defaults**.
@@ -36,12 +38,13 @@ secure defaults**.
 
 ## Installation
 
-Add both crates to `Cargo.toml`:
+Add crates to `Cargo.toml`:
 
 ```toml
 [dependencies]
-stygian-graph   = "0.2"
-stygian-browser = "0.2"   # optional — only needed for JS-rendered pages
+stygian-graph   = "0.4"
+stygian-browser = "0.4"   # optional — only needed for JS-rendered pages
+stygian-proxy   = "0.4"   # optional — proxy pool management
 tokio            = { version = "1", features = ["full"] }
 serde_json       = "1"
 ```
@@ -49,7 +52,7 @@ serde_json       = "1"
 Enable optional feature groups on `stygian-graph`:
 
 ```toml
-stygian-graph = { version = "0.2", features = ["browser", "ai-claude", "distributed"] }
+stygian-graph = { version = "0.4", features = ["browser", "ai-claude", "distributed", "mcp"] }
 ```
 
 Available features:
@@ -64,6 +67,7 @@ Available features:
 | `ai-ollama` | Ollama (local) adapter |
 | `distributed` | Redis/Valkey work queue adapter |
 | `metrics` | Prometheus metrics export |
+| `mcp` | MCP server — exposes all graph tools over JSON-RPC 2.0 |
 
 ---
 
@@ -123,7 +127,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 stygian/
 ├── crates/
 │   ├── stygian-graph/     # Scraping engine
-│   └── stygian-browser/   # Browser automation
+│   ├── stygian-browser/   # Browser automation
+│   ├── stygian-proxy/     # Proxy pool management
+│   └── stygian-mcp/       # Unified MCP aggregator binary
 ├── book/                   # This documentation (mdBook)
 ├── docs/                   # Architecture reference docs
 ├── examples/               # Example pipeline configs (.toml)

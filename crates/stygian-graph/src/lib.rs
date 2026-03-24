@@ -131,6 +131,11 @@ pub mod prelude {
 #[cfg_attr(docsrs, doc(cfg(feature = "browser")))]
 pub use stygian_browser;
 
+/// MCP (Model Context Protocol) server — exposes scraping &amp; pipeline tools
+#[cfg(feature = "mcp")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mcp")))]
+pub mod mcp;
+
 #[cfg(test)]
 mod tests {
     #[test]

@@ -26,7 +26,7 @@ jobs:
       - name: Verify workspace versions match tag
         run: |
           TAG_VERSION="${GITHUB_REF#refs/tags/v}"
-          for crate in stygian-browser stygian-proxy stygian-graph; do
+          for crate in stygian-browser stygian-proxy stygian-graph stygian-mcp; do
             CARGO_VERSION=$(cargo metadata --no-deps --format-version 1 \
               | jq -r --arg name "$crate" '.packages[] | select(.name == $name) | .version')
             if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
@@ -96,6 +96,21 @@ jobs:
             echo "stygian-graph@$VERSION already published, skipping"
           else
             cargo publish -p stygian-graph --all-features
+          fi
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Wait for crates.io index propagation
+        run: sleep 30
+
+      - name: Publish stygian-mcp
+        run: |
+          VERSION=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "stygian-mcp") | .version')
+          if cargo search stygian-mcp --limit 1 2>/dev/null | grep -q "^stygian-mcp = \"$VERSION\""; then
+            echo "stygian-mcp@$VERSION already published, skipping"
+          else
+            cargo publish -p stygian-mcp
           fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

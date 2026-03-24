@@ -87,7 +87,7 @@ serde_yaml.workspace = true
 indexmap.workspace = true
 
 # Browser automation (optional)
-stygian-browser = { path = "../stygian-browser", version = "0.4", optional = true }
+stygian-browser = { path = "../stygian-browser", version = "0.5", optional = true }
 
 # WASM plugins (optional)
 wasmtime = { workspace = true, optional = true }
@@ -135,6 +135,8 @@ postgres = ["dep:sqlx"]
 cloudflare-crawl = []
 # Default tiered escalation policy adapter
 escalation = []
+# MCP (Model Context Protocol) server — exposes scraping & pipeline tools over stdin/stdout JSON-RPC 2.0
+mcp = []
 
 [[bin]]
 name = "stygian"

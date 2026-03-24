@@ -38,6 +38,10 @@ pub mod graph;
 #[cfg(feature = "browser")]
 pub mod browser;
 
+/// MCP (Model Context Protocol) server — exposes proxy pool tools
+#[cfg(feature = "mcp")]
+pub mod mcp;
+
 // Top-level re-exports
 pub use circuit_breaker::{CircuitBreaker, STATE_CLOSED, STATE_HALF_OPEN, STATE_OPEN};
 pub use error::{ProxyError, ProxyResult};
