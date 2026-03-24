@@ -25,8 +25,10 @@ Proxy handles are tracked across tool calls by a `handle_token` (a ULID string):
 proxy_add → proxy_acquire / proxy_acquire_for_domain → [use proxy] → proxy_release
 ```
 
-The handle acts as a circuit-breaker ticket. **Always call `proxy_release`** — dropping the
-token without releasing counts the request as a failure toward the proxy's circuit breaker.
+The handle acts as a circuit-breaker ticket. **Always call `proxy_release`** — the server stores
+the underlying `ProxyHandle` and only drops it when `proxy_release` is called (or the server exits).
+Simply dropping the client-side `handle_token` without calling `proxy_release` does **not**
+record a circuit-breaker failure and will leak the server-side handle entry.
 
 ---
 
@@ -89,7 +91,7 @@ Return current pool statistics. No parameters required.
 | `total` | Total number of registered proxies |
 | `healthy` | Proxies with circuit breaker in `Closed` state |
 | `open` | Proxies with circuit breaker in `Open` state (cooling down) |
-| `active_sessions` | Handles currently acquired and not yet released |
+| `active_sessions` | Number of active sticky sessions (domain bindings) currently in effect |
 
 ---
 

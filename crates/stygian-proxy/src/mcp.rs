@@ -235,7 +235,7 @@ impl McpProxyServer {
                             "type": "object",
                             "properties": {
                                 "url":        { "type": "string", "description": "Proxy URL (e.g. http://host:port, socks5://user:pass@host:port)" },
-                                "proxy_type": { "type": "string", "description": "Protocol: http | https (default: http)" },
+                                "proxy_type": { "type": "string", "description": "Protocol: http | https | socks4 | socks5 (default: inferred from URL scheme, falling back to http)" },
                                 "username":   { "type": "string", "description": "Optional proxy username" },
                                 "password":   { "type": "string", "description": "Optional proxy password" },
                                 "weight":     { "type": "integer", "description": "Relative selection weight for weighted rotation (default: 1)" },
@@ -378,21 +378,50 @@ impl McpProxyServer {
         };
         let username = args["username"].as_str().map(str::to_string);
         let password = args["password"].as_str().map(str::to_string);
-        let weight = match args["weight"].as_u64() {
-            Some(w) if w <= u64::from(u32::MAX) => w as u32,
-            Some(_) => {
-                return error_response(id, -32602, "Invalid parameter: weight out of range");
-            }
-            None => 1,
+        let weight = match args.get("weight") {
+            None => 1u32,
+            Some(v) => match v.as_u64() {
+                Some(w) if w <= u64::from(u32::MAX) => w as u32,
+                Some(_) => {
+                    return error_response(id, -32602, "Invalid parameter: weight out of range");
+                }
+                None => {
+                    return error_response(
+                        id,
+                        -32602,
+                        "Invalid parameter: weight must be an unsigned integer",
+                    );
+                }
+            },
         };
-        let tags: Vec<String> = args["tags"]
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(str::to_string))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let tags: Vec<String> = match args.get("tags") {
+            None => Vec::new(),
+            Some(v) => match v.as_array() {
+                Some(arr) => {
+                    let mut collected = Vec::with_capacity(arr.len());
+                    for item in arr {
+                        match item.as_str() {
+                            Some(s) => collected.push(s.to_string()),
+                            None => {
+                                return error_response(
+                                    id,
+                                    -32602,
+                                    "Invalid parameter: tags must be an array of strings",
+                                );
+                            }
+                        }
+                    }
+                    collected
+                }
+                None => {
+                    return error_response(
+                        id,
+                        -32602,
+                        "Invalid parameter: tags must be an array of strings",
+                    );
+                }
+            },
+        };
 
         let proxy = Proxy {
             url: url.to_string(),

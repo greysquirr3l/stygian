@@ -175,7 +175,7 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
     vec![
         json!({
             "name": "browser_acquire",
-            "description": "Acquire a browser from the pool. Returns a session_id and the effective session config. Optional parameters set per-session preferences; browser-launch-level params (tls_profile, webrtc_policy, proxy) take effect only if browsers are launched with that config.",
+            "description": "Acquire a browser from the pool and open a session. The optional parameters are stored as session metadata labels and echoed back in the response; they do not reconfigure the pool-acquired browser at runtime. Use them to annotate sessions (e.g. for `browser_verify_stealth` attribution).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -215,7 +215,7 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
                 "properties": {
                     "session_id": { "type": "string" },
                     "url": { "type": "string" },
-                    "timeout_secs": { "type": "number", "default": 30 }
+                    "timeout_secs": { "type": "integer", "default": 30 }
                 },
                 "required": ["session_id", "url"]
             }
@@ -262,7 +262,7 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
                 "properties": {
                     "session_id": { "type": "string" },
                     "url": { "type": "string", "description": "URL to navigate to before running checks." },
-                    "timeout_secs": { "type": "number", "default": 15, "description": "Navigation timeout in seconds." }
+                    "timeout_secs": { "type": "integer", "default": 15, "description": "Navigation timeout in seconds." }
                 },
                 "required": ["session_id", "url"]
             }

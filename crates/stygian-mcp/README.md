@@ -32,7 +32,7 @@ All tools from the three underlying crates are available under their respective 
 | ------ | ----- | ------------- |
 | `graph_*` | `stygian-graph` | `graph_scrape`, `graph_scrape_rest`, `graph_pipeline_run` |
 | `browser_*` | `stygian-browser` | `browser_acquire`, `browser_navigate`, `browser_screenshot` |
-| `proxy_*` | `stygian-proxy` | `proxy_add`, `proxy_acquire`, `proxy_stats` |
+| `proxy_*` | `stygian-proxy` | `proxy_add`, `proxy_acquire`, `proxy_pool_stats` |
 
 The aggregator also adds two cross-crate tools:
 

@@ -344,7 +344,15 @@ impl McpAggregator {
                 }),
             )
         } else {
-            scrape_resp
+            // Rewrite the id so it matches the caller's request, not the internal sub-request.
+            let code = scrape_resp["error"]["code"]
+                .as_i64()
+                .and_then(|c| i32::try_from(c).ok())
+                .unwrap_or(-32603);
+            let message = scrape_resp["error"]["message"]
+                .as_str()
+                .unwrap_or("Graph scrape failed");
+            error_response(id, code, message)
         }
     }
 
@@ -414,7 +422,9 @@ impl McpAggregator {
             }
         });
         let nav_resp = self.browser.dispatch(&nav_req).await;
-        let nav_ok = nav_resp["error"].is_null();
+        // MCP tool failures may appear as result.isError=true with error=null.
+        let nav_ok =
+            nav_resp["error"].is_null() && nav_resp["result"]["isError"].as_bool() != Some(true);
 
         // Short-circuit: if navigation failed, release resources and propagate the error.
         if !nav_ok {
@@ -447,7 +457,8 @@ impl McpAggregator {
             }
         });
         let content_resp = self.browser.dispatch(&content_req).await;
-        let content_ok = content_resp["error"].is_null();
+        let content_ok = content_resp["error"].is_null()
+            && content_resp["result"]["isError"].as_bool() != Some(true);
 
         // 5. Release browser session.
         let _ = self

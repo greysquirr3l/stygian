@@ -168,7 +168,7 @@ fingerprint, etc.).
   "webrtc_leak":          false,
   "tls_fingerprint":      "chrome_120",
   "canvas_noise_active":  true,
-  "requested_stealth_level": "Advanced"
+  "requested_stealth_level": "advanced"
 }
 ```
 
@@ -231,6 +231,6 @@ The browser MCP exposes active sessions as MCP resources, readable via `resource
 {
   "uri": "browser://session/01HV4...",
   "mimeType": "application/json",
-  "text": "{ \"stealth_level\": \"Advanced\", \"proxy\": null }"
+  "text": "{ \"session_id\": \"01HV4...\", \"config\": { \"stealth_level\": \"advanced\", \"proxy\": null }, \"pool_active\": 1, \"pool_max\": 8 }"
 }
 ```
