@@ -509,7 +509,7 @@ impl McpBrowserServer {
         info!(%session_id, %effective_stealth, "MCP session acquired");
         Ok(json!({
             "session_id": session_id,
-            "config": {
+            "requested_metadata": {
                 "stealth_level": effective_stealth,
                 "tls_profile": tls_profile,
                 "webrtc_policy": webrtc_policy,

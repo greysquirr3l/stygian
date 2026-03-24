@@ -54,7 +54,7 @@ cold launch.
 ```json
 {
   "session_id": "01HV4...",
-  "config": {
+  "requested_metadata": {
     "stealth_level": "advanced",
     "tls_profile": "chrome131"
   }

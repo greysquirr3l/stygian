@@ -293,9 +293,13 @@ impl McpAggregator {
         let acquire_resp = self.proxy.handle_request(&acquire_req).await;
         // Propagate a real error from proxy_acquire before falling back to the generic message.
         if !acquire_resp["error"].is_null() {
+            let code = acquire_resp["error"]["code"]
+                .as_i64()
+                .and_then(|c| i32::try_from(c).ok())
+                .unwrap_or(-32603);
             return error_response(
                 id,
-                -32603,
+                code,
                 acquire_resp["error"]["message"]
                     .as_str()
                     .unwrap_or("No proxy available — add proxies via proxy_add first"),
@@ -371,9 +375,13 @@ impl McpAggregator {
         });
         let acquire_resp = self.proxy.handle_request(&acquire_req).await;
         if !acquire_resp["error"].is_null() {
+            let code = acquire_resp["error"]["code"]
+                .as_i64()
+                .and_then(|c| i32::try_from(c).ok())
+                .unwrap_or(-32603);
             return error_response(
                 id,
-                -32603,
+                code,
                 acquire_resp["error"]["message"]
                     .as_str()
                     .unwrap_or("No proxy available — add proxies via proxy_add first"),
