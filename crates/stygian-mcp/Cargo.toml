@@ -21,7 +21,7 @@ ulid        = { workspace = true }
 anyhow      = { workspace = true }
 
 stygian-graph   = { path = "../stygian-graph",   version = "0.5", default-features = false, features = ["mcp"] }
-stygian-browser = { path = "../stygian-browser",  version = "0.5", default-features = false, features = ["mcp"] }
+stygian-browser = { path = "../stygian-browser",  version = "0.5", default-features = false, features = ["mcp", "stealth"] }
 stygian-proxy   = { path = "../stygian-proxy",    version = "0.5", features = ["mcp"] }
 
 [[bin]]

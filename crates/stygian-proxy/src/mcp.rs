@@ -207,6 +207,7 @@ impl McpProxyServer {
         match method {
             "initialize" => self.handle_initialize(id),
             "initialized" => json!({"jsonrpc":"2.0","id":id,"result":{}}),
+            "notifications/initialized" | "ping" => json!({"jsonrpc":"2.0","id":id,"result":{}}),
             "tools/list" => self.handle_tools_list(id),
             "tools/call" => self.handle_tools_call(id, req).await,
             "resources/list" => self.handle_resources_list(id).await,

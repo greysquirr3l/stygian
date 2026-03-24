@@ -156,7 +156,7 @@ fingerprint, etc.).
 | --------- | ---- | -------- | ----------- |
 | `session_id` | string | ✓ | Session ID |
 | `url` | string | ✓ | URL to navigate to before running diagnostics (e.g. `https://bot.sannysoft.com`) |
-| `timeout_secs` | integer | | Navigation timeout (default: 30) |
+| `timeout_secs` | integer | | Navigation timeout (default: 15) |
 
 **Returns:** A `DiagnosticReport` JSON object:
 

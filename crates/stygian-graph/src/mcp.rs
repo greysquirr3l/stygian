@@ -186,6 +186,7 @@ impl McpGraphServer {
         match method {
             "initialize" => self.handle_initialize(id),
             "initialized" => json!({"jsonrpc":"2.0","id":id,"result":{}}),
+            "notifications/initialized" | "ping" => json!({"jsonrpc":"2.0","id":id,"result":{}}),
             "tools/list" => self.handle_tools_list(id),
             "tools/call" => self.handle_tools_call(id, req).await,
             _ => error_response(id, -32601, &format!("Method not found: {method}")),

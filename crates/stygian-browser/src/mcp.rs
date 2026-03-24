@@ -35,7 +35,7 @@
 //!
 //! | Tool | Parameters | Returns |
 //! | ------ | ----------- | --------- |
-//! | `browser_acquire` | `stealth_level?`, `tls_profile?`, `webrtc_policy?`, `cdp_fix_mode?`, `proxy?` | `session_id`, `config` |
+//! | `browser_acquire` | `stealth_level?`, `tls_profile?`, `webrtc_policy?`, `cdp_fix_mode?`, `proxy?` | `session_id`, `requested_metadata` |
 //! | `browser_navigate` | `session_id, url, timeout_secs?` | `title, url` |
 //! | `browser_eval` | `session_id, script` | `result: Value` |
 //! | `browser_screenshot` | `session_id` | `data: base64 PNG` |
@@ -172,7 +172,7 @@ struct McpSession {
 /// # }
 /// ```
 static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
-    vec![
+    let mut tools = vec![
         json!({
             "name": "browser_acquire",
             "description": "Acquire a browser from the pool and open a session. The optional parameters are stored as session metadata labels and echoed back in the response; they do not reconfigure the pool-acquired browser at runtime. Use them to annotate sessions (e.g. for `browser_verify_stealth` attribution).",
@@ -255,19 +255,6 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
             }
         }),
         json!({
-            "name": "browser_verify_stealth",
-            "description": "Navigate to a URL and run all built-in stealth detection checks (requires stealth feature). Returns a DiagnosticReport with per-check pass/fail results and a coverage percentage.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "session_id": { "type": "string" },
-                    "url": { "type": "string", "description": "URL to navigate to before running checks." },
-                    "timeout_secs": { "type": "integer", "default": 15, "description": "Navigation timeout in seconds." }
-                },
-                "required": ["session_id", "url"]
-            }
-        }),
-        json!({
             "name": "browser_release",
             "description": "Release a browser session back to the pool.",
             "inputSchema": {
@@ -287,7 +274,23 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
                 "required": []
             }
         }),
-    ]
+    ];
+    // Advertise browser_verify_stealth only when the stealth feature is compiled in.
+    #[cfg(feature = "stealth")]
+    tools.push(json!({
+        "name": "browser_verify_stealth",
+        "description": "Navigate to a URL and run all built-in stealth detection checks (requires stealth feature). Returns a DiagnosticReport with per-check pass/fail results and a coverage percentage.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": { "type": "string" },
+                "url": { "type": "string", "description": "URL to navigate to before running checks." },
+                "timeout_secs": { "type": "integer", "default": 15, "description": "Navigation timeout in seconds." }
+            },
+            "required": ["session_id", "url"]
+        }
+    }));
+    tools
 });
 
 pub struct McpBrowserServer {

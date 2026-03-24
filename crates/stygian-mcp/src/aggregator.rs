@@ -406,18 +406,30 @@ impl McpAggregator {
             }
         };
 
-        // 2. Acquire a browser session routed through the proxy.
+        // 2. Acquire a browser session. Note: the `proxy` argument is stored as session
+        //    metadata in stygian-browser but does not yet route network traffic through the
+        //    proxy at browser-launch level. Pass it for forward-compatibility.
         let acquire_browser_req = json!({
             "jsonrpc": "2.0", "id": 0, "method": "tools/call",
             "params": { "name": "browser_acquire", "arguments": { "proxy": proxy_url } }
         });
         let acquire_browser_resp = self.browser.dispatch(&acquire_browser_req).await;
+        // MCP tool failures from stygian-browser appear as result.isError=true.
+        let acquire_is_error = acquire_browser_resp["result"]["isError"].as_bool() == Some(true);
         let session_info = parse_content_text(&acquire_browser_resp);
         let session_id = match session_info["session_id"].as_str() {
             Some(s) => s.to_string(),
             None => {
                 release_proxy(&self.proxy, &handle_token, false).await;
-                return error_response(id, -32603, "Failed to acquire browser session");
+                let err_msg = if acquire_is_error {
+                    acquire_browser_resp["result"]["content"]
+                        .get(0)
+                        .and_then(|c| c["text"].as_str())
+                        .unwrap_or("Failed to acquire browser session")
+                } else {
+                    "Failed to acquire browser session"
+                };
+                return error_response(id, -32603, err_msg);
             }
         };
 
@@ -447,13 +459,16 @@ impl McpAggregator {
                 }))
                 .await;
             release_proxy(&self.proxy, &handle_token, false).await;
-            return error_response(
-                id,
-                -32603,
-                nav_resp["error"]["message"]
-                    .as_str()
-                    .unwrap_or("Browser navigation failed"),
-            );
+            // Prefer error.message; fall back to result.content[0].text (isError path).
+            let nav_err = nav_resp["error"]["message"]
+                .as_str()
+                .or_else(|| {
+                    nav_resp["result"]["content"]
+                        .get(0)
+                        .and_then(|c| c["text"].as_str())
+                })
+                .unwrap_or("Browser navigation failed");
+            return error_response(id, -32603, nav_err);
         }
 
         // 4. Capture HTML content.
@@ -484,13 +499,16 @@ impl McpAggregator {
         release_proxy(&self.proxy, &handle_token, content_ok).await;
 
         if !content_ok {
-            return error_response(
-                id,
-                -32603,
-                content_resp["error"]["message"]
-                    .as_str()
-                    .unwrap_or("Browser content retrieval failed"),
-            );
+            // Prefer error.message; fall back to result.content[0].text (isError path).
+            let content_err = content_resp["error"]["message"]
+                .as_str()
+                .or_else(|| {
+                    content_resp["result"]["content"]
+                        .get(0)
+                        .and_then(|c| c["text"].as_str())
+                })
+                .unwrap_or("Browser content retrieval failed");
+            return error_response(id, -32603, content_err);
         }
 
         // 7. Return combined result — parse sub-tool text fields as JSON to avoid
