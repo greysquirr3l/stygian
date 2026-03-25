@@ -749,14 +749,18 @@ mod tests {
         // Graph: un-prefixed names like `scrape`
         let graph_resp = graph.handle_request(&list_req).await;
         let graph_tools = graph_resp["result"]["tools"].as_array().expect("tools");
-        assert!(graph_tools.iter().any(|t| t["name"] == "scrape"),
-            "graph server exposes un-prefixed 'scrape'");
+        assert!(
+            graph_tools.iter().any(|t| t["name"] == "scrape"),
+            "graph server exposes un-prefixed 'scrape'"
+        );
 
         // Proxy: already prefixed
         let proxy_resp = proxy.handle_request(&list_req).await;
         let proxy_tools = proxy_resp["result"]["tools"].as_array().expect("tools");
-        assert!(proxy_tools.iter().any(|t| t["name"] == "proxy_add"),
-            "proxy server exposes 'proxy_add'");
+        assert!(
+            proxy_tools.iter().any(|t| t["name"] == "proxy_add"),
+            "proxy server exposes 'proxy_add'"
+        );
 
         // Simulate the prefixing logic from handle_tools_list
         let prefixed: Vec<String> = graph_tools
@@ -764,10 +768,14 @@ mod tests {
             .filter_map(|t| t["name"].as_str())
             .map(|n| format!("graph_{n}"))
             .collect();
-        assert!(prefixed.contains(&"graph_scrape".to_string()),
-            "graph_scrape must appear after prefixing");
-        assert!(!prefixed.contains(&"scrape".to_string()),
-            "un-prefixed 'scrape' must not appear after prefixing");
+        assert!(
+            prefixed.contains(&"graph_scrape".to_string()),
+            "graph_scrape must appear after prefixing"
+        );
+        assert!(
+            !prefixed.contains(&"scrape".to_string()),
+            "un-prefixed 'scrape' must not appear after prefixing"
+        );
     }
 
     /// `tools/call` dispatch: names with `graph_` prefix are routed to the graph server with
@@ -814,14 +822,15 @@ mod tests {
     async fn test_resources_list_includes_proxy() {
         let proxy = Arc::new(McpProxyServer::new().expect("proxy server init"));
 
-        let list_req = json!({ "jsonrpc": "2.0", "id": 4, "method": "resources/list", "params": {} });
+        let list_req =
+            json!({ "jsonrpc": "2.0", "id": 4, "method": "resources/list", "params": {} });
         let proxy_resp = proxy.handle_request(&list_req).await;
         let resources = proxy_resp["result"]["resources"].as_array();
         // The proxy pool stats resource is always present at proxy://pool/stats
         assert!(
-            resources.map_or(false, |r| r.iter().any(|res| {
-                res["uri"].as_str() == Some("proxy://pool/stats")
-            })),
+            resources.map_or(false, |r| r
+                .iter()
+                .any(|res| { res["uri"].as_str() == Some("proxy://pool/stats") })),
             "proxy resources/list must contain proxy://pool/stats"
         );
     }
