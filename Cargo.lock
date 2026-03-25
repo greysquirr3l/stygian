@@ -4173,11 +4173,9 @@ dependencies = [
  "stygian-browser",
  "stygian-graph",
  "stygian-proxy",
- "thiserror 2.0.18",
  "tokio",
  "tracing",
  "tracing-subscriber",
- "ulid",
 ]
 
 [[package]]

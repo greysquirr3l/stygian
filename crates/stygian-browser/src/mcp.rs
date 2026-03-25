@@ -186,13 +186,11 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
                     },
                     "tls_profile": {
                         "type": "string",
-                        "enum": ["chrome131", "firefox133", "safari18", "edge131"],
-                        "description": "TLS fingerprint profile (requires stealth feature; browser-launch-level)."
+                        "description": "TLS fingerprint profile label (free-form; requires stealth feature; browser-launch-level). Examples: chrome131, firefox133, safari18, edge131."
                     },
                     "webrtc_policy": {
                         "type": "string",
-                        "enum": ["allow_all", "disable_non_proxied", "block_all"],
-                        "description": "WebRTC IP-leak policy (requires stealth feature; browser-launch-level)."
+                        "description": "WebRTC IP-leak policy label (free-form; requires stealth feature; browser-launch-level). Examples: allow_all, disable_non_proxied, block_all."
                     },
                     "cdp_fix_mode": {
                         "type": "string",
@@ -527,8 +525,8 @@ impl McpBrowserServer {
         let url = Self::require_str(args, "url")?;
         let timeout_secs = args
             .get("timeout_secs")
-            .and_then(serde_json::Value::as_f64)
-            .unwrap_or(15.0);
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(15);
 
         let (session_arc, requested_stealth) = self.session_handle_and_stealth(&session_id).await?;
 
@@ -546,12 +544,18 @@ impl McpBrowserServer {
             .new_page()
             .await?;
 
-        page.navigate(
-            &url,
-            WaitUntil::DomContentLoaded,
-            Duration::from_secs_f64(timeout_secs),
-        )
-        .await?;
+        if let Err(e) = page
+            .navigate(
+                &url,
+                WaitUntil::DomContentLoaded,
+                Duration::from_secs(timeout_secs),
+            )
+            .await
+        {
+            // Ensure the page is closed before propagating the error.
+            page.close().await.ok();
+            return Err(e);
+        }
 
         let mut result = Self::run_stealth_diagnostic(&page).await;
         page.close().await?;

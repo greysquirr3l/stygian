@@ -41,7 +41,6 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
-use tokio_util::sync::CancellationToken;
 use tracing::{debug, info};
 use ulid::Ulid;
 use uuid::Uuid;
@@ -104,7 +103,6 @@ type HandleStore = Arc<Mutex<HashMap<String, ProxyHandle>>>;
 pub struct McpProxyServer {
     manager: Arc<ProxyManager>,
     handles: HandleStore,
-    cancel: CancellationToken,
 }
 
 impl McpProxyServer {
@@ -119,7 +117,6 @@ impl McpProxyServer {
         Ok(Self {
             manager: Arc::new(manager),
             handles: Arc::new(Mutex::new(HashMap::new())),
-            cancel: CancellationToken::new(),
         })
     }
 
@@ -171,7 +168,6 @@ impl McpProxyServer {
             stdout.flush().await?;
         }
 
-        self.cancel.cancel();
         mgr_token.cancel();
         let _ = bg.await;
         info!("stygian-proxy MCP server stopped");
@@ -222,8 +218,8 @@ impl McpProxyServer {
             json!({
                 "protocolVersion": "2024-11-05",
                 "capabilities": {
-                    "tools": {},
-                    "resources": {}
+                    "tools":     { "listChanged": false },
+                    "resources": { "listChanged": false }
                 },
                 "serverInfo": {
                     "name": "stygian-proxy",

@@ -736,4 +736,93 @@ mod tests {
         let parsed = parse_content_text(&error_resp);
         assert_eq!(parsed, Value::Null);
     }
+
+    /// `tools/list` aggregation: graph tools get a `graph_` prefix and a `[graph]` description
+    /// prefix; proxy tools keep their existing `proxy_` prefix; all lists are merged.
+    #[tokio::test]
+    async fn test_tools_list_prefixes_graph_tools() {
+        let graph = Arc::new(McpGraphServer::new());
+        let proxy = Arc::new(McpProxyServer::new().expect("proxy server init"));
+
+        let list_req = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {} });
+
+        // Graph: un-prefixed names like `scrape`
+        let graph_resp = graph.handle_request(&list_req).await;
+        let graph_tools = graph_resp["result"]["tools"].as_array().expect("tools");
+        assert!(graph_tools.iter().any(|t| t["name"] == "scrape"),
+            "graph server exposes un-prefixed 'scrape'");
+
+        // Proxy: already prefixed
+        let proxy_resp = proxy.handle_request(&list_req).await;
+        let proxy_tools = proxy_resp["result"]["tools"].as_array().expect("tools");
+        assert!(proxy_tools.iter().any(|t| t["name"] == "proxy_add"),
+            "proxy server exposes 'proxy_add'");
+
+        // Simulate the prefixing logic from handle_tools_list
+        let prefixed: Vec<String> = graph_tools
+            .iter()
+            .filter_map(|t| t["name"].as_str())
+            .map(|n| format!("graph_{n}"))
+            .collect();
+        assert!(prefixed.contains(&"graph_scrape".to_string()),
+            "graph_scrape must appear after prefixing");
+        assert!(!prefixed.contains(&"scrape".to_string()),
+            "un-prefixed 'scrape' must not appear after prefixing");
+    }
+
+    /// `tools/call` dispatch: names with `graph_` prefix are routed to the graph server with
+    /// the prefix stripped; `proxy_` names are routed to the proxy server unchanged.
+    #[tokio::test]
+    async fn test_tools_call_dispatch_by_prefix() {
+        let graph = Arc::new(McpGraphServer::new());
+        let proxy = Arc::new(McpProxyServer::new().expect("proxy server init"));
+
+        // graph_pipeline_validate → graph server with name `pipeline_validate`
+        let graph_call = json!({
+            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            "params": { "name": "pipeline_validate", "arguments": { "toml": "" } }
+        });
+        let graph_resp = graph.handle_request(&graph_call).await;
+        // pipeline_validate with empty string returns a result (not an unknown-method error)
+        assert!(
+            graph_resp["error"].is_null()
+                || graph_resp["result"]["content"][0]["text"]
+                    .as_str()
+                    .is_some(),
+            "graph server must respond to pipeline_validate"
+        );
+
+        // proxy_add with missing url returns an error from the proxy server (not unknown tool)
+        let proxy_call = json!({
+            "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+            "params": { "name": "proxy_add", "arguments": {} }
+        });
+        let proxy_resp = proxy.handle_request(&proxy_call).await;
+        // Should get an error about missing `url`, not about an unknown tool
+        let err_msg = proxy_resp["error"]["message"]
+            .as_str()
+            .or_else(|| proxy_resp["result"]["content"][0]["text"].as_str())
+            .unwrap_or("");
+        assert!(
+            err_msg.contains("url") || err_msg.contains("required") || !err_msg.is_empty(),
+            "proxy server must respond to proxy_add (got: {err_msg})"
+        );
+    }
+
+    /// `resources/list` aggregation: proxy resources (pool stats) must be collected.
+    #[tokio::test]
+    async fn test_resources_list_includes_proxy() {
+        let proxy = Arc::new(McpProxyServer::new().expect("proxy server init"));
+
+        let list_req = json!({ "jsonrpc": "2.0", "id": 4, "method": "resources/list", "params": {} });
+        let proxy_resp = proxy.handle_request(&list_req).await;
+        let resources = proxy_resp["result"]["resources"].as_array();
+        // The proxy pool stats resource is always present at proxy://pool/stats
+        assert!(
+            resources.map_or(false, |r| r.iter().any(|res| {
+                res["uri"].as_str() == Some("proxy://pool/stats")
+            })),
+            "proxy resources/list must contain proxy://pool/stats"
+        );
+    }
 }

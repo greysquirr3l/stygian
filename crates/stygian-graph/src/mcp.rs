@@ -199,7 +199,8 @@ impl McpGraphServer {
             json!({
                 "protocolVersion": "2024-11-05",
                 "capabilities": {
-                    "tools": {}
+                    "tools":     { "listChanged": false },
+                    "resources": { "listChanged": false }
                 },
                 "serverInfo": {
                     "name": "stygian-graph",
@@ -742,9 +743,19 @@ impl McpGraphServer {
                         ..GraphQlConfig::default()
                     };
                     let service = GraphQlService::new(config, None);
+                    let mut gql_params = json!({ "query": query });
+                    if let Some(variables) = node.params.get("variables") {
+                        gql_params["variables"] = toml_to_json(variables);
+                    }
+                    if let Some(auth) = node.params.get("auth") {
+                        gql_params["auth"] = toml_to_json(auth);
+                    }
+                    if let Some(dp) = node.params.get("data_path").and_then(|v| v.as_str()) {
+                        gql_params["data_path"] = json!(dp);
+                    }
                     let input = ServiceInput {
                         url: url.to_string(),
-                        params: json!({ "query": query }),
+                        params: gql_params,
                     };
                     match service.execute(input).await {
                         Ok(out) => {
@@ -837,12 +848,50 @@ impl Default for McpGraphServer {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/// Convert a [`toml::Value`] to a [`serde_json::Value`] for adapter params.
+fn toml_to_json(v: &toml::Value) -> Value {
+    match v {
+        toml::Value::String(s) => Value::String(s.clone()),
+        toml::Value::Integer(i) => Value::Number((*i).into()),
+        toml::Value::Float(f) => serde_json::Number::from_f64(*f)
+            .map(Value::Number)
+            .unwrap_or(Value::Null),
+        toml::Value::Boolean(b) => Value::Bool(*b),
+        toml::Value::Array(arr) => Value::Array(arr.iter().map(toml_to_json).collect()),
+        toml::Value::Table(tbl) => {
+            Value::Object(tbl.iter().map(|(k, v)| (k.clone(), toml_to_json(v))).collect())
+        }
+        toml::Value::Datetime(dt) => Value::String(dt.to_string()),
+    }
+}
+
 /// Build a `RestApiAdapter`-compatible `params` JSON value from a pipeline [`NodeDecl`].
+///
+/// Forwards all recognised REST parameters from the node's TOML declaration:
+/// `method`, `auth`, `headers`, `query`, `body`, `pagination`, and `data_path`.
 fn build_rest_params_from_node(node: &crate::application::pipeline_parser::NodeDecl) -> Value {
     let mut params = json!({});
 
     if let Some(method) = node.params.get("method").and_then(|v| v.as_str()) {
         params["method"] = json!(method);
+    }
+    if let Some(auth) = node.params.get("auth") {
+        params["auth"] = toml_to_json(auth);
+    }
+    if let Some(headers) = node.params.get("headers") {
+        params["headers"] = toml_to_json(headers);
+    }
+    if let Some(query) = node.params.get("query") {
+        params["query"] = toml_to_json(query);
+    }
+    if let Some(body) = node.params.get("body") {
+        params["body"] = toml_to_json(body);
+    }
+    if let Some(pagination) = node.params.get("pagination") {
+        params["pagination"] = toml_to_json(pagination);
+    }
+    if let Some(dp) = node.params.get("data_path").and_then(|v| v.as_str()) {
+        params["response"] = json!({ "data_path": dp });
     }
 
     params
