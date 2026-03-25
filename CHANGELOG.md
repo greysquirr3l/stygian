@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-24
+
+### Added
+
+- `stygian-mcp`: new crate — unified MCP (Model Context Protocol) aggregator binary that
+  merges `stygian-graph`, `stygian-browser`, and `stygian-proxy` capabilities into a single
+  JSON-RPC 2.0 stdin/stdout server; `McpAggregator` dispatches namespaced tool calls
+  (`graph_*` → graph, `browser_*` → browser, `proxy_*` → proxy) to the appropriate
+  sub-server and provides two cross-crate tools: `scrape_proxied` (HTTP scrape routed
+  through the proxy pool) and `browser_proxied` (browser session with proxy from the pool)
+- `book`: MCP documentation section — five new pages covering the aggregator architecture
+  and tool namespace conventions, graph tools reference, browser tools reference, proxy
+  tools reference, and integration guides for VS Code and other MCP clients
+
+### Changed
+
+- `stygian-browser`: `McpBrowserServer` internal refactor — tool schema data extracted
+  into a module-level `static TOOL_DEFINITIONS: LazyLock<Vec<Value>>`; repeated seven-line
+  session-lookup blocks consolidated into `session_handle()` and
+  `session_handle_and_stealth()` private async helpers; no public API changes
+
 ## [0.4.0] - 2026-03-23
 
 ### Added

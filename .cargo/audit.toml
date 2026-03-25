@@ -1,0 +1,13 @@
+[advisories]
+# Acknowledged transitive vulnerabilities with no upstream fix available.
+# These match the ignore list in deny.toml — keep both in sync.
+ignore = [
+    # rsa 0.9.x Marvin timing attack — transitive via sqlx-mysql; no upstream fix available.
+    "RUSTSEC-2023-0071",
+    # async-std discontinued — transitive via chromiumoxide (cdp library); no alternative yet.
+    "RUSTSEC-2025-0052",
+    # fxhash unmaintained — transitive via scraper->selectors; upstream must update.
+    "RUSTSEC-2025-0057",
+    # number_prefix unmaintained — transitive dep; no direct upgrade path.
+    "RUSTSEC-2025-0119",
+]

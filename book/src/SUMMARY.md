@@ -45,3 +45,13 @@
 
 - [Environment Variables](./reference/env-vars.md)
 - [Testing & Coverage](./reference/testing.md)
+
+---
+
+# MCP — Model Context Protocol
+
+- [Overview](./mcp/overview.md)
+- [Graph Tools](./mcp/graph-tools.md)
+- [Browser Tools](./mcp/browser-tools.md)
+- [Proxy Tools](./mcp/proxy-tools.md)
+- [Aggregator (stygian-mcp)](./mcp/aggregator.md)

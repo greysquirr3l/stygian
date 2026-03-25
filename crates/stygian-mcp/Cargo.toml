@@ -1,0 +1,27 @@
+[package]
+name        = "stygian-mcp"
+description = "Unified MCP (Model Context Protocol) server aggregating stygian-graph, stygian-browser, and stygian-proxy."
+version.workspace     = true
+edition.workspace     = true
+rust-version.workspace = true
+authors.workspace     = true
+license.workspace     = true
+repository.workspace  = true
+readme        = "README.md"
+keywords = ["mcp", "scraping", "llm", "browser", "proxy"]
+categories = ["web-programming", "network-programming"]
+
+[dependencies]
+tokio       = { workspace = true, features = ["full"] }
+serde_json  = { workspace = true }
+tracing     = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+anyhow      = { workspace = true }
+
+stygian-graph   = { path = "../stygian-graph",   version = "0.5", default-features = false, features = ["mcp"] }
+stygian-browser = { path = "../stygian-browser",  version = "0.5", default-features = false, features = ["mcp", "stealth"] }
+stygian-proxy   = { path = "../stygian-proxy",    version = "0.5", features = ["mcp"] }
+
+[[bin]]
+name = "stygian-mcp"
+path = "src/main.rs"
