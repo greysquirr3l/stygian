@@ -38,6 +38,7 @@
 //! # }
 //! ```
 
+use std::collections::HashMap;
 use std::sync::{
     Arc,
     atomic::{AtomicU16, Ordering},
@@ -158,6 +159,257 @@ pub enum WaitUntil {
     NetworkIdle,
     /// Wait until `document.querySelector(selector)` returns a non-null element.
     Selector(String),
+}
+
+// ─── NodeHandle ───────────────────────────────────────────────────────────────
+
+/// A handle to a live DOM node backed by a CDP `RemoteObjectId`.
+///
+/// Obtained via [`PageHandle::query_selector_all`].  Each method issues one or
+/// more CDP `Runtime.callFunctionOn` calls against the held V8 remote object
+/// reference — no HTML serialisation occurs.
+///
+/// A handle becomes **stale** after page navigation or if the underlying DOM
+/// node is removed.  Stale calls return [`BrowserError::StaleNode`] so callers
+/// can distinguish them from other CDP failures.
+///
+/// # Example
+///
+/// ```no_run
+/// use stygian_browser::{BrowserPool, BrowserConfig, WaitUntil};
+/// use std::time::Duration;
+///
+/// # async fn run() -> stygian_browser::error::Result<()> {
+/// let pool = BrowserPool::new(BrowserConfig::default()).await?;
+/// let handle = pool.acquire().await?;
+/// let mut page = handle.browser().expect("valid browser").new_page().await?;
+/// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
+///
+/// for node in page.query_selector_all("a[href]").await? {
+///     let href = node.attr("href").await?;
+///     let text = node.text_content().await?;
+///     println!("{text}: {href:?}");
+/// }
+/// # Ok(())
+/// # }
+/// ```
+pub struct NodeHandle {
+    element: chromiumoxide::element::Element,
+    /// Original CSS selector — preserved for stale-node error messages only.
+    selector: String,
+    cdp_timeout: Duration,
+}
+
+impl NodeHandle {
+    /// Return a single attribute value, or `None` if the attribute is absent.
+    ///
+    /// Issues one `Runtime.callFunctionOn` CDP call (`el.getAttribute(name)`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::StaleNode`] when the remote object has been
+    /// invalidated, or [`BrowserError::Timeout`] / [`BrowserError::CdpError`]
+    /// on transport-level failures.
+    pub async fn attr(&self, name: &str) -> Result<Option<String>> {
+        timeout(self.cdp_timeout, self.element.attribute(name))
+            .await
+            .map_err(|_| BrowserError::Timeout {
+                operation: "NodeHandle::attr".to_string(),
+                duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
+            })?
+            .map_err(|e| self.cdp_err_or_stale(&e, "attr"))
+    }
+
+    /// Return all attributes as a `HashMap<name, value>` in a **single**
+    /// CDP round-trip.
+    ///
+    /// Uses `DOM.getAttributes` (via the chromiumoxide `attributes()` API)
+    /// which returns a flat `[name, value, name, value, …]` list from the node
+    /// description — no per-attribute calls are needed.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::StaleNode`] when the remote object has been
+    /// invalidated.
+    pub async fn attr_map(&self) -> Result<HashMap<String, String>> {
+        let flat = timeout(self.cdp_timeout, self.element.attributes())
+            .await
+            .map_err(|_| BrowserError::Timeout {
+                operation: "NodeHandle::attr_map".to_string(),
+                duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
+            })?
+            .map_err(|e| self.cdp_err_or_stale(&e, "attr_map"))?;
+
+        let mut map = HashMap::with_capacity(flat.len() / 2);
+        for pair in flat.chunks_exact(2) {
+            if let [name, value] = pair {
+                map.insert(name.clone(), value.clone());
+            }
+        }
+        Ok(map)
+    }
+
+    /// Return the element's `textContent` (all text inside, no markup).
+    ///
+    /// Returns an empty string when the property is absent or null.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::StaleNode`] when the remote object has been
+    /// invalidated.
+    pub async fn text_content(&self) -> Result<String> {
+        timeout(self.cdp_timeout, self.element.inner_text())
+            .await
+            .map_err(|_| BrowserError::Timeout {
+                operation: "NodeHandle::text_content".to_string(),
+                duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
+            })?
+            .map_err(|e| self.cdp_err_or_stale(&e, "text_content"))
+            .map(Option::unwrap_or_default)
+    }
+
+    /// Return the element's `innerHTML`.
+    ///
+    /// Returns an empty string when the property is absent or null.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::StaleNode`] when the remote object has been
+    /// invalidated.
+    pub async fn inner_html(&self) -> Result<String> {
+        timeout(self.cdp_timeout, self.element.inner_html())
+            .await
+            .map_err(|_| BrowserError::Timeout {
+                operation: "NodeHandle::inner_html".to_string(),
+                duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
+            })?
+            .map_err(|e| self.cdp_err_or_stale(&e, "inner_html"))
+            .map(Option::unwrap_or_default)
+    }
+
+    /// Return the element's `outerHTML`.
+    ///
+    /// Returns an empty string when the property is absent or null.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::StaleNode`] when the remote object has been
+    /// invalidated.
+    pub async fn outer_html(&self) -> Result<String> {
+        timeout(self.cdp_timeout, self.element.outer_html())
+            .await
+            .map_err(|_| BrowserError::Timeout {
+                operation: "NodeHandle::outer_html".to_string(),
+                duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
+            })?
+            .map_err(|e| self.cdp_err_or_stale(&e, "outer_html"))
+            .map(Option::unwrap_or_default)
+    }
+
+    /// Return the ancestor tag-name chain, root-last.
+    ///
+    /// Executes a single `Runtime.callFunctionOn` JavaScript function that
+    /// walks `parentElement` and collects tag names — no repeated CDP calls.
+    ///
+    /// ```text
+    /// // for <span> inside <p> inside <article> inside <body> inside <html>
+    /// ["p", "article", "body", "html"]
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::StaleNode`] when the remote object has been
+    /// invalidated, or [`BrowserError::ScriptExecutionFailed`] when the
+    /// JSON returned by the script cannot be parsed.
+    pub async fn ancestors(&self) -> Result<Vec<String>> {
+        let returns = timeout(
+            self.cdp_timeout,
+            self.element.call_js_fn(
+                r"function() {
+                    const a = [];
+                    let n = this.parentElement;
+                    while (n) { a.push(n.tagName.toLowerCase()); n = n.parentElement; }
+                    return JSON.stringify(a);
+                }",
+                false,
+            ),
+        )
+        .await
+        .map_err(|_| BrowserError::Timeout {
+            operation: "NodeHandle::ancestors".to_string(),
+            duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
+        })?
+        .map_err(|e| self.cdp_err_or_stale(&e, "ancestors"))?;
+
+        let json_str = returns
+            .result
+            .value
+            .as_ref()
+            .and_then(|v| v.as_str())
+            .unwrap_or("[]");
+
+        serde_json::from_str::<Vec<String>>(json_str).map_err(|e| {
+            BrowserError::ScriptExecutionFailed {
+                script: "NodeHandle::ancestors".to_string(),
+                reason: e.to_string(),
+            }
+        })
+    }
+
+    /// Return child elements matching `selector` as new [`NodeHandle`]s.
+    ///
+    /// Issues a single `Runtime.callFunctionOn` + `DOM.querySelectorAll`
+    /// call scoped to this element — not to the entire document.
+    ///
+    /// Returns an empty `Vec` when no children match (consistent with the JS
+    /// `querySelectorAll` contract).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::StaleNode`] when the remote object has been
+    /// invalidated, or [`BrowserError::CdpError`] on transport failure.
+    pub async fn children_matching(&self, selector: &str) -> Result<Vec<Self>> {
+        let elements = timeout(self.cdp_timeout, self.element.find_elements(selector))
+            .await
+            .map_err(|_| BrowserError::Timeout {
+                operation: "NodeHandle::children_matching".to_string(),
+                duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
+            })?
+            .map_err(|e| self.cdp_err_or_stale(&e, "children_matching"))?;
+
+        Ok(elements
+            .into_iter()
+            .map(|el| Self {
+                element: el,
+                selector: selector.to_string(),
+                cdp_timeout: self.cdp_timeout,
+            })
+            .collect())
+    }
+
+    /// Map a chromiumoxide `CdpError` to either [`BrowserError::StaleNode`]
+    /// (when the remote object reference has been invalidated) or
+    /// [`BrowserError::CdpError`] for all other failures.
+    fn cdp_err_or_stale(
+        &self,
+        err: &chromiumoxide::error::CdpError,
+        operation: &str,
+    ) -> BrowserError {
+        let msg = err.to_string();
+        if msg.contains("Cannot find object with id")
+            || msg.contains("context with specified id")
+            || msg.contains("Cannot find context")
+        {
+            BrowserError::StaleNode {
+                selector: self.selector.clone(),
+            }
+        } else {
+            BrowserError::CdpError {
+                operation: operation.to_string(),
+                message: msg,
+            }
+        }
+    }
 }
 
 // ─── PageHandle ───────────────────────────────────────────────────────────────
@@ -623,6 +875,64 @@ impl PageHandle {
             })
     }
 
+    /// Query the live DOM for all elements matching `selector` and return
+    /// lightweight [`NodeHandle`]s backed by CDP `RemoteObjectId`s.
+    ///
+    /// No HTML serialisation occurs — the browser's in-memory DOM is queried
+    /// directly over the CDP connection, eliminating the `page.content()` +
+    /// `scraper::Html::parse_document` round-trip.
+    ///
+    /// Returns an empty `Vec` when no elements match (consistent with the JS
+    /// `querySelectorAll` contract — not an error).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::CdpError`] if the CDP find call fails, or
+    /// [`BrowserError::Timeout`] if it exceeds `cdp_timeout`.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_browser::{BrowserPool, BrowserConfig, WaitUntil};
+    /// use std::time::Duration;
+    ///
+    /// # async fn run() -> stygian_browser::error::Result<()> {
+    /// let pool = BrowserPool::new(BrowserConfig::default()).await?;
+    /// let handle = pool.acquire().await?;
+    /// let mut page = handle.browser().expect("valid browser").new_page().await?;
+    /// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
+    ///
+    /// let nodes = page.query_selector_all("[data-ux]").await?;
+    /// for node in &nodes {
+    ///     let ux_type = node.attr("data-ux").await?;
+    ///     let text    = node.text_content().await?;
+    ///     println!("{ux_type:?}: {text}");
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn query_selector_all(&self, selector: &str) -> Result<Vec<NodeHandle>> {
+        let elements = timeout(self.cdp_timeout, self.page.find_elements(selector))
+            .await
+            .map_err(|_| BrowserError::Timeout {
+                operation: "PageHandle::query_selector_all".to_string(),
+                duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
+            })?
+            .map_err(|e| BrowserError::CdpError {
+                operation: "PageHandle::query_selector_all".to_string(),
+                message: e.to_string(),
+            })?;
+
+        Ok(elements
+            .into_iter()
+            .map(|el| NodeHandle {
+                element: el,
+                selector: selector.to_string(),
+                cdp_timeout: self.cdp_timeout,
+            })
+            .collect())
+    }
+
     /// Evaluate arbitrary JavaScript and return the result as `T`.
     ///
     /// # Errors
@@ -1008,5 +1318,80 @@ mod tests {
             let code = atom.load(Ordering::Acquire);
             assert_eq!(if code == 0 { None } else { Some(code) }, Some(expected));
         }
+    }
+
+    // ── NodeHandle pure-logic tests ───────────────────────────────────────────
+
+    /// `attr_map` relies on `chunks_exact(2)` — verify the pairing logic is
+    /// correct without a live browser by exercising it directly.
+    #[test]
+    fn attr_map_chunking_pairs_correctly() {
+        let flat = [
+            "id".to_string(),
+            "main".to_string(),
+            "data-ux".to_string(),
+            "Section".to_string(),
+            "class".to_string(),
+            "container".to_string(),
+        ];
+        let mut map = std::collections::HashMap::with_capacity(flat.len() / 2);
+        for pair in flat.chunks_exact(2) {
+            if let [name, value] = pair {
+                map.insert(name.clone(), value.clone());
+            }
+        }
+        assert_eq!(map.get("id").map(String::as_str), Some("main"));
+        assert_eq!(map.get("data-ux").map(String::as_str), Some("Section"));
+        assert_eq!(map.get("class").map(String::as_str), Some("container"));
+        assert_eq!(map.len(), 3);
+    }
+
+    /// Odd-length flat attribute lists (malformed CDP response) are handled
+    /// gracefully — the trailing element is silently ignored.
+    #[test]
+    fn attr_map_chunking_ignores_odd_trailing() {
+        let flat = ["orphan".to_string()]; // no value
+        let mut map = std::collections::HashMap::new();
+        for pair in flat.chunks_exact(2) {
+            if let [name, value] = pair {
+                map.insert(name.clone(), value.clone());
+            }
+        }
+        assert!(map.is_empty());
+    }
+
+    /// Empty flat list → empty map.
+    #[test]
+    fn attr_map_chunking_empty_input() {
+        let flat: Vec<String> = vec![];
+        let map: std::collections::HashMap<String, String> = flat
+            .chunks_exact(2)
+            .filter_map(|pair| {
+                if let [name, value] = pair {
+                    Some((name.clone(), value.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert!(map.is_empty());
+    }
+
+    /// `ancestors` JSON parsing: valid input round-trips correctly.
+    #[test]
+    fn ancestors_json_parse_round_trip() -> std::result::Result<(), serde_json::Error> {
+        let json = r#"["p","article","body","html"]"#;
+        let result: Vec<String> = serde_json::from_str(json)?;
+        assert_eq!(result, ["p", "article", "body", "html"]);
+        Ok(())
+    }
+
+    /// `ancestors` JSON parsing: empty array (no parent) is fine.
+    #[test]
+    fn ancestors_json_parse_empty() -> std::result::Result<(), serde_json::Error> {
+        let json = "[]";
+        let result: Vec<String> = serde_json::from_str(json)?;
+        assert!(result.is_empty());
+        Ok(())
     }
 }

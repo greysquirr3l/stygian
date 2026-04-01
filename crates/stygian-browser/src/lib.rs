@@ -116,7 +116,7 @@ pub mod recorder;
 pub use browser::BrowserInstance;
 pub use config::{BrowserConfig, HeadlessMode, StealthLevel};
 pub use error::{BrowserError, Result};
-pub use page::{PageHandle, ResourceFilter, WaitUntil};
+pub use page::{NodeHandle, PageHandle, ResourceFilter, WaitUntil};
 pub use pool::{BrowserHandle, BrowserPool, PoolStats};
 
 #[cfg(feature = "stealth")]

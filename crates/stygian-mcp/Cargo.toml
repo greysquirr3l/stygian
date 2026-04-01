@@ -18,9 +18,9 @@ tracing     = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 anyhow      = { workspace = true }
 
-stygian-graph   = { path = "../stygian-graph",   version = "0.5", default-features = false, features = ["mcp"] }
-stygian-browser = { path = "../stygian-browser",  version = "0.5", default-features = false, features = ["mcp", "stealth"] }
-stygian-proxy   = { path = "../stygian-proxy",    version = "0.5", features = ["mcp"] }
+stygian-graph   = { path = "../stygian-graph",   version = "0.6", default-features = false, features = ["mcp"] }
+stygian-browser = { path = "../stygian-browser",  version = "0.6", default-features = false, features = ["mcp", "stealth"] }
+stygian-proxy   = { path = "../stygian-proxy",    version = "0.6", features = ["mcp"] }
 
 [[bin]]
 name = "stygian-mcp"

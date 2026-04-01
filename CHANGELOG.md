@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-03-31
+
+### Added
+
+- `stygian-browser`: DOM query API on `PageHandle` — new `NodeHandle` struct backed by
+  V8 `RemoteObjectId`s for querying the live DOM without HTML serialization. Eliminates
+  the `page.content()` + `scraper` round-trip, improving performance on large documents.
+  Methods include `attr()` (single attribute), `attr_map()` (all attributes in one CDP
+  round-trip), `text_content()`, `inner_html()`, `outer_html()`, `ancestors()` (parent
+  chain via single JS eval), and `children_matching(selector)` for scoped node queries.
+  (closes [#21](https://github.com/greysquirr3l/stygian/issues/21))
+- `stygian-browser`: `PageHandle::query_selector_all(selector)` — queries the live DOM
+  and returns `Vec<NodeHandle>` backed by stable CDP references; eliminates the need
+  for DOM re-parsing in userland
+- `stygian-browser`: `BrowserError::StaleNode` — new error variant for when a `NodeHandle`
+  reference has been invalidated (e.g., after page navigation or DOM node removal);
+  allows callers to distinguish stale-reference errors from other CDP failures
+
 ## [0.5.0] - 2026-03-24
 
 ### Added
