@@ -336,8 +336,8 @@ impl NodeHandle {
     /// # Errors
     ///
     /// Returns [`BrowserError::StaleNode`] when the remote object has been
-    /// invalidated, or [`BrowserError::ScriptExecutionFailed`] when the
-    /// JSON returned by the script cannot be parsed.
+    /// invalidated, or [`BrowserError::ScriptExecutionFailed`] when CDP
+    /// returns no value or the value is not a string array.
     pub async fn ancestors(&self) -> Result<Vec<String>> {
         let returns = timeout(
             self.cdp_timeout,
@@ -346,7 +346,7 @@ impl NodeHandle {
                     const a = [];
                     let n = this.parentElement;
                     while (n) { a.push(n.tagName.toLowerCase()); n = n.parentElement; }
-                    return JSON.stringify(a);
+                    return a;
                 }",
                 true,
             ),
@@ -358,19 +358,29 @@ impl NodeHandle {
         })?
         .map_err(|e| self.cdp_err_or_stale(&e, "ancestors"))?;
 
-        let json_str = returns
+        // With returnByValue=true and an array return, CDP delivers the value
+        // as a JSON array directly — no JSON.stringify/re-parse needed.
+        // A missing or wrong-type value indicates an unexpected CDP failure.
+        let arr = returns
             .result
             .value
             .as_ref()
-            .and_then(|v| v.as_str())
-            .unwrap_or("[]");
-
-        serde_json::from_str::<Vec<String>>(json_str).map_err(|e| {
-            BrowserError::ScriptExecutionFailed {
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| BrowserError::ScriptExecutionFailed {
                 script: "NodeHandle::ancestors".to_string(),
-                reason: e.to_string(),
-            }
-        })
+                reason: "CDP returned no value or a non-array value for ancestors()".to_string(),
+            })?;
+
+        arr.iter()
+            .map(|v| {
+                v.as_str()
+                    .map(ToString::to_string)
+                    .ok_or_else(|| BrowserError::ScriptExecutionFailed {
+                        script: "NodeHandle::ancestors".to_string(),
+                        reason: format!("ancestor entry is not a string: {v}"),
+                    })
+            })
+            .collect()
     }
 
     /// Return child elements matching `selector` as new [`NodeHandle`]s.
