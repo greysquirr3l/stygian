@@ -373,12 +373,12 @@ impl NodeHandle {
 
         arr.iter()
             .map(|v| {
-                v.as_str()
-                    .map(ToString::to_string)
-                    .ok_or_else(|| BrowserError::ScriptExecutionFailed {
+                v.as_str().map(ToString::to_string).ok_or_else(|| {
+                    BrowserError::ScriptExecutionFailed {
                         script: "NodeHandle::ancestors".to_string(),
                         reason: format!("ancestor entry is not a string: {v}"),
-                    })
+                    }
+                })
             })
             .collect()
     }
