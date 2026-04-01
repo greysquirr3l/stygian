@@ -14,7 +14,7 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-stygian-mcp = { version = "0.5.0" }
+stygian-mcp = { version = "0.6.0" }
 ```
 
 Or run the bundled binary directly:

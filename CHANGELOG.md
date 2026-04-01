@@ -7,19 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-03-24
+## [0.6.0] - 2026-03-31
 
 ### Added
 
+- `stygian-browser`: DOM query API on `PageHandle` — new `NodeHandle` struct backed by
+  V8 `RemoteObjectId`s for querying the live DOM without HTML serialization. Eliminates
+  the `page.content()` + `scraper` round-trip, improving performance on large documents.
+  Methods include `attr()` (single attribute), `attr_map()` (all attributes in one CDP
+  round-trip), `text_content()`, `inner_html()`, `outer_html()`, `ancestors()` (parent
+  chain via single JS eval), and `children_matching(selector)` for scoped node queries.
+  (closes [#21](https://github.com/greysquirr3l/stygian/issues/21))
+- `stygian-browser`: `PageHandle::query_selector_all(selector)` — queries the live DOM
+  and returns `Vec<NodeHandle>` backed by stable CDP references; eliminates the need
+  for DOM re-parsing in userland
+- `stygian-browser`: `BrowserError::StaleNode` — new error variant for when a `NodeHandle`
+  reference has been invalidated (e.g., after page navigation or DOM node removal);
+  allows callers to distinguish stale-reference errors from other CDP failures
 - `stygian-mcp`: new crate — unified MCP (Model Context Protocol) aggregator binary that
   merges `stygian-graph`, `stygian-browser`, and `stygian-proxy` capabilities into a single
   JSON-RPC 2.0 stdin/stdout server; `McpAggregator` dispatches namespaced tool calls
   (`graph_*` → graph, `browser_*` → browser, `proxy_*` → proxy) to the appropriate
   sub-server and provides two cross-crate tools: `scrape_proxied` (HTTP scrape routed
   through the proxy pool) and `browser_proxied` (browser session with proxy from the pool)
+- `stygian-graph`: MCP server — `McpGraphServer` exposes seven tools for HTTP scraping,
+  API querying, and pipeline execution over JSON-RPC 2.0; feature-gated behind `mcp`
+- `stygian-proxy`: MCP server — `McpProxyServer` exposes six proxy-pool tools plus a
+  `proxy://pool/stats` resource over JSON-RPC 2.0; adds `start_background()` so
+  health-checking and sticky-session purging run correctly in aggregated (non-`run()`) mode;
+  feature-gated behind `mcp`
 - `book`: MCP documentation section — five new pages covering the aggregator architecture
   and tool namespace conventions, graph tools reference, browser tools reference, proxy
   tools reference, and integration guides for VS Code and other MCP clients
+
+## [0.5.0] - 2026-03-24
+
+### Added
+
+- `stygian-browser`: `McpBrowserServer` — MCP server exposing eight browser automation
+  tools over JSON-RPC 2.0; feature-gated behind `mcp`
 
 ### Changed
 

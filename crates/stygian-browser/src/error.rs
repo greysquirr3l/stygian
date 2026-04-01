@@ -82,6 +82,15 @@ pub enum BrowserError {
     /// Underlying I/O error.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+
+    /// The `RemoteObject` reference has been invalidated — the page navigated
+    /// or the DOM node was removed since the [`NodeHandle`][crate::page::NodeHandle]
+    /// was created.
+    #[error("Stale node handle (selector: {selector})")]
+    StaleNode {
+        /// CSS selector that produced the stale handle, for diagnostics.
+        selector: String,
+    },
 }
 
 impl From<chromiumoxide::error::CdpError> for BrowserError {
@@ -190,5 +199,22 @@ mod tests {
         let s = e.to_string();
         assert!(s.contains("active=5"));
         assert!(s.contains("max=5"));
+    }
+
+    #[test]
+    fn stale_node_display_contains_selector() {
+        let e = BrowserError::StaleNode {
+            selector: "[data-ux=\"Section\"]".to_string(),
+        };
+        let s = e.to_string();
+        assert!(s.contains("[data-ux=\"Section\"]"), "display: {s}");
+    }
+
+    #[test]
+    fn stale_node_is_debug_printable() {
+        let e = BrowserError::StaleNode {
+            selector: "div.foo".to_string(),
+        };
+        assert!(!format!("{e:?}").is_empty());
     }
 }

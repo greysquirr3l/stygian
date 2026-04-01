@@ -87,3 +87,5 @@ tasks/
 
 reference_materials/
 crates/stygian-proxy/docs
+.obliviate.toml
+PROGRESS-*.md

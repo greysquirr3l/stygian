@@ -8,7 +8,7 @@
 
 ```toml
 [dependencies]
-stygian-graph = { version = "0.5.0", features = ["mcp"] }
+stygian-graph = { version = "0.6.0", features = ["mcp"] }
 ```
 
 To use as a standalone MCP server (without the aggregator), embed `McpGraphServer` in
