@@ -196,7 +196,9 @@ pub enum WaitUntil {
 pub struct NodeHandle {
     element: chromiumoxide::element::Element,
     /// Original CSS selector — preserved for stale-node error messages only.
-    selector: String,
+    /// Shared via `Arc<str>` so all handles from a single query reuse the
+    /// same allocation rather than cloning a `String` per node.
+    selector: Arc<str>,
     cdp_timeout: Duration,
 }
 
@@ -251,6 +253,10 @@ impl NodeHandle {
 
     /// Return the element's `textContent` (all text inside, no markup).
     ///
+    /// Reads the DOM `textContent` property via a single JS eval — this is the
+    /// raw text concatenation of all descendant text nodes, independent of
+    /// layout or visibility (unlike `innerText`).
+    ///
     /// Returns an empty string when the property is absent or null.
     ///
     /// # Errors
@@ -258,14 +264,25 @@ impl NodeHandle {
     /// Returns [`BrowserError::StaleNode`] when the remote object has been
     /// invalidated.
     pub async fn text_content(&self) -> Result<String> {
-        timeout(self.cdp_timeout, self.element.inner_text())
-            .await
-            .map_err(|_| BrowserError::Timeout {
-                operation: "NodeHandle::text_content".to_string(),
-                duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
-            })?
-            .map_err(|e| self.cdp_err_or_stale(&e, "text_content"))
-            .map(Option::unwrap_or_default)
+        let returns = timeout(
+            self.cdp_timeout,
+            self.element
+                .call_js_fn(r"function() { return this.textContent ?? ''; }", true),
+        )
+        .await
+        .map_err(|_| BrowserError::Timeout {
+            operation: "NodeHandle::text_content".to_string(),
+            duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
+        })?
+        .map_err(|e| self.cdp_err_or_stale(&e, "text_content"))?;
+
+        Ok(returns
+            .result
+            .value
+            .as_ref()
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string())
     }
 
     /// Return the element's `innerHTML`.
@@ -331,7 +348,7 @@ impl NodeHandle {
                     while (n) { a.push(n.tagName.toLowerCase()); n = n.parentElement; }
                     return JSON.stringify(a);
                 }",
-                false,
+                true,
             ),
         )
         .await
@@ -377,11 +394,12 @@ impl NodeHandle {
             })?
             .map_err(|e| self.cdp_err_or_stale(&e, "children_matching"))?;
 
+        let selector_arc: Arc<str> = Arc::from(selector);
         Ok(elements
             .into_iter()
             .map(|el| Self {
                 element: el,
-                selector: selector.to_string(),
+                selector: selector_arc.clone(),
                 cdp_timeout: self.cdp_timeout,
             })
             .collect())
@@ -401,7 +419,7 @@ impl NodeHandle {
             || msg.contains("Cannot find context")
         {
             BrowserError::StaleNode {
-                selector: self.selector.clone(),
+                selector: self.selector.to_string(),
             }
         } else {
             BrowserError::CdpError {
@@ -923,11 +941,12 @@ impl PageHandle {
                 message: e.to_string(),
             })?;
 
+        let selector_arc: Arc<str> = Arc::from(selector);
         Ok(elements
             .into_iter()
             .map(|el| NodeHandle {
                 element: el,
-                selector: selector.to_string(),
+                selector: selector_arc.clone(),
                 cdp_timeout: self.cdp_timeout,
             })
             .collect())

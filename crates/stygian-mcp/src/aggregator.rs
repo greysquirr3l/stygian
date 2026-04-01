@@ -46,7 +46,9 @@ pub struct McpAggregator {
     /// Cancellation token for the proxy background health-check and session-purge tasks.
     proxy_token: CancellationToken,
     /// Join handle for the proxy background tasks (health-check + session purge).
-    proxy_bg: JoinHandle<()>,
+    /// Wrapped in `Option` so it can be taken and awaited in `run()` while
+    /// `Drop` can abort it on any early-exit path.
+    proxy_bg: Option<JoinHandle<()>>,
 }
 
 impl McpAggregator {
@@ -67,7 +69,7 @@ impl McpAggregator {
             browser,
             proxy,
             proxy_token,
-            proxy_bg,
+            proxy_bg: Some(proxy_bg),
         })
     }
 
@@ -79,7 +81,7 @@ impl McpAggregator {
     /// # Errors
     ///
     /// Returns an I/O error if stdin/stdout cannot be read or written.
-    pub async fn run(self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn run(mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("stygian-mcp aggregator starting (stdin/stdout mode)");
 
         let stdin = tokio::io::stdin();
@@ -109,8 +111,10 @@ impl McpAggregator {
 
         // Shut down proxy background tasks (health-check + session purge).
         self.proxy_token.cancel();
-        if let Err(e) = self.proxy_bg.await {
-            warn!("proxy background task panicked during shutdown: {e:?}");
+        if let Some(bg) = self.proxy_bg.take() {
+            if let Err(e) = bg.await {
+                warn!("proxy background task panicked during shutdown: {e:?}");
+            }
         }
 
         Ok(())
@@ -553,6 +557,17 @@ impl McpAggregator {
                 }]
             }),
         )
+    }
+}
+
+impl Drop for McpAggregator {
+    /// Cancel and abort the proxy background tasks on any drop path so they
+    /// do not outlive the aggregator when `run()` returns early via `?`.
+    fn drop(&mut self) {
+        self.proxy_token.cancel();
+        if let Some(bg) = self.proxy_bg.take() {
+            bg.abort();
+        }
     }
 }
 
