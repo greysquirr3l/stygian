@@ -9,7 +9,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! stygian-proxy = { version = "0.5", features = ["mcp"] }
+//! stygian-proxy = { version = "0.6", features = ["mcp"] }
 //! ```
 //!
 //! ## Protocol
@@ -41,6 +41,8 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, info};
 use ulid::Ulid;
 use uuid::Uuid;
@@ -194,6 +196,36 @@ impl McpProxyServer {
     /// ```
     pub async fn handle_request(&self, req: &Value) -> Value {
         self.handle(req).await
+    }
+
+    /// Spawn the background health-check and session-purge tasks.
+    ///
+    /// Returns a `(CancellationToken, JoinHandle)` pair.  Cancel the token to
+    /// trigger a graceful shutdown of the background tasks; await the handle to
+    /// confirm they have stopped.
+    ///
+    /// This should be called by consumers that use [`handle_request`] directly
+    /// (e.g. the `McpAggregator`) so that proxy health checking and sticky-session
+    /// purging run even when the full stdin/stdout [`run`] loop is not used.
+    ///
+    /// [`handle_request`]: McpProxyServer::handle_request
+    /// [`run`]: McpProxyServer::run
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_proxy::mcp::McpProxyServer;
+    ///
+    /// # tokio_test::block_on(async {
+    /// let server = McpProxyServer::new().unwrap();
+    /// let (token, bg) = server.start_background();
+    /// // ... use server.handle_request() ...
+    /// token.cancel();
+    /// bg.await.unwrap();
+    /// # });
+    /// ```
+    pub fn start_background(&self) -> (CancellationToken, JoinHandle<()>) {
+        self.manager.start()
     }
 
     async fn handle(&self, req: &Value) -> Value {

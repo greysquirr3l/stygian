@@ -42,9 +42,9 @@ Add crates to `Cargo.toml`:
 
 ```toml
 [dependencies]
-stygian-graph   = "0.5.0"
-stygian-browser = "0.5.0"   # optional — only needed for JS-rendered pages
-stygian-proxy   = "0.5.0"   # optional — proxy pool management
+stygian-graph   = "0.6.0"
+stygian-browser = "0.6.0"   # optional — only needed for JS-rendered pages
+stygian-proxy   = "0.6.0"   # optional — proxy pool management
 tokio            = { version = "1", features = ["full"] }
 serde_json       = "1"
 ```
@@ -52,7 +52,7 @@ serde_json       = "1"
 Enable optional feature groups on `stygian-graph`:
 
 ```toml
-stygian-graph = { version = "0.5.0", features = ["browser", "ai-claude", "distributed", "mcp"] }
+stygian-graph = { version = "0.6.0", features = ["browser", "ai-claude", "distributed", "mcp"] }
 ```
 
 Available features:
