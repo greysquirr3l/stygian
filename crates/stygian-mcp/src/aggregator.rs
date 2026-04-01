@@ -111,10 +111,10 @@ impl McpAggregator {
 
         // Shut down proxy background tasks (health-check + session purge).
         self.proxy_token.cancel();
-        if let Some(bg) = self.proxy_bg.take() {
-            if let Err(e) = bg.await {
-                warn!("proxy background task panicked during shutdown: {e:?}");
-            }
+        if let Some(bg) = self.proxy_bg.take()
+            && let Err(e) = bg.await
+        {
+            warn!("proxy background task panicked during shutdown: {e:?}");
         }
 
         Ok(())
