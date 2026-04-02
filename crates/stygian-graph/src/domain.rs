@@ -6,6 +6,9 @@
 /// DAG execution engine using petgraph
 pub mod graph;
 
+/// Graph introspection types and queries
+pub mod introspection;
+
 /// Pipeline types with typestate pattern
 pub mod pipeline;
 

@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-04-02
+
+### Added
+
+- `stygian-graph`: Graph introspection API — new `domain::introspection` module with types
+  for runtime graph inspection: `NodeInfo`, `EdgeInfo`, `ExecutionWave`, `CriticalPath`,
+  `ConnectivityMetrics`, `GraphSnapshot`, `NodeQuery`, `DependencyChain`, and `ImpactAnalysis`
+- `stygian-graph`: `DagExecutor` introspection methods — `node_count()`, `edge_count()`,
+  `node_ids()`, `get_node()`, `predecessors()`, `successors()`, `topological_order()`,
+  `execution_waves()`, `node_info()`, `connectivity()`, `critical_path()`, `impact_analysis()`,
+  `query_nodes()`, and `snapshot()` for comprehensive graph inspection at runtime
+- `stygian-graph`: MCP introspection tools — four new tools for graph analysis via MCP:
+  `inspect` (complete graph snapshot), `node_info` (single node details), `impact` (change
+  impact analysis), and `query_nodes` (filtered node search by service, depth, root/leaf status)
+- `stygian-mcp`: Graph introspection tools pass through aggregator as `graph_inspect`,
+  `graph_node_info`, `graph_impact`, and `graph_query_nodes`
+
 ## [0.6.0] - 2026-03-31
 
 ### Added

@@ -331,6 +331,58 @@ impl McpGraphServer {
                             },
                             "required": ["toml"]
                         }
+                    },
+                    {
+                        "name": "inspect",
+                        "description": "Get a complete snapshot of a pipeline's graph structure including nodes, edges, execution waves, critical path, and connectivity metrics.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "toml": { "type": "string", "description": "TOML pipeline definition string" }
+                            },
+                            "required": ["toml"]
+                        }
+                    },
+                    {
+                        "name": "node_info",
+                        "description": "Get detailed information about a specific node in the pipeline graph, including its service type, depth, predecessors, and successors.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "toml":    { "type": "string", "description": "TOML pipeline definition string" },
+                                "node_id": { "type": "string", "description": "Node ID to inspect" }
+                            },
+                            "required": ["toml", "node_id"]
+                        }
+                    },
+                    {
+                        "name": "impact",
+                        "description": "Analyze what would be affected by changing a node. Returns all upstream dependencies and downstream dependents.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "toml":    { "type": "string", "description": "TOML pipeline definition string" },
+                                "node_id": { "type": "string", "description": "Node ID to analyze impact for" }
+                            },
+                            "required": ["toml", "node_id"]
+                        }
+                    },
+                    {
+                        "name": "query_nodes",
+                        "description": "Query nodes in the pipeline graph by various criteria: service type, root/leaf status, depth range, or ID pattern.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "toml":       { "type": "string",  "description": "TOML pipeline definition string" },
+                                "service":    { "type": "string",  "description": "Filter by service type (http, ai, browser, etc.)" },
+                                "id_pattern": { "type": "string",  "description": "Filter by node ID substring match" },
+                                "is_root":    { "type": "boolean", "description": "Only return root nodes (no predecessors)" },
+                                "is_leaf":    { "type": "boolean", "description": "Only return leaf nodes (no successors)" },
+                                "min_depth":  { "type": "integer", "description": "Minimum depth from root nodes" },
+                                "max_depth":  { "type": "integer", "description": "Maximum depth from root nodes" }
+                            },
+                            "required": ["toml"]
+                        }
                     }
                 ]
             }),
@@ -349,6 +401,10 @@ impl McpGraphServer {
             "scrape_rss" => self.tool_scrape_rss(id, args).await,
             "pipeline_validate" => self.tool_pipeline_validate(id, args),
             "pipeline_run" => self.tool_pipeline_run(id, args).await,
+            "inspect" => self.tool_graph_inspect(id, args),
+            "node_info" => self.tool_graph_node_info(id, args),
+            "impact" => self.tool_graph_impact(id, args),
+            "query_nodes" => self.tool_graph_query(id, args),
             _ => error_response(id, -32602, &format!("Unknown tool: {name}")),
         }
     }
@@ -834,6 +890,235 @@ impl McpGraphServer {
                         "skipped": skipped,
                         "errors": errors
                     })).unwrap_or_default()
+                }]
+            }),
+        )
+    }
+
+    // ── Graph introspection tools ─────────────────────────────────────────────
+
+    fn tool_graph_inspect(&self, id: &Value, args: &Value) -> Value {
+        let Some(toml) = args["toml"].as_str() else {
+            return error_response(id, -32602, "Missing required parameter: toml");
+        };
+
+        let def = match PipelineParser::from_str(toml) {
+            Ok(d) => d,
+            Err(e) => return error_response(id, -32603, &format!("Parse error: {e}")),
+        };
+
+        if let Err(e) = def.validate() {
+            return error_response(id, -32603, &format!("Validation error: {e}"));
+        }
+
+        // Build a Pipeline from the definition
+        let mut pipeline = crate::domain::graph::Pipeline::new("pipeline");
+        for node in &def.nodes {
+            pipeline.add_node(crate::domain::graph::Node::with_metadata(
+                &node.name,
+                &node.service,
+                serde_json::json!({
+                    "url": node.url,
+                    "params": toml_to_json(&toml::Value::Table(
+                        node.params.iter()
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect()
+                    ))
+                }),
+                serde_json::Value::Null,
+            ));
+            for dep in &node.depends_on {
+                pipeline.add_edge(crate::domain::graph::Edge::new(dep, &node.name));
+            }
+        }
+
+        let executor = match crate::domain::graph::DagExecutor::from_pipeline(&pipeline) {
+            Ok(e) => e,
+            Err(e) => return error_response(id, -32603, &format!("Graph build error: {e}")),
+        };
+
+        let snapshot = executor.snapshot();
+
+        ok_response(
+            id,
+            json!({
+                "content": [{
+                    "type": "text",
+                    "text": serde_json::to_string(&snapshot).unwrap_or_default()
+                }]
+            }),
+        )
+    }
+
+    fn tool_graph_node_info(&self, id: &Value, args: &Value) -> Value {
+        let Some(toml) = args["toml"].as_str() else {
+            return error_response(id, -32602, "Missing required parameter: toml");
+        };
+        let Some(node_id) = args["node_id"].as_str() else {
+            return error_response(id, -32602, "Missing required parameter: node_id");
+        };
+
+        let def = match PipelineParser::from_str(toml) {
+            Ok(d) => d,
+            Err(e) => return error_response(id, -32603, &format!("Parse error: {e}")),
+        };
+
+        if let Err(e) = def.validate() {
+            return error_response(id, -32603, &format!("Validation error: {e}"));
+        }
+
+        let mut pipeline = crate::domain::graph::Pipeline::new("pipeline");
+        for node in &def.nodes {
+            pipeline.add_node(crate::domain::graph::Node::with_metadata(
+                &node.name,
+                &node.service,
+                serde_json::json!({
+                    "url": node.url,
+                    "params": toml_to_json(&toml::Value::Table(
+                        node.params.iter()
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect()
+                    ))
+                }),
+                serde_json::Value::Null,
+            ));
+            for dep in &node.depends_on {
+                pipeline.add_edge(crate::domain::graph::Edge::new(dep, &node.name));
+            }
+        }
+
+        let executor = match crate::domain::graph::DagExecutor::from_pipeline(&pipeline) {
+            Ok(e) => e,
+            Err(e) => return error_response(id, -32603, &format!("Graph build error: {e}")),
+        };
+
+        match executor.node_info(node_id) {
+            Some(info) => ok_response(
+                id,
+                json!({
+                    "content": [{
+                        "type": "text",
+                        "text": serde_json::to_string(&info).unwrap_or_default()
+                    }]
+                }),
+            ),
+            None => error_response(id, -32602, &format!("Node not found: {node_id}")),
+        }
+    }
+
+    fn tool_graph_impact(&self, id: &Value, args: &Value) -> Value {
+        let Some(toml) = args["toml"].as_str() else {
+            return error_response(id, -32602, "Missing required parameter: toml");
+        };
+        let Some(node_id) = args["node_id"].as_str() else {
+            return error_response(id, -32602, "Missing required parameter: node_id");
+        };
+
+        let def = match PipelineParser::from_str(toml) {
+            Ok(d) => d,
+            Err(e) => return error_response(id, -32603, &format!("Parse error: {e}")),
+        };
+
+        if let Err(e) = def.validate() {
+            return error_response(id, -32603, &format!("Validation error: {e}"));
+        }
+
+        let mut pipeline = crate::domain::graph::Pipeline::new("pipeline");
+        for node in &def.nodes {
+            pipeline.add_node(crate::domain::graph::Node::with_metadata(
+                &node.name,
+                &node.service,
+                serde_json::json!({
+                    "url": node.url,
+                    "params": toml_to_json(&toml::Value::Table(
+                        node.params.iter()
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect()
+                    ))
+                }),
+                serde_json::Value::Null,
+            ));
+            for dep in &node.depends_on {
+                pipeline.add_edge(crate::domain::graph::Edge::new(dep, &node.name));
+            }
+        }
+
+        let executor = match crate::domain::graph::DagExecutor::from_pipeline(&pipeline) {
+            Ok(e) => e,
+            Err(e) => return error_response(id, -32603, &format!("Graph build error: {e}")),
+        };
+
+        let impact = executor.impact_analysis(node_id);
+
+        ok_response(
+            id,
+            json!({
+                "content": [{
+                    "type": "text",
+                    "text": serde_json::to_string(&impact).unwrap_or_default()
+                }]
+            }),
+        )
+    }
+
+    fn tool_graph_query(&self, id: &Value, args: &Value) -> Value {
+        let Some(toml) = args["toml"].as_str() else {
+            return error_response(id, -32602, "Missing required parameter: toml");
+        };
+
+        let def = match PipelineParser::from_str(toml) {
+            Ok(d) => d,
+            Err(e) => return error_response(id, -32603, &format!("Parse error: {e}")),
+        };
+
+        if let Err(e) = def.validate() {
+            return error_response(id, -32603, &format!("Validation error: {e}"));
+        }
+
+        let mut pipeline = crate::domain::graph::Pipeline::new("pipeline");
+        for node in &def.nodes {
+            pipeline.add_node(crate::domain::graph::Node::with_metadata(
+                &node.name,
+                &node.service,
+                serde_json::json!({
+                    "url": node.url,
+                    "params": toml_to_json(&toml::Value::Table(
+                        node.params.iter()
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect()
+                    ))
+                }),
+                serde_json::Value::Null,
+            ));
+            for dep in &node.depends_on {
+                pipeline.add_edge(crate::domain::graph::Edge::new(dep, &node.name));
+            }
+        }
+
+        let executor = match crate::domain::graph::DagExecutor::from_pipeline(&pipeline) {
+            Ok(e) => e,
+            Err(e) => return error_response(id, -32603, &format!("Graph build error: {e}")),
+        };
+
+        // Build the query from args
+        let query = crate::domain::introspection::NodeQuery {
+            service: args["service"].as_str().map(String::from),
+            id: None,
+            id_pattern: args["id_pattern"].as_str().map(String::from),
+            is_root: args["is_root"].as_bool(),
+            is_leaf: args["is_leaf"].as_bool(),
+            min_depth: args["min_depth"].as_u64().map(|v| v as usize),
+            max_depth: args["max_depth"].as_u64().map(|v| v as usize),
+        };
+
+        let results = executor.query_nodes(&query);
+
+        ok_response(
+            id,
+            json!({
+                "content": [{
+                    "type": "text",
+                    "text": serde_json::to_string(&results).unwrap_or_default()
                 }]
             }),
         )
