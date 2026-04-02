@@ -9,12 +9,13 @@
 [![Documentation](https://github.com/greysquirr3l/stygian/actions/workflows/docs.yml/badge.svg)](https://github.com/greysquirr3l/stygian/actions/workflows/docs.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/greysquirr3l/stygian/badge)](https://securityscorecards.dev/viewer/?uri=github.com/greysquirr3l/stygian)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![License: Commercial](https://img.shields.io/badge/License-Commercial-green.svg)](LICENSE-COMMERCIAL.md)
 
 ---
 
 ## What is stygian?
 
-Stygian is a **monorepo** containing two complementary Rust crates for building robust, scalable web scraping systems:
+Stygian is a **monorepo** containing four complementary Rust crates for building robust, scalable web scraping systems:
 
 ### 📊 [stygian-graph](crates/stygian-graph)
 
@@ -27,6 +28,7 @@ Graph-based scraping engine treating pipelines as DAGs with pluggable service mo
 - **Distributed execution** — Redis/Valkey-backed work queues
 - **Circuit breaker** — graceful degradation when services fail
 - **Idempotency** — safe retries with deduplication keys
+- **Graph introspection** — runtime inspection, impact analysis, execution waves
 
 ### 🌐 [stygian-browser](crates/stygian-browser)
 
@@ -36,7 +38,26 @@ Anti-detection browser automation library for bypassing modern bot protection:
 - **CDP-based** — Chrome DevTools Protocol via chromiumoxide
 - **Stealth features** — navigator spoofing, canvas noise, WebGL randomization
 - **Human behavior** — Bézier mouse paths, realistic typing
+- **TLS fingerprinting** — profile-matched JA3/JA4 signatures
 - **Cloudflare/DataDome/PerimeterX** — bypass detection layers
+
+### 🔀 [stygian-proxy](crates/stygian-proxy)
+
+Proxy pool management with intelligent rotation:
+
+- **Multi-protocol** — HTTP, HTTPS, SOCKS5 support
+- **Health checking** — automatic dead proxy removal
+- **Sticky sessions** — domain-bound proxy affinity
+- **Weighted selection** — prioritize faster/more reliable proxies
+
+### 🔌 [stygian-mcp](crates/stygian-mcp)
+
+MCP (Model Context Protocol) aggregator for LLM tool integration:
+
+- **Unified interface** — single JSON-RPC 2.0 server over stdin/stdout
+- **Tool namespacing** — `graph_*`, `browser_*`, `proxy_*` prefixes
+- **Cross-crate tools** — `scrape_proxied`, `browser_proxied`
+- **VS Code/Claude** — direct integration with MCP-compatible clients
 
 ---
 
@@ -99,10 +120,13 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-stygian-graph = "0.2"
-stygian-browser = "0.2"  # optional, for JavaScript rendering
+stygian-graph = "0.7"
+stygian-browser = "0.7"  # optional, for JavaScript rendering
+stygian-proxy = "0.7"    # optional, for proxy pool management
 tokio = { version = "1", features = ["full"] }
 ```
+
+For MCP integration, use the `stygian-mcp` binary directly.
 
 ---
 
@@ -136,8 +160,11 @@ Adapters (HTTP, browser, AI providers, storage)
 stygian/
 ├── crates/
 │   ├── stygian-graph/      # Scraping engine
-│   └── stygian-browser/    # Browser automation
+│   ├── stygian-browser/    # Browser automation
+│   ├── stygian-proxy/      # Proxy pool management
+│   └── stygian-mcp/        # MCP aggregator server
 ├── examples/                # Example pipelines
+├── book/                    # mdBook documentation
 ├── docs/                    # Architecture docs
 └── assets/                  # Diagrams, images
 ```
@@ -209,13 +236,16 @@ Use [Conventional Commits](https://www.conventionalcommits.org/):
 
 ## License
 
-Licensed under the [GNU Affero General Public License v3.0](LICENSE) (`AGPL-3.0-only`).
+Dual-licensed under:
 
-This means any modifications or derivative works must also be released under the AGPL-3.0, including when the software is used to provide a network service.
+- **[GNU Affero General Public License v3.0](LICENSE)** (`AGPL-3.0-only`) — free for open-source use
+- **[Commercial License](LICENSE-COMMERCIAL.md)** — available for proprietary/closed-source use
+
+Under the AGPL, any modifications or derivative works must also be released under the AGPL-3.0, including when the software is used to provide a network service. For commercial licensing options that permit proprietary use, see [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md).
 
 ### Contribution
 
-Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you shall be licensed under the AGPL-3.0-only, without any additional terms or conditions.
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you shall be dual-licensed as above, without any additional terms or conditions.
 
 ---
 
@@ -230,6 +260,6 @@ Built with:
 
 ---
 
-**Status**: Active development | Version 0.2.0 | Rust 2024 edition | Linux + macOS
+**Status**: Active development | Version 0.7.0 | Rust 2024 edition | Linux + macOS
 
 For detailed documentation, see the [project docs site](https://greysquirr3l.github.io/stygian).
