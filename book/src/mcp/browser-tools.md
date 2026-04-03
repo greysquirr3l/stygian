@@ -1,6 +1,6 @@
 # Browser MCP Tools
 
-`stygian-browser` exposes eight tools for headless browser automation plus a pool stats tool.
+`stygian-browser` exposes eleven tools for headless browser automation plus a pool stats tool.
 
 ---
 
@@ -8,7 +8,7 @@
 
 ```toml
 [dependencies]
-stygian-browser = { version = "0.6.0", features = ["mcp"] }
+stygian-browser = { version = "0.8", features = ["mcp"] }
 ```
 
 To run as a standalone MCP server:
@@ -140,6 +140,110 @@ Retrieve the current page's full outer HTML.
 
 ```json
 { "html": "<!DOCTYPE html><html>...</html>" }
+```
+
+---
+
+### `browser_query`
+
+Query all elements matching a CSS selector and return their text content (and optionally named
+attributes) as a structured list. Does not require deserialising the full page HTML.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `session_id` | string | ✓ | Session ID from `browser_acquire` |
+| `url` | string | ✓ | URL to navigate to before querying |
+| `selector` | string | ✓ | CSS selector — e.g. `"article.post h2"` |
+| `fields` | object | | Map of `{ "name": "attr_name" }` pairs — extra attribute values to include per node |
+
+**Returns:**
+
+```json
+[
+  { "text": "Post title", "href": "https://example.com/post-1" },
+  { "text": "Another title", "href": "https://example.com/post-2" }
+]
+```
+
+When `fields` is omitted, each item contains only `"text"` (the element's `textContent`).
+
+---
+
+### `browser_extract`
+
+Extract structured records from a page using a root selector + per-field schema. Equivalent
+to calling `page.extract_all::<T>()` with an inline schema definition.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `session_id` | string | ✓ | Session ID |
+| `url` | string | ✓ | URL to navigate to before extracting |
+| `root_selector` | string | ✓ | CSS selector for the repeating container element |
+| `schema` | array | ✓ | Array of `{ name, selector, attr?, required? }` field descriptors |
+
+**Schema field descriptor:**
+
+| Key | Type | Required | Description |
+| --- | ---- | -------- | ----------- |
+| `name` | string | ✓ | Key in the output object |
+| `selector` | string | ✓ | CSS selector scoped to the root element |
+| `attr` | string | | If present, captures this attribute instead of `textContent` |
+| `required` | boolean | | `true` (default) — omit or set to `false` for optional fields |
+
+**Returns:**
+
+```json
+[
+  {
+    "title":  "Example post",
+    "url":    "https://example.com/post-1",
+    "author": "Alice",
+    "date":   "2025-01-15"
+  }
+]
+```
+
+**Example call:**
+
+```json
+{
+  "session_id":    "01HV4...",
+  "url":           "https://news.example.com",
+  "root_selector": "article.story",
+  "schema": [
+    { "name": "title",  "selector": "h2" },
+    { "name": "url",    "selector": "h2 a", "attr": "href" },
+    { "name": "author", "selector": "span.author" },
+    { "name": "date",   "selector": "time", "attr": "datetime", "required": false }
+  ]
+}
+```
+
+---
+
+### `browser_find_similar`
+
+Find elements that are structurally similar to a reference fingerprint, even when class names or
+depth differ across page versions. Uses a weighted Jaccard similarity score (tag 40 %, classes
+35 %, attribute names 15 %, depth 10 %).
+
+> **Note:** Requires the `similarity` feature to be enabled on `stygian-browser`.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `session_id` | string | ✓ | Session ID |
+| `url` | string | ✓ | URL to navigate to before searching |
+| `fingerprint` | object | ✓ | `ElementFingerprint` JSON — capture with `node.fingerprint()` in the Rust API |
+| `threshold` | number | | Minimum similarity score 0–1 (default: `0.7`) |
+| `max_results` | integer | | Maximum number of matches to return (default: `10`) |
+
+**Returns:**
+
+```json
+[
+  { "score": 0.92, "outer_html": "<div class=\"post post-featured\">...</div>" },
+  { "score": 0.81, "outer_html": "<div class=\"post\">...</div>" }
+]
 ```
 
 ---

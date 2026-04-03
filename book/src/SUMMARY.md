@@ -28,6 +28,8 @@
 - [Stealth v2 — TLS & Diagnostics](./browser/stealth-v2.md)
 - [Browser Pool](./browser/pool.md)
 - [Page Operations](./browser/page-operations.md)
+- [Live DOM Query API](./browser/dom-query.md)
+- [Structured Extraction](./browser/extract.md)
 
 ---
 
