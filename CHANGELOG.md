@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-04-03
+
+### Added
+
+- `stygian-browser`: DOM traversal on `NodeHandle` — `parent()`, `next_sibling()`, and
+  `previous_sibling()` methods for relative DOM navigation without additional CDP round-trips
+- `stygian-browser`: `#[derive(Extract)]` macro via new `stygian-extract-derive` proc-macro
+  crate — annotate struct fields with `#[selector("css")]`, `#[selector("css", attr = "name")]`,
+  or `#[selector("css", nested)]` to generate a typed `Extractable` implementation;
+  `PageHandle::extract_all::<T>(root_selector)` collects all matching root nodes into
+  `Vec<T>` in a single traversal; `ExtractionError` covers missing required fields,
+  CDP failures, and nested extraction failures
+- `stygian-browser`: Adaptive element similarity via `find_similar()` — `ElementFingerprint`
+  captures tag, sorted class list, attribute names, and depth-from-body; `jaccard_weighted()`
+  computes a weighted Jaccard score (tag 0.4 / classes 0.35 / attrs 0.15 / depth 0.1);
+  `PageHandle::find_similar(reference, config)` scans the live DOM and returns
+  `Vec<SimilarMatch>` ordered by score; feature-gated behind `similarity`
+- `stygian-browser`: Three new MCP browser tools — `browser_query` (CSS selector +
+  optional per-field attribute map → text or structured results), `browser_extract`
+  (schema-driven structured extraction; runtime equivalent of `#[derive(Extract)]`),
+  and `browser_find_similar` (adaptive element search returning scored candidates;
+  requires `similarity` feature)
+- `stygian-extract-derive`: new `stygian-extract-derive` crate — proc-macro crate
+  implementing `#[derive(Extract)]` for `stygian-browser`'s `Extractable` trait
+
 ## [0.7.0] - 2026-04-02
 
 ### Added
