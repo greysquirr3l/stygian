@@ -200,6 +200,9 @@ pub struct NodeHandle {
     /// same allocation rather than cloning a `String` per node.
     selector: Arc<str>,
     cdp_timeout: Duration,
+    /// Cloned page reference used only for document-level element resolution
+    /// during DOM traversal (parent / sibling navigation).
+    page: chromiumoxide::Page,
 }
 
 impl NodeHandle {
@@ -411,8 +414,217 @@ impl NodeHandle {
                 element: el,
                 selector: selector_arc.clone(),
                 cdp_timeout: self.cdp_timeout,
+                page: self.page.clone(),
             })
             .collect())
+    }
+
+    /// Return the immediate parent element, or `None` if this element has no
+    /// parent (i.e. it is the document root).
+    ///
+    /// Issues a single `Runtime.callFunctionOn` CDP call that temporarily tags
+    /// the parent element with a unique attribute, then resolves it via a
+    /// document-level `DOM.querySelector` before removing the tag.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::StaleNode`] when the remote object has been
+    /// invalidated.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_browser::{BrowserPool, BrowserConfig, WaitUntil};
+    /// use std::time::Duration;
+    ///
+    /// # async fn run() -> stygian_browser::error::Result<()> {
+    /// let pool = BrowserPool::new(BrowserConfig::default()).await?;
+    /// let handle = pool.acquire().await?;
+    /// let mut page = handle.browser().expect("valid browser").new_page().await?;
+    /// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
+    /// let nodes = page.query_selector_all("p").await?;
+    /// if let Some(parent) = nodes[0].parent().await? {
+    ///     let html = parent.outer_html().await?;
+    ///     println!("parent: {}", &html[..html.len().min(80)]);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn parent(&self) -> Result<Option<Self>> {
+        let attr = format!(
+            "data-stygian-t-{}",
+            ulid::Ulid::new().to_string().to_lowercase()
+        );
+        let js = format!(
+            "function() {{ \
+                var t = this.parentElement; \
+                if (!t) {{ return false; }} \
+                t.setAttribute('{attr}', '1'); \
+                return true; \
+            }}"
+        );
+        self.call_traversal(&js, &attr, "parent").await
+    }
+
+    /// Return the next element sibling, or `None` if this element is the last
+    /// child of its parent.
+    ///
+    /// Uses `nextElementSibling` (skips text/comment nodes).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::StaleNode`] when the remote object has been
+    /// invalidated.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_browser::{BrowserPool, BrowserConfig, WaitUntil};
+    /// use std::time::Duration;
+    ///
+    /// # async fn run() -> stygian_browser::error::Result<()> {
+    /// let pool = BrowserPool::new(BrowserConfig::default()).await?;
+    /// let handle = pool.acquire().await?;
+    /// let mut page = handle.browser().expect("valid browser").new_page().await?;
+    /// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
+    /// let nodes = page.query_selector_all("li").await?;
+    /// if let Some(next) = nodes[0].next_sibling().await? {
+    ///     println!("next sibling: {}", next.text_content().await?);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn next_sibling(&self) -> Result<Option<Self>> {
+        let attr = format!(
+            "data-stygian-t-{}",
+            ulid::Ulid::new().to_string().to_lowercase()
+        );
+        let js = format!(
+            "function() {{ \
+                var t = this.nextElementSibling; \
+                if (!t) {{ return false; }} \
+                t.setAttribute('{attr}', '1'); \
+                return true; \
+            }}"
+        );
+        self.call_traversal(&js, &attr, "next").await
+    }
+
+    /// Return the previous element sibling, or `None` if this element is the
+    /// first child of its parent.
+    ///
+    /// Uses `previousElementSibling` (skips text/comment nodes).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::StaleNode`] when the remote object has been
+    /// invalidated.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_browser::{BrowserPool, BrowserConfig, WaitUntil};
+    /// use std::time::Duration;
+    ///
+    /// # async fn run() -> stygian_browser::error::Result<()> {
+    /// let pool = BrowserPool::new(BrowserConfig::default()).await?;
+    /// let handle = pool.acquire().await?;
+    /// let mut page = handle.browser().expect("valid browser").new_page().await?;
+    /// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
+    /// let nodes = page.query_selector_all("li").await?;
+    /// if let Some(prev) = nodes[1].previous_sibling().await? {
+    ///     println!("prev sibling: {}", prev.text_content().await?);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn previous_sibling(&self) -> Result<Option<Self>> {
+        let attr = format!(
+            "data-stygian-t-{}",
+            ulid::Ulid::new().to_string().to_lowercase()
+        );
+        let js = format!(
+            "function() {{ \
+                var t = this.previousElementSibling; \
+                if (!t) {{ return false; }} \
+                t.setAttribute('{attr}', '1'); \
+                return true; \
+            }}"
+        );
+        self.call_traversal(&js, &attr, "prev").await
+    }
+
+    /// Shared traversal implementation used by [`parent`], [`next_sibling`],
+    /// and [`previous_sibling`].
+    ///
+    /// The caller provides a JS function that:
+    /// 1. Navigates to the target element (parent / sibling).
+    /// 2. If the target is non-null, sets a unique attribute (`attr_name`)
+    ///    on it and returns `true`.
+    /// 3. Returns `false` when the target is null (no such neighbour).
+    ///
+    /// This helper then resolves the tagged element from the document root,
+    /// removes the temporary attribute, and wraps the result in a
+    /// `NodeHandle`.
+    ///
+    /// [`parent`]: Self::parent
+    /// [`next_sibling`]: Self::next_sibling
+    /// [`previous_sibling`]: Self::previous_sibling
+    async fn call_traversal(
+        &self,
+        js_fn: &str,
+        attr_name: &str,
+        selector_suffix: &str,
+    ) -> Result<Option<Self>> {
+        // Step 1: Run the JS that tags the target element and reports null/non-null.
+        let op_tag = format!("NodeHandle::{selector_suffix}::tag");
+        let returns = timeout(self.cdp_timeout, self.element.call_js_fn(js_fn, false))
+            .await
+            .map_err(|_| BrowserError::Timeout {
+                operation: op_tag.clone(),
+                duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
+            })?
+            .map_err(|e| self.cdp_err_or_stale(&e, selector_suffix))?;
+
+        // JS returns false → no such neighbour.
+        let has_target = returns
+            .result
+            .value
+            .as_ref()
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        if !has_target {
+            return Ok(None);
+        }
+
+        // Step 2: Resolve the tagged element via a document-level querySelector.
+        let css = format!("[{attr_name}]");
+        let op_resolve = format!("NodeHandle::{selector_suffix}::resolve");
+        let element = timeout(self.cdp_timeout, self.page.find_element(css))
+            .await
+            .map_err(|_| BrowserError::Timeout {
+                operation: op_resolve.clone(),
+                duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
+            })?
+            .map_err(|e| BrowserError::CdpError {
+                operation: op_resolve,
+                message: e.to_string(),
+            })?;
+
+        // Step 3: Remove the temporary attribute (best-effort; a failure here
+        // is non-fatal — it leaves a harmless stale attribute in the DOM).
+        let cleanup = format!("function() {{ this.removeAttribute('{attr_name}'); }}");
+        let _ = element.call_js_fn(cleanup, false).await;
+
+        // Step 4: Wrap in a NodeHandle with the diagnostic selector suffix.
+        let new_selector: Arc<str> =
+            Arc::from(format!("{}::{selector_suffix}", self.selector).as_str());
+        Ok(Some(Self {
+            element,
+            selector: new_selector,
+            cdp_timeout: self.cdp_timeout,
+            page: self.page.clone(),
+        }))
     }
 
     /// Map a chromiumoxide `CdpError` to either [`BrowserError::StaleNode`]
@@ -958,6 +1170,7 @@ impl PageHandle {
                 element: el,
                 selector: selector_arc.clone(),
                 cdp_timeout: self.cdp_timeout,
+                page: self.page.clone(),
             })
             .collect())
     }
@@ -1302,6 +1515,141 @@ impl PageHandle {
     }
 }
 
+// ─── similarity feature ──────────────────────────────────────────────────────
+
+#[cfg(feature = "similarity")]
+impl NodeHandle {
+    /// Compute a structural [`crate::similarity::ElementFingerprint`] for this
+    /// node.
+    ///
+    /// Issues a single `Runtime.callFunctionOn` JS eval that extracts the tag,
+    /// class list, attribute names, and body-depth in one round-trip.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::StaleNode`] when the remote object has been
+    /// invalidated, or [`BrowserError::ScriptExecutionFailed`] if the script
+    /// produces unexpected output.
+    pub async fn fingerprint(&self) -> Result<crate::similarity::ElementFingerprint> {
+        const JS: &str = r#"function() {
+    var el = this;
+    var tag = el.tagName.toLowerCase();
+    var classes = Array.prototype.slice.call(el.classList).sort();
+    var attrNames = Array.prototype.slice.call(el.attributes)
+        .map(function(a) { return a.name; })
+        .filter(function(n) { return n !== 'class' && n !== 'id'; })
+        .sort();
+    var depth = 0;
+    var n = el.parentElement;
+    while (n && n.tagName.toLowerCase() !== 'body') { depth++; n = n.parentElement; }
+    return JSON.stringify({ tag: tag, classes: classes, attrNames: attrNames, depth: depth });
+}"#;
+
+        let returns = tokio::time::timeout(
+            self.cdp_timeout,
+            self.element.call_js_fn(JS, true),
+        )
+        .await
+        .map_err(|_| BrowserError::Timeout {
+            operation: "NodeHandle::fingerprint".to_string(),
+            duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
+        })?
+        .map_err(|e| self.cdp_err_or_stale(&e, "fingerprint"))?;
+
+        let json_str = returns
+            .result
+            .value
+            .as_ref()
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| BrowserError::ScriptExecutionFailed {
+                script: "NodeHandle::fingerprint".to_string(),
+                reason: "CDP returned no string value from fingerprint script".to_string(),
+            })?;
+
+        serde_json::from_str::<crate::similarity::ElementFingerprint>(json_str).map_err(|e| {
+            BrowserError::ScriptExecutionFailed {
+                script: "NodeHandle::fingerprint".to_string(),
+                reason: format!("failed to deserialise fingerprint JSON: {e}"),
+            }
+        })
+    }
+}
+
+#[cfg(feature = "similarity")]
+impl PageHandle {
+    /// Find all elements in the current page that are structurally similar to
+    /// `reference`, scored by [`crate::similarity::SimilarityConfig`].
+    ///
+    /// Computes a structural fingerprint for `reference` (via
+    /// [`NodeHandle::fingerprint`]), then fingerprints every candidate returned
+    /// by `document.querySelectorAll("*")` and collects those whose
+    /// [`crate::similarity::jaccard_weighted`] score exceeds
+    /// `config.threshold`.  Results are ordered by score descending.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_browser::{BrowserPool, BrowserConfig, WaitUntil};
+    /// use stygian_browser::similarity::SimilarityConfig;
+    /// use std::time::Duration;
+    ///
+    /// # async fn run() -> stygian_browser::error::Result<()> {
+    /// let pool = BrowserPool::new(BrowserConfig::default()).await?;
+    /// let handle = pool.acquire().await?;
+    /// let mut page = handle.browser().expect("valid browser").new_page().await?;
+    /// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
+    ///
+    /// let nodes = page.query_selector_all(".price").await?;
+    /// if let Some(reference) = nodes.into_iter().next() {
+    ///     let similar = page.find_similar(&reference, SimilarityConfig::default()).await?;
+    ///     for m in &similar {
+    ///         println!("score={:.2}", m.score);
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::StaleNode`] when `reference` is invalid, or
+    /// [`BrowserError::ScriptExecutionFailed`] if a scoring script fails.
+    pub async fn find_similar(
+        &self,
+        reference: &NodeHandle,
+        config: crate::similarity::SimilarityConfig,
+    ) -> Result<Vec<crate::similarity::SimilarMatch>> {
+        use crate::similarity::{SimilarMatch, jaccard_weighted};
+
+        let ref_fp = reference.fingerprint().await?;
+        let candidates = self.query_selector_all("*").await?;
+
+        let mut matches: Vec<SimilarMatch> = Vec::new();
+        for node in candidates {
+            match node.fingerprint().await {
+                Ok(cand_fp) => {
+                    let score = jaccard_weighted(&ref_fp, &cand_fp);
+                    if score >= config.threshold {
+                        matches.push(SimilarMatch { node, score });
+                    }
+                }
+                Err(_) => {
+                    // Stale / detached nodes are silently skipped.
+                    continue;
+                }
+            }
+        }
+
+        matches.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+
+        if config.max_results > 0 {
+            matches.truncate(config.max_results);
+        }
+
+        Ok(matches)
+    }
+}
+
 impl Drop for PageHandle {
     fn drop(&mut self) {
         warn!("PageHandle dropped without explicit close(); spawning cleanup task");
@@ -1480,5 +1828,40 @@ mod tests {
         let result: Vec<String> = serde_json::from_str(json)?;
         assert!(result.is_empty());
         Ok(())
+    }
+
+    // ── Traversal selector suffix tests ──────────────────────────────────────
+
+    /// A `StaleNode` error whose selector includes a traversal suffix (e.g.
+    /// `"div::parent"`) must surface that suffix in its `Display` output so
+    /// callers can locate the failed traversal in logs.
+    #[test]
+    fn traversal_selector_suffix_in_stale_error() {
+        let e = crate::error::BrowserError::StaleNode {
+            selector: "div::parent".to_string(),
+        };
+        let msg = e.to_string();
+        assert!(
+            msg.contains("div::parent"),
+            "StaleNode display must include the full selector; got: {msg}"
+        );
+    }
+
+    /// Same check for the `::next` suffix produced by `next_sibling()`.
+    #[test]
+    fn traversal_next_suffix_in_stale_error() {
+        let e = crate::error::BrowserError::StaleNode {
+            selector: "li.price::next".to_string(),
+        };
+        assert!(e.to_string().contains("li.price::next"));
+    }
+
+    /// Same check for the `::prev` suffix produced by `previous_sibling()`.
+    #[test]
+    fn traversal_prev_suffix_in_stale_error() {
+        let e = crate::error::BrowserError::StaleNode {
+            selector: "td.label::prev".to_string(),
+        };
+        assert!(e.to_string().contains("td.label::prev"));
     }
 }

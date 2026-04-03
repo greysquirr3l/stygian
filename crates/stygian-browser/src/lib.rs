@@ -90,6 +90,12 @@ pub mod extract;
 #[cfg(feature = "extract")]
 pub use extract::Extractable;
 
+#[cfg(feature = "similarity")]
+pub mod similarity;
+
+#[cfg(feature = "similarity")]
+pub use similarity::{ElementFingerprint, SimilarityConfig, SimilarMatch};
+
 #[cfg(feature = "stealth")]
 pub mod stealth;
 

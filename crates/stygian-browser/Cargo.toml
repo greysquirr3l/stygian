@@ -16,10 +16,11 @@ categories = ["web-programming", "development-tools"]
 default = ["stealth"]
 stealth = []
 tls-config = ["stealth", "dep:rustls", "dep:webpki-roots", "dep:reqwest"]
-full = ["stealth", "mcp", "metrics", "tls-config", "extract"]
+full = ["stealth", "mcp", "metrics", "tls-config", "extract", "similarity"]
 mcp = ["dep:base64"]
 metrics = ["dep:prometheus-client"]
 extract = ["dep:stygian-extract-derive"]
+similarity = []
 
 [dependencies]
 # Browser automation

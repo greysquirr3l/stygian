@@ -374,10 +374,16 @@ async fn query_selector_all_returns_nodes() -> Result<(), Box<dyn std::error::Er
 
     // example.com contains at least one <a> element with an href attribute.
     let nodes = page.query_selector_all("a[href]").await?;
-    assert!(!nodes.is_empty(), "expected at least one <a href> on example.com");
+    assert!(
+        !nodes.is_empty(),
+        "expected at least one <a href> on example.com"
+    );
 
     let href = nodes[0].attr("href").await?;
-    assert!(href.is_some(), "first <a href> should have an href attribute");
+    assert!(
+        href.is_some(),
+        "first <a href> should have an href attribute"
+    );
 
     page.close().await?;
     instance.shutdown().await?;
@@ -429,7 +435,10 @@ async fn ancestors_returns_parent_chain() -> Result<(), Box<dyn std::error::Erro
     .await?;
 
     let nodes = page.query_selector_all("p").await?;
-    assert!(!nodes.is_empty(), "expected at least one <p> on example.com");
+    assert!(
+        !nodes.is_empty(),
+        "expected at least one <p> on example.com"
+    );
 
     let chain = nodes[0].ancestors().await?;
     assert!(
@@ -458,7 +467,10 @@ async fn children_matching_returns_nested_nodes() -> Result<(), Box<dyn std::err
 
     // example.com's <div> contains <p> elements.
     let divs = page.query_selector_all("div").await?;
-    assert!(!divs.is_empty(), "expected at least one <div> on example.com");
+    assert!(
+        !divs.is_empty(),
+        "expected at least one <div> on example.com"
+    );
 
     let children = divs[0].children_matching("p").await?;
     assert!(
@@ -530,7 +542,10 @@ mod extract_tests {
         .await?;
 
         let items: Vec<Link> = page.extract_all::<Link>("div.nonexistent-xyz-9999").await?;
-        assert!(items.is_empty(), "unmatched selector should yield empty Vec");
+        assert!(
+            items.is_empty(),
+            "unmatched selector should yield empty Vec"
+        );
 
         page.close().await?;
         instance.shutdown().await?;
@@ -569,6 +584,379 @@ mod extract_tests {
                 "optional field with unmatched selector should be None"
             );
         }
+
+        page.close().await?;
+        instance.shutdown().await?;
+        Ok(())
+    }
+}
+
+// ─── DOM Traversal API (T32) ──────────────────────────────────────────────────
+
+/// Helper: navigate `page` to an inline HTML string via a `data:` URL.
+///
+/// The HTML is base64-encoded to avoid quoting issues in the URL.
+fn data_url(html: &str) -> String {
+    use std::fmt::Write as _;
+    let mut encoded = String::new();
+    for byte in html.as_bytes() {
+        let _ = write!(encoded, "{byte:02x}");
+    }
+    // Use percent-encoded UTF-8 for the data URL to keep it simple;
+    // base64 would require a dep, so we use a verbatim approach:
+    // Chrome accepts `data:text/html,<escaped>` reliably.
+    format!(
+        "data:text/html,{}",
+        html.chars().fold(String::new(), |mut acc, c| {
+            if c.is_ascii_alphanumeric() || "<>/=\"' \n\r\t;:.#{}[]()!-_".contains(c) {
+                acc.push(c);
+            } else {
+                let _ = write!(acc, "%{:02X}", c as u32);
+            }
+            acc
+        })
+    )
+}
+
+/// `parent()` returns the containing element.
+///
+/// DOM: `<ul><li id="first">A</li><li>B</li></ul>`
+/// Select `#first`, call `.parent()`, assert outer_html contains `<ul`.
+#[tokio::test]
+#[ignore = "requires Chrome"]
+async fn parent_returns_node() -> Result<(), Box<dyn std::error::Error>> {
+    let instance = BrowserInstance::launch(test_config()).await?;
+    let mut page = instance.new_page().await?;
+
+    let html = r#"<html><body><ul><li id="first">A</li><li>B</li></ul></body></html>"#;
+    page.navigate(
+        &data_url(html),
+        WaitUntil::Selector("#first".to_string()),
+        Duration::from_secs(15),
+    )
+    .await?;
+
+    let nodes = page.query_selector_all("#first").await?;
+    assert!(!nodes.is_empty(), "expected #first element");
+
+    let parent = nodes[0].parent().await?;
+    assert!(parent.is_some(), "parent() of <li> should be Some");
+
+    let outer = parent.unwrap().outer_html().await?;
+    assert!(
+        outer.contains("<ul") || outer.contains("<UL"),
+        "parent of <li> should be <ul>; got: {outer}"
+    );
+
+    page.close().await?;
+    instance.shutdown().await?;
+    Ok(())
+}
+
+/// `next_sibling()` advances to the next element in the same parent.
+///
+/// DOM: `<ul><li id="a">A</li><li id="b">B</li></ul>`
+/// Select `#a`, call `.next_sibling()`, assert result is Some and has text "B".
+#[tokio::test]
+#[ignore = "requires Chrome"]
+async fn next_sibling_advances() -> Result<(), Box<dyn std::error::Error>> {
+    let instance = BrowserInstance::launch(test_config()).await?;
+    let mut page = instance.new_page().await?;
+
+    let html = r#"<html><body><ul><li id="a">A</li><li id="b">B</li></ul></body></html>"#;
+    page.navigate(
+        &data_url(html),
+        WaitUntil::Selector("#a".to_string()),
+        Duration::from_secs(15),
+    )
+    .await?;
+
+    let nodes = page.query_selector_all("#a").await?;
+    assert!(!nodes.is_empty(), "expected #a element");
+
+    let next = nodes[0].next_sibling().await?;
+    assert!(
+        next.is_some(),
+        "next_sibling() of first <li> should be Some"
+    );
+
+    let text = next.unwrap().text_content().await?;
+    assert_eq!(text.trim(), "B", "next sibling should have text 'B'");
+
+    page.close().await?;
+    instance.shutdown().await?;
+    Ok(())
+}
+
+/// `previous_sibling()` of the first child returns `None`.
+#[tokio::test]
+#[ignore = "requires Chrome"]
+async fn previous_sibling_of_first_is_none() -> Result<(), Box<dyn std::error::Error>> {
+    let instance = BrowserInstance::launch(test_config()).await?;
+    let mut page = instance.new_page().await?;
+
+    let html = r#"<html><body><ul><li id="first">A</li><li>B</li></ul></body></html>"#;
+    page.navigate(
+        &data_url(html),
+        WaitUntil::Selector("#first".to_string()),
+        Duration::from_secs(15),
+    )
+    .await?;
+
+    let nodes = page.query_selector_all("#first").await?;
+    assert!(!nodes.is_empty(), "expected #first element");
+
+    let prev = nodes[0].previous_sibling().await?;
+    assert!(
+        prev.is_none(),
+        "previous_sibling() of first child should be None"
+    );
+
+    page.close().await?;
+    instance.shutdown().await?;
+    Ok(())
+}
+
+/// `parent()` of `<html>` (root element) returns `None`.
+#[tokio::test]
+#[ignore = "requires Chrome"]
+async fn parent_of_root_is_none() -> Result<(), Box<dyn std::error::Error>> {
+    let instance = BrowserInstance::launch(test_config()).await?;
+    let mut page = instance.new_page().await?;
+
+    page.navigate(
+        "about:blank",
+        WaitUntil::Selector("html".to_string()),
+        Duration::from_secs(10),
+    )
+    .await?;
+
+    let nodes = page.query_selector_all("html").await?;
+    assert!(!nodes.is_empty(), "expected <html> element");
+
+    let parent = nodes[0].parent().await?;
+    assert!(
+        parent.is_none(),
+        "parent() of <html> should be None (no parentElement)"
+    );
+
+    page.close().await?;
+    instance.shutdown().await?;
+    Ok(())
+}
+
+/// Lateral extraction: select a `<td>` by its text, traverse to its sibling,
+/// and read the sibling's text — the motivating use-case for T32.
+///
+/// DOM: `<table><tr><td>Price</td><td>$9.99</td></tr></table>`
+#[tokio::test]
+#[ignore = "requires Chrome"]
+async fn sibling_chain_lateral_extraction() -> Result<(), Box<dyn std::error::Error>> {
+    let instance = BrowserInstance::launch(test_config()).await?;
+    let mut page = instance.new_page().await?;
+
+    let html = concat!(
+        "<html><body>",
+        "<table><tr>",
+        "<td id='label'>Price</td>",
+        "<td id='value'>$9.99</td>",
+        "</tr></table>",
+        "</body></html>"
+    );
+    page.navigate(
+        &data_url(html),
+        WaitUntil::Selector("#label".to_string()),
+        Duration::from_secs(15),
+    )
+    .await?;
+
+    let nodes = page.query_selector_all("#label").await?;
+    assert!(!nodes.is_empty(), "expected #label <td>");
+
+    let value_cell = nodes[0].next_sibling().await?;
+    assert!(
+        value_cell.is_some(),
+        "next sibling of label cell should be Some"
+    );
+
+    let price = value_cell.unwrap().text_content().await?;
+    assert_eq!(
+        price.trim(),
+        "$9.99",
+        "lateral extraction should yield the price cell's text"
+    );
+
+    page.close().await?;
+    instance.shutdown().await?;
+    Ok(())
+}
+
+// ─── Similarity API (T33) ─────────────────────────────────────────────────────
+
+#[cfg(feature = "similarity")]
+mod similarity_tests {
+    use super::*;
+    use stygian_browser::similarity::SimilarityConfig;
+
+    /// `find_similar` with threshold 0.0 returns at least one result — the page
+    /// always contains at least one element.
+    #[tokio::test]
+    #[ignore = "requires Chrome"]
+    async fn find_similar_returns_same_element() -> Result<(), Box<dyn std::error::Error>> {
+        let instance = BrowserInstance::launch(test_config()).await?;
+        let mut page = instance.new_page().await?;
+
+        page.navigate(
+            "https://example.com",
+            WaitUntil::Selector("body".to_string()),
+            Duration::from_secs(30),
+        )
+        .await?;
+
+        // Grab a reference node.
+        let refs = page.query_selector_all("p").await?;
+        assert!(!refs.is_empty(), "expected at least one <p> on example.com");
+
+        // With threshold 0.0 every element is a match — result must be non-empty.
+        let result = page
+            .find_similar(
+                &refs[0],
+                SimilarityConfig {
+                    threshold: 0.0,
+                    max_results: 50,
+                },
+            )
+            .await?;
+
+        assert!(
+            !result.is_empty(),
+            "find_similar with threshold 0.0 should return at least one match"
+        );
+
+        page.close().await?;
+        instance.shutdown().await?;
+        Ok(())
+    }
+
+    /// `find_similar` with threshold `1.1` (above the maximum score) must
+    /// return an empty result set.
+    #[tokio::test]
+    #[ignore = "requires Chrome"]
+    async fn find_similar_threshold_filters() -> Result<(), Box<dyn std::error::Error>> {
+        let instance = BrowserInstance::launch(test_config()).await?;
+        let mut page = instance.new_page().await?;
+
+        page.navigate(
+            "https://example.com",
+            WaitUntil::Selector("body".to_string()),
+            Duration::from_secs(30),
+        )
+        .await?;
+
+        let refs = page.query_selector_all("p").await?;
+        assert!(!refs.is_empty(), "expected at least one <p> on example.com");
+
+        // Threshold 1.1 exceeds the maximum possible score — must yield nothing.
+        let result = page
+            .find_similar(
+                &refs[0],
+                SimilarityConfig {
+                    threshold: 1.1,
+                    max_results: 10,
+                },
+            )
+            .await?;
+
+        assert!(
+            result.is_empty(),
+            "threshold > 1.0 should filter all candidates; got {} results",
+            result.len()
+        );
+
+        page.close().await?;
+        instance.shutdown().await?;
+        Ok(())
+    }
+
+    /// On example.com, using a `<p>` reference with a moderate threshold should
+    /// find at least one similar element (the page has multiple `<p>` tags with
+    /// identical structure).
+    #[tokio::test]
+    #[ignore = "requires Chrome"]
+    async fn find_similar_finds_peer_elements() -> Result<(), Box<dyn std::error::Error>> {
+        let instance = BrowserInstance::launch(test_config()).await?;
+        let mut page = instance.new_page().await?;
+
+        page.navigate(
+            "https://example.com",
+            WaitUntil::Selector("body".to_string()),
+            Duration::from_secs(30),
+        )
+        .await?;
+
+        let refs = page.query_selector_all("p").await?;
+        assert!(!refs.is_empty(), "expected at least one <p> on example.com");
+
+        // Threshold 0.5 is low enough to find structurally similar <p> elements.
+        let result = page
+            .find_similar(
+                &refs[0],
+                SimilarityConfig {
+                    threshold: 0.5,
+                    max_results: 20,
+                },
+            )
+            .await?;
+
+        assert!(
+            !result.is_empty(),
+            "expected at least one similar element above threshold 0.5"
+        );
+
+        // Results should be ordered score-descending.
+        for window in result.windows(2) {
+            assert!(
+                window[0].score >= window[1].score,
+                "results must be ordered by score descending; got {:.3} then {:.3}",
+                window[0].score,
+                window[1].score
+            );
+        }
+
+        page.close().await?;
+        instance.shutdown().await?;
+        Ok(())
+    }
+
+    /// `NodeHandle::fingerprint()` returns an `ElementFingerprint` whose `tag`
+    /// is a known lower-case HTML tag name.
+    #[tokio::test]
+    #[ignore = "requires Chrome"]
+    async fn fingerprint_captures_tag_and_classes() -> Result<(), Box<dyn std::error::Error>> {
+        let instance = BrowserInstance::launch(test_config()).await?;
+        let mut page = instance.new_page().await?;
+
+        page.navigate(
+            "https://example.com",
+            WaitUntil::Selector("body".to_string()),
+            Duration::from_secs(30),
+        )
+        .await?;
+
+        let nodes = page.query_selector_all("p").await?;
+        assert!(!nodes.is_empty(), "expected at least one <p> on example.com");
+
+        let fp = nodes[0].fingerprint().await?;
+        assert_eq!(fp.tag, "p", "fingerprint tag should be 'p'");
+
+        // Classes and attr_names must be sorted (they may be empty on example.com).
+        let mut sorted_classes = fp.classes.clone();
+        sorted_classes.sort();
+        assert_eq!(fp.classes, sorted_classes, "classes must be sorted");
+
+        let mut sorted_attrs = fp.attr_names.clone();
+        sorted_attrs.sort();
+        assert_eq!(fp.attr_names, sorted_attrs, "attr_names must be sorted");
 
         page.close().await?;
         instance.shutdown().await?;
