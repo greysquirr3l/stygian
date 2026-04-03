@@ -728,9 +728,7 @@ impl McpBrowserServer {
             .await
             .get(&session_id)
             .map(|s| (s.handle.clone(), s.current_url.clone()))
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Unknown session: {session_id}"))
-            })?;
+            .ok_or_else(|| BrowserError::ConfigError(format!("Unknown session: {session_id}")))?;
         let nav_url = nav_url_opt.ok_or_else(|| {
             BrowserError::ConfigError(
                 "No page loaded — call browser_navigate before browser_eval".to_string(),
@@ -778,9 +776,7 @@ impl McpBrowserServer {
             .await
             .get(&session_id)
             .map(|s| (s.handle.clone(), s.current_url.clone()))
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Unknown session: {session_id}"))
-            })?;
+            .ok_or_else(|| BrowserError::ConfigError(format!("Unknown session: {session_id}")))?;
         let nav_url = nav_url_opt.ok_or_else(|| {
             BrowserError::ConfigError(
                 "No page loaded — call browser_navigate before browser_screenshot".to_string(),
@@ -828,9 +824,7 @@ impl McpBrowserServer {
             .await
             .get(&session_id)
             .map(|s| (s.handle.clone(), s.current_url.clone()))
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Unknown session: {session_id}"))
-            })?;
+            .ok_or_else(|| BrowserError::ConfigError(format!("Unknown session: {session_id}")))?;
         let nav_url = nav_url_opt.ok_or_else(|| {
             BrowserError::ConfigError(
                 "No page loaded — call browser_navigate before browser_content".to_string(),
