@@ -58,6 +58,21 @@ jobs:
           key: ${{ runner.os }}-cargo-publish-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-publish-
 
+      - name: Publish stygian-extract-derive
+        run: |
+          VERSION=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "stygian-extract-derive") | .version')
+          if cargo search stygian-extract-derive --limit 1 2>/dev/null | grep -q "^stygian-extract-derive = \"$VERSION\""; then
+            echo "stygian-extract-derive@$VERSION already published, skipping"
+          else
+            cargo publish -p stygian-extract-derive
+          fi
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Wait for crates.io index propagation
+        run: sleep 30
+
       - name: Publish stygian-browser
         run: |
           VERSION=$(cargo metadata --no-deps --format-version 1 \
