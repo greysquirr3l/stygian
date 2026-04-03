@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-04-03
+
+### Added
+
+- `stygian-browser`: Stealth regression canary — daily GitHub Actions workflow
+  (`stealth-canary`) runs `verify_stealth()` against `about:blank` to detect injection
+  script regressions. On failure, calls GitHub Models (gpt-4o) with the `DiagnosticReport`
+  JSON and the full `stealth.rs` source to generate a targeted fix, validates it compiles,
+  and opens a PR automatically; falls back to opening an issue with Copilot instructions if
+  `cargo check` fails
+- `stygian-browser`: New `stealth_probe` example binary — run `verify_stealth()` against
+  any number of URLs from the CLI with a configurable pass threshold; exits non-zero on
+  regression
+
+### Fixed
+
+- `stygian-browser`: `browser_eval`, `browser_screenshot`, and `browser_content` MCP tool
+  handlers now release the sessions `MutexGuard` before performing any browser I/O,
+  eliminating unnecessary lock contention when multiple sessions make concurrent tool calls
+
 ## [0.8.2] - 2026-04-03
 
 ### Breaking changes

@@ -250,6 +250,10 @@ descriptor properties, presence of `window.chrome.runtime`, and consistency of
 [`navigator` spoofing](#navigator-spoofing) above). Sites using Invisible or Non-Interactive
 Turnstile should pass without any additional configuration beyond `StealthLevel::Basic`.
 
+A scheduled canary (`.github/workflows/stealth-canary.yml`) runs `verify_stealth()` daily
+against the built-in check suite to detect regressions automatically. On failure it calls
+GitHub Models to propose and validate a fix, then opens a pull request.
+
 ### Managed mode (requires user interaction)
 
 Managed mode displays a visible checkbox widget that **must be clicked by a human**,
