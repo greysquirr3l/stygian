@@ -1623,17 +1623,13 @@ impl PageHandle {
 
         let mut matches: Vec<SimilarMatch> = Vec::new();
         for node in candidates {
-            match node.fingerprint().await {
-                Ok(cand_fp) => {
-                    let score = jaccard_weighted(&ref_fp, &cand_fp);
-                    if score >= config.threshold {
-                        matches.push(SimilarMatch { node, score });
-                    }
-                }
-                Err(_) => {
-                    // Stale / detached nodes are silently skipped.
+            if let Ok(cand_fp) = node.fingerprint().await {
+                let score = jaccard_weighted(&ref_fp, &cand_fp);
+                if score >= config.threshold {
+                    matches.push(SimilarMatch { node, score });
                 }
             }
+            // Stale / detached nodes are silently skipped.
         }
 
         matches.sort_by(|a, b| {

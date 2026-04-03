@@ -43,6 +43,9 @@
 //! | `browser_verify_stealth` | `session_id, url, timeout_secs?` | `DiagnosticReport` JSON |
 //! | `browser_release` | `session_id` | success |
 //! | `pool_stats` | – | `active, max, available` |
+//! | `browser_query` | `session_id, url, selector, fields?, limit?, timeout_secs?` | `results` array of text or field objects |
+//! | `browser_extract` | `session_id, url, root_selector, schema, timeout_secs?` | `results` array of structured objects |
+//! | `browser_find_similar` *(similarity feature)* | `session_id, url, reference_selector, threshold?, max_results?, timeout_secs?` | scored `matches` array |
 
 use std::{
     collections::HashMap,
@@ -273,6 +276,74 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
             }
         }),
     ];
+    tools.push(json!({
+        "name": "browser_query",
+        "description": "Navigate to a URL, query all elements matching a CSS selector, and return their text content or specific attributes. If `fields` is omitted each result is a plain string (the text content). If `fields` is supplied each result is an object with one key per field.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": { "type": "string" },
+                "url": { "type": "string" },
+                "selector": { "type": "string", "description": "CSS selector passed to querySelectorAll." },
+                "fields": {
+                    "type": "object",
+                    "description": "Map of output field name → { \"attr\": \"attribute-name\" }. Omit `attr` to get text content for that field.",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": { "attr": { "type": "string" } }
+                    }
+                },
+                "limit": { "type": "integer", "default": 50, "description": "Maximum number of nodes to return." },
+                "timeout_secs": { "type": "number", "default": 30 }
+            },
+            "required": ["session_id", "url", "selector"]
+        }
+    }));
+    tools.push(json!({
+        "name": "browser_extract",
+        "description": "Navigate to a URL and perform schema-driven structured extraction. Each element matching `root_selector` becomes one result object; fields within each root are resolved by their own sub-selectors relative to the root. This is the runtime equivalent of the `#[derive(Extract)]` macro.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": { "type": "string" },
+                "url": { "type": "string" },
+                "root_selector": { "type": "string", "description": "CSS selector whose matches become the root of each result object." },
+                "schema": {
+                    "type": "object",
+                    "description": "Map of field name → { \"selector\": \"...\", \"attr\": \"...\", \"required\": true/false }.",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                            "selector": { "type": "string" },
+                            "attr": { "type": "string" },
+                            "required": { "type": "boolean", "default": false }
+                        },
+                        "required": ["selector"]
+                    }
+                },
+                "timeout_secs": { "type": "number", "default": 30 }
+            },
+            "required": ["session_id", "url", "root_selector", "schema"]
+        }
+    }));
+    // Advertise browser_find_similar only when the similarity feature is compiled in.
+    #[cfg(feature = "similarity")]
+    tools.push(json!({
+        "name": "browser_find_similar",
+        "description": "Navigate to a URL and find DOM elements that are structurally similar to a reference element (identified by a CSS selector). Useful when a site has been redesigned and stored selectors no longer match. Requires the `similarity` feature.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": { "type": "string" },
+                "url": { "type": "string" },
+                "reference_selector": { "type": "string", "description": "CSS selector identifying the reference node. The first match is used." },
+                "threshold": { "type": "number", "default": 0.7, "description": "Minimum similarity score [0.0, 1.0]." },
+                "max_results": { "type": "integer", "default": 10 },
+                "timeout_secs": { "type": "number", "default": 30 }
+            },
+            "required": ["session_id", "url", "reference_selector"]
+        }
+    }));
     // Advertise browser_verify_stealth only when the stealth feature is compiled in.
     #[cfg(feature = "stealth")]
     tools.push(json!({
@@ -294,6 +365,13 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
 pub struct McpBrowserServer {
     pool: Arc<BrowserPool>,
     sessions: Arc<Mutex<HashMap<String, McpSession>>>,
+}
+
+/// Per-field specification parsed from a `browser_extract` schema object.
+struct ExtractFieldDef {
+    selector: String,
+    attr: Option<String>,
+    required: bool,
 }
 
 impl McpBrowserServer {
@@ -448,6 +526,10 @@ impl McpBrowserServer {
             "browser_verify_stealth" => self.tool_browser_verify_stealth(&args).await,
             "browser_release" => self.tool_browser_release(&args).await,
             "pool_stats" => Ok(self.tool_pool_stats()),
+            "browser_query" => self.tool_browser_query(&args).await,
+            "browser_extract" => self.tool_browser_extract(&args).await,
+            #[cfg(feature = "similarity")]
+            "browser_find_similar" => self.tool_browser_find_similar(&args).await,
             other => Err(BrowserError::ConfigError(format!("Unknown tool: {other}"))),
         };
 
@@ -722,6 +804,258 @@ impl McpBrowserServer {
         Ok(json!({ "html": html, "bytes": html.len() }))
     }
 
+    async fn tool_browser_query(&self, args: &Value) -> Result<Value> {
+        let session_id = Self::require_str(args, "session_id")?;
+        let url = Self::require_str(args, "url")?;
+        let selector = Self::require_str(args, "selector")?;
+        let limit = usize::try_from(
+            args.get("limit")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(50),
+        )
+        .unwrap_or(50);
+        let timeout_secs = args
+            .get("timeout_secs")
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(30.0);
+
+        // Parse optional fields map: { "fieldName": { "attr"?: "attrName" } }
+        let fields: Option<Vec<(String, Option<String>)>> =
+            args.get("fields").and_then(|v| v.as_object()).map(|obj| {
+                obj.iter()
+                    .map(|(k, v)| {
+                        let attr = v
+                            .get("attr")
+                            .and_then(serde_json::Value::as_str)
+                            .map(ToString::to_string);
+                        (k.clone(), attr)
+                    })
+                    .collect()
+            });
+
+        let session_arc = self.session_handle(&session_id).await?;
+        let mut page = session_arc
+            .lock()
+            .await
+            .as_ref()
+            .ok_or_else(|| {
+                BrowserError::ConfigError(format!("Session already released: {session_id}"))
+            })?
+            .browser()
+            .ok_or_else(|| {
+                BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
+            })?
+            .new_page()
+            .await?;
+
+        page.navigate(
+            &url,
+            WaitUntil::DomContentLoaded,
+            Duration::from_secs_f64(timeout_secs),
+        )
+        .await?;
+
+        let all_nodes = page.query_selector_all(&selector).await?;
+        let nodes = all_nodes.get(..limit).unwrap_or(&all_nodes);
+        let mut results: Vec<Value> = Vec::with_capacity(nodes.len());
+        if let Some(ref field_defs) = fields {
+            for node in nodes {
+                let mut obj = serde_json::Map::new();
+                for (field_name, attr_name) in field_defs {
+                    let val = if let Some(attr) = attr_name {
+                        node.attr(attr)
+                            .await
+                            .map_or(Value::Null, |opt| opt.map_or(Value::Null, Value::String))
+                    } else {
+                        node.text_content().await.map_or(Value::Null, Value::String)
+                    };
+                    obj.insert(field_name.clone(), val);
+                }
+                results.push(Value::Object(obj));
+            }
+        } else {
+            for node in nodes {
+                let text = node.text_content().await.unwrap_or_default();
+                results.push(Value::String(text));
+            }
+        }
+
+        page.close().await?;
+
+        Ok(json!({
+            "url": url,
+            "selector": selector,
+            "count": results.len(),
+            "results": results
+        }))
+    }
+
+    async fn tool_browser_extract(&self, args: &Value) -> Result<Value> {
+        let session_id = Self::require_str(args, "session_id")?;
+        let url = Self::require_str(args, "url")?;
+        let root_selector = Self::require_str(args, "root_selector")?;
+        let timeout_secs = args
+            .get("timeout_secs")
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(30.0);
+
+        // Parse schema: { "fieldName": { "selector": "...", "attr"?: "...", "required"?: bool } }
+        let schema_obj = args
+            .get("schema")
+            .and_then(|v| v.as_object())
+            .ok_or_else(|| {
+                BrowserError::ConfigError("Missing or non-object 'schema' argument".to_string())
+            })?;
+
+        let schema: Vec<(String, ExtractFieldDef)> = schema_obj
+            .iter()
+            .filter_map(|(name, spec)| {
+                let selector = spec
+                    .get("selector")
+                    .and_then(serde_json::Value::as_str)
+                    .map(ToString::to_string)?;
+                let attr = spec
+                    .get("attr")
+                    .and_then(serde_json::Value::as_str)
+                    .map(ToString::to_string);
+                let required = spec
+                    .get("required")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
+                Some((name.clone(), ExtractFieldDef { selector, attr, required }))
+            })
+            .collect();
+
+        let session_arc = self.session_handle(&session_id).await?;
+        let mut page = session_arc
+            .lock()
+            .await
+            .as_ref()
+            .ok_or_else(|| {
+                BrowserError::ConfigError(format!("Session already released: {session_id}"))
+            })?
+            .browser()
+            .ok_or_else(|| {
+                BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
+            })?
+            .new_page()
+            .await?;
+
+        page.navigate(
+            &url,
+            WaitUntil::DomContentLoaded,
+            Duration::from_secs_f64(timeout_secs),
+        )
+        .await?;
+
+        let roots = page.query_selector_all(&root_selector).await?;
+        let mut results: Vec<Value> = Vec::with_capacity(roots.len());
+        for root in &roots {
+            if let Some(obj) = Self::extract_record(root, &schema).await {
+                results.push(Value::Object(obj));
+            }
+        }
+
+        page.close().await?;
+
+        Ok(json!({
+            "url": url,
+            "root_selector": root_selector,
+            "count": results.len(),
+            "results": results
+        }))
+    }
+
+    #[cfg(feature = "similarity")]
+    async fn tool_browser_find_similar(&self, args: &Value) -> Result<Value> {
+        use crate::similarity::SimilarityConfig;
+
+        let session_id = Self::require_str(args, "session_id")?;
+        let url = Self::require_str(args, "url")?;
+        let reference_selector = Self::require_str(args, "reference_selector")?;
+        #[allow(clippy::cast_possible_truncation)]
+        let threshold = args
+            .get("threshold")
+            .and_then(serde_json::Value::as_f64)
+            .map_or(SimilarityConfig::DEFAULT_THRESHOLD, |v| v as f32);
+        let max_results = usize::try_from(
+            args.get("max_results")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(10),
+        )
+        .unwrap_or(10);
+        let timeout_secs = args
+            .get("timeout_secs")
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(30.0);
+
+        let config = SimilarityConfig {
+            threshold,
+            max_results,
+        };
+
+        let session_arc = self.session_handle(&session_id).await?;
+        let mut page = session_arc
+            .lock()
+            .await
+            .as_ref()
+            .ok_or_else(|| {
+                BrowserError::ConfigError(format!("Session already released: {session_id}"))
+            })?
+            .browser()
+            .ok_or_else(|| {
+                BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
+            })?
+            .new_page()
+            .await?;
+
+        page.navigate(
+            &url,
+            WaitUntil::DomContentLoaded,
+            Duration::from_secs_f64(timeout_secs),
+        )
+        .await?;
+
+        // Resolve the reference node — first match only.
+        let refs = page.query_selector_all(&reference_selector).await?;
+        let Some(reference) = refs.into_iter().next() else {
+            page.close().await?;
+            return Ok(json!({
+                "isError": true,
+                "error": format!("Reference selector matched no elements: {reference_selector}")
+            }));
+        };
+
+        let ref_fp = reference.fingerprint().await?;
+        let matches = page.find_similar(&reference, config).await?;
+
+        let mut match_results: Vec<Value> = Vec::with_capacity(matches.len());
+        for m in &matches {
+            let text = m.node.text_content().await.unwrap_or_default();
+            let snippet = m.node.inner_html().await.unwrap_or_default();
+            let snippet: String = snippet.chars().take(200).collect();
+            match_results.push(json!({
+                "score": m.score,
+                "text": text,
+                "outer_html_snippet": snippet
+            }));
+        }
+
+        page.close().await?;
+
+        Ok(json!({
+            "url": url,
+            "reference": {
+                "tag": ref_fp.tag,
+                "classes": ref_fp.classes,
+                "attr_names": ref_fp.attr_names,
+                "depth": ref_fp.depth
+            },
+            "count": match_results.len(),
+            "matches": match_results
+        }))
+    }
+
     async fn tool_browser_release(&self, args: &Value) -> Result<Value> {
         let session_id = Self::require_str(args, "session_id")?;
 
@@ -853,6 +1187,45 @@ impl McpBrowserServer {
             .ok_or_else(|| BrowserError::ConfigError(format!("Unknown session: {session_id}")))
     }
 
+    /// Extract a single record from `root` using the given `schema`.
+    ///
+    /// Returns `None` if any required field is absent; otherwise returns a
+    /// JSON object with one entry per field.
+    async fn extract_record(
+        root: &crate::page::NodeHandle,
+        schema: &[(String, ExtractFieldDef)],
+    ) -> Option<serde_json::Map<String, Value>> {
+        let mut obj = serde_json::Map::new();
+        for (field_name, def) in schema {
+            let Ok(children) = root.children_matching(&def.selector).await else {
+                if def.required {
+                    return None;
+                }
+                obj.insert(field_name.clone(), Value::Null);
+                continue;
+            };
+            let val = match children.into_iter().next() {
+                None => {
+                    if def.required {
+                        return None;
+                    }
+                    Value::Null
+                }
+                Some(node) => {
+                    if let Some(attr) = &def.attr {
+                        node.attr(attr)
+                            .await
+                            .map_or(Value::Null, |opt| opt.map_or(Value::Null, Value::String))
+                    } else {
+                        node.text_content().await.map_or(Value::Null, Value::String)
+                    }
+                }
+            };
+            obj.insert(field_name.clone(), val);
+        }
+        Some(obj)
+    }
+
     fn require_str(args: &Value, key: &str) -> Result<String> {
         args.get(key)
             .and_then(|v| v.as_str())
@@ -876,8 +1249,63 @@ pub fn is_mcp_enabled() -> bool {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tool_defs_include_browser_query() {
+        let defs = &*TOOL_DEFINITIONS;
+        assert!(
+            defs.iter().any(|t| t["name"] == "browser_query"),
+            "TOOL_DEFINITIONS must contain browser_query"
+        );
+    }
+
+    #[test]
+    fn tool_defs_include_browser_extract() {
+        let defs = &*TOOL_DEFINITIONS;
+        assert!(
+            defs.iter().any(|t| t["name"] == "browser_extract"),
+            "TOOL_DEFINITIONS must contain browser_extract"
+        );
+    }
+
+    #[test]
+    fn browser_query_required_args() {
+        // The inputSchema for browser_query must list session_id, url, selector as required.
+        let defs = &*TOOL_DEFINITIONS;
+        let def = defs
+            .iter()
+            .find(|t| t["name"] == "browser_query")
+            .expect("browser_query must be in TOOL_DEFINITIONS");
+        let required = &def["inputSchema"]["required"];
+        assert!(required
+            .as_array()
+            .is_some_and(|a| a.iter().any(|v| v == "session_id")));
+        assert!(required
+            .as_array()
+            .is_some_and(|a| a.iter().any(|v| v == "url")));
+        assert!(required
+            .as_array()
+            .is_some_and(|a| a.iter().any(|v| v == "selector")));
+    }
+
+    #[test]
+    fn browser_extract_required_args() {
+        let defs = &*TOOL_DEFINITIONS;
+        let def = defs
+            .iter()
+            .find(|t| t["name"] == "browser_extract")
+            .expect("browser_extract must be in TOOL_DEFINITIONS");
+        let required = &def["inputSchema"]["required"];
+        assert!(required
+            .as_array()
+            .is_some_and(|a| a.iter().any(|v| v == "root_selector")));
+        assert!(required
+            .as_array()
+            .is_some_and(|a| a.iter().any(|v| v == "schema")));
+    }
 
     #[test]
     fn jsonrpc_response_ok_serializes() -> std::result::Result<(), Box<dyn std::error::Error>> {
