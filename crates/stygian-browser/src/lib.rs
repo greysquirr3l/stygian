@@ -84,6 +84,12 @@ pub mod error;
 pub mod page;
 pub mod pool;
 
+#[cfg(feature = "extract")]
+pub mod extract;
+
+#[cfg(feature = "extract")]
+pub use extract::Extractable;
+
 #[cfg(feature = "stealth")]
 pub mod stealth;
 

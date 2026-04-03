@@ -470,3 +470,108 @@ async fn children_matching_returns_nested_nodes() -> Result<(), Box<dyn std::err
     instance.shutdown().await?;
     Ok(())
 }
+
+// ─── #[derive(Extract)] / PageHandle::extract_all ────────────────────────────
+
+#[cfg(feature = "extract")]
+mod extract_tests {
+    use super::*;
+    use stygian_browser::extract::Extract;
+
+    /// A simple extractable type that captures the `href` attribute of an `<a>`
+    /// inside each matched root element.
+    #[derive(Extract)]
+    struct Link {
+        #[selector("a", attr = "href")]
+        href: Option<String>,
+    }
+
+    /// `extract_all` with a selector that matches elements returns a non-empty
+    /// typed `Vec`.
+    #[tokio::test]
+    #[ignore = "requires real Chrome binary and external network access"]
+    async fn extract_all_returns_typed_vec() -> Result<(), Box<dyn std::error::Error>> {
+        let instance = BrowserInstance::launch(test_config()).await?;
+        let mut page = instance.new_page().await?;
+
+        page.navigate(
+            "https://example.com",
+            WaitUntil::Selector("body".to_string()),
+            Duration::from_secs(30),
+        )
+        .await?;
+
+        // example.com has at least one <p> element.
+        let items: Vec<Link> = page.extract_all::<Link>("p").await?;
+        assert!(
+            !items.is_empty(),
+            "expected at least one <p> on example.com"
+        );
+        // Suppress unused-field warnings by referencing the field.
+        let _ = items.iter().map(|l| l.href.as_deref()).count();
+
+        page.close().await?;
+        instance.shutdown().await?;
+        Ok(())
+    }
+
+    /// `extract_all` with a selector that matches nothing returns `Ok(vec![])`.
+    #[tokio::test]
+    #[ignore = "requires real Chrome binary and external network access"]
+    async fn extract_all_empty_on_no_match() -> Result<(), Box<dyn std::error::Error>> {
+        let instance = BrowserInstance::launch(test_config()).await?;
+        let mut page = instance.new_page().await?;
+
+        page.navigate(
+            "https://example.com",
+            WaitUntil::Selector("body".to_string()),
+            Duration::from_secs(30),
+        )
+        .await?;
+
+        let items: Vec<Link> = page.extract_all::<Link>("div.nonexistent-xyz-9999").await?;
+        assert!(items.is_empty(), "unmatched selector should yield empty Vec");
+
+        page.close().await?;
+        instance.shutdown().await?;
+        Ok(())
+    }
+
+    /// An `Option` field whose selector does not match inside the root element
+    /// yields `None` rather than an error.
+    #[tokio::test]
+    #[ignore = "requires real Chrome binary and external network access"]
+    async fn extract_all_optional_field_none_when_absent() -> Result<(), Box<dyn std::error::Error>>
+    {
+        /// A type where the optional `label` field uses a selector that will
+        /// never match inside a `<p>` element on example.com.
+        #[derive(Extract)]
+        struct TextItem {
+            #[selector("nonexistent-element-xyz-9999")]
+            label: Option<String>,
+        }
+
+        let instance = BrowserInstance::launch(test_config()).await?;
+        let mut page = instance.new_page().await?;
+
+        page.navigate(
+            "https://example.com",
+            WaitUntil::Selector("body".to_string()),
+            Duration::from_secs(30),
+        )
+        .await?;
+
+        let items: Vec<TextItem> = page.extract_all::<TextItem>("p").await?;
+        assert!(!items.is_empty(), "expected <p> elements on example.com");
+        for item in &items {
+            assert!(
+                item.label.is_none(),
+                "optional field with unmatched selector should be None"
+            );
+        }
+
+        page.close().await?;
+        instance.shutdown().await?;
+        Ok(())
+    }
+}

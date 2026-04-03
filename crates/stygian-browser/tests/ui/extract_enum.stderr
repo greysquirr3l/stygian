@@ -1,0 +1,5 @@
+error: #[derive(Extract)] can only be applied to structs
+ --> tests/ui/extract_enum.rs:6:6
+  |
+6 | enum MyEnum {
+  |      ^^^^^^

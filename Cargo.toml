@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/stygian-graph",
     "crates/stygian-browser",
+    "crates/stygian-extract-derive",
     "crates/stygian-proxy",
     "crates/stygian-mcp",
 ]
@@ -98,6 +99,11 @@ flate2 = "1.1"
 openapiv3 = "1"
 serde_yaml = "0.9"
 indexmap = "1"
+
+# Proc-macro support
+syn         = { version = "2", features = ["full"] }
+quote       = "1"
+proc-macro2 = "1"
 
 # WASM plugins (optional heavy dep)
 wasmtime = { version = "42", default-features = false, features = ["runtime", "cranelift", "component-model"] }

@@ -1244,6 +1244,64 @@ impl PageHandle {
     }
 }
 
+// ─── extract feature ─────────────────────────────────────────────────────────
+
+#[cfg(feature = "extract")]
+impl PageHandle {
+    /// Extract a typed collection of `T` from all elements matching `selector`.
+    ///
+    /// Each matched element becomes the root node for `T::extract_from`.
+    /// Returns an empty `Vec` when no elements match (consistent with the
+    /// `querySelectorAll` contract — not an error).
+    ///
+    /// All per-node extractions are driven concurrently via
+    /// [`futures::future::try_join_all`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::CdpError`] if the initial `query_selector_all`
+    /// fails, or [`BrowserError::ExtractionFailed`] if any field extraction
+    /// fails.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_browser::extract::Extract;
+    /// use stygian_browser::{BrowserPool, BrowserConfig, WaitUntil};
+    /// use std::time::Duration;
+    ///
+    /// #[derive(Extract)]
+    /// struct Link {
+    ///     #[selector("a", attr = "href")]
+    ///     href: Option<String>,
+    /// }
+    ///
+    /// # async fn run() -> stygian_browser::error::Result<()> {
+    /// let pool = BrowserPool::new(BrowserConfig::default()).await?;
+    /// let handle = pool.acquire().await?;
+    /// let mut page = handle.browser().expect("valid browser").new_page().await?;
+    /// page.navigate(
+    ///     "https://example.com",
+    ///     WaitUntil::DomContentLoaded,
+    ///     Duration::from_secs(30),
+    /// ).await?;
+    /// let links: Vec<Link> = page.extract_all::<Link>("nav li").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn extract_all<T>(&self, selector: &str) -> Result<Vec<T>>
+    where
+        T: crate::extract::Extractable,
+    {
+        use futures::future::try_join_all;
+
+        let nodes = self.query_selector_all(selector).await?;
+        try_join_all(nodes.iter().map(|n| T::extract_from(n)))
+            .await
+            .map_err(BrowserError::ExtractionFailed)
+    }
+}
+
 impl Drop for PageHandle {
     fn drop(&mut self) {
         warn!("PageHandle dropped without explicit close(); spawning cleanup task");

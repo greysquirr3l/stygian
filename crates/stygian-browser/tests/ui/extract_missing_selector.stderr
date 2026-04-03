@@ -1,0 +1,5 @@
+error: field `name` is missing a #[selector("...")] attribute
+ --> tests/ui/extract_missing_selector.rs:7:5
+  |
+7 |     name: String,
+  |     ^^^^^^^^^^^^

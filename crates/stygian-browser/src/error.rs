@@ -91,6 +91,14 @@ pub enum BrowserError {
         /// CSS selector that produced the stale handle, for diagnostics.
         selector: String,
     },
+
+    /// One or more fields failed during `#[derive(Extract)]`-driven extraction.
+    ///
+    /// Wraps an [`crate::extract::ExtractionError`] produced by the generated
+    /// `Extractable` implementation.
+    #[cfg(feature = "extract")]
+    #[error("extraction failed: {0}")]
+    ExtractionFailed(#[from] crate::extract::ExtractionError),
 }
 
 impl From<chromiumoxide::error::CdpError> for BrowserError {

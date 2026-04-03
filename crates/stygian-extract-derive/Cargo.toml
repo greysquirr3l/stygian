@@ -1,0 +1,19 @@
+[package]
+name = "stygian-extract-derive"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Proc-macro backend for stygian-browser #[derive(Extract)]"
+# Note: must be published alongside stygian-browser — crates.io does not allow
+# published crates to have path-only dependencies.
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn         = { workspace = true }
+quote       = { workspace = true }
+proc-macro2 = { workspace = true }
