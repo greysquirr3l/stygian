@@ -128,11 +128,11 @@ pub struct NavigatorProfile {
 }
 
 impl NavigatorProfile {
-    /// A typical Windows 10 Chrome 120 profile.
+    /// A typical Windows 10 Chrome 131 profile.
     pub fn windows_chrome() -> Self {
         Self {
             user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
-                         (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                         (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
                 .to_string(),
             platform: "Win32".to_string(),
             vendor: "Google Inc.".to_string(),
@@ -146,11 +146,11 @@ impl NavigatorProfile {
         }
     }
 
-    /// A typical macOS Chrome 120 profile.
+    /// A typical macOS Chrome 131 profile.
     pub fn mac_chrome() -> Self {
         Self {
             user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 \
-                         (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                         (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
                 .to_string(),
             platform: "MacIntel".to_string(),
             vendor: "Google Inc.".to_string(),
@@ -162,11 +162,11 @@ impl NavigatorProfile {
         }
     }
 
-    /// A typical Linux Chrome profile (common in data-centre environments).
+    /// A typical Linux Chrome 131 profile (common in data-centre environments).
     pub fn linux_chrome() -> Self {
         Self {
             user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 \
-                         (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                         (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
                 .to_string(),
             platform: "Linux x86_64".to_string(),
             vendor: "Google Inc.".to_string(),
@@ -226,6 +226,13 @@ impl StealthProfile {
             parts.push(self.webgl_spoof_script());
         }
 
+        // Always inject chrome-object and userAgentData spoofing when navigator
+        // spoofing is active — both are Cloudflare Turnstile detection vectors.
+        if self.config.spoof_navigator {
+            parts.push(self.chrome_object_script());
+            parts.push(self.user_agent_data_script());
+        }
+
         if parts.is_empty() {
             return String::new();
         }
@@ -258,15 +265,16 @@ impl StealthProfile {
     }};
 
     // Remove the webdriver flag at both the prototype and instance levels.
-    // Some anti-bot checks (e.g. pixelscan) probe Navigator.prototype directly
-    // via Object.getOwnPropertyDescriptor(Navigator.prototype, 'webdriver'), so
-    // we must patch both; configurable:true on the prototype is intentional —
-    // Navigator.prototype properties are configurable in Chrome and must remain
-    // so to avoid errors if any polyfill attempts a second defineProperty call.
+    // Cloudflare and pixelscan probe Navigator.prototype directly via
+    // Object.getOwnPropertyDescriptor(Navigator.prototype, 'webdriver').
+    // In real Chrome the property is enumerable:false — matching that is
+    // essential; enumerable:true is a Turnstile detection signal.
+    // configurable:true is kept so polyfills don't throw on a second
+    // defineProperty call.
     try {{
       Object.defineProperty(Navigator.prototype, 'webdriver', {{
         get: () => undefined,
-        enumerable: true,
+        enumerable: false,
         configurable: true,
       }});
     }} catch (_) {{}}
@@ -297,6 +305,135 @@ impl StealthProfile {
             hwc = nav.hardware_concurrency,
             dm = nav.device_memory,
             mtp = nav.max_touch_points,
+        )
+    }
+
+    fn chrome_object_script(&self) -> String {
+        // Cloudflare Turnstile checks window.chrome.runtime, window.chrome.csi,
+        // and window.chrome.loadTimes — all present in real Chrome but absent
+        // in headless. Stubbing them removes these detection signals.
+        r"  // --- window.chrome object spoofing ---
+  (function() {
+    if (!window.chrome) {
+      Object.defineProperty(window, 'chrome', {
+        value: {},
+        enumerable: true,
+        configurable: false,
+        writable: false,
+      });
+    }
+    const chrome = window.chrome;
+    // chrome.runtime — checked by Turnstile; needs at least an object with
+    // id and connect stubs to pass duck-type checks.
+    if (!chrome.runtime) {
+      chrome.runtime = {
+        id: undefined,
+        connect: () => {},
+        sendMessage: () => {},
+        onMessage: { addListener: () => {}, removeListener: () => {} },
+      };
+    }
+    // chrome.csi and chrome.loadTimes — legacy APIs present in real Chrome.
+    if (!chrome.csi) {
+      chrome.csi = () => ({
+        startE: Date.now(),
+        onloadT: Date.now(),
+        pageT: 0,
+        tran: 15,
+      });
+    }
+    if (!chrome.loadTimes) {
+      chrome.loadTimes = () => ({
+        requestTime: Date.now() / 1000,
+        startLoadTime: Date.now() / 1000,
+        commitLoadTime: Date.now() / 1000,
+        finishDocumentLoadTime: Date.now() / 1000,
+        finishLoadTime: Date.now() / 1000,
+        firstPaintTime: Date.now() / 1000,
+        firstPaintAfterLoadTime: 0,
+        navigationType: 'Other',
+        wasFetchedViaSpdy: false,
+        wasNpnNegotiated: true,
+        npnNegotiatedProtocol: 'h2',
+        wasAlternateProtocolAvailable: false,
+        connectionInfo: 'h2',
+      });
+    }
+  })();"
+            .to_string()
+    }
+
+    fn user_agent_data_script(&self) -> String {
+        let nav = &self.navigator;
+        // Extract the major Chrome version from the UA string so that
+        // navigator.userAgentData.brands is consistent with navigator.userAgent.
+        // Mismatch between the two is a primary Cloudflare JA3/UA coherence check.
+        let version = nav
+            .user_agent
+            .split("Chrome/")
+            .nth(1)
+            .and_then(|s| s.split('.').next())
+            .unwrap_or("131");
+        let mobile = nav.max_touch_points > 0;
+        let platform = if nav.platform.contains("Win") {
+            "Windows"
+        } else if nav.platform.contains("Mac") {
+            "macOS"
+        } else {
+            "Linux"
+        };
+
+        format!(
+            r#"  // --- navigator.userAgentData spoofing ---
+  (function() {{
+    const uaData = {{
+      brands: [
+        {{ brand: 'Google Chrome',  version: '{version}' }},
+        {{ brand: 'Chromium',       version: '{version}' }},
+        {{ brand: 'Not=A?Brand',    version: '99'        }},
+      ],
+      mobile: {mobile},
+      platform: '{platform}',
+      getHighEntropyValues: (hints) => Promise.resolve({{
+        brands: [
+          {{ brand: 'Google Chrome',  version: '{version}' }},
+          {{ brand: 'Chromium',       version: '{version}' }},
+          {{ brand: 'Not=A?Brand',    version: '99'        }},
+        ],
+        mobile: {mobile},
+        platform: '{platform}',
+        architecture: 'x86',
+        bitness: '64',
+        model: '',
+        platformVersion: '10.0.0',
+        uaFullVersion: '{version}.0.0.0',
+        fullVersionList: [
+          {{ brand: 'Google Chrome',  version: '{version}.0.0.0' }},
+          {{ brand: 'Chromium',       version: '{version}.0.0.0' }},
+          {{ brand: 'Not=A?Brand',    version: '99.0.0.0'        }},
+        ],
+      }}),
+      toJSON: () => ({{
+        brands: [
+          {{ brand: 'Google Chrome',  version: '{version}' }},
+          {{ brand: 'Chromium',       version: '{version}' }},
+          {{ brand: 'Not=A?Brand',    version: '99'        }},
+        ],
+        mobile: {mobile},
+        platform: '{platform}',
+      }}),
+    }};
+    try {{
+      Object.defineProperty(navigator, 'userAgentData', {{
+        get: () => uaData,
+        enumerable: true,
+        configurable: false,
+      }});
+    }} catch (_) {{}}
+  }})();"#,
+            version = version,
+            mobile = mobile,
+            platform = platform,
         )
     }
 

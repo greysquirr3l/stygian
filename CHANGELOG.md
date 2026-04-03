@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `stygian-browser`: `NavigatorProfile` UA strings updated from Chrome 120 → Chrome 131 to
+  match the default `chrome131` TLS profile; mismatched version between JA3/JA4 fingerprint
+  and `navigator.userAgent` was a primary Cloudflare Turnstile detection signal
+- `stygian-browser`: `Navigator.prototype.webdriver` prototype patch now uses `enumerable: false`
+  (was `true`); `enumerable: true` is detectable via `Object.getOwnPropertyDescriptor` and is
+  a Turnstile bot signal — real Chrome exposes this property as non-enumerable
+- `stygian-browser`: Added `chrome_object_script()` injection — stubs `window.chrome.runtime`,
+  `window.chrome.csi`, and `window.chrome.loadTimes` which are present in every real Chrome
+  session but absent in headless; absence is a Turnstile detection signal
+- `stygian-browser`: Added `user_agent_data_script()` injection — spoof `navigator.userAgentData`
+  brands and version to match the `navigator.userAgent` Chrome version; Cloudflare
+  cross-references both and a version mismatch (e.g. `userAgent=Chrome/120` vs
+  `userAgentData.brands=[Chromium/139]`) reliably triggers the bot challenge
+
 ## [0.8.1] - 2026-04-03
 
 ### Fixed
