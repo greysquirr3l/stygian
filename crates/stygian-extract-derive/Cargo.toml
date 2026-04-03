@@ -9,6 +9,9 @@ repository.workspace = true
 description = "Proc-macro backend for stygian-browser #[derive(Extract)]"
 # Note: must be published alongside stygian-browser — crates.io does not allow
 # published crates to have path-only dependencies.
+readme = "README.md"
+keywords = ["proc-macro", "derive", "scraping", "browser", "css"]
+categories = ["development-tools::procedural-macro-helpers", "web-programming"]
 
 [lib]
 proc-macro = true

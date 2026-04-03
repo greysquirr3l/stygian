@@ -232,7 +232,10 @@ mod tests {
             selector: "div.foo".to_string(),
         };
         let s = e.to_string().to_lowercase();
-        assert!(s.contains("div.foo"), "display should contain selector: {s}");
+        assert!(
+            s.contains("div.foo"),
+            "display should contain selector: {s}"
+        );
         assert!(s.contains("stale"), "display should contain 'stale': {s}");
     }
 }

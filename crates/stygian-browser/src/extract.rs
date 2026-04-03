@@ -91,7 +91,7 @@ pub enum ExtractionError {
         field: &'static str,
         /// Inner extraction failure.
         #[source]
-        source: Box<ExtractionError>,
+        source: Box<Self>,
     },
 }
 
@@ -139,16 +139,31 @@ mod tests {
 
     #[test]
     fn extraction_error_missing_display() {
-        let e = ExtractionError::Missing { field: "foo", selector: ".bar" };
+        let e = ExtractionError::Missing {
+            field: "foo",
+            selector: ".bar",
+        };
         let msg = e.to_string();
-        assert!(msg.contains("foo"), "display must contain field name 'foo'; got: {msg}");
-        assert!(msg.contains(".bar"), "display must contain selector '.bar'; got: {msg}");
+        assert!(
+            msg.contains("foo"),
+            "display must contain field name 'foo'; got: {msg}"
+        );
+        assert!(
+            msg.contains(".bar"),
+            "display must contain selector '.bar'; got: {msg}"
+        );
     }
 
     #[test]
     fn extraction_error_nested_display() {
-        let inner = ExtractionError::Missing { field: "href", selector: "a" };
-        let e = ExtractionError::Nested { field: "link", source: Box::new(inner) };
+        let inner = ExtractionError::Missing {
+            field: "href",
+            selector: "a",
+        };
+        let e = ExtractionError::Nested {
+            field: "link",
+            source: Box::new(inner),
+        };
         let msg = e.to_string();
         assert!(
             msg.contains("link"),

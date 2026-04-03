@@ -944,7 +944,10 @@ mod similarity_tests {
         .await?;
 
         let nodes = page.query_selector_all("p").await?;
-        assert!(!nodes.is_empty(), "expected at least one <p> on example.com");
+        assert!(
+            !nodes.is_empty(),
+            "expected at least one <p> on example.com"
+        );
 
         let fp = nodes[0].fingerprint().await?;
         assert_eq!(fp.tag, "p", "fingerprint tag should be 'p'");

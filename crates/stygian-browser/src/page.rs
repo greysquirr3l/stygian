@@ -1531,7 +1531,7 @@ impl NodeHandle {
     /// invalidated, or [`BrowserError::ScriptExecutionFailed`] if the script
     /// produces unexpected output.
     pub async fn fingerprint(&self) -> Result<crate::similarity::ElementFingerprint> {
-        const JS: &str = r#"function() {
+        const JS: &str = r"function() {
     var el = this;
     var tag = el.tagName.toLowerCase();
     var classes = Array.prototype.slice.call(el.classList).sort();
@@ -1543,18 +1543,15 @@ impl NodeHandle {
     var n = el.parentElement;
     while (n && n.tagName.toLowerCase() !== 'body') { depth++; n = n.parentElement; }
     return JSON.stringify({ tag: tag, classes: classes, attrNames: attrNames, depth: depth });
-}"#;
+}";
 
-        let returns = tokio::time::timeout(
-            self.cdp_timeout,
-            self.element.call_js_fn(JS, true),
-        )
-        .await
-        .map_err(|_| BrowserError::Timeout {
-            operation: "NodeHandle::fingerprint".to_string(),
-            duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
-        })?
-        .map_err(|e| self.cdp_err_or_stale(&e, "fingerprint"))?;
+        let returns = tokio::time::timeout(self.cdp_timeout, self.element.call_js_fn(JS, true))
+            .await
+            .map_err(|_| BrowserError::Timeout {
+                operation: "NodeHandle::fingerprint".to_string(),
+                duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
+            })?
+            .map_err(|e| self.cdp_err_or_stale(&e, "fingerprint"))?;
 
         let json_str = returns
             .result
@@ -1635,12 +1632,15 @@ impl PageHandle {
                 }
                 Err(_) => {
                     // Stale / detached nodes are silently skipped.
-                    continue;
                 }
             }
         }
 
-        matches.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        matches.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         if config.max_results > 0 {
             matches.truncate(config.max_results);

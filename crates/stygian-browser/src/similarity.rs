@@ -27,7 +27,7 @@ use crate::page::NodeHandle;
 /// let back: ElementFingerprint = serde_json::from_str(&json).unwrap();
 /// assert_eq!(fp.tag, back.tag);
 /// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ElementFingerprint {
     /// Lower-case tag name (e.g. `"div"`, `"a"`).
     pub tag: String,
@@ -123,10 +123,17 @@ pub fn jaccard_weighted(reference: &ElementFingerprint, candidate: &ElementFinge
     let class_score = jaccard_sets(&reference.classes, &candidate.classes);
     let attr_score = jaccard_sets(&reference.attr_names, &candidate.attr_names);
 
-    let depth_diff = (reference.depth as f32 - candidate.depth as f32).abs();
+    // DOM tree depth is always small (< 1000 in practice); truncate to u16
+    // for a lossless f32 conversion (u16 fits exactly in f32's 23-bit mantissa).
+    let ref_depth = f32::from(u16::try_from(reference.depth).unwrap_or(u16::MAX));
+    let cand_depth = f32::from(u16::try_from(candidate.depth).unwrap_or(u16::MAX));
+    let depth_diff = (ref_depth - cand_depth).abs();
     let depth_score = 1.0_f32 / (1.0_f32 + depth_diff);
 
-    tag_score * 0.4_f32 + class_score * 0.35_f32 + attr_score * 0.15_f32 + depth_score * 0.1_f32
+    depth_score.mul_add(
+        0.1_f32,
+        attr_score.mul_add(0.15_f32, tag_score.mul_add(0.4_f32, class_score * 0.35_f32)),
+    )
 }
 
 /// Compute Jaccard similarity (|intersection| / |union|) for two **sorted**
@@ -141,7 +148,10 @@ fn jaccard_sets(a: &[String], b: &[String]) -> f32 {
     let mut i = 0_usize;
     let mut j = 0_usize;
     while i < a.len() && j < b.len() {
-        match a[i].cmp(&b[j]) {
+        let (Some(ai), Some(bj)) = (a.get(i), b.get(j)) else {
+            break;
+        };
+        match ai.cmp(bj) {
             std::cmp::Ordering::Equal => {
                 intersection += 1;
                 i += 1;
@@ -153,12 +163,16 @@ fn jaccard_sets(a: &[String], b: &[String]) -> f32 {
     }
     let union = a.len() + b.len() - intersection;
     // union > 0 because at least one slice is non-empty (guarded above)
-    intersection as f32 / union as f32
+    // Class/attribute counts are tiny (< 100); u16 fits losslessly in f32.
+    let i_f = f32::from(u16::try_from(intersection).unwrap_or(u16::MAX));
+    let u_f = f32::from(u16::try_from(union).unwrap_or(u16::MAX));
+    i_f / u_f
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::expect_used)] // serde failures in deterministic tests are programmer errors
 mod tests {
     use super::*;
 

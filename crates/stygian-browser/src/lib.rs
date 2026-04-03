@@ -94,7 +94,7 @@ pub use extract::Extractable;
 pub mod similarity;
 
 #[cfg(feature = "similarity")]
-pub use similarity::{ElementFingerprint, SimilarityConfig, SimilarMatch};
+pub use similarity::{ElementFingerprint, SimilarMatch, SimilarityConfig};
 
 #[cfg(feature = "stealth")]
 pub mod stealth;
