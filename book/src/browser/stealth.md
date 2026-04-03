@@ -70,9 +70,23 @@ Executed on every new document context before any page script runs.
 Two layers of protection prevent `webdriver` detection:
 
 1. **Instance patch** — `Object.defineProperty(navigator, 'webdriver', { get: () => undefined })` hides the flag from direct access (`navigator.webdriver === undefined`).
-2. **Prototype patch** — `Object.defineProperty(Navigator.prototype, 'webdriver', ...)` hides the underlying getter from `Object.getOwnPropertyDescriptor(Navigator.prototype, 'webdriver')`, which some scanners (e.g. pixelscan.net, Akamai) probe directly.
+2. **Prototype patch** — `Object.defineProperty(Navigator.prototype, 'webdriver', { enumerable: false, ... })` hides the underlying getter from `Object.getOwnPropertyDescriptor(Navigator.prototype, 'webdriver')`, which some scanners (e.g. pixelscan.net, Akamai, Cloudflare Turnstile) probe directly. The `enumerable: false` descriptor matches real Chrome — `enumerable: true` is itself a detectable signal.
 
 Both patches are injected into every new document context before any page script runs.
+
+As of v0.8.2, the following additional signals are also patched:
+
+- **UA version alignment** — all `NavigatorProfile` UA strings use `Chrome/131`, matching the
+  default `chrome131` TLS profile. Cloudflare cross-references `navigator.userAgent` against the
+  JA3/JA4 TLS fingerprint; a version mismatch (e.g. `Chrome/120` UA with a Chrome 131 TLS
+  handshake) is a primary bot signal.
+- **`window.chrome` object** — `chrome.runtime`, `chrome.csi`, and `chrome.loadTimes` are
+  stubbed. These properties are present in every real Chrome session but absent in headless;
+  their absence is directly checked by Turnstile and pixel-scanner suites.
+- **`navigator.userAgentData`** — the `brands` array and `uaFullVersion` are spoofed to match
+  the `navigator.userAgent` Chrome version. Without this, `userAgentData.brands` reflects the
+  actual binary version (e.g. `Chromium/139`) while `userAgent` reports `Chrome/131`,
+  creating a cross-referenceable mismatch.
 
 The fingerprint is drawn from statistically-weighted device profiles:
 
@@ -216,3 +230,49 @@ load but differ across sessions, preventing replay detection.
 All spoofed signals are derived from a single `DeviceProfile` generated at browser
 launch. The profile is consistent across tabs and across the entire session, preventing
 inconsistency-based detection (e.g. a Windows User-Agent combined with macOS font metrics).
+
+---
+
+## Cloudflare Turnstile
+
+Cloudflare Turnstile operates in three challenge modes. They have fundamentally different
+bypass characteristics and it is important to understand which mode a target site uses.
+
+### Non-Interactive and Invisible modes
+
+In these modes Turnstile makes a pass/fail decision based on the request fingerprint alone
+— no user action is required and no visible widget appears. The fingerprint checks include
+(among others) TLS/JA3 profile vs `navigator.userAgent` version alignment, `webdriver`
+descriptor properties, presence of `window.chrome.runtime`, and consistency of
+`navigator.userAgentData`.
+
+`stygian-browser` v0.8.2 addresses all four of these primary signals (see
+[`navigator` spoofing](#navigator-spoofing) above). Sites using Invisible or Non-Interactive
+Turnstile should pass without any additional configuration beyond `StealthLevel::Basic`.
+
+### Managed mode (requires user interaction)
+
+Managed mode displays a visible checkbox widget that **must be clicked by a human**,
+regardless of fingerprint quality. Even a perfect, undetectable fingerprint will not
+bypass a Managed-mode challenge — Turnstile will present the checkbox and wait.
+
+This is an explicit site operator choice, not a fingerprinting failure. Sites like
+`help.ui.com` use Managed mode as a deliberate security policy.
+
+> **stygian-browser cannot bypass Managed-mode Turnstile automatically.**
+> The stealth improvements in v0.8.2 have no effect on Managed-mode challenges.
+
+Options for sites using Managed mode:
+
+1. **Cookie injection** — if you have obtained a valid clearance cookie from a prior
+   human session, inject it with `inject_cookies()` before navigating. The clearance
+   cookie has a TTL (typically 30 minutes–24 hours) and may be reused until it expires.
+2. **CAPTCHA solver integration** — third-party services (2captcha, CapSolver, etc.) can
+   interact with the Turnstile iframe on your behalf. Integrate via their REST API before
+   the page load completes.
+3. **Residential proxy with pre-warmed cookies** — some residential proxy providers
+   bundle Turnstile cookie caches; check your provider's documentation.
+
+To determine which mode a site uses, inspect the `<div data-sitekey="...">` widget
+attributes: `data-appearance="always"` indicates Managed; `data-appearance="interaction-only"`
+or `data-appearance="never"` indicates Non-Interactive or Invisible respectively.

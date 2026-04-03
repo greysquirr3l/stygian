@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-04-03
+
+### Fixed
+
 - `stygian-browser`: `NavigatorProfile` UA strings updated from Chrome 120 → Chrome 131 to
   match the default `chrome131` TLS profile; mismatched version between JA3/JA4 fingerprint
   and `navigator.userAgent` was a primary Cloudflare Turnstile detection signal
