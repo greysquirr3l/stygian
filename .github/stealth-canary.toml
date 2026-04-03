@@ -1,0 +1,41 @@
+# Stealth canary URL list.
+#
+# Used by the stealth-canary.yml workflow and can be passed directly to
+# `stealth_probe` via positional arguments.
+#
+# Entries are processed in order; the probe exits 1 if *any* entry scores
+# below its threshold.
+#
+# Fields:
+#   url        – URL to navigate to before running verify_stealth()
+#   threshold  – minimum pass score in the range 0.0–1.0 (default: 0.90)
+#   label      – human-readable name shown in probe output and PR/issue bodies
+#   advisory   – when true, a failure opens an issue but does NOT block the build
+
+# ── Synthetic check ─────────────────────────────────────────────────────────
+# Navigates to about:blank, which loads instantly and has no external
+# dependency.  Scores well below 0.95 means our own injection scripts are
+# broken — guaranteed actionable.
+
+[[canary]]
+url       = "about:blank"
+label     = "synthetic-injection"
+threshold = 0.95
+
+# ── Real-world checks (advisory) ────────────────────────────────────────────
+# These test against sites that run their own bot-detection suites.  A drop
+# here signals a site updated its detection logic or we slipped a signal.
+# Marked advisory = true so a failure triggers an issue rather than a hard
+# build failure.
+
+[[canary]]
+url       = "https://bot.sannysoft.com"
+label     = "sannysoft"
+threshold = 0.80
+advisory  = true
+
+[[canary]]
+url       = "https://arh.antoinevastel.com/bots/areyouabot"
+label     = "vastel-bot-detector"
+threshold = 0.80
+advisory  = true

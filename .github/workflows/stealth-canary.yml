@@ -1,0 +1,156 @@
+name: Stealth Canary
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # daily at 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      threshold:
+        description: 'Synthetic check pass threshold (0.0–1.0, default: 0.95)'
+        required: false
+        default: '0.95'
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+env:
+  CARGO_TERM_COLOR: always
+  THRESHOLD: ${{ inputs.threshold || '0.95' }}
+
+jobs:
+  # ── Stage 1: Run verify_stealth against about:blank ──────────────────────
+  probe:
+    name: Stealth probe
+    runs-on: ubuntu-latest
+
+    outputs:
+      regression: ${{ steps.probe.outputs.regression }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-canary-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-canary-
+
+      - name: Install Chromium
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y chromium-browser
+          echo "CHROME_PATH=$(which chromium-browser)" >> "$GITHUB_ENV"
+
+      - name: Build stealth probe
+        run: cargo build --example stealth_probe --all-features
+
+      - name: Run stealth probe (synthetic)
+        id: probe
+        run: |
+          set +e
+          ./target/debug/examples/stealth_probe \
+            --threshold "$THRESHOLD" \
+            about:blank \
+            > probe-report.json 2>probe-stderr.txt
+          EXIT=$?
+          cat probe-report.json
+          cat probe-stderr.txt >&2 || true
+          if [ "$EXIT" -eq 0 ]; then
+            echo "regression=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "regression=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload probe report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: probe-report
+          path: |
+            probe-report.json
+            probe-stderr.txt
+
+  # ── Stage 2: LLM-assisted fix + PR (only when regression detected) ───────
+  autofix:
+    name: Generate fix
+    needs: probe
+    if: needs.probe.outputs.regression == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-canary-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-canary-
+
+      - name: Download probe report
+        uses: actions/download-artifact@v4
+        with:
+          name: probe-report
+
+      - name: Generate fix via GitHub Models
+        id: generate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/generate-stealth-fix.sh probe-report.json
+
+      - name: Validate fix compiles
+        id: validate
+        run: |
+          if cargo check --workspace --all-features 2>&1; then
+            echo "valid=true" >> "$GITHUB_OUTPUT"
+            echo "Fix compiled successfully."
+          else
+            echo "valid=false" >> "$GITHUB_OUTPUT"
+            echo "Fix failed cargo check — reverting."
+            if [ -f crates/stygian-browser/src/stealth.rs.bak ]; then
+              cp crates/stygian-browser/src/stealth.rs.bak \
+                 crates/stygian-browser/src/stealth.rs
+            fi
+          fi
+
+      - name: Create pull request
+        if: steps.validate.outputs.valid == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DATE=$(date -u +%Y%m%d)
+          BRANCH="fix/stealth-canary-${DATE}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add crates/stygian-browser/src/stealth.rs
+          git commit -m "fix: automated stealth regression patch ${DATE}"
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "fix: stealth canary regression ${DATE}" \
+            --body-file /tmp/pr-body.md \
+            --head "$BRANCH"
+
+      - name: Create investigation issue (compile failed — needs manual review)
+        if: steps.validate.outputs.valid == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "Stealth regression detected $(date -u +%Y-%m-%d)" \
+            --body-file /tmp/issue-body.md
