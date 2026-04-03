@@ -217,4 +217,14 @@ mod tests {
         };
         assert!(!format!("{e:?}").is_empty());
     }
+
+    #[test]
+    fn node_handle_stale_error_display() {
+        let e = BrowserError::StaleNode {
+            selector: "div.foo".to_string(),
+        };
+        let s = e.to_string().to_lowercase();
+        assert!(s.contains("div.foo"), "display should contain selector: {s}");
+        assert!(s.contains("stale"), "display should contain 'stale': {s}");
+    }
 }

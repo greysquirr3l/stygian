@@ -354,3 +354,119 @@ async fn pool_stats_track_active_handles() -> Result<(), Box<dyn std::error::Err
     assert_eq!(pool.stats().active, 1, "browser back in idle pool");
     Ok(())
 }
+
+// ─── DOM Query API (NodeHandle) ───────────────────────────────────────────────
+
+/// `query_selector_all` on a real page returns at least one node, and `attr`
+/// retrieves a known attribute value.
+#[tokio::test]
+#[ignore = "requires Chrome"]
+async fn query_selector_all_returns_nodes() -> Result<(), Box<dyn std::error::Error>> {
+    let instance = BrowserInstance::launch(test_config()).await?;
+    let mut page = instance.new_page().await?;
+
+    page.navigate(
+        "https://example.com",
+        WaitUntil::Selector("body".to_string()),
+        Duration::from_secs(30),
+    )
+    .await?;
+
+    // example.com contains at least one <a> element with an href attribute.
+    let nodes = page.query_selector_all("a[href]").await?;
+    assert!(!nodes.is_empty(), "expected at least one <a href> on example.com");
+
+    let href = nodes[0].attr("href").await?;
+    assert!(href.is_some(), "first <a href> should have an href attribute");
+
+    page.close().await?;
+    instance.shutdown().await?;
+    Ok(())
+}
+
+/// `attr_map` returns a map that contains every attribute present on the element.
+#[tokio::test]
+#[ignore = "requires Chrome"]
+async fn attr_map_is_exhaustive() -> Result<(), Box<dyn std::error::Error>> {
+    let instance = BrowserInstance::launch(test_config()).await?;
+    let mut page = instance.new_page().await?;
+
+    page.navigate(
+        "https://example.com",
+        WaitUntil::Selector("body".to_string()),
+        Duration::from_secs(30),
+    )
+    .await?;
+
+    // Select the first <a href> — example.com has one with href and no other attrs.
+    let nodes = page.query_selector_all("a[href]").await?;
+    assert!(!nodes.is_empty(), "expected <a href> on example.com");
+
+    let map = nodes[0].attr_map().await?;
+    assert!(
+        map.contains_key("href"),
+        "attr_map should include 'href'; got keys: {:?}",
+        map.keys().collect::<Vec<_>>()
+    );
+
+    page.close().await?;
+    instance.shutdown().await?;
+    Ok(())
+}
+
+/// `ancestors` for a node nested inside the document includes `"html"` at the tail.
+#[tokio::test]
+#[ignore = "requires Chrome"]
+async fn ancestors_returns_parent_chain() -> Result<(), Box<dyn std::error::Error>> {
+    let instance = BrowserInstance::launch(test_config()).await?;
+    let mut page = instance.new_page().await?;
+
+    page.navigate(
+        "https://example.com",
+        WaitUntil::Selector("body".to_string()),
+        Duration::from_secs(30),
+    )
+    .await?;
+
+    let nodes = page.query_selector_all("p").await?;
+    assert!(!nodes.is_empty(), "expected at least one <p> on example.com");
+
+    let chain = nodes[0].ancestors().await?;
+    assert!(
+        chain.last().map(String::as_str) == Some("html"),
+        "ancestor chain should end at 'html'; got: {chain:?}"
+    );
+
+    page.close().await?;
+    instance.shutdown().await?;
+    Ok(())
+}
+
+/// `children_matching` scoped to a parent element returns only its descendants.
+#[tokio::test]
+#[ignore = "requires Chrome"]
+async fn children_matching_returns_nested_nodes() -> Result<(), Box<dyn std::error::Error>> {
+    let instance = BrowserInstance::launch(test_config()).await?;
+    let mut page = instance.new_page().await?;
+
+    page.navigate(
+        "https://example.com",
+        WaitUntil::Selector("body".to_string()),
+        Duration::from_secs(30),
+    )
+    .await?;
+
+    // example.com's <div> contains <p> elements.
+    let divs = page.query_selector_all("div").await?;
+    assert!(!divs.is_empty(), "expected at least one <div> on example.com");
+
+    let children = divs[0].children_matching("p").await?;
+    assert!(
+        !children.is_empty(),
+        "expected at least one <p> inside the first <div> on example.com"
+    );
+
+    page.close().await?;
+    instance.shutdown().await?;
+    Ok(())
+}
