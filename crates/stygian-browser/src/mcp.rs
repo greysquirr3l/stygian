@@ -922,7 +922,14 @@ impl McpBrowserServer {
                     .get("required")
                     .and_then(serde_json::Value::as_bool)
                     .unwrap_or(false);
-                Some((name.clone(), ExtractFieldDef { selector, attr, required }))
+                Some((
+                    name.clone(),
+                    ExtractFieldDef {
+                        selector,
+                        attr,
+                        required,
+                    },
+                ))
             })
             .collect();
 
@@ -1280,15 +1287,21 @@ mod tests {
             .find(|t| t["name"] == "browser_query")
             .expect("browser_query must be in TOOL_DEFINITIONS");
         let required = &def["inputSchema"]["required"];
-        assert!(required
-            .as_array()
-            .is_some_and(|a| a.iter().any(|v| v == "session_id")));
-        assert!(required
-            .as_array()
-            .is_some_and(|a| a.iter().any(|v| v == "url")));
-        assert!(required
-            .as_array()
-            .is_some_and(|a| a.iter().any(|v| v == "selector")));
+        assert!(
+            required
+                .as_array()
+                .is_some_and(|a| a.iter().any(|v| v == "session_id"))
+        );
+        assert!(
+            required
+                .as_array()
+                .is_some_and(|a| a.iter().any(|v| v == "url"))
+        );
+        assert!(
+            required
+                .as_array()
+                .is_some_and(|a| a.iter().any(|v| v == "selector"))
+        );
     }
 
     #[test]
@@ -1299,12 +1312,16 @@ mod tests {
             .find(|t| t["name"] == "browser_extract")
             .expect("browser_extract must be in TOOL_DEFINITIONS");
         let required = &def["inputSchema"]["required"];
-        assert!(required
-            .as_array()
-            .is_some_and(|a| a.iter().any(|v| v == "root_selector")));
-        assert!(required
-            .as_array()
-            .is_some_and(|a| a.iter().any(|v| v == "schema")));
+        assert!(
+            required
+                .as_array()
+                .is_some_and(|a| a.iter().any(|v| v == "root_selector"))
+        );
+        assert!(
+            required
+                .as_array()
+                .is_some_and(|a| a.iter().any(|v| v == "schema"))
+        );
     }
 
     #[test]
