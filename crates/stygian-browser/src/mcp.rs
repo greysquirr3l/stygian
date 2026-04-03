@@ -154,6 +154,8 @@ struct McpSession {
     cdp_fix_mode: Option<String>,
     /// Proxy URL for this session (informational — takes effect at browser launch).
     proxy: Option<String>,
+    /// Last URL successfully navigated to via `browser_navigate`.
+    current_url: Option<String>,
 }
 
 // ─── MCP server ──────────────────────────────────────────────────────────────
@@ -586,6 +588,7 @@ impl McpBrowserServer {
                 webrtc_policy: webrtc_policy.clone(),
                 cdp_fix_mode: cdp_fix_mode.clone(),
                 proxy: proxy.clone(),
+                current_url: None,
             },
         );
 
@@ -702,14 +705,35 @@ impl McpBrowserServer {
         let current_url = url.clone();
         page.close().await?;
 
+        // Persist the navigated URL so that browser_content / browser_eval /
+        // browser_screenshot can use it without the caller having to repeat it.
+        if let Some(session) = self.sessions.lock().await.get_mut(&session_id) {
+            session.current_url = Some(current_url.clone());
+        }
+
         Ok(json!({ "title": title, "url": current_url }))
     }
 
     async fn tool_browser_eval(&self, args: &Value) -> Result<Value> {
         let session_id = Self::require_str(args, "session_id")?;
         let script = Self::require_str(args, "script")?;
+        let timeout_secs = args
+            .get("timeout_secs")
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(30.0);
 
-        let session_arc = self.session_handle(&session_id).await?;
+        let (session_arc, nav_url) = {
+            let sessions = self.sessions.lock().await;
+            let s = sessions.get(&session_id).ok_or_else(|| {
+                BrowserError::ConfigError(format!("Unknown session: {session_id}"))
+            })?;
+            let url = s.current_url.clone().ok_or_else(|| {
+                BrowserError::ConfigError(
+                    "No page loaded — call browser_navigate before browser_eval".to_string(),
+                )
+            })?;
+            (s.handle.clone(), url)
+        };
 
         let mut page = session_arc
             .lock()
@@ -726,9 +750,9 @@ impl McpBrowserServer {
             .await?;
 
         page.navigate(
-            "about:blank",
-            WaitUntil::Selector("body".to_string()),
-            Duration::from_secs(5),
+            &nav_url,
+            WaitUntil::DomContentLoaded,
+            Duration::from_secs_f64(timeout_secs),
         )
         .await?;
 
@@ -741,8 +765,23 @@ impl McpBrowserServer {
     async fn tool_browser_screenshot(&self, args: &Value) -> Result<Value> {
         use base64::Engine as _;
         let session_id = Self::require_str(args, "session_id")?;
+        let timeout_secs = args
+            .get("timeout_secs")
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(30.0);
 
-        let session_arc = self.session_handle(&session_id).await?;
+        let (session_arc, nav_url) = {
+            let sessions = self.sessions.lock().await;
+            let s = sessions.get(&session_id).ok_or_else(|| {
+                BrowserError::ConfigError(format!("Unknown session: {session_id}"))
+            })?;
+            let url = s.current_url.clone().ok_or_else(|| {
+                BrowserError::ConfigError(
+                    "No page loaded — call browser_navigate before browser_screenshot".to_string(),
+                )
+            })?;
+            (s.handle.clone(), url)
+        };
 
         let mut page = session_arc
             .lock()
@@ -759,9 +798,9 @@ impl McpBrowserServer {
             .await?;
 
         page.navigate(
-            "about:blank",
-            WaitUntil::Selector("body".to_string()),
-            Duration::from_secs(5),
+            &nav_url,
+            WaitUntil::DomContentLoaded,
+            Duration::from_secs_f64(timeout_secs),
         )
         .await?;
 
@@ -774,8 +813,23 @@ impl McpBrowserServer {
 
     async fn tool_browser_content(&self, args: &Value) -> Result<Value> {
         let session_id = Self::require_str(args, "session_id")?;
+        let timeout_secs = args
+            .get("timeout_secs")
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(30.0);
 
-        let session_arc = self.session_handle(&session_id).await?;
+        let (session_arc, nav_url) = {
+            let sessions = self.sessions.lock().await;
+            let s = sessions.get(&session_id).ok_or_else(|| {
+                BrowserError::ConfigError(format!("Unknown session: {session_id}"))
+            })?;
+            let url = s.current_url.clone().ok_or_else(|| {
+                BrowserError::ConfigError(
+                    "No page loaded — call browser_navigate before browser_content".to_string(),
+                )
+            })?;
+            (s.handle.clone(), url)
+        };
 
         let mut page = session_arc
             .lock()
@@ -792,9 +846,9 @@ impl McpBrowserServer {
             .await?;
 
         page.navigate(
-            "about:blank",
-            WaitUntil::Selector("body".to_string()),
-            Duration::from_secs(5),
+            &nav_url,
+            WaitUntil::DomContentLoaded,
+            Duration::from_secs_f64(timeout_secs),
         )
         .await?;
 
