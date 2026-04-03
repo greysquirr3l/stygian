@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.8.2] - 2026-04-03
 
+### Breaking changes
+
+- `stygian-browser`: `navigator.userAgent` now returns `Chrome/131.0.0.0` instead of
+  `Chrome/120.0.0.0` for all built-in `NavigatorProfile` variants (`windows_chrome`,
+  `mac_chrome`, `linux_chrome`). Code that asserts on the exact UA string or parses the
+  Chrome major version from `navigator.userAgent` or `navigator.userAgentData` will need
+  to be updated. This was a correctness fix — the old version mismatched the default
+  `chrome131` TLS profile and was a primary Cloudflare Turnstile detection signal.
+- `stygian-browser`: `window.chrome.runtime`, `window.chrome.csi`, and
+  `window.chrome.loadTimes` are now present in every `Basic`/`Advanced` stealth session.
+  Page scripts that tested for the *absence* of these properties to detect headless mode
+  will now see them populated with stub objects/functions.
+- `stygian-browser`: `navigator.userAgentData.brands` is now spoofed to match the
+  `Chrome/131` UA. Any code that reads `navigator.userAgentData` directly will see
+  different brand/version values than in v0.8.1.
+
 ### Fixed
 
 - `stygian-browser`: `NavigatorProfile` UA strings updated from Chrome 120 → Chrome 131 to
@@ -26,6 +42,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `userAgentData.brands=[Chromium/139]`) reliably triggers the bot challenge
 
 ## [0.8.1] - 2026-04-03
+
+### Breaking changes
+
+- `stygian-browser`: `browser_content`, `browser_eval`, and `browser_screenshot` MCP tools
+  now return the content of the *current page* rather than always returning an empty
+  `about:blank` response. This was a bug fix, but callers that relied on the (incorrect)
+  empty response will observe different output.
 
 ### Fixed
 
