@@ -722,23 +722,20 @@ impl McpBrowserServer {
             .and_then(serde_json::Value::as_f64)
             .unwrap_or(30.0);
 
-        let (session_arc, nav_url) = {
-            let handle;
-            let url;
-            {
-                let sessions = self.sessions.lock().await;
-                let s = sessions.get(&session_id).ok_or_else(|| {
-                    BrowserError::ConfigError(format!("Unknown session: {session_id}"))
-                })?;
-                url = s.current_url.clone().ok_or_else(|| {
-                    BrowserError::ConfigError(
-                        "No page loaded — call browser_navigate before browser_eval".to_string(),
-                    )
-                })?;
-                handle = s.handle.clone();
-            }
-            (handle, url)
-        };
+        let (session_arc, nav_url_opt) = self
+            .sessions
+            .lock()
+            .await
+            .get(&session_id)
+            .map(|s| (s.handle.clone(), s.current_url.clone()))
+            .ok_or_else(|| {
+                BrowserError::ConfigError(format!("Unknown session: {session_id}"))
+            })?;
+        let nav_url = nav_url_opt.ok_or_else(|| {
+            BrowserError::ConfigError(
+                "No page loaded — call browser_navigate before browser_eval".to_string(),
+            )
+        })?;
 
         let mut page = session_arc
             .lock()
@@ -775,24 +772,20 @@ impl McpBrowserServer {
             .and_then(serde_json::Value::as_f64)
             .unwrap_or(30.0);
 
-        let (session_arc, nav_url) = {
-            let handle;
-            let url;
-            {
-                let sessions = self.sessions.lock().await;
-                let s = sessions.get(&session_id).ok_or_else(|| {
-                    BrowserError::ConfigError(format!("Unknown session: {session_id}"))
-                })?;
-                url = s.current_url.clone().ok_or_else(|| {
-                    BrowserError::ConfigError(
-                        "No page loaded — call browser_navigate before browser_screenshot"
-                            .to_string(),
-                    )
-                })?;
-                handle = s.handle.clone();
-            }
-            (handle, url)
-        };
+        let (session_arc, nav_url_opt) = self
+            .sessions
+            .lock()
+            .await
+            .get(&session_id)
+            .map(|s| (s.handle.clone(), s.current_url.clone()))
+            .ok_or_else(|| {
+                BrowserError::ConfigError(format!("Unknown session: {session_id}"))
+            })?;
+        let nav_url = nav_url_opt.ok_or_else(|| {
+            BrowserError::ConfigError(
+                "No page loaded — call browser_navigate before browser_screenshot".to_string(),
+            )
+        })?;
 
         let mut page = session_arc
             .lock()
@@ -829,23 +822,20 @@ impl McpBrowserServer {
             .and_then(serde_json::Value::as_f64)
             .unwrap_or(30.0);
 
-        let (session_arc, nav_url) = {
-            let handle;
-            let url;
-            {
-                let sessions = self.sessions.lock().await;
-                let s = sessions.get(&session_id).ok_or_else(|| {
-                    BrowserError::ConfigError(format!("Unknown session: {session_id}"))
-                })?;
-                url = s.current_url.clone().ok_or_else(|| {
-                    BrowserError::ConfigError(
-                        "No page loaded — call browser_navigate before browser_content".to_string(),
-                    )
-                })?;
-                handle = s.handle.clone();
-            }
-            (handle, url)
-        };
+        let (session_arc, nav_url_opt) = self
+            .sessions
+            .lock()
+            .await
+            .get(&session_id)
+            .map(|s| (s.handle.clone(), s.current_url.clone()))
+            .ok_or_else(|| {
+                BrowserError::ConfigError(format!("Unknown session: {session_id}"))
+            })?;
+        let nav_url = nav_url_opt.ok_or_else(|| {
+            BrowserError::ConfigError(
+                "No page loaded — call browser_navigate before browser_content".to_string(),
+            )
+        })?;
 
         let mut page = session_arc
             .lock()

@@ -229,7 +229,7 @@ impl StealthProfile {
         // Always inject chrome-object and userAgentData spoofing when navigator
         // spoofing is active — both are Cloudflare Turnstile detection vectors.
         if self.config.spoof_navigator {
-            parts.push(self.chrome_object_script());
+            parts.push(Self::chrome_object_script());
             parts.push(self.user_agent_data_script());
         }
 
@@ -308,7 +308,7 @@ impl StealthProfile {
         )
     }
 
-    fn chrome_object_script(&self) -> String {
+    fn chrome_object_script() -> String {
         // Cloudflare Turnstile checks window.chrome.runtime, window.chrome.csi,
         // and window.chrome.loadTimes — all present in real Chrome but absent
         // in headless. Stubbing them removes these detection signals.
@@ -384,7 +384,7 @@ impl StealthProfile {
         };
 
         format!(
-            r#"  // --- navigator.userAgentData spoofing ---
+            r"  // --- navigator.userAgentData spoofing ---
   (function() {{
     const uaData = {{
       brands: [
@@ -430,10 +430,7 @@ impl StealthProfile {
         configurable: false,
       }});
     }} catch (_) {{}}
-  }})();"#,
-            version = version,
-            mobile = mobile,
-            platform = platform,
+  }})();"
         )
     }
 
