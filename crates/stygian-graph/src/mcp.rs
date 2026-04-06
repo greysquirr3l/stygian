@@ -9,7 +9,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! stygian-graph = { version = "0.6.0", features = ["mcp"] }
+//! stygian-graph = { version = "*", features = ["mcp"] }
 //! ```
 //!
 //! ## Running the server

@@ -8,7 +8,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! stygian-browser = { version = "0.1", features = ["metrics"] }
+//! stygian-browser = { version = "*", features = ["metrics"] }
 //! ```
 //!
 //! ## Example

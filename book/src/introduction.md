@@ -42,9 +42,9 @@ Add crates to `Cargo.toml`:
 
 ```toml
 [dependencies]
-stygian-graph   = "0.6.0"
-stygian-browser = "0.6.0"   # optional — only needed for JS-rendered pages
-stygian-proxy   = "0.6.0"   # optional — proxy pool management
+stygian-graph   = "*"
+stygian-browser = "*"   # optional — only needed for JS-rendered pages
+stygian-proxy   = "*"   # optional — proxy pool management
 tokio            = { version = "1", features = ["full"] }
 serde_json       = "1"
 ```
@@ -52,45 +52,43 @@ serde_json       = "1"
 Enable optional feature groups on `stygian-graph`:
 
 ```toml
-stygian-graph = { version = "0.6.0", features = ["browser", "ai-claude", "distributed", "mcp"] }
+stygian-graph = { version = "*", features = ["browser", "redis", "mcp"] }
 ```
 
 Available features:
 
 | Feature | Includes |
 | --- | --- |
-| `browser` | `BrowserAdapter` backed by `stygian-browser` |
-| `ai-claude` | Anthropic Claude adapter |
-| `ai-openai` | OpenAI adapter |
-| `ai-gemini` | Google Gemini adapter |
-| `ai-copilot` | GitHub Copilot adapter |
-| `ai-ollama` | Ollama (local) adapter |
-| `distributed` | Redis/Valkey work queue adapter |
-| `metrics` | Prometheus metrics export |
-| `mcp` | MCP server — exposes all graph tools over JSON-RPC 2.0 |
+| `browser` | `BrowserAdapter` backed by `stygian-browser` (default) |
+| `redis` | Redis/Valkey cache and distributed work queue adapters |
+| `object-storage` | S3-compatible object storage adapter |
+| `api` | REST API server binary |
+| `postgres` | PostgreSQL storage adapter |
+| `cloudflare-crawl` | Cloudflare Browser Rendering crawl adapter |
+| `escalation` | Default tiered escalation policy adapter |
+| `wasm-plugins` | WASM plugin system via wasmtime |
+| `mcp` | MCP server — exposes scraping & pipeline tools over JSON-RPC 2.0 |
+| `full` | All of the above |
 
 ---
 
 ## Quick start — scraping pipeline
 
 ```rust
-use stygian_graph::{Pipeline, adapters::HttpAdapter};
+use stygian_graph::domain::graph::{Pipeline, Node};
 use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = json!({
-        "nodes": [
-            {"id": "fetch",   "service": "http"},
-            {"id": "extract", "service": "ai_claude"}
-        ],
-        "edges": [{"from": "fetch", "to": "extract"}]
-    });
+    let mut pipeline = Pipeline::new("my_scraper");
+    pipeline.add_node(Node::new(
+        "fetch",
+        "http",
+        json!({"url": "https://example.com"}),
+    ));
 
-    let pipeline = Pipeline::from_config(config)?;
-    let results  = pipeline.execute(json!({"url": "https://example.com"})).await?;
-
-    println!("{}", serde_json::to_string_pretty(&results)?);
+    pipeline.validate()?;
+    println!("Pipeline '{}' has {} nodes", pipeline.name, pipeline.nodes.len());
     Ok(())
 }
 ```
@@ -106,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool   = BrowserPool::new(BrowserConfig::default()).await?;
     let handle = pool.acquire().await?;
 
-    let mut page = handle.browser().new_page().await?;
+    let mut page = handle.browser().expect("browser is available").new_page().await?;
     page.navigate(
         "https://example.com",
         WaitUntil::Selector("body".to_string()),

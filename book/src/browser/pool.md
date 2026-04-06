@@ -53,7 +53,7 @@ all ready. Subsequent calls to `acquire()` return warm instances with no launch 
 let handle = pool.acquire().await?;
 
 // Do work on the browser
-let mut page = handle.browser().new_page().await?;
+let mut page = handle.browser().expect("browser is available").new_page().await?;
 page.navigate("https://example.com", WaitUntil::Load, Duration::from_secs(30)).await?;
 
 // Release — returns browser to pool; discards if health check fails
@@ -71,14 +71,11 @@ preferred.
 ```rust,no_run
 let stats = pool.stats();
 
-println!("available : {}", stats.available);   // idle, ready to use
-println!("active    : {}", stats.active);       // currently leased out
-println!("max       : {}", stats.max);          // pool capacity
-println!("total     : {}", stats.total);        // active + available
+println!("idle      : {}", stats.idle);       // warm browsers ready to use immediately
+println!("active    : {}", stats.active);     // total managed (idle + in-use)
+println!("available : {}", stats.available);  // free semaphore slots (max - active)
+println!("max       : {}", stats.max);        // pool capacity
 ```
-
-> **Note**: `stats().idle` always returns 0 — this counter is intentionally not maintained
-> on the hot acquire/release path to avoid contention. Use `available` and `active` instead.
 
 ---
 

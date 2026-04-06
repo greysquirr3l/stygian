@@ -39,7 +39,7 @@ docker run -d --name redis -p 6379:6379 redis:7
 
 ```toml
 # Cargo.toml
-stygian-graph = { version = "0.1", features = ["redis"] }
+stygian-graph = { version = "*", features = ["redis"] }
 ```
 
 ### 3. Create a work queue and executor

@@ -12,7 +12,7 @@ graph HTTP adapters from any specific proxy implementation.
 
 ```toml
 [dependencies]
-stygian-proxy = { version = "0.1", features = ["graph"] }
+stygian-proxy = { version = "*", features = ["graph"] }
 ```
 
 ### ProxyManagerPort
@@ -73,7 +73,7 @@ Enable the `browser` feature to bind a specific proxy to each browser page conte
 
 ```toml
 [dependencies]
-stygian-proxy = { version = "0.1", features = ["browser"] }
+stygian-proxy = { version = "*", features = ["browser"] }
 ```
 
 ### ProxyManagerBridge

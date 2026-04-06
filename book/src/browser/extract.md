@@ -11,8 +11,8 @@ imperative loops.
 Add `stygian-extract-derive` to your `Cargo.toml`:
 
 ```toml
-stygian-extract-derive = { version = "0.8" }
-stygian-browser         = { version = "0.8" }
+stygian-extract-derive = { version = "*" }
+stygian-browser         = { version = "*" }
 ```
 
 ---
@@ -21,7 +21,7 @@ stygian-browser         = { version = "0.8" }
 
 ```rust,no_run
 use stygian_extract_derive::Extract;
-use stygian_browser::page::Page;
+use stygian_browser::PageHandle;
 
 #[derive(Debug, Extract)]
 struct Article {
@@ -35,7 +35,9 @@ struct Article {
     summary: Option<String>,
 }
 
-let page: Page = pool.acquire().await?.navigate("https://example.com").await?;
+let handle = pool.acquire().await?;
+let mut page = handle.browser().expect("browser is available").new_page().await?;
+page.navigate("https://example.com", WaitUntil::Load, Duration::from_secs(30)).await?;
 let article: Article = page.extract::<Article>(".article-body").await?;
 println!("{:#?}", article);
 ```
@@ -143,7 +145,7 @@ Each element matching `div.g` acts as a scoped root for that item's selectors.
 
 ```rust,no_run
 use stygian_extract_derive::Extract;
-use stygian_browser::page::Page;
+use stygian_browser::PageHandle;
 
 #[derive(Debug, Extract)]
 struct ByLine {
@@ -172,7 +174,7 @@ struct NewsArticle {
     tags: Option<String>,
 }
 
-async fn scrape(page: Page) -> Result<NewsArticle, Box<dyn std::error::Error>> {
+async fn scrape(page: &mut PageHandle) -> Result<NewsArticle, Box<dyn std::error::Error>> {
     let article = page.extract::<NewsArticle>("article.main").await?;
     Ok(article)
 }

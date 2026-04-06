@@ -9,7 +9,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! stygian-browser = { version = "0.1", features = ["mcp"] }
+//! stygian-browser = { version = "*", features = ["mcp"] }
 //! ```
 //!
 //! ## Running the server

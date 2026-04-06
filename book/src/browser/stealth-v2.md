@@ -155,14 +155,16 @@ let client = ClientBuilder::new()
 in the active page and returns a `DiagnosticReport`:
 
 ```rust,no_run
-use stygian_browser::{BrowserConfig, BrowserPool, StealthLevel};
+use stygian_browser::{BrowserConfig, BrowserPool, StealthLevel, WaitUntil};
+use std::time::Duration;
 
 let pool = BrowserPool::new(BrowserConfig::builder()
-    .stealth(StealthLevel::Advanced)
+    .stealth_level(StealthLevel::Advanced)
     .build());
 
-let page = pool.acquire().await?;
-page.goto("https://example.com").await?;         // navigate for realistic context
+let handle = pool.acquire().await?;
+let page = handle.browser().expect("browser is available").new_page().await?;
+page.navigate("https://example.com", WaitUntil::Load, Duration::from_secs(30)).await?;  // navigate for realistic context
 
 let report = page.verify_stealth().await?;
 

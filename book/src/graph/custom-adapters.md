@@ -170,26 +170,21 @@ Wrap before registering to get circuit-breaker and retry behaviour for free:
 ```rust
 use std::sync::Arc;
 use std::time::Duration;
-use stygian_graph::adapters::resilience::{CircuitBreakerImpl, RetryPolicy, ResilientAdapter};
+use stygian_graph::adapters::resilience::{CircuitBreakerImpl, RetryPolicy, retry};
 
 let cb = CircuitBreakerImpl::new(
     5,                          // open after 5 consecutive failures
     Duration::from_secs(120),   // half-open probe after 2 min
 );
 
-let policy = RetryPolicy::exponential(
+let policy = RetryPolicy::new(
     3,                          // max 3 attempts
     Duration::from_millis(200), // initial back-off
     Duration::from_secs(5),     // cap
 );
 
-let resilient = ResilientAdapter::new(
-    Arc::new(PlaywrightService::new(config)),
-    Arc::new(cb),
-    policy,
-);
-
-registry.register("playwright".into(), Arc::new(resilient));
+// Wrap your adapter calls with circuit breaker + retry:
+// retry(&policy, || async { playwright_service.call(input.clone()).await }).await?
 ```
 
 ---

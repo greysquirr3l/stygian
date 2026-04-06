@@ -1,7 +1,11 @@
 # Page Operations
 
-A `Page` represents a single browser tab. You get one by calling `browser.new_page()` on a
-`BrowserHandle`.
+A `PageHandle` represents a single browser tab. You get one by calling `new_page()` on a
+`BrowserInstance`, accessed via `BrowserHandle::browser()`:
+
+```rust,no_run
+let mut page = handle.browser().expect("browser is available").new_page().await?;
+```
 
 ---
 
@@ -193,7 +197,7 @@ use std::time::Duration;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool   = BrowserPool::new(BrowserConfig::default()).await?;
     let handle = pool.acquire().await?;
-    let mut page = handle.browser().new_page().await?;
+    let mut page = handle.browser().expect("browser is available").new_page().await?;
 
     // Block images to reduce bandwidth
     page.set_resource_filter(ResourceFilter::block_media()).await?;

@@ -12,12 +12,12 @@ The default content-fetching adapter. Uses `reqwest` with connection pooling, au
 redirect following, and configurable retry logic.
 
 ```rust
-use stygian_graph::adapters::{HttpAdapter, HttpConfig};
+use stygian_graph::adapters::http::{HttpAdapter, HttpConfig};
 use std::time::Duration;
 
 let adapter = HttpAdapter::with_config(HttpConfig {
     timeout:          Duration::from_secs(15),
-    user_agent:       Some("stygian/0.1".to_string()),
+    user_agent:       Some("stygian-graph".to_string()),
     follow_redirects: true,
     max_redirects:    10,
     ..Default::default()
@@ -468,9 +468,7 @@ Wrap any `ScrapingService` with circuit breaker and retry logic without touching
 underlying implementation:
 
 ```rust
-use stygian_graph::adapters::resilience::{
-    CircuitBreakerImpl, RetryPolicy, ResilientAdapter,
-};
+use stygian_graph::adapters::resilience::{CircuitBreakerImpl, RetryPolicy, retry};
 use std::time::Duration;
 
 let cb = CircuitBreakerImpl::new(
@@ -478,17 +476,14 @@ let cb = CircuitBreakerImpl::new(
     Duration::from_secs(120),    // half-open attempt after 2 min
 );
 
-let policy = RetryPolicy::exponential(
+let policy = RetryPolicy::new(
     3,                           // max 3 attempts
     Duration::from_millis(200),  // initial back-off
     Duration::from_secs(5),      // max back-off
 );
 
-let resilient = ResilientAdapter::new(
-    Arc::new(http_adapter),
-    Arc::new(cb),
-    policy,
-);
+// Use the `retry()` helper to wrap any fallible async operation:
+// retry(&policy, || async { http_adapter.call(input.clone()).await }).await?
 ```
 
 ---
@@ -574,7 +569,7 @@ explicitly or use `full`).
 ```toml
 # Cargo.toml
 [dependencies]
-stygian-graph = { version = "0.1", features = ["cloudflare-crawl"] }
+stygian-graph = { version = "*", features = ["cloudflare-crawl"] }
 ```
 
 ```rust

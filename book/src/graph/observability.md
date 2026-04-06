@@ -10,7 +10,7 @@ Both are opt-in: neither requires code changes to your adapters or domain logic.
 Enable the `metrics` feature flag:
 
 ```toml
-stygian-graph = { version = "0.1", features = ["metrics"] }
+stygian-graph = { version = "*", features = ["metrics"] }
 ```
 
 ### Creating a collector

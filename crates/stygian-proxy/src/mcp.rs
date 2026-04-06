@@ -9,7 +9,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! stygian-proxy = { version = "0.6", features = ["mcp"] }
+//! stygian-proxy = { version = "*", features = ["mcp"] }
 //! ```
 //!
 //! ## Protocol

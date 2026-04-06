@@ -8,7 +8,7 @@
 
 ```toml
 [dependencies]
-stygian-browser = { version = "0.8", features = ["mcp"] }
+stygian-browser = { version = "*", features = ["mcp"] }
 ```
 
 To run as a standalone MCP server:

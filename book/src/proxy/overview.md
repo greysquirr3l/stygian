@@ -28,7 +28,7 @@ Add the dependency:
 
 ```toml
 [dependencies]
-stygian-proxy = { version = "0.1", features = ["graph"] }
+stygian-proxy = { version = "*", features = ["graph"] }
 ```
 
 Build a pool and make a request:

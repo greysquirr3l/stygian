@@ -23,9 +23,9 @@ Enable features in your `Cargo.toml`:
 
 ```toml
 [dependencies]
-stygian-graph = { version = "0.1", features = ["redis", "object-storage", "api"] }
+stygian-graph = { version = "*", features = ["redis", "object-storage", "api"] }
 # or enable everything:
-stygian-graph = { version = "0.1", features = ["full"] }
+stygian-graph = { version = "*", features = ["full"] }
 ```
 
 ---

@@ -95,20 +95,23 @@ For pipelines constructed at runtime:
 
 ```rust
 use stygian_graph::domain::pipeline::PipelineUnvalidated;
-use stygian_graph::domain::graph::{Node, Edge};
 use serde_json::json;
 
-let pipeline = PipelineUnvalidated::builder()
-    .id("product-scraper")
-    .node(Node { id: "fetch".into(), service: "http".into(), config: json!({}) })
-    .node(Node { id: "extract".into(), service: "ai_claude".into(), config: json!({
-        "model": "claude-3-5-sonnet-20241022"
-    })})
-    .edge(Edge { from: "fetch".into(), to: "extract".into() })
-    .build()?;
+let pipeline = PipelineUnvalidated::new(json!({
+    "id": "product-scraper",
+    "nodes": [
+        {"id": "fetch",   "service": "http",      "config": {}},
+        {"id": "extract", "service": "ai_claude", "config": {
+            "model": "claude-3-5-sonnet-20241022"
+        }}
+    ],
+    "edges": [
+        {"from": "fetch", "to": "extract"}
+    ]
+}));
 
-let validated = pipeline.validate()?;
-let results   = validated.execute().await?;
+let validated  = pipeline.validate()?;
+let executing  = validated.execute();   // synchronous state transition
 ```
 
 ---
@@ -122,17 +125,16 @@ let results   = validated.execute().await?;
 3. **Cycle detection** — Kahn's topological sort; fails if a cycle is detected.
 4. **Connectivity** — all nodes are reachable from at least one source node.
 
-Any validation failure returns a typed `PipelineError` — never panics.
+Any validation failure returns a `StygianError` — never panics.
 
 ```rust
-use stygian_graph::domain::error::PipelineError;
+use stygian_graph::domain::{StygianError, GraphError};
 
 match pipeline.validate() {
-    Ok(validated)                     => { /* proceed */ }
-    Err(PipelineError::DuplicateNode(id)) => eprintln!("duplicate node: {id}"),
-    Err(PipelineError::CycleDetected)    => eprintln!("pipeline has a cycle"),
-    Err(PipelineError::UnknownEdge { from, to }) =>
-        eprintln!("edge {from} → {to} references unknown nodes"),
+    Ok(validated)                                        => { /* proceed */ }
+    Err(StygianError::Graph(GraphError::CycleDetected))  => eprintln!("pipeline has a cycle"),
+    Err(StygianError::Graph(GraphError::NodeNotFound(id))) => eprintln!("node not found: {id}"),
+    Err(StygianError::Graph(GraphError::InvalidEdge(e))) => eprintln!("invalid edge: {e}"),
     Err(e) => eprintln!("validation failed: {e}"),
 }
 ```

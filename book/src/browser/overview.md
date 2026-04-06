@@ -52,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool   = BrowserPool::new(BrowserConfig::default()).await?;
     let handle = pool.acquire().await?;            // < 100 ms from warm pool
 
-    let mut page = handle.browser().new_page().await?;
+    let mut page = handle.browser().expect("browser is available").new_page().await?;
 
     page.navigate(
         "https://example.com",
@@ -96,14 +96,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ```toml
 [dependencies]
-stygian-browser = "0.1"
+stygian-browser = "*"
 tokio            = { version = "1", features = ["full"] }
 ```
 
 To disable stealth features for a minimal build:
 
 ```toml
-stygian-browser = { version = "0.1", default-features = false }
+stygian-browser = { version = "*", default-features = false }
 ```
 
 Chrome 120+ must be available on the system or specified via `STYGIAN_CHROME_PATH`.

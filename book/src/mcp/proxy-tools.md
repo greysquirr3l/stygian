@@ -8,7 +8,7 @@
 
 ```toml
 [dependencies]
-stygian-proxy = { version = "0.6.0", features = ["mcp"] }
+stygian-proxy = { version = "*", features = ["mcp"] }
 ```
 
 The proxy MCP server is primarily designed to be used through the [aggregator](./aggregator.md),

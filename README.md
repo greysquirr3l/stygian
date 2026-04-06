@@ -120,9 +120,9 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-stygian-graph = "0.7"
-stygian-browser = "0.7"  # optional, for JavaScript rendering
-stygian-proxy = "0.7"    # optional, for proxy pool management
+stygian-graph = "*"
+stygian-browser = "*"  # optional, for JavaScript rendering
+stygian-proxy = "*"    # optional, for proxy pool management
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -260,6 +260,6 @@ Built with:
 
 ---
 
-**Status**: Active development | Version 0.7.0 | Rust 2024 edition | Linux + macOS
+**Status**: Active development | Rust 2024 edition | Linux + macOS
 
 For detailed documentation, see the [project docs site](https://greysquirr3l.github.io/stygian).

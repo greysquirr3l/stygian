@@ -109,7 +109,7 @@ changed across page versions.
 ### Cargo feature
 
 ```toml
-stygian-browser = { version = "0.8", features = ["similarity"] }
+stygian-browser = { version = "*", features = ["similarity"] }
 ```
 
 ### How it works

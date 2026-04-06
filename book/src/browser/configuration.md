@@ -65,7 +65,7 @@ let config = BrowserConfig::builder()
 | `min_size` | `usize` | `2` | Browsers kept warm at all times |
 | `max_size` | `usize` | `10` | Maximum concurrent browsers |
 | `idle_timeout` | `Duration` | `5 min` | Evict idle browser after this duration |
-| `acquire_timeout` | `Duration` | `30 s` | Max wait for a pool slot |
+| `acquire_timeout` | `Duration` | `5 s` | Max wait for a pool slot |
 
 ### WebRTC settings (`WebRtcConfig`)
 

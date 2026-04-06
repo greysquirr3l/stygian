@@ -60,8 +60,12 @@ use stygian_graph::domain::pipeline::{
     PipelineUnvalidated, PipelineValidated,
     PipelineExecuting, PipelineComplete,
 };
+use serde_json::json;
 
-let p: PipelineUnvalidated = PipelineUnvalidated::new("crawl", metadata);
+let p: PipelineUnvalidated = PipelineUnvalidated::new(json!({
+    "nodes": [{"id": "crawl", "service": "http"}],
+    "edges": []
+}));
 let p: PipelineValidated   = p.validate()?;      // rejects invalid graphs here
 let p: PipelineExecuting   = p.execute();         // only valid pipelines may execute
 let p: PipelineComplete    = p.complete(result);  // only executing pipelines may complete
