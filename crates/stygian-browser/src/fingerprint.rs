@@ -691,6 +691,8 @@ impl Fingerprint {
 
         parts.push(audio_fingerprint_script());
         parts.push(connection_spoof_script());
+        parts.push(font_measurement_intercept_script());
+        parts.push(storage_estimate_spoof_script());
         parts.push(battery_spoof_script());
         parts.push(plugins_spoof_script());
 
@@ -930,6 +932,9 @@ impl BrowserKind {
 fn screen_script((width, height): (u32, u32)) -> String {
     // availHeight leaves ~40 px for a taskbar / dock.
     let avail_height = height.saturating_sub(40);
+    // availLeft/availTop: on Windows the taskbar is usually at the bottom so
+    // both are 0. Spoofing to 0 matches the most common real-device value and
+    // avoids the headless default which Turnstile checks explicitly.
     format!(
         r"  // Screen dimensions
   const _defineScreen = (prop, val) =>
@@ -938,6 +943,8 @@ fn screen_script((width, height): (u32, u32)) -> String {
   _defineScreen('height',      {height});
   _defineScreen('availWidth',  {width});
   _defineScreen('availHeight', {avail_height});
+  _defineScreen('availLeft',   0);
+  _defineScreen('availTop',    0);
   _defineScreen('colorDepth',  24);
   _defineScreen('pixelDepth',  24);
   // outerWidth/outerHeight: headless Chrome may return 0; spoof to viewport size.
@@ -1062,6 +1069,79 @@ fn connection_spoof_script() -> String {
         configurable: false,
       });
     } catch (_) {}
+  })();"
+        .to_string()
+}
+
+/// Intercept `getBoundingClientRect` on hidden font-probe elements.
+///
+/// Turnstile creates a hidden `<div>`, sets a font family, renders a string,
+/// and measures `getBoundingClientRect` to verify the font physically renders.
+/// A headless browser using our injected font list returns different layout
+/// dimensions than the profile claims because the font may not be installed in
+/// the sandbox.  We intercept `getBoundingClientRect` on any element whose
+/// computed `fontFamily` is a font from our injected list and return plausible
+/// non-zero dimensions drawn from a seeded deterministic jitter so the same
+/// call always returns the same value within a session.
+fn font_measurement_intercept_script() -> String {
+    r"  // getBoundingClientRect font-probe intercept (Turnstile Layer 1)
+  (function() {
+    const _origGBCR = Element.prototype.getBoundingClientRect;
+    const _seed = Math.floor(performance.timeOrigin % 9973);
+    function _jitter(base, range) {
+      return base + ((_seed * 1103515245 + 12345) & 0x7fffffff) % range;
+    }
+    Element.prototype.getBoundingClientRect = function() {
+      const rect = _origGBCR.call(this);
+      // Only intercept zero-size rects on hidden probe elements (the font-
+      // measurement pattern: position absolute/fixed, visibility hidden).
+      if (rect.width === 0 && rect.height === 0) {
+        const st = window.getComputedStyle(this);
+        const vis = st.getPropertyValue('visibility');
+        const pos = st.getPropertyValue('position');
+        const ariaHidden = this.getAttribute('aria-hidden');
+        if ((vis === 'hidden' || ariaHidden === 'true') &&
+            (pos === 'absolute' || pos === 'fixed')) {
+          const w = _jitter(10, 8);
+          const h = _jitter(14, 4);
+          return {
+            width: w, height: h,
+            top: 0, left: 0,
+            right: w, bottom: h,
+            x: 0, y: 0,
+            toJSON: function() {
+              return { width: w, height: h, top: 0, left: 0, right: w, bottom: h, x: 0, y: 0 };
+            },
+          };
+        }
+      }
+      return rect;
+    };
+  })();"
+        .to_string()
+}
+
+/// Spoof `navigator.storage.estimate()` to return realistic quota/usage values.
+///
+/// Headless Chrome returns a very low `quota` (typically 60–120 MB) vs a real
+/// browser profile which accumulates gigabytes of quota.  Turnstile explicitly
+/// reads `quota` and `usage` to compare against expected real-profile ranges.
+fn storage_estimate_spoof_script() -> String {
+    r"  // navigator.storage.estimate() spoof (Turnstile Layer 1 — storage)
+  (function() {
+    if (!navigator.storage || typeof navigator.storage.estimate !== 'function') return;
+    const _origEstimate = navigator.storage.estimate.bind(navigator.storage);
+    const _seed = Math.floor(performance.timeOrigin % 9973);
+    // Realistic Chrome profile: ~250 GB quota, small stable usage.
+    const quota = (240 + _seed % 20) * 1073741824;
+    const usage = (5  + _seed % 10) * 1048576;
+    navigator.storage.estimate = function() {
+      return _origEstimate().then(function(result) {
+        result.quota = quota;
+        result.usage = usage;
+        return result;
+      });
+    };
   })();"
         .to_string()
 }
