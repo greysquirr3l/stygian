@@ -692,6 +692,7 @@ impl InteractionSimulator {
     async fn do_keyactivity(&mut self, page: &Page) -> Result<()> {
         const KEYS: &[&str] = &["ArrowDown", "Tab", "ArrowRight", "ArrowUp"];
         let count = 3 + rand_range(&mut self.rng, 0.0, 4.0) as u32;
+        let mut successful_pairs = 0u32;
         for i in 0..count {
             let key = KEYS
                 .get((i as usize) % KEYS.len())
@@ -699,7 +700,7 @@ impl InteractionSimulator {
                 .unwrap_or("Tab");
             let down_delay = rand_range(&mut self.rng, 50.0, 120.0) as u64;
             sleep(Duration::from_millis(down_delay)).await;
-            if let Err(e) = Self::js(
+            let keydown_ok = if let Err(e) = Self::js(
                 page,
                 format!(
                     "window.dispatchEvent(new KeyboardEvent('keydown',\
@@ -709,10 +710,13 @@ impl InteractionSimulator {
             .await
             {
                 warn!(key, "Failed to dispatch keydown event: {e}");
-            }
+                false
+            } else {
+                true
+            };
             let hold_ms = rand_range(&mut self.rng, 20.0, 60.0) as u64;
             sleep(Duration::from_millis(hold_ms)).await;
-            if let Err(e) = Self::js(
+            let keyup_ok = if let Err(e) = Self::js(
                 page,
                 format!(
                     "window.dispatchEvent(new KeyboardEvent('keyup',\
@@ -722,8 +726,23 @@ impl InteractionSimulator {
             .await
             {
                 warn!(key, "Failed to dispatch keyup event: {e}");
+                false
+            } else {
+                true
+            };
+
+            if keydown_ok && keyup_ok {
+                successful_pairs += 1;
             }
         }
+
+        if successful_pairs == 0 {
+            return Err(BrowserError::CdpError {
+                operation: "InteractionSimulator::do_keyactivity".to_string(),
+                message: "all synthetic key event dispatches failed".to_string(),
+            });
+        }
+
         Ok(())
     }
 
@@ -751,8 +770,8 @@ impl InteractionSimulator {
     /// | ---------- | ----------------------------------------------------------- |
     /// | `None`   | No-op                                                     |
     /// | `Low`    | One scroll + short pause (500–1 500 ms)                   |
-    /// | `Medium` | Scroll + mouse wiggle + reading pause (1–3 s)             |
-    /// | `High`   | Medium + second wiggle + optional scroll-back             |
+    /// | `Medium` | Scroll + key activity + mouse wiggle + reading pauses     |
+    /// | `High`   | Medium + extra key activity + extra wiggle + optional up-scroll |
     ///
     /// # Parameters
     ///
@@ -1240,26 +1259,34 @@ mod tests {
         assert_eq!(p.max_ms, 2_000);
     }
 
-    #[tokio::test]
-    async fn request_pacer_throttle_first_immediate_then_waits() {
+    #[tokio::test(start_paused = true)]
+    async fn request_pacer_throttle_first_immediate_then_waits()
+    -> std::result::Result<(), tokio::task::JoinError> {
         let mut p = RequestPacer::with_timing(25, 0, 25, 25);
 
-        let start = Instant::now();
+        // First call should complete immediately even under paused time.
         p.throttle().await;
-        let first_elapsed = start.elapsed();
+
+        // Second call should block until 25 ms of virtual time has advanced.
+        let handle = tokio::spawn(async move {
+            p.throttle().await;
+        });
+
+        tokio::task::yield_now().await;
         assert!(
-            first_elapsed < Duration::from_millis(10),
-            "first throttle should be immediate, got {:?}",
-            first_elapsed
+            !handle.is_finished(),
+            "second throttle unexpectedly finished early"
         );
 
-        let second_start = Instant::now();
-        p.throttle().await;
-        let second_elapsed = second_start.elapsed();
+        tokio::time::advance(Duration::from_millis(24)).await;
+        tokio::task::yield_now().await;
         assert!(
-            second_elapsed >= Duration::from_millis(20),
-            "second throttle should wait close to target delay, got {:?}",
-            second_elapsed
+            !handle.is_finished(),
+            "second throttle finished before target delay"
         );
+
+        tokio::time::advance(Duration::from_millis(1)).await;
+        handle.await?;
+        Ok(())
     }
 }
