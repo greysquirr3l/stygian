@@ -28,7 +28,7 @@
 //!
 //! ## Protocol
 //!
-//! Implements MCP 2024-11-05 over JSON-RPC 2.0 on stdin/stdout.
+//! Implements MCP 2025-11-25 over JSON-RPC 2.0 on stdin/stdout.
 //!
 //! | MCP Method | Description |
 //! | ----------- | ------------- |
@@ -139,7 +139,17 @@ impl McpGraphServer {
             debug!(request = trimmed, "received");
 
             let response = match serde_json::from_str::<Value>(trimmed) {
-                Ok(req) => self.handle(&req).await,
+                Ok(req) => {
+                    let is_well_formed_notification = req.is_object()
+                        && req.get("jsonrpc").and_then(Value::as_str) == Some("2.0")
+                        && req.get("id").is_none()
+                        && req.get("method").and_then(Value::as_str).is_some();
+                    let response = self.handle(&req).await;
+                    if is_well_formed_notification {
+                        continue;
+                    }
+                    response
+                }
                 Err(e) => json!({
                     "jsonrpc": "2.0",
                     "id": null,
@@ -172,7 +182,7 @@ impl McpGraphServer {
     /// let server = McpGraphServer::new();
     /// let req = json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}});
     /// let resp = server.handle_request(&req).await;
-    /// assert_eq!(resp["result"]["protocolVersion"], "2024-11-05");
+    /// assert_eq!(resp["result"]["protocolVersion"], "2025-11-25");
     /// # });
     /// ```
     pub async fn handle_request(&self, req: &Value) -> Value {
@@ -197,7 +207,7 @@ impl McpGraphServer {
         ok_response(
             id,
             json!({
-                "protocolVersion": "2024-11-05",
+                "protocolVersion": "2025-11-25",
                 "capabilities": {
                     "tools":     { "listChanged": false },
                     "resources": { "listChanged": false }
@@ -1201,7 +1211,7 @@ mod tests {
         let server = McpGraphServer::new();
         let id = json!(1);
         let resp = server.handle_initialize(&id);
-        assert_eq!(resp["result"]["protocolVersion"], "2024-11-05");
+        assert_eq!(resp["result"]["protocolVersion"], "2025-11-25");
     }
 
     #[test]
