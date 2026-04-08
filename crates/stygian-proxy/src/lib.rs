@@ -25,6 +25,7 @@
 
 pub mod circuit_breaker;
 pub mod error;
+pub mod fetcher;
 pub mod health;
 pub mod manager;
 pub mod session;
@@ -45,6 +46,7 @@ pub mod mcp;
 // Top-level re-exports
 pub use circuit_breaker::{CircuitBreaker, STATE_CLOSED, STATE_HALF_OPEN, STATE_OPEN};
 pub use error::{ProxyError, ProxyResult};
+pub use fetcher::{FreeListFetcher, FreeListSource, ProxyFetcher, load_from_fetcher};
 pub use health::{HealthChecker, HealthMap};
 pub use manager::{PoolStats, ProxyHandle, ProxyManager, ProxyManagerBuilder};
 pub use session::{SessionMap, StickyPolicy};

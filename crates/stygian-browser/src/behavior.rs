@@ -20,8 +20,9 @@
 
 use chromiumoxide::Page;
 use chromiumoxide::cdp::browser_protocol::input::{DispatchKeyEventParams, DispatchKeyEventType};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::time::sleep;
+use tracing::warn;
 
 use crate::error::{BrowserError, Result};
 
@@ -681,6 +682,70 @@ impl InteractionSimulator {
         .await
     }
 
+    /// Dispatch synthetic key events to `window` so behavioural-biometric SDKs
+    /// (Cloudflare Turnstile Signal Orchestrator, `OpenAI` Sentinel SO) accumulate
+    /// non-zero keystroke telemetry before a protected action fires.
+    ///
+    /// Events are dispatched at window-level (bubbling) since SO listeners are
+    /// installed there.  Arrow/Tab keys are used — they do not activate UI
+    /// elements but are universally listened for by signal trackers.
+    async fn do_keyactivity(&mut self, page: &Page) -> Result<()> {
+        const KEYS: &[&str] = &["ArrowDown", "Tab", "ArrowRight", "ArrowUp"];
+        let count = 3 + rand_range(&mut self.rng, 0.0, 4.0) as u32;
+        let mut successful_pairs = 0u32;
+        for i in 0..count {
+            let key = KEYS
+                .get((i as usize) % KEYS.len())
+                .copied()
+                .unwrap_or("Tab");
+            let down_delay = rand_range(&mut self.rng, 50.0, 120.0) as u64;
+            sleep(Duration::from_millis(down_delay)).await;
+            let keydown_ok = if let Err(e) = Self::js(
+                page,
+                format!(
+                    "window.dispatchEvent(new KeyboardEvent('keydown',\
+                     {{bubbles:true,cancelable:true,key:{key:?},code:{key:?}}}));"
+                ),
+            )
+            .await
+            {
+                warn!(key, "Failed to dispatch keydown event: {e}");
+                false
+            } else {
+                true
+            };
+            let hold_ms = rand_range(&mut self.rng, 20.0, 60.0) as u64;
+            sleep(Duration::from_millis(hold_ms)).await;
+            let keyup_ok = if let Err(e) = Self::js(
+                page,
+                format!(
+                    "window.dispatchEvent(new KeyboardEvent('keyup',\
+                     {{bubbles:true,cancelable:true,key:{key:?},code:{key:?}}}));"
+                ),
+            )
+            .await
+            {
+                warn!(key, "Failed to dispatch keyup event: {e}");
+                false
+            } else {
+                true
+            };
+
+            if keydown_ok && keyup_ok {
+                successful_pairs += 1;
+            }
+        }
+
+        if successful_pairs == 0 {
+            return Err(BrowserError::CdpError {
+                operation: "InteractionSimulator::do_keyactivity".to_string(),
+                message: "all synthetic key event dispatches failed".to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
     /// Scroll down a random amount, then partially scroll back up.
     async fn do_scroll(&mut self, page: &Page) -> Result<()> {
         let down = rand_range(&mut self.rng, 200.0, 600.0) as i64;
@@ -705,8 +770,8 @@ impl InteractionSimulator {
     /// | ---------- | ----------------------------------------------------------- |
     /// | `None`   | No-op                                                     |
     /// | `Low`    | One scroll + short pause (500–1 500 ms)                   |
-    /// | `Medium` | Scroll + mouse wiggle + reading pause (1–3 s)             |
-    /// | `High`   | Medium + second wiggle + optional scroll-back             |
+    /// | `Medium` | Scroll + key activity + mouse wiggle + reading pauses     |
+    /// | `High`   | Medium + extra key activity + extra wiggle + optional up-scroll |
     ///
     /// # Parameters
     ///
@@ -731,22 +796,32 @@ impl InteractionSimulator {
             }
             InteractionLevel::Medium => {
                 self.do_scroll(page).await?;
-                let p1 = rand_range(&mut self.rng, 1_000.0, 3_000.0) as u64;
+                let p1 = rand_range(&mut self.rng, 800.0, 2_000.0) as u64;
                 sleep(Duration::from_millis(p1)).await;
-                self.do_mouse_wiggle(page, viewport_w, viewport_h).await?;
-                let p2 = rand_range(&mut self.rng, 500.0, 2_000.0) as u64;
+                // Key events populate behavioural-biometric trackers.
+                self.do_keyactivity(page).await?;
+                let p2 = rand_range(&mut self.rng, 500.0, 1_500.0) as u64;
                 sleep(Duration::from_millis(p2)).await;
+                self.do_mouse_wiggle(page, viewport_w, viewport_h).await?;
+                let p3 = rand_range(&mut self.rng, 400.0, 1_500.0) as u64;
+                sleep(Duration::from_millis(p3)).await;
             }
             InteractionLevel::High => {
                 self.do_scroll(page).await?;
                 let p1 = rand_range(&mut self.rng, 1_000.0, 5_000.0) as u64;
                 sleep(Duration::from_millis(p1)).await;
-                self.do_mouse_wiggle(page, viewport_w, viewport_h).await?;
-                let p2 = rand_range(&mut self.rng, 800.0, 3_000.0) as u64;
+                self.do_keyactivity(page).await?;
+                let p2 = rand_range(&mut self.rng, 400.0, 1_200.0) as u64;
                 sleep(Duration::from_millis(p2)).await;
                 self.do_mouse_wiggle(page, viewport_w, viewport_h).await?;
-                let p3 = rand_range(&mut self.rng, 500.0, 2_000.0) as u64;
+                let p3 = rand_range(&mut self.rng, 800.0, 3_000.0) as u64;
                 sleep(Duration::from_millis(p3)).await;
+                self.do_keyactivity(page).await?;
+                let p4 = rand_range(&mut self.rng, 300.0, 800.0) as u64;
+                sleep(Duration::from_millis(p4)).await;
+                self.do_mouse_wiggle(page, viewport_w, viewport_h).await?;
+                let p5 = rand_range(&mut self.rng, 500.0, 2_000.0) as u64;
+                sleep(Duration::from_millis(p5)).await;
                 // Occasional scroll-back (40 % chance).
                 if rand_f64(&mut self.rng) < 0.4 {
                     let up = -(rand_range(&mut self.rng, 50.0, 200.0) as i64);
@@ -756,6 +831,163 @@ impl InteractionSimulator {
             }
         }
         Ok(())
+    }
+}
+
+// ─── RequestPacer ─────────────────────────────────────────────────────────────
+
+/// Paces programmatic HTTP/CDP requests with human-realistic inter-request delays.
+///
+/// Prevents tight-loop request patterns that are trivially detectable by server-side
+/// rate analysers (Cloudflare, Akamai, `DataDome`, AWS WAF).  Delays follow a truncated
+/// Gaussian distribution centred on `mean_ms` with `std_ms` variance, giving natural
+/// bursty-but-not-mechanical timing.
+///
+/// The first call to [`throttle`][RequestPacer::throttle] always returns immediately
+/// (no prior request to pace against).
+///
+/// # Example
+///
+/// ```no_run
+/// use stygian_browser::behavior::RequestPacer;
+///
+/// # async fn run() {
+/// let mut pacer = RequestPacer::new();
+/// for url in &["https://a.example.com", "https://b.example.com"] {
+///     pacer.throttle().await;
+///     // … make request to url …
+/// }
+/// # }
+/// ```
+pub struct RequestPacer {
+    rng: u64,
+    mean_ms: u64,
+    std_ms: u64,
+    min_ms: u64,
+    max_ms: u64,
+    last_request: Option<Instant>,
+}
+
+impl Default for RequestPacer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RequestPacer {
+    /// Default pacer: mean 1 200 ms, σ = 400 ms, clamped 400–4 000 ms.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_browser::behavior::RequestPacer;
+    /// let _pacer = RequestPacer::new();
+    /// ```
+    pub fn new() -> Self {
+        let seed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() ^ u64::from(d.subsec_nanos()))
+            .unwrap_or(0xdead_beef_cafe_1337);
+        Self {
+            rng: seed,
+            mean_ms: 1_200,
+            std_ms: 400,
+            min_ms: 400,
+            max_ms: 4_000,
+            last_request: None,
+        }
+    }
+
+    /// Create with explicit timing parameters (all values in milliseconds).
+    ///
+    /// If `min_ms > max_ms`, bounds are normalized by swapping them.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_browser::behavior::RequestPacer;
+    /// // Aggressive: ~500 ms mean, σ = 150 ms, clamped 200–1 500 ms.
+    /// let _pacer = RequestPacer::with_timing(500, 150, 200, 1_500);
+    /// ```
+    pub fn with_timing(mean_ms: u64, std_ms: u64, min_ms: u64, max_ms: u64) -> Self {
+        let (min_ms, max_ms) = if min_ms <= max_ms {
+            (min_ms, max_ms)
+        } else {
+            (max_ms, min_ms)
+        };
+        let seed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() ^ u64::from(d.subsec_nanos()))
+            .unwrap_or(0xdead_beef_cafe_1337);
+        Self {
+            rng: seed,
+            mean_ms,
+            std_ms,
+            min_ms,
+            max_ms,
+            last_request: None,
+        }
+    }
+
+    /// Construct from a target requests-per-second rate.
+    ///
+    /// Mean = `1000 / rps` ms, σ = 25 % of mean, clamped to ±50 % of mean.
+    ///
+    /// `rps` is clamped to a minimum of `0.01` to avoid division by zero and
+    /// extreme near-zero denominators.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_browser::behavior::RequestPacer;
+    /// let _pacer = RequestPacer::with_rate(0.5); // ~1 request every 2 s
+    /// ```
+    pub fn with_rate(requests_per_second: f64) -> Self {
+        let mean_ms = (1_000.0 / requests_per_second.max(0.01)).max(1.0) as u64;
+        let std_ms = mean_ms / 4;
+        let min_ms = mean_ms / 2;
+        let max_ms = mean_ms.saturating_mul(2);
+        let seed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() ^ u64::from(d.subsec_nanos()))
+            .unwrap_or(0xdead_beef_cafe_1337);
+        Self {
+            rng: seed,
+            mean_ms,
+            std_ms,
+            min_ms,
+            max_ms,
+            last_request: None,
+        }
+    }
+
+    /// Wait until the appropriate inter-request delay has elapsed, then return.
+    ///
+    /// The first call returns immediately.  Subsequent calls sleep remaining time
+    /// to match the sampled target delay.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # async fn run() {
+    /// use stygian_browser::behavior::RequestPacer;
+    /// let mut pacer = RequestPacer::new();
+    /// pacer.throttle().await; // first call: immediate
+    /// pacer.throttle().await; // waits ~1.2 s
+    /// # }
+    /// ```
+    pub async fn throttle(&mut self) {
+        let target_ms = rand_normal(&mut self.rng, self.mean_ms as f64, self.std_ms as f64)
+            .max(self.min_ms as f64)
+            .min(self.max_ms as f64) as u64;
+
+        if let Some(last) = self.last_request {
+            let elapsed_ms = last.elapsed().as_millis() as u64;
+            if elapsed_ms < target_ms {
+                sleep(Duration::from_millis(target_ms - elapsed_ms)).await;
+            }
+        }
+        self.last_request = Some(Instant::now());
     }
 }
 
@@ -984,5 +1216,62 @@ mod tests {
     fn interaction_simulator_default_is_none_level() {
         let sim = InteractionSimulator::default();
         assert_eq!(sim.level, InteractionLevel::None);
+    }
+
+    #[test]
+    fn request_pacer_new_has_expected_defaults() {
+        let p = RequestPacer::new();
+        assert_eq!(p.mean_ms, 1_200);
+        assert_eq!(p.min_ms, 400);
+        assert_eq!(p.max_ms, 4_000);
+        assert!(p.last_request.is_none());
+    }
+
+    #[test]
+    fn request_pacer_with_timing_stores_params() {
+        let p = RequestPacer::with_timing(500, 100, 200, 2_000);
+        assert_eq!(p.mean_ms, 500);
+        assert_eq!(p.std_ms, 100);
+        assert_eq!(p.min_ms, 200);
+        assert_eq!(p.max_ms, 2_000);
+    }
+
+    #[test]
+    fn request_pacer_with_rate_computes_mean() {
+        // 0.5 rps → mean = 2 000 ms
+        let p = RequestPacer::with_rate(0.5);
+        assert_eq!(p.mean_ms, 2_000);
+        assert_eq!(p.min_ms, 1_000);
+        assert_eq!(p.max_ms, 4_000);
+    }
+
+    #[test]
+    fn request_pacer_with_rate_clamps_extreme() {
+        // Very high rps yields a very small mean delay; mean_ms should still be at least 1 ms
+        let p = RequestPacer::with_rate(10_000.0);
+        assert!(p.mean_ms >= 1);
+    }
+
+    #[test]
+    fn request_pacer_with_timing_swaps_inverted_bounds() {
+        let p = RequestPacer::with_timing(500, 100, 2_000, 200);
+        assert_eq!(p.min_ms, 200);
+        assert_eq!(p.max_ms, 2_000);
+    }
+
+    #[tokio::test]
+    async fn request_pacer_throttle_first_immediate_then_waits() {
+        let mut p = RequestPacer::with_timing(25, 0, 25, 25);
+
+        // First call should complete immediately.
+        p.throttle().await;
+
+        // Second call should enforce a measurable delay.
+        let started = Instant::now();
+        p.throttle().await;
+        assert!(
+            started.elapsed() >= Duration::from_millis(15),
+            "second throttle should wait before returning"
+        );
     }
 }

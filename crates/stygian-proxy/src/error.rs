@@ -13,6 +13,7 @@ use thiserror::Error;
 /// }
 /// ```
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ProxyError {
     /// The proxy pool has no available proxies to hand out.
     #[error("proxy pool is exhausted")]
@@ -54,6 +55,15 @@ pub enum ProxyError {
     /// A configuration error.
     #[error("configuration error: {0}")]
     ConfigError(String),
+
+    /// A remote proxy list could not be fetched or parsed.
+    #[error("proxy fetch failed from `{origin}`: {message}")]
+    FetchFailed {
+        /// URL or identifier of the remote source.
+        origin: String,
+        /// Human-readable description of the failure.
+        message: String,
+    },
 }
 
 /// Convenience result alias for all stygian-proxy operations.

@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `stygian-proxy`: `FreeListFetcher::fetch()` now uses true concurrent fetching via
+  `futures::future::join_all()` instead of sequential iteration; previously concurrent
+  sources were fetched sequentially despite comments claiming concurrency
+- `stygian-browser`: `RequestPacer::with_timing()` now normalizes inverted bounds
+  (`min_ms > max_ms`) by swapping them, `with_rate()` docs now explicitly describe the
+  minimum `0.01 rps` clamp, and async throttling behavior is covered by unit tests
+
+### Fixed
+
+- `stygian-proxy`: `ProxyType::Socks4` and `ProxyType::Socks5` enum variants now properly
+  feature-gated behind `#[cfg(feature = "socks")]` in all match expressions; previously they
+  were guarded in the enum definition but unconditionally matched in `url()` and `proxy_type()`
+  methods, causing compile failures when the feature was disabled
+- `stygian-proxy`: `ProxyType::Https` now correctly maps to `"https"` scheme (was `"http"`)
+- `stygian-proxy`: `FreeListFetcher::new()` now logs warnings on TLS client build failures
+  instead of silently falling back with `unwrap_or_default()`
+- `stygian-browser`: `do_keyactivity()` now logs CDP evaluation failures with context instead
+  of silently discarding them via `.ok()`
+- `stygian-browser`: `fingerprint::font_measurement_intercept()` docstring corrected to match
+  implementation (checks visibility/position only, not font-family); `getBoundingClientRect`
+  now returns `new DOMRect(...)` for proper prototype chain instead of plain object literal
+- `stygian-proxy`: `FreeListFetcher` parsing is now bracket-aware for IPv6 (`[addr]:port`),
+  and invalid entries are rejected earlier (empty host, `[]`, and port `0`)
+- `stygian-proxy`: `FreeListFetcher::fetch()` now returns a clear `ConfigError` when no
+  sources are configured instead of a non-diagnostic fetch failure with empty origin text
+- `stygian-proxy`: `ProxyError` is now marked `#[non_exhaustive]` to support adding variants
+  more safely in future releases
+- `stygian-browser`: `navigator.storage.estimate()` spoof now returns a merged object
+  (`Object.assign`) instead of mutating the original result in-place for better compatibility
+
+### Breaking changes
+
+- `stygian-proxy`: `ProxyError` is now marked `#[non_exhaustive]`. Downstream crates that
+  exhaustively match on this enum must add a wildcard arm to remain source-compatible.
+
 ## [0.8.3] - 2026-04-03
 
 ### Added

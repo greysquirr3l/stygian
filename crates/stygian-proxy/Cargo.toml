@@ -34,6 +34,9 @@ async-trait = { workspace = true }
 # reqwest — socks feature is unlocked via the "socks" cargo feature
 reqwest = { workspace = true }
 
+# Async concurrency utilities
+futures = { workspace = true }
+
 # Random strategy
 rand = "0.9"
 
