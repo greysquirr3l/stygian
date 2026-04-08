@@ -1,7 +1,8 @@
 # MCP — Model Context Protocol
 
 All three Stygian crates expose their capabilities over the
-[Model Context Protocol (MCP) 2024-11-05](https://modelcontextprotocol.io/), enabling LLM
+[Model Context Protocol (MCP)](https://modelcontextprotocol.io/) with negotiated protocol
+version support for `2025-11-25`, `2025-06-18`, and `2024-11-05`, enabling LLM
 agents, IDE plug-ins, and automation pipelines to scrape the web, control browsers, and manage
 proxy pools without writing any Rust code.
 
@@ -56,6 +57,8 @@ Add to `.vscode/mcp.json` (or your client's MCP config file):
 
 All servers implement **JSON-RPC 2.0 over stdin/stdout**. Newline-delimited requests in,
 newline-delimited responses out.
+
+Notifications (messages without an `id`) do not produce responses.
 
 | Method | Description |
 | ------ | ----------- |
