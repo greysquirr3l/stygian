@@ -25,6 +25,8 @@ use stygian_browser::{BrowserPool, mcp::McpBrowserServer};
 use stygian_graph::mcp::McpGraphServer;
 use stygian_proxy::mcp::McpProxyServer;
 
+const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2024-11-05"];
+
 // ─── Aggregator ───────────────────────────────────────────────────────────────
 
 /// Aggregated MCP server exposing graph, browser, and proxy capabilities.
@@ -98,13 +100,20 @@ impl McpAggregator {
 
             let response = match serde_json::from_str::<Value>(&line) {
                 Ok(req) => self.handle(&req).await,
-                Err(e) => error_response(&Value::Null, -32700, &format!("Parse error: {e}")),
+                Err(e) => Some(error_response(
+                    &Value::Null,
+                    -32700,
+                    &format!("Parse error: {e}"),
+                )),
             };
 
-            let mut out = serde_json::to_string(&response).unwrap_or_default();
-            out.push('\n');
-            stdout.write_all(out.as_bytes()).await?;
-            stdout.flush().await?;
+            // JSON-RPC notifications must not produce responses.
+            if let Some(response) = response {
+                let mut out = serde_json::to_string(&response).unwrap_or_default();
+                out.push('\n');
+                stdout.write_all(out.as_bytes()).await?;
+                stdout.flush().await?;
+            }
         }
 
         info!("stygian-mcp aggregator stopping (stdin closed)");
@@ -122,18 +131,40 @@ impl McpAggregator {
 
     // ── Internal dispatch ─────────────────────────────────────────────────────
 
-    async fn handle(&self, req: &Value) -> Value {
-        let id = &req["id"];
-        let method = req["method"].as_str().unwrap_or("");
+    async fn handle(&self, req: &Value) -> Option<Value> {
+        let is_notification = req.get("id").is_none();
+        let id = req.get("id").unwrap_or(&Value::Null);
 
-        match method {
-            "initialize" => handle_initialize(id),
-            "initialized" | "ping" | "notifications/initialized" => ok_response(id, json!({})),
+        let method = match req.get("method").and_then(Value::as_str) {
+            Some(method) => method,
+            None => {
+                return if is_notification {
+                    None
+                } else {
+                    Some(error_response(
+                        id,
+                        -32600,
+                        "Invalid request: missing string 'method'",
+                    ))
+                };
+            }
+        };
+
+        let response = match method {
+            "initialize" => handle_initialize(req),
+            "initialized" | "notifications/initialized" => ok_response(id, json!({})),
+            "ping" => ok_response(id, json!({})),
             "tools/list" => self.handle_tools_list(id).await,
             "tools/call" => self.handle_tools_call(id, req).await,
             "resources/list" => self.handle_resources_list(id).await,
             "resources/read" => self.handle_resources_read(id, req).await,
             other => error_response(id, -32601, &format!("Method not found: {other}")),
+        };
+
+        if is_notification {
+            None
+        } else {
+            Some(response)
         }
     }
 
@@ -573,11 +604,29 @@ impl Drop for McpAggregator {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-fn handle_initialize(id: &Value) -> Value {
+fn handle_initialize(req: &Value) -> Value {
+    let id = req.get("id").unwrap_or(&Value::Null);
+    let requested = req["params"]["protocolVersion"].as_str();
+
+    let protocol_version = match requested {
+        Some(version) if SUPPORTED_PROTOCOL_VERSIONS.contains(&version) => version,
+        Some(version) => {
+            return error_response(
+                id,
+                -32602,
+                &format!(
+                    "Unsupported protocolVersion: {version}. Supported: {}",
+                    SUPPORTED_PROTOCOL_VERSIONS.join(", ")
+                ),
+            );
+        }
+        None => SUPPORTED_PROTOCOL_VERSIONS[0],
+    };
+
     ok_response(
         id,
         json!({
-            "protocolVersion": "2024-11-05",
+            "protocolVersion": protocol_version,
             "capabilities": {
                 "tools":     { "listChanged": false },
                 "resources": { "listChanged": false, "subscribe": false }
@@ -670,6 +719,30 @@ mod tests {
         let resp = ok_response(&json!(1), json!({"foo": "bar"}));
         assert_eq!(resp["result"]["foo"], "bar");
         assert_eq!(resp["jsonrpc"], "2.0");
+    }
+
+    #[test]
+    fn test_initialize_negotiates_supported_protocol() {
+        let req = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": { "protocolVersion": "2024-11-05" }
+        });
+        let resp = handle_initialize(&req);
+        assert_eq!(resp["result"]["protocolVersion"], "2024-11-05");
+    }
+
+    #[test]
+    fn test_initialize_rejects_unsupported_protocol() {
+        let req = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": { "protocolVersion": "1999-01-01" }
+        });
+        let resp = handle_initialize(&req);
+        assert_eq!(resp["error"]["code"], -32602);
     }
 
     /// `scrape_proxied` with no proxies in the pool must return an error

@@ -20,7 +20,7 @@
 //!
 //! ## Protocol
 //!
-//! The server implements MCP 2024-11-05 over JSON-RPC 2.0 on stdin/stdout.
+//! The server implements MCP 2025-11-25 over JSON-RPC 2.0 on stdin/stdout.
 //! Supported methods:
 //!
 //! | MCP Method | Description |
@@ -447,7 +447,7 @@ impl McpBrowserServer {
     /// let server = McpBrowserServer::new(pool);
     /// let req = json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}});
     /// let resp = server.dispatch(&req).await;
-    /// assert_eq!(resp["result"]["protocolVersion"], "2024-11-05");
+    /// assert_eq!(resp["result"]["protocolVersion"], "2025-11-25");
     /// # Ok(())
     /// # }
     /// ```
@@ -488,7 +488,7 @@ impl McpBrowserServer {
         JsonRpcResponse::ok(
             id,
             json!({
-                "protocolVersion": "2024-11-05",
+                "protocolVersion": "2025-11-25",
                 "capabilities": {
                     "tools": { "listChanged": false },
                     "resources": { "listChanged": false, "subscribe": false }
