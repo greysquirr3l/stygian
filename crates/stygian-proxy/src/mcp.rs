@@ -157,7 +157,9 @@ impl McpProxyServer {
 
             let response = match serde_json::from_str::<Value>(trimmed) {
                 Ok(req) => {
-                    let is_well_formed_notification = req.get("id").is_none()
+                    let is_well_formed_notification = req.is_object()
+                        && req.get("jsonrpc").and_then(Value::as_str) == Some("2.0")
+                        && req.get("id").is_none()
                         && req.get("method").and_then(Value::as_str).is_some();
                     let response = self.handle(&req).await;
                     if is_well_formed_notification {

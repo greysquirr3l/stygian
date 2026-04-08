@@ -132,9 +132,16 @@ impl McpAggregator {
     // ── Internal dispatch ─────────────────────────────────────────────────────
 
     async fn handle(&self, req: &Value) -> Option<Value> {
-        let is_well_formed_notification =
-            req.get("id").is_none() && req.get("method").and_then(Value::as_str).is_some();
+        let is_well_formed_notification = is_jsonrpc_notification(req);
         let id = req.get("id").unwrap_or(&Value::Null);
+
+        if req.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
+            return Some(error_response(
+                id,
+                -32600,
+                "Invalid request: expected jsonrpc='2.0'",
+            ));
+        }
 
         let method = match req.get("method").and_then(Value::as_str) {
             Some(method) => method,
@@ -657,6 +664,13 @@ fn parse_content_text(resp: &Value) -> Value {
         .unwrap_or(Value::Null)
 }
 
+fn is_jsonrpc_notification(req: &Value) -> bool {
+    req.is_object()
+        && req.get("jsonrpc").and_then(Value::as_str) == Some("2.0")
+        && req.get("id").is_none()
+        && req.get("method").and_then(Value::as_str).is_some()
+}
+
 /// Release a proxy handle via the proxy sub-server.
 async fn release_proxy(proxy: &Arc<McpProxyServer>, handle_token: &str, success: bool) {
     let _ = proxy
@@ -836,6 +850,37 @@ mod tests {
         let error_resp = error_response(&json!(1), -32603, "internal error");
         let parsed = parse_content_text(&error_resp);
         assert_eq!(parsed, Value::Null);
+    }
+
+    #[test]
+    fn test_notification_detection_requires_valid_jsonrpc() {
+        let valid_notification = json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized",
+            "params": {}
+        });
+        assert!(is_jsonrpc_notification(&valid_notification));
+
+        let missing_jsonrpc = json!({
+            "method": "notifications/initialized",
+            "params": {}
+        });
+        assert!(!is_jsonrpc_notification(&missing_jsonrpc));
+    }
+
+    #[test]
+    fn test_invalid_request_missing_jsonrpc_returns_invalid_request_error() {
+        let req = json!({
+            "method": "tools/list"
+        });
+        let id = req.get("id").unwrap_or(&Value::Null);
+        let resp = if req.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
+            error_response(id, -32600, "Invalid request: expected jsonrpc='2.0'")
+        } else {
+            ok_response(id, json!({}))
+        };
+        assert_eq!(resp["error"]["code"], -32600);
+        assert_eq!(resp["id"], Value::Null);
     }
 
     /// `tools/list` aggregation: graph tools get a `graph_` prefix and a `[graph]` description
