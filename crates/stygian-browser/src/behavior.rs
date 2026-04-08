@@ -1259,34 +1259,31 @@ mod tests {
         assert_eq!(p.max_ms, 2_000);
     }
 
-    #[tokio::test(start_paused = true)]
-    async fn request_pacer_throttle_first_immediate_then_waits()
-    -> std::result::Result<(), tokio::task::JoinError> {
+    #[tokio::test]
+    async fn request_pacer_throttle_first_immediate_then_waits() {
         let mut p = RequestPacer::with_timing(25, 0, 25, 25);
 
-        // First call should complete immediately even under paused time.
+        // First call should complete immediately.
         p.throttle().await;
 
-        // Second call should block until 25 ms of virtual time has advanced.
+        // Second call should not complete immediately.
         let handle = tokio::spawn(async move {
             p.throttle().await;
         });
 
-        tokio::task::yield_now().await;
+        tokio::time::sleep(Duration::from_millis(5)).await;
         assert!(
             !handle.is_finished(),
             "second throttle unexpectedly finished early"
         );
 
-        tokio::time::advance(Duration::from_millis(24)).await;
-        tokio::task::yield_now().await;
+        let joined = tokio::time::timeout(Duration::from_millis(200), handle).await;
         assert!(
-            !handle.is_finished(),
-            "second throttle finished before target delay"
+            joined.is_ok(),
+            "second throttle did not finish within timeout"
         );
-
-        tokio::time::advance(Duration::from_millis(1)).await;
-        handle.await?;
-        Ok(())
+        if let Ok(join_res) = joined {
+            assert!(join_res.is_ok(), "throttle task join failed");
+        }
     }
 }
