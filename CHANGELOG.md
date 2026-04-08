@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `stygian-proxy`: `ProxyType::Socks4` and `ProxyType::Socks5` enum variants now properly
+  feature-gated behind `#[cfg(feature = "socks")]` in all match expressions; previously they
+  were guarded in the enum definition but unconditionally matched in `url()` and `proxy_type()`
+  methods, causing compile failures when the feature was disabled
+- `stygian-proxy`: `FreeListFetcher::fetch()` now uses true concurrent fetching via
+  `futures::future::join_all()` instead of sequential iteration; previously concurrent
+  sources were fetched sequentially despite comments claiming concurrency
+- `stygian-proxy`: `ProxyType::Https` now correctly maps to `"https"` scheme (was `"http"`)
+- `stygian-proxy`: `FreeListFetcher::new()` now logs warnings on TLS client build failures
+  instead of silently falling back with `unwrap_or_default()`
+- `stygian-browser`: `do_keyactivity()` now logs CDP evaluation failures with context instead
+  of silently discarding them via `.ok()`
+- `stygian-browser`: `fingerprint::font_measurement_intercept()` docstring corrected to match
+  implementation (checks visibility/position only, not font-family); `getBoundingClientRect`
+  now returns `new DOMRect(...)` for proper prototype chain instead of plain object literal
+
 ## [0.8.3] - 2026-04-03
 
 ### Added
