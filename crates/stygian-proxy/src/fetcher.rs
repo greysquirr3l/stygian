@@ -22,7 +22,6 @@
 //! # async fn run() -> stygian_proxy::error::ProxyResult<()> {
 //! let fetcher = FreeListFetcher::new(vec![
 //!     FreeListSource::TheSpeedXHttp,
-//!     FreeListSource::TheSpeedXSocks5,
 //! ]);
 //!
 //! let manager = ProxyManager::builder()
@@ -37,6 +36,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
+use futures::future::join_all;
 use reqwest::Client;
 use tracing::{debug, warn};
 
@@ -106,9 +106,11 @@ pub trait ProxyFetcher: Send + Sync {
 pub enum FreeListSource {
     /// HTTP proxies from `TheSpeedX/PROXY-List` (GitHub, plain `host:port`).
     TheSpeedXHttp,
-    /// SOCKS4 proxies from `TheSpeedX/PROXY-List`.
+    #[cfg(feature = "socks")]
+    /// SOCKS4 proxies from `TheSpeedX/PROXY-List` (requires the `socks` feature).
     TheSpeedXSocks4,
-    /// SOCKS5 proxies from `TheSpeedX/PROXY-List`.
+    #[cfg(feature = "socks")]
+    /// SOCKS5 proxies from `TheSpeedX/PROXY-List` (requires the `socks` feature).
     TheSpeedXSocks5,
     /// HTTP proxies from `clarketm/proxy-list` (GitHub, plain `host:port`).
     ClarketmHttp,
@@ -129,9 +131,11 @@ impl FreeListSource {
             Self::TheSpeedXHttp => {
                 "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt"
             }
+            #[cfg(feature = "socks")]
             Self::TheSpeedXSocks4 => {
                 "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks4.txt"
             }
+            #[cfg(feature = "socks")]
             Self::TheSpeedXSocks5 => {
                 "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt"
             }
@@ -146,7 +150,9 @@ impl FreeListSource {
     fn proxy_type(&self) -> ProxyType {
         match self {
             Self::TheSpeedXHttp | Self::ClarketmHttp | Self::OpenProxyListHttp => ProxyType::Http,
+            #[cfg(feature = "socks")]
             Self::TheSpeedXSocks4 => ProxyType::Socks4,
+            #[cfg(feature = "socks")]
             Self::TheSpeedXSocks5 => ProxyType::Socks5,
             Self::Custom { proxy_type, .. } => *proxy_type,
         }
@@ -194,9 +200,10 @@ impl FreeListFetcher {
         let client = Client::builder()
             .timeout(Duration::from_secs(10))
             .build()
-            // Client construction only fails when TLS backend is unavailable,
-            // which is a compile-time configuration issue, not a runtime one.
-            .unwrap_or_default();
+            .unwrap_or_else(|e| {
+                warn!("Failed to build HTTP client with 10 s timeout (TLS backend issue?): {e}; falling back to default client");
+                Client::default()
+            });
         Self {
             sources,
             client,
@@ -260,8 +267,11 @@ impl FreeListFetcher {
                     return None;
                 }
                 let scheme = match proxy_type {
-                    ProxyType::Http | ProxyType::Https => "http",
+                    ProxyType::Http => "http",
+                    ProxyType::Https => "https",
+                    #[cfg(feature = "socks")]
                     ProxyType::Socks4 => "socks4",
+                    #[cfg(feature = "socks")]
                     ProxyType::Socks5 => "socks5",
                 };
                 Some(Proxy {
@@ -283,17 +293,9 @@ impl FreeListFetcher {
 #[async_trait]
 impl ProxyFetcher for FreeListFetcher {
     async fn fetch(&self) -> ProxyResult<Vec<Proxy>> {
-        // Fetch all sources concurrently.
-        let mut handles = Vec::with_capacity(self.sources.len());
-        for source in &self.sources {
-            handles.push(self.fetch_source(source));
-        }
-        // Sequential join — futures are not Send across .join_all without boxing;
-        // sources are typically 3–5 so sequential is fine.
-        let mut all: Vec<Proxy> = Vec::new();
-        for handle in handles {
-            all.extend(handle.await);
-        }
+        // Drive all source fetches concurrently.
+        let results = join_all(self.sources.iter().map(|s| self.fetch_source(s))).await;
+        let all: Vec<Proxy> = results.into_iter().flatten().collect();
 
         if all.is_empty() {
             return Err(ProxyError::FetchFailed {
@@ -366,10 +368,8 @@ mod tests {
 
     #[test]
     fn free_list_source_url_is_nonempty() {
-        let sources = [
+        let mut sources = vec![
             FreeListSource::TheSpeedXHttp,
-            FreeListSource::TheSpeedXSocks4,
-            FreeListSource::TheSpeedXSocks5,
             FreeListSource::ClarketmHttp,
             FreeListSource::OpenProxyListHttp,
             FreeListSource::Custom {
@@ -377,6 +377,8 @@ mod tests {
                 proxy_type: ProxyType::Http,
             },
         ];
+        #[cfg(feature = "socks")]
+        sources.extend([FreeListSource::TheSpeedXSocks4, FreeListSource::TheSpeedXSocks5]);
         for src in &sources {
             assert!(
                 !src.url().is_empty(),
@@ -388,14 +390,10 @@ mod tests {
     #[test]
     fn free_list_source_proxy_types() {
         assert_eq!(FreeListSource::TheSpeedXHttp.proxy_type(), ProxyType::Http);
-        assert_eq!(
-            FreeListSource::TheSpeedXSocks4.proxy_type(),
-            ProxyType::Socks4
-        );
-        assert_eq!(
-            FreeListSource::TheSpeedXSocks5.proxy_type(),
-            ProxyType::Socks5
-        );
+        #[cfg(feature = "socks")]
+        assert_eq!(FreeListSource::TheSpeedXSocks4.proxy_type(), ProxyType::Socks4);
+        #[cfg(feature = "socks")]
+        assert_eq!(FreeListSource::TheSpeedXSocks5.proxy_type(), ProxyType::Socks5);
         assert_eq!(FreeListSource::ClarketmHttp.proxy_type(), ProxyType::Http);
     }
 

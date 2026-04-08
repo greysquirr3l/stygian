@@ -1075,14 +1075,14 @@ fn connection_spoof_script() -> String {
 
 /// Intercept `getBoundingClientRect` on hidden font-probe elements.
 ///
-/// Turnstile creates a hidden `<div>`, sets a font family, renders a string,
-/// and measures `getBoundingClientRect` to verify the font physically renders.
-/// A headless browser using our injected font list returns different layout
-/// dimensions than the profile claims because the font may not be installed in
-/// the sandbox.  We intercept `getBoundingClientRect` on any element whose
-/// computed `fontFamily` is a font from our injected list and return plausible
-/// non-zero dimensions drawn from a seeded deterministic jitter so the same
-/// call always returns the same value within a session.
+/// Turnstile creates a hidden `<div>`, renders a string, and measures
+/// `getBoundingClientRect` to verify the font physically renders.  In headless
+/// Chrome the sandbox may not have the font installed, so the browser returns a
+/// zero-size rect.  This intercept detects zero-size rects on elements that are
+/// hidden (`visibility:hidden` or `aria-hidden`) with absolute/fixed positioning
+/// (the canonical font-probe pattern) and returns plausible non-zero dimensions
+/// drawn from a seeded deterministic jitter so the same call always returns the
+/// same value within a session.
 fn font_measurement_intercept_script() -> String {
     r"  // getBoundingClientRect font-probe intercept (Turnstile Layer 1)
   (function() {
@@ -1104,15 +1104,7 @@ fn font_measurement_intercept_script() -> String {
             (pos === 'absolute' || pos === 'fixed')) {
           const w = _jitter(10, 8);
           const h = _jitter(14, 4);
-          return {
-            width: w, height: h,
-            top: 0, left: 0,
-            right: w, bottom: h,
-            x: 0, y: 0,
-            toJSON: function() {
-              return { width: w, height: h, top: 0, left: 0, right: w, bottom: h, x: 0, y: 0 };
-            },
-          };
+          return new DOMRect(0, 0, w, h);
         }
       }
       return rect;

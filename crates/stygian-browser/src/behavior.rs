@@ -22,6 +22,7 @@ use chromiumoxide::Page;
 use chromiumoxide::cdp::browser_protocol::input::{DispatchKeyEventParams, DispatchKeyEventType};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::time::sleep;
+use tracing::warn;
 
 use crate::error::{BrowserError, Result};
 
@@ -698,7 +699,7 @@ impl InteractionSimulator {
                 .unwrap_or("Tab");
             let down_delay = rand_range(&mut self.rng, 50.0, 120.0) as u64;
             sleep(Duration::from_millis(down_delay)).await;
-            Self::js(
+            if let Err(e) = Self::js(
                 page,
                 format!(
                     "window.dispatchEvent(new KeyboardEvent('keydown',\
@@ -706,10 +707,12 @@ impl InteractionSimulator {
                 ),
             )
             .await
-            .ok();
+            {
+                warn!(key, "Failed to dispatch keydown event: {e}");
+            }
             let hold_ms = rand_range(&mut self.rng, 20.0, 60.0) as u64;
             sleep(Duration::from_millis(hold_ms)).await;
-            Self::js(
+            if let Err(e) = Self::js(
                 page,
                 format!(
                     "window.dispatchEvent(new KeyboardEvent('keyup',\
@@ -717,7 +720,9 @@ impl InteractionSimulator {
                 ),
             )
             .await
-            .ok();
+            {
+                warn!(key, "Failed to dispatch keyup event: {e}");
+            }
         }
         Ok(())
     }
@@ -1213,7 +1218,7 @@ mod tests {
 
     #[test]
     fn request_pacer_with_rate_clamps_extreme() {
-        // Very high rps effectively floors to 0.01 rps minimum
+        // Very high rps yields a very small mean delay; mean_ms should still be at least 1 ms
         let p = RequestPacer::with_rate(1_000.0);
         assert!(p.mean_ms >= 1);
     }
