@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-04-08
+
+### Fixed
+
+- `stygian-mcp`: `initialize` now negotiates MCP `protocolVersion` correctly, accepting
+  `2025-11-25`, `2025-06-18`, and `2024-11-05`, and returning `-32602` for unsupported
+  versions instead of silently replying with a mismatched protocol line
+- `stygian-mcp`: JSON-RPC notification handling now suppresses responses only for valid
+  JSON-RPC 2.0 notifications; malformed notification-like requests still return `-32600`
+  Invalid Request with `id: null`
+- `stygian-graph`, `stygian-proxy`, and `stygian-browser`: stdio MCP servers no longer
+  emit JSON-RPC responses for notifications, while still returning parse/invalid-request
+  errors as required by JSON-RPC 2.0
+- `stygian-graph`, `stygian-proxy`, and `stygian-browser`: reported MCP `protocolVersion`
+  updated to `2025-11-25` for consistency with the current spec line
+
+### Added
+
+- `book`: MCP overview documentation now describes negotiated protocol-version support and
+  explicitly documents that notifications (requests without `id`) do not produce responses
+
 ## [0.8.4] - 2026-04-08
 
 ### Added
