@@ -251,7 +251,7 @@ impl McpProxyServer {
                 "protocolVersion": "2025-11-25",
                 "capabilities": {
                     "tools":     { "listChanged": false },
-                    "resources": { "listChanged": false }
+                    "resources": { "listChanged": false, "subscribe": false }
                 },
                 "serverInfo": {
                     "name": "stygian-proxy",
