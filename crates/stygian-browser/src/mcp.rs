@@ -411,9 +411,24 @@ impl McpBrowserServer {
 
             debug!(?line, "MCP request");
 
-            let response = match serde_json::from_str::<JsonRpcRequest>(&line) {
-                Ok(req) => self.handle_request(req).await,
-                Err(e) => JsonRpcResponse::err(Value::Null, -32700, format!("Parse error: {e}")),
+            let response = match serde_json::from_str::<Value>(&line) {
+                Ok(req) => {
+                    let is_well_formed_notification =
+                        req.get("id").is_none() && req.get("method").and_then(Value::as_str).is_some();
+                    let response = self.dispatch(&req).await;
+                    if is_well_formed_notification {
+                        continue;
+                    }
+                    response
+                }
+                Err(e) => serde_json::to_value(JsonRpcResponse::err(
+                    Value::Null,
+                    -32700,
+                    format!("Parse error: {e}"),
+                ))
+                .unwrap_or_else(|_| {
+                    json!({"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"Internal error"}})
+                }),
             };
 
             let mut out = serde_json::to_string(&response).unwrap_or_default();

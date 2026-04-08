@@ -139,7 +139,15 @@ impl McpGraphServer {
             debug!(request = trimmed, "received");
 
             let response = match serde_json::from_str::<Value>(trimmed) {
-                Ok(req) => self.handle(&req).await,
+                Ok(req) => {
+                    let is_well_formed_notification = req.get("id").is_none()
+                        && req.get("method").and_then(Value::as_str).is_some();
+                    let response = self.handle(&req).await;
+                    if is_well_formed_notification {
+                        continue;
+                    }
+                    response
+                }
                 Err(e) => json!({
                     "jsonrpc": "2.0",
                     "id": null,

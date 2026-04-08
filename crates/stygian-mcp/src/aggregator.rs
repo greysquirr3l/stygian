@@ -132,21 +132,18 @@ impl McpAggregator {
     // ── Internal dispatch ─────────────────────────────────────────────────────
 
     async fn handle(&self, req: &Value) -> Option<Value> {
-        let is_notification = req.get("id").is_none();
+        let is_well_formed_notification =
+            req.get("id").is_none() && req.get("method").and_then(Value::as_str).is_some();
         let id = req.get("id").unwrap_or(&Value::Null);
 
         let method = match req.get("method").and_then(Value::as_str) {
             Some(method) => method,
             None => {
-                return if is_notification {
-                    None
-                } else {
-                    Some(error_response(
-                        id,
-                        -32600,
-                        "Invalid request: missing string 'method'",
-                    ))
-                };
+                return Some(error_response(
+                    id,
+                    -32600,
+                    "Invalid request: missing string 'method'",
+                ));
             }
         };
 
@@ -161,7 +158,7 @@ impl McpAggregator {
             other => error_response(id, -32601, &format!("Method not found: {other}")),
         };
 
-        if is_notification {
+        if is_well_formed_notification {
             None
         } else {
             Some(response)
