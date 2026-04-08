@@ -2,7 +2,7 @@
 //!
 //! [`ProxyFetcher`] is the port trait.  Implement it to pull proxies from any
 //! source (remote HTTP list, database, commercial API, etc.) and integrate with
-//! [`ProxyManager`][crate::ProxyManager] via [`load_from_fetcher`].
+//! [`ProxyManager`] via [`load_from_fetcher`].
 //!
 //! The built-in [`FreeListFetcher`] downloads plain-text `host:port` proxy
 //! lists from public URLs (e.g. the `TheSpeedX/PROXY-List` feeds on GitHub)
@@ -378,7 +378,10 @@ mod tests {
             },
         ];
         #[cfg(feature = "socks")]
-        sources.extend([FreeListSource::TheSpeedXSocks4, FreeListSource::TheSpeedXSocks5]);
+        sources.extend([
+            FreeListSource::TheSpeedXSocks4,
+            FreeListSource::TheSpeedXSocks5,
+        ]);
         for src in &sources {
             assert!(
                 !src.url().is_empty(),
@@ -391,9 +394,15 @@ mod tests {
     fn free_list_source_proxy_types() {
         assert_eq!(FreeListSource::TheSpeedXHttp.proxy_type(), ProxyType::Http);
         #[cfg(feature = "socks")]
-        assert_eq!(FreeListSource::TheSpeedXSocks4.proxy_type(), ProxyType::Socks4);
+        assert_eq!(
+            FreeListSource::TheSpeedXSocks4.proxy_type(),
+            ProxyType::Socks4
+        );
         #[cfg(feature = "socks")]
-        assert_eq!(FreeListSource::TheSpeedXSocks5.proxy_type(), ProxyType::Socks5);
+        assert_eq!(
+            FreeListSource::TheSpeedXSocks5.proxy_type(),
+            ProxyType::Socks5
+        );
         assert_eq!(FreeListSource::ClarketmHttp.proxy_type(), ProxyType::Http);
     }
 
