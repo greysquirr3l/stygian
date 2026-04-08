@@ -201,7 +201,7 @@ impl FreeListFetcher {
             .timeout(Duration::from_secs(10))
             .build()
             .unwrap_or_else(|e| {
-                warn!("Failed to build HTTP client with 10 s timeout (TLS backend issue?): {e}; falling back to default client");
+                warn!("Failed to build HTTP client with 10 s timeout (TLS backend issue?): {e}; falling back to default client with per-request timeout enforcement");
                 Client::default()
             });
         Self {
@@ -241,7 +241,11 @@ impl FreeListFetcher {
             (host, port_str.trim())
         } else {
             let (host, port_str) = line.rsplit_once(':')?;
-            (host.trim(), port_str.trim())
+            let host = host.trim();
+            if host.contains(':') {
+                return None;
+            }
+            (host, port_str.trim())
         };
 
         if host.is_empty() || host == "[]" {
@@ -261,7 +265,13 @@ impl FreeListFetcher {
         let url = source.url();
         let proxy_type = source.proxy_type();
 
-        let body = match self.client.get(url).send().await {
+        let body = match self
+            .client
+            .get(url)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
             Ok(resp) if resp.status().is_success() => match resp.text().await {
                 Ok(t) => t,
                 Err(e) => {
@@ -349,7 +359,8 @@ impl ProxyFetcher for FreeListFetcher {
 ///
 /// # Errors
 ///
-/// Returns [`ProxyError::FetchFailed`] if the fetcher itself fails.
+/// Returns any [`ProxyError`] emitted by `fetcher.fetch()` if the fetcher
+/// itself fails.
 ///
 /// # Example
 ///
@@ -483,6 +494,7 @@ mod tests {
         assert!(FreeListFetcher::parse_host_port_line("1.2.3.4:notaport").is_none());
         assert!(FreeListFetcher::parse_host_port_line("1.2.3.4:0").is_none());
         assert!(FreeListFetcher::parse_host_port_line(":8080").is_none());
+        assert!(FreeListFetcher::parse_host_port_line("2001:db8::1:8080").is_none());
     }
 
     #[test]

@@ -943,7 +943,7 @@ impl RequestPacer {
     /// let _pacer = RequestPacer::with_rate(0.5); // ~1 request every 2 s
     /// ```
     pub fn with_rate(requests_per_second: f64) -> Self {
-        let mean_ms = (1_000.0 / requests_per_second.max(0.01)) as u64;
+        let mean_ms = (1_000.0 / requests_per_second.max(0.01)).max(1.0) as u64;
         let std_ms = mean_ms / 4;
         let min_ms = mean_ms / 2;
         let max_ms = mean_ms.saturating_mul(2);
@@ -1248,7 +1248,7 @@ mod tests {
     #[test]
     fn request_pacer_with_rate_clamps_extreme() {
         // Very high rps yields a very small mean delay; mean_ms should still be at least 1 ms
-        let p = RequestPacer::with_rate(1_000.0);
+        let p = RequestPacer::with_rate(10_000.0);
         assert!(p.mean_ms >= 1);
     }
 
@@ -1266,24 +1266,12 @@ mod tests {
         // First call should complete immediately.
         p.throttle().await;
 
-        // Second call should not complete immediately.
-        let handle = tokio::spawn(async move {
-            p.throttle().await;
-        });
-
-        tokio::time::sleep(Duration::from_millis(5)).await;
+        // Second call should enforce a measurable delay.
+        let started = Instant::now();
+        p.throttle().await;
         assert!(
-            !handle.is_finished(),
-            "second throttle unexpectedly finished early"
+            started.elapsed() >= Duration::from_millis(15),
+            "second throttle should wait before returning"
         );
-
-        let joined = tokio::time::timeout(Duration::from_millis(200), handle).await;
-        assert!(
-            joined.is_ok(),
-            "second throttle did not finish within timeout"
-        );
-        if let Ok(join_res) = joined {
-            assert!(join_res.is_ok(), "throttle task join failed");
-        }
     }
 }
