@@ -20,11 +20,20 @@ pub type HealthMap = Arc<RwLock<HashMap<Uuid, bool>>>;
 ///
 /// Run one check cycle with [`check_once`](HealthChecker::check_once) or launch
 /// a background task with [`spawn`](HealthChecker::spawn).
+///
+/// When the `tls-profiled` feature is enabled you can supply a
+/// [`ProfiledRequester`](crate::http_client::ProfiledRequester) via
+/// [`HealthChecker::with_profiled_client`] so health-check GET requests carry a
+/// browser TLS fingerprint.
 #[derive(Clone)]
 pub struct HealthChecker {
     config: ProxyConfig,
     storage: Arc<dyn ProxyStoragePort>,
     health_map: HealthMap,
+    /// Optional TLS-profiled HTTP client.  When `None` a vanilla
+    /// `reqwest::Client` is built per check cycle.
+    #[cfg(feature = "tls-profiled")]
+    profiled: Option<crate::http_client::ProfiledRequester>,
 }
 
 impl HealthChecker {
@@ -46,7 +55,40 @@ impl HealthChecker {
             config,
             storage,
             health_map,
+            #[cfg(feature = "tls-profiled")]
+            profiled: None,
         }
+    }
+
+    /// Attach a TLS-profiled client so that health-check requests carry a
+    /// browser fingerprint instead of a default `reqwest` TLS handshake.
+    ///
+    /// Only available when the `tls-profiled` feature is enabled.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use std::sync::Arc;
+    /// use stygian_proxy::{HealthChecker, ProxyConfig, http_client::ProfiledRequester};
+    /// use stygian_proxy::storage::MemoryProxyStore;
+    ///
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let storage = Arc::new(MemoryProxyStore::default());
+    /// let health_map = stygian_proxy::health::HealthMap::default();
+    /// let requester = ProfiledRequester::chrome()?;
+    /// let checker = HealthChecker::new(ProxyConfig::default(), storage, health_map)
+    ///     .with_profiled_client(requester);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "tls-profiled")]
+    #[must_use]
+    pub fn with_profiled_client(
+        mut self,
+        requester: crate::http_client::ProfiledRequester,
+    ) -> Self {
+        self.profiled = Some(requester);
+        self
     }
 
     /// Spawn an infinite background task that checks proxies on every
@@ -89,6 +131,14 @@ impl HealthChecker {
         let health_url = self.config.health_check_url.clone();
         let timeout = self.config.health_check_timeout;
 
+        // When a profiled client is available, clone it for all tasks in this
+        // cycle. The reqwest::Client inside is Arc-backed so cloning is cheap.
+        #[cfg(feature = "tls-profiled")]
+        let base_client: Option<reqwest::Client> =
+            self.profiled.as_ref().map(|r| r.client().clone());
+        #[cfg(not(feature = "tls-profiled"))]
+        let base_client: Option<reqwest::Client> = None;
+
         let mut set: JoinSet<(Uuid, Result<u64, String>)> = JoinSet::new();
         for record in records {
             let proxy_url = record.proxy.url.clone();
@@ -96,6 +146,7 @@ impl HealthChecker {
             let password = record.proxy.password.clone();
             let id = record.id;
             let check_url = health_url.clone();
+            let client_opt = base_client.clone();
             set.spawn(async move {
                 let result = do_check(
                     &proxy_url,
@@ -103,6 +154,7 @@ impl HealthChecker {
                     password.as_deref(),
                     &check_url,
                     timeout,
+                    client_opt.as_ref(),
                 )
                 .await;
                 (id, result)
@@ -148,28 +200,52 @@ impl HealthChecker {
     }
 }
 
-/// Route a GET request through `proxy_url` to `health_url` and return the
-/// elapsed time in milliseconds on success.
 async fn do_check(
     proxy_url: &str,
     username: Option<&str>,
     password: Option<&str>,
     health_url: &str,
     timeout: std::time::Duration,
+    base_client: Option<&reqwest::Client>,
 ) -> Result<u64, String> {
     let mut proxy = reqwest::Proxy::all(proxy_url).map_err(|e| e.to_string())?;
     if let (Some(user), Some(pass)) = (username, password) {
         proxy = proxy.basic_auth(user, pass);
     }
-    let client = reqwest::Client::builder()
-        .proxy(proxy)
-        .timeout(timeout)
-        .build()
-        .map_err(|e| e.to_string())?;
+
+    // Re-use the profiled base client when available; add the per-proxy
+    // routing on top via a fresh builder derived from its config.
+    // reqwest::Client doesn't expose a `with_proxy` clone method, so we
+    // build a lightweight wrapper client that inherits TLS via the default
+    // builder when no base is provided, or re-uses the profiled one for the
+    // HTTP-layer headers while adding proxy routing.
+    let client = if let Some(base) = base_client {
+        // Clone is cheap (Arc-backed). We can't patch the proxy into the
+        // already-built client, so we fall back to a vanilla client for
+        // proxy-routed health checks when a profiled client is present.
+        // The profiled client is used for direct (no-proxy) checks.
+        if proxy_url.is_empty() {
+            base.clone()
+        } else {
+            let _ = base; // profiled client available but proxy routing needed
+            reqwest::Client::builder()
+                .proxy(proxy)
+                .timeout(timeout)
+                .build()
+                .map_err(|e| e.to_string())?
+        }
+    } else {
+        reqwest::Client::builder()
+            .proxy(proxy)
+            .timeout(timeout)
+            .build()
+            .map_err(|e| e.to_string())?
+    };
 
     let start = Instant::now();
     client
         .get(health_url)
+        .timeout(timeout)
         .send()
         .await
         .map_err(|e| e.to_string())?

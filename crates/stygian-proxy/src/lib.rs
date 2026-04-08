@@ -39,6 +39,9 @@ pub mod graph;
 #[cfg(feature = "browser")]
 pub mod browser;
 
+#[cfg(feature = "tls-profiled")]
+pub mod http_client;
+
 /// MCP (Model Context Protocol) server — exposes proxy pool tools
 #[cfg(feature = "mcp")]
 pub mod mcp;
@@ -62,3 +65,6 @@ pub use graph::{BoxedProxyManager, NoopProxyManager, ProxyManagerPort};
 
 #[cfg(feature = "browser")]
 pub use browser::{BrowserProxySource, ProxyManagerBridge};
+
+#[cfg(feature = "tls-profiled")]
+pub use http_client::{ProfiledRequester, ProfiledRequesterError};

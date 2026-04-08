@@ -1417,6 +1417,89 @@ mod reqwest_client {
         }
     }
 
+    /// HTTP headers that match the browser identity of `profile`.
+    ///
+    /// Anti-bot systems cross-correlate HTTP headers (especially `Accept`,
+    /// `Accept-Language`, `Accept-Encoding`, and the `Sec-CH-UA` family)
+    /// against the TLS fingerprint. Mismatches between the TLS profile and
+    /// the HTTP headers are a strong detection signal.
+    ///
+    /// Returns a `HeaderMap` pre-populated with the headers a real browser
+    /// of this type would send on a standard navigation request.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_browser::tls::{browser_headers, CHROME_131};
+    ///
+    /// let headers = browser_headers(&CHROME_131);
+    /// assert!(headers.contains_key("accept"));
+    /// ```
+    pub fn browser_headers(profile: &TlsProfile) -> reqwest::header::HeaderMap {
+        use reqwest::header::{
+            ACCEPT, ACCEPT_ENCODING, ACCEPT_LANGUAGE, CACHE_CONTROL, HeaderMap, HeaderValue,
+            UPGRADE_INSECURE_REQUESTS,
+        };
+
+        let mut map = HeaderMap::new();
+        let name = profile.name.to_ascii_lowercase();
+
+        // Accept — differs between Chromium-family and Firefox/Safari.
+        let accept = if name.contains("firefox") {
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+        } else if name.contains("safari") && !name.contains("chrome") {
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+        } else {
+            // Chromium (Chrome / Edge)
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
+        };
+
+        // Accept-Encoding — all modern browsers negotiate the same set.
+        let accept_encoding = "gzip, deflate, br";
+
+        // Accept-Language — pick a realistic primary locale. Passive
+        // fingerprinting rarely cares about the exact locale beyond the
+        // primary tag, so en-US is a safe baseline.
+        let accept_language = "en-US,en;q=0.9";
+
+        // Sec-CH-UA headers — Chromium-only.
+        if !name.contains("firefox") && !(name.contains("safari") && !name.contains("chrome")) {
+            let (brand, version) = if name.contains("edge") {
+                ("\"Microsoft Edge\";v=\"131\"", "131")
+            } else {
+                ("\"Google Chrome\";v=\"131\"", "131")
+            };
+
+            let sec_ch_ua =
+                format!("{brand}, \"Chromium\";v=\"{version}\", \"Not_A Brand\";v=\"24\"");
+
+            // These headers are valid ASCII so HeaderValue::from_str can only
+            // fail on control characters — which our strings never contain.
+            if let Ok(v) = HeaderValue::from_str(&sec_ch_ua) {
+                map.insert("sec-ch-ua", v);
+            }
+            map.insert("sec-ch-ua-mobile", HeaderValue::from_static("?0"));
+            map.insert(
+                "sec-ch-ua-platform",
+                HeaderValue::from_static("\"Windows\""),
+            );
+            map.insert("sec-fetch-dest", HeaderValue::from_static("document"));
+            map.insert("sec-fetch-mode", HeaderValue::from_static("navigate"));
+            map.insert("sec-fetch-site", HeaderValue::from_static("none"));
+            map.insert("sec-fetch-user", HeaderValue::from_static("?1"));
+            map.insert(UPGRADE_INSECURE_REQUESTS, HeaderValue::from_static("1"));
+        }
+
+        if let Ok(v) = HeaderValue::from_str(accept) {
+            map.insert(ACCEPT, v);
+        }
+        map.insert(ACCEPT_ENCODING, HeaderValue::from_static(accept_encoding));
+        map.insert(ACCEPT_LANGUAGE, HeaderValue::from_static(accept_language));
+        map.insert(CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+
+        map
+    }
+
     /// Build a [`reqwest::Client`] whose TLS `ClientHello` matches
     /// `profile`.
     ///
@@ -1425,6 +1508,8 @@ mod reqwest_client {
     ///   key-exchange groups, ALPN, and protocol versions.
     /// - Sets the `User-Agent` header to match the profile's browser
     ///   (via [`default_user_agent`]).
+    /// - Sets browser-matched HTTP headers via [`browser_headers`]
+    ///   (`Accept`, `Accept-Encoding`, `Sec-CH-UA`, etc.).
     /// - Enables cookie storage, gzip, and brotli decompression.
     /// - Routes through `proxy_url` when provided.
     ///
@@ -1453,6 +1538,7 @@ mod reqwest_client {
         let mut builder = reqwest::Client::builder()
             .use_preconfigured_tls(rustls_cfg)
             .user_agent(default_user_agent(profile))
+            .default_headers(browser_headers(profile))
             .cookie_store(true)
             .gzip(true)
             .brotli(true);
@@ -1467,7 +1553,7 @@ mod reqwest_client {
 
 #[cfg(feature = "tls-config")]
 pub use reqwest_client::{
-    TlsClientError, build_profiled_client, default_user_agent, profile_for_device,
+    TlsClientError, browser_headers, build_profiled_client, default_user_agent, profile_for_device,
 };
 
 // ── tests ────────────────────────────────────────────────────────────────────
@@ -1821,6 +1907,70 @@ mod tests {
             assert_eq!(
                 profile_for_device(&DeviceProfile::MobileIOS).name,
                 "Safari 18"
+            );
+        }
+
+        #[test]
+        fn browser_headers_chrome_has_sec_ch_ua() {
+            let headers = browser_headers(&CHROME_131);
+            assert!(
+                headers.contains_key("sec-ch-ua"),
+                "Chrome profile should have sec-ch-ua"
+            );
+            assert!(
+                headers.contains_key("sec-fetch-dest"),
+                "Chrome profile should have sec-fetch-dest"
+            );
+            let accept = headers.get("accept").unwrap().to_str().unwrap();
+            assert!(
+                accept.contains("image/avif"),
+                "Chrome accept should include avif"
+            );
+        }
+
+        #[test]
+        fn browser_headers_firefox_no_sec_ch_ua() {
+            let headers = browser_headers(&FIREFOX_133);
+            assert!(
+                !headers.contains_key("sec-ch-ua"),
+                "Firefox profile should not have sec-ch-ua"
+            );
+            let accept = headers.get("accept").unwrap().to_str().unwrap();
+            assert!(
+                accept.contains("text/html"),
+                "Firefox accept should include text/html"
+            );
+        }
+
+        #[test]
+        fn browser_headers_all_profiles_have_accept() {
+            for profile in [&*CHROME_131, &*FIREFOX_133, &*SAFARI_18, &*EDGE_131] {
+                let headers = browser_headers(profile);
+                assert!(
+                    headers.contains_key("accept"),
+                    "profile '{}' must have accept header",
+                    profile.name
+                );
+                assert!(
+                    headers.contains_key("accept-encoding"),
+                    "profile '{}' must have accept-encoding",
+                    profile.name
+                );
+                assert!(
+                    headers.contains_key("accept-language"),
+                    "profile '{}' must have accept-language",
+                    profile.name
+                );
+            }
+        }
+
+        #[test]
+        fn browser_headers_edge_uses_edge_brand() {
+            let headers = browser_headers(&EDGE_131);
+            let sec_ch_ua = headers.get("sec-ch-ua").unwrap().to_str().unwrap();
+            assert!(
+                sec_ch_ua.contains("Microsoft Edge"),
+                "Edge sec-ch-ua should identify Edge: {sec_ch_ua}"
             );
         }
     }

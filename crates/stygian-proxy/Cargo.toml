@@ -13,9 +13,10 @@ categories = ["network-programming", "web-programming"]
 
 [features]
 default = []
-socks   = ["reqwest/socks"]
-graph   = []
-browser = ["dep:stygian-browser"]
+socks        = ["reqwest/socks"]
+graph        = []
+browser      = ["dep:stygian-browser"]
+tls-profiled = ["dep:stygian-browser", "stygian-browser/tls-config"]
 # MCP (Model Context Protocol) server — exposes proxy pool tools over stdin/stdout JSON-RPC 2.0
 mcp = []
 

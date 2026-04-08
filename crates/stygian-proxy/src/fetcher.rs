@@ -211,6 +211,35 @@ impl FreeListFetcher {
         }
     }
 
+    /// Replace the internal HTTP client with a TLS-profiled one.
+    ///
+    /// Proxy-list fetch requests will carry a browser TLS fingerprint and
+    /// matching `Accept` / `Sec-CH-UA` headers.
+    ///
+    /// Only available with the `tls-profiled` feature.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_proxy::fetcher::{FreeListFetcher, FreeListSource};
+    /// use stygian_proxy::http_client::ProfiledRequester;
+    ///
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let fetcher = FreeListFetcher::new(vec![FreeListSource::TheSpeedXHttp])
+    ///     .with_profiled_client(ProfiledRequester::chrome()?);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "tls-profiled")]
+    #[must_use]
+    pub fn with_profiled_client(
+        mut self,
+        requester: crate::http_client::ProfiledRequester,
+    ) -> Self {
+        self.client = requester.client().clone();
+        self
+    }
+
     /// Attach extra tags to every proxy produced by this fetcher.
     ///
     /// # Example
