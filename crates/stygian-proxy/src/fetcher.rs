@@ -226,6 +226,36 @@ impl FreeListFetcher {
         self
     }
 
+    /// Parse one `host:port` line, including bracketed IPv6 addresses.
+    fn parse_host_port_line(line: &str) -> Option<(String, u16)> {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            return None;
+        }
+
+        let (host, port_str) = if line.starts_with('[') {
+            let end = line.find(']')?;
+            let host = line.get(..=end)?.trim();
+            let remainder = line.get(end + 1..)?.trim();
+            let (_, port_str) = remainder.rsplit_once(':')?;
+            (host, port_str.trim())
+        } else {
+            let (host, port_str) = line.rsplit_once(':')?;
+            (host.trim(), port_str.trim())
+        };
+
+        if host.is_empty() || host == "[]" {
+            return None;
+        }
+
+        let port = port_str.parse::<u16>().ok()?;
+        if port == 0 {
+            return None;
+        }
+
+        Some((host.to_string(), port))
+    }
+
     /// Fetch a single source, returning parsed proxies (empty on failure).
     async fn fetch_source(&self, source: &FreeListSource) -> Vec<Proxy> {
         let url = source.url();
@@ -255,17 +285,7 @@ impl FreeListFetcher {
         let proxies: Vec<Proxy> = body
             .lines()
             .filter_map(|line| {
-                let line = line.trim();
-                if line.is_empty() || line.starts_with('#') {
-                    return None;
-                }
-                // Expect `host:port` — both halves must be present and port numeric.
-                let mut parts = line.splitn(2, ':');
-                let host = parts.next()?.trim();
-                let port_str = parts.next()?.trim();
-                if port_str.parse::<u16>().is_err() {
-                    return None;
-                }
+                let (host, port) = Self::parse_host_port_line(line)?;
                 let scheme = match proxy_type {
                     ProxyType::Http => "http",
                     ProxyType::Https => "https",
@@ -275,7 +295,7 @@ impl FreeListFetcher {
                     ProxyType::Socks5 => "socks5",
                 };
                 Some(Proxy {
-                    url: format!("{scheme}://{host}:{port_str}"),
+                    url: format!("{scheme}://{host}:{port}"),
                     proxy_type,
                     username: None,
                     password: None,
@@ -293,6 +313,12 @@ impl FreeListFetcher {
 #[async_trait]
 impl ProxyFetcher for FreeListFetcher {
     async fn fetch(&self) -> ProxyResult<Vec<Proxy>> {
+        if self.sources.is_empty() {
+            return Err(ProxyError::ConfigError(
+                "no sources configured for FreeListFetcher".into(),
+            ));
+        }
+
         // Drive all source fetches concurrently.
         let results = join_all(self.sources.iter().map(|s| self.fetch_source(s))).await;
         let all: Vec<Proxy> = results.into_iter().flatten().collect();
@@ -423,22 +449,13 @@ mod tests {
     fn free_list_fetcher_parse_valid_lines() {
         let fetcher = FreeListFetcher::new(vec![]);
         // Test the parsing logic directly by calling parse on synthetic text.
-        let text = "1.2.3.4:8080\n# comment\n\nbad-line\n5.6.7.8:3128\n";
+        let text = "1.2.3.4:8080\n# comment\n\nbad-line\n5.6.7.8:3128\n[2001:db8::1]:8081\n";
         let parsed: Vec<Proxy> = text
             .lines()
             .filter_map(|line| {
-                let line = line.trim();
-                if line.is_empty() || line.starts_with('#') {
-                    return None;
-                }
-                let mut parts = line.splitn(2, ':');
-                let host = parts.next()?.trim();
-                let port_str = parts.next()?.trim();
-                if port_str.parse::<u16>().is_err() {
-                    return None;
-                }
+                let (host, port) = FreeListFetcher::parse_host_port_line(line)?;
                 Some(Proxy {
-                    url: format!("http://{host}:{port_str}"),
+                    url: format!("http://{host}:{port}"),
                     proxy_type: ProxyType::Http,
                     username: None,
                     password: None,
@@ -448,9 +465,10 @@ mod tests {
             })
             .collect();
 
-        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed.len(), 3);
         assert_eq!(parsed[0].url, "http://1.2.3.4:8080");
         assert_eq!(parsed[1].url, "http://5.6.7.8:3128");
+        assert_eq!(parsed[2].url, "http://[2001:db8::1]:8081");
     }
 
     #[test]
@@ -462,11 +480,27 @@ mod tests {
 
     #[test]
     fn free_list_fetcher_skips_invalid_port() {
-        let line = "1.2.3.4:notaport";
-        let mut parts = line.splitn(2, ':');
-        let _host = parts.next().unwrap();
-        let port_str = parts.next().unwrap();
-        assert!(port_str.parse::<u16>().is_err());
+        assert!(FreeListFetcher::parse_host_port_line("1.2.3.4:notaport").is_none());
+        assert!(FreeListFetcher::parse_host_port_line("1.2.3.4:0").is_none());
+        assert!(FreeListFetcher::parse_host_port_line(":8080").is_none());
+    }
+
+    #[test]
+    fn free_list_fetcher_empty_sources_is_config_error() {
+        let fetcher = FreeListFetcher::new(vec![]);
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap_or_else(|e| panic!("failed to build runtime for test: {e}"));
+        let err = rt
+            .block_on(fetcher.fetch())
+            .expect_err("empty sources should fail");
+        match err {
+            ProxyError::ConfigError(msg) => {
+                assert!(msg.contains("no sources configured"));
+            }
+            other => panic!("unexpected error variant: {other}"),
+        }
     }
 
     #[test]

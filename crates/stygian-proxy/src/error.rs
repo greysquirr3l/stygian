@@ -13,6 +13,7 @@ use thiserror::Error;
 /// }
 /// ```
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ProxyError {
     /// The proxy pool has no available proxies to hand out.
     #[error("proxy pool is exhausted")]

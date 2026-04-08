@@ -881,6 +881,8 @@ impl RequestPacer {
 
     /// Create with explicit timing parameters (all values in milliseconds).
     ///
+    /// If `min_ms > max_ms`, bounds are normalized by swapping them.
+    ///
     /// # Example
     ///
     /// ```
@@ -889,6 +891,11 @@ impl RequestPacer {
     /// let _pacer = RequestPacer::with_timing(500, 150, 200, 1_500);
     /// ```
     pub fn with_timing(mean_ms: u64, std_ms: u64, min_ms: u64, max_ms: u64) -> Self {
+        let (min_ms, max_ms) = if min_ms <= max_ms {
+            (min_ms, max_ms)
+        } else {
+            (max_ms, min_ms)
+        };
         let seed = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs() ^ u64::from(d.subsec_nanos()))
@@ -906,6 +913,9 @@ impl RequestPacer {
     /// Construct from a target requests-per-second rate.
     ///
     /// Mean = `1000 / rps` ms, σ = 25 % of mean, clamped to ±50 % of mean.
+    ///
+    /// `rps` is clamped to a minimum of `0.01` to avoid division by zero and
+    /// extreme near-zero denominators.
     ///
     /// # Example
     ///
@@ -1221,5 +1231,35 @@ mod tests {
         // Very high rps yields a very small mean delay; mean_ms should still be at least 1 ms
         let p = RequestPacer::with_rate(1_000.0);
         assert!(p.mean_ms >= 1);
+    }
+
+    #[test]
+    fn request_pacer_with_timing_swaps_inverted_bounds() {
+        let p = RequestPacer::with_timing(500, 100, 2_000, 200);
+        assert_eq!(p.min_ms, 200);
+        assert_eq!(p.max_ms, 2_000);
+    }
+
+    #[tokio::test]
+    async fn request_pacer_throttle_first_immediate_then_waits() {
+        let mut p = RequestPacer::with_timing(25, 0, 25, 25);
+
+        let start = Instant::now();
+        p.throttle().await;
+        let first_elapsed = start.elapsed();
+        assert!(
+            first_elapsed < Duration::from_millis(10),
+            "first throttle should be immediate, got {:?}",
+            first_elapsed
+        );
+
+        let second_start = Instant::now();
+        p.throttle().await;
+        let second_elapsed = second_start.elapsed();
+        assert!(
+            second_elapsed >= Duration::from_millis(20),
+            "second throttle should wait close to target delay, got {:?}",
+            second_elapsed
+        );
     }
 }

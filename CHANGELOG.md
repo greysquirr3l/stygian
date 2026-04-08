@@ -24,6 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `stygian-browser`: `fingerprint::font_measurement_intercept()` docstring corrected to match
   implementation (checks visibility/position only, not font-family); `getBoundingClientRect`
   now returns `new DOMRect(...)` for proper prototype chain instead of plain object literal
+- `stygian-proxy`: `FreeListFetcher` parsing is now bracket-aware for IPv6 (`[addr]:port`),
+  and invalid entries are rejected earlier (empty host, `[]`, and port `0`)
+- `stygian-proxy`: `FreeListFetcher::fetch()` now returns a clear `ConfigError` when no
+  sources are configured instead of a non-diagnostic fetch failure with empty origin text
+- `stygian-proxy`: `ProxyError` is now marked `#[non_exhaustive]` to support adding variants
+  more safely in future releases
+- `stygian-browser`: `RequestPacer::with_timing()` now normalizes inverted bounds
+  (`min_ms > max_ms`) by swapping them, `with_rate()` docs now explicitly describe the
+  minimum `0.01 rps` clamp, and async throttling behavior is covered by unit tests
+- `stygian-browser`: `navigator.storage.estimate()` spoof now returns a merged object
+  (`Object.assign`) instead of mutating the original result in-place for better compatibility
 
 ## [0.8.3] - 2026-04-03
 

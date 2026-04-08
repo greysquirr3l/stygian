@@ -1129,9 +1129,10 @@ fn storage_estimate_spoof_script() -> String {
     const usage = (5  + _seed % 10) * 1048576;
     navigator.storage.estimate = function() {
       return _origEstimate().then(function(result) {
-        result.quota = quota;
-        result.usage = usage;
-        return result;
+                return Object.assign({}, result, {
+                    quota: quota,
+                    usage: usage
+                });
       });
     };
   })();"
