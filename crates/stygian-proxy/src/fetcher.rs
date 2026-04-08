@@ -368,7 +368,8 @@ mod tests {
 
     #[test]
     fn free_list_source_url_is_nonempty() {
-        let mut sources = vec![
+        #[cfg(not(feature = "socks"))]
+        let sources = vec![
             FreeListSource::TheSpeedXHttp,
             FreeListSource::ClarketmHttp,
             FreeListSource::OpenProxyListHttp,
@@ -378,10 +379,22 @@ mod tests {
             },
         ];
         #[cfg(feature = "socks")]
-        sources.extend([
-            FreeListSource::TheSpeedXSocks4,
-            FreeListSource::TheSpeedXSocks5,
-        ]);
+        let sources = {
+            let mut s = vec![
+                FreeListSource::TheSpeedXHttp,
+                FreeListSource::ClarketmHttp,
+                FreeListSource::OpenProxyListHttp,
+                FreeListSource::Custom {
+                    url: "https://example.com/proxies.txt".into(),
+                    proxy_type: ProxyType::Http,
+                },
+            ];
+            s.extend([
+                FreeListSource::TheSpeedXSocks4,
+                FreeListSource::TheSpeedXSocks5,
+            ]);
+            s
+        };
         for src in &sources {
             assert!(
                 !src.url().is_empty(),
