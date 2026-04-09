@@ -218,6 +218,7 @@ mod serde_duration_secs {
 /// assert_eq!(cfg.health_check_timeout, Duration::from_secs(5));
 /// assert_eq!(cfg.circuit_open_threshold, 5);
 /// assert_eq!(cfg.circuit_half_open_after, Duration::from_secs(30));
+/// assert!(cfg.profiled_request_mode.is_none());
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

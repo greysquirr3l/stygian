@@ -1373,7 +1373,7 @@ mod rustls_config {
         ///
         /// # Limitations
         ///
-        /// rustls does not expose APIs to force exact ClientHello extension
+        /// rustls does not expose APIs to force exact `ClientHello` extension
         /// ordering or GREASE emission. This method provides strict control
         /// over the fields rustls does expose (cipher suites, groups, ALPN,
         /// protocol versions).
@@ -1609,14 +1609,16 @@ mod reqwest_client {
         let mut map = HeaderMap::new();
         let name = profile.name.to_ascii_lowercase();
 
+        let is_firefox = name.contains("firefox");
+        let is_safari = name.contains("safari") && !name.contains("chrome");
+        let is_chromium = !(is_firefox || is_safari);
+
         // Accept — differs between Chromium-family and Firefox/Safari.
-        let accept = if name.contains("firefox") {
-            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-        } else if name.contains("safari") && !name.contains("chrome") {
-            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-        } else {
+        let accept = if is_chromium {
             // Chromium (Chrome / Edge)
             "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
+        } else {
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
         };
 
         // Accept-Encoding — all modern browsers negotiate the same set.
@@ -1628,7 +1630,7 @@ mod reqwest_client {
         let accept_language = "en-US,en;q=0.9";
 
         // Sec-CH-UA headers — Chromium-only.
-        if !name.contains("firefox") && !(name.contains("safari") && !name.contains("chrome")) {
+        if is_chromium {
             let (brand, version) = if name.contains("edge") {
                 ("\"Microsoft Edge\";v=\"131\"", "131")
             } else {

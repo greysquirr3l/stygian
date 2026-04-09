@@ -647,6 +647,54 @@ mod tests {
         assert!(result.is_ok(), "health checker task should exit within 1s");
     }
 
+    #[cfg(feature = "tls-profiled")]
+    #[tokio::test]
+    async fn builder_accepts_profiled_request_mode_preset() {
+        let store = storage();
+        let cfg = ProxyConfig {
+            profiled_request_mode: Some(crate::types::ProfiledRequestMode::Preset),
+            ..ProxyConfig::default()
+        };
+
+        let result = ProxyManager::builder()
+            .storage(store)
+            .strategy(Arc::new(RoundRobinStrategy::default()))
+            .config(cfg)
+            .build();
+
+        assert!(
+            result.is_ok(),
+            "builder should accept profiled preset mode: {:?}",
+            result.err()
+        );
+    }
+
+    #[cfg(feature = "tls-profiled")]
+    #[tokio::test]
+    async fn builder_rejects_profiled_request_mode_strict_all_for_chrome() {
+        let store = storage();
+        let cfg = ProxyConfig {
+            profiled_request_mode: Some(crate::types::ProfiledRequestMode::StrictAll),
+            ..ProxyConfig::default()
+        };
+
+        let result = ProxyManager::builder()
+            .storage(store)
+            .strategy(Arc::new(RoundRobinStrategy::default()))
+            .config(cfg)
+            .build();
+
+        let err = match result {
+            Ok(_) => panic!("strict_all should fail for default Chrome baseline profile"),
+            Err(err) => err,
+        };
+
+        assert!(
+            matches!(err, ProxyError::ConfigError(_)),
+            "expected ConfigError, got {err:?}"
+        );
+    }
+
     // ── sticky session tests ─────────────────────────────────────────────────
 
     fn sticky_config() -> ProxyConfig {
