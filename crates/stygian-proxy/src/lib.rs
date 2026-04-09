@@ -58,7 +58,7 @@ pub use strategy::{
     BoxedRotationStrategy, LeastUsedStrategy, ProxyCandidate, RandomStrategy, RotationStrategy,
     RoundRobinStrategy, WeightedStrategy,
 };
-pub use types::{Proxy, ProxyConfig, ProxyMetrics, ProxyRecord, ProxyType};
+pub use types::{ProfiledRequestMode, Proxy, ProxyConfig, ProxyMetrics, ProxyRecord, ProxyType};
 
 #[cfg(feature = "graph")]
 pub use graph::{BoxedProxyManager, NoopProxyManager, ProxyManagerPort};

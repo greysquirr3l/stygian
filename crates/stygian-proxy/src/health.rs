@@ -69,13 +69,17 @@ impl HealthChecker {
     ///
     /// ```no_run
     /// use std::sync::Arc;
-    /// use stygian_proxy::{HealthChecker, ProxyConfig, http_client::ProfiledRequester};
+    /// use stygian_proxy::{
+    ///     HealthChecker,
+    ///     ProxyConfig,
+    ///     http_client::{ProfiledRequestMode, ProfiledRequester},
+    /// };
     /// use stygian_proxy::storage::MemoryProxyStore;
     ///
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let storage = Arc::new(MemoryProxyStore::default());
     /// let health_map = stygian_proxy::health::HealthMap::default();
-    /// let requester = ProfiledRequester::chrome()?;
+    /// let requester = ProfiledRequester::chrome_mode(ProfiledRequestMode::Preset)?;
     /// let checker = HealthChecker::new(ProxyConfig::default(), storage, health_map)
     ///     .with_profiled_client(requester);
     /// # Ok(())
@@ -89,6 +93,27 @@ impl HealthChecker {
     ) -> Self {
         self.profiled = Some(requester);
         self
+    }
+
+    /// Build and attach a profile-mode-based requester.
+    ///
+    /// Uses Chrome 131 as the baseline browser identity and applies `mode`
+    /// to TLS control mapping.
+    ///
+    /// Only available when the `tls-profiled` feature is enabled.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::ProxyError::ConfigError`] if the profiled
+    /// requester cannot be constructed.
+    #[cfg(feature = "tls-profiled")]
+    pub fn with_profiled_mode(
+        self,
+        mode: crate::types::ProfiledRequestMode,
+    ) -> crate::error::ProxyResult<Self> {
+        let requester = crate::http_client::ProfiledRequester::chrome_mode(mode)
+            .map_err(|e| crate::error::ProxyError::ConfigError(e.to_string()))?;
+        Ok(self.with_profiled_client(requester))
     }
 
     /// Spawn an infinite background task that checks proxies on every

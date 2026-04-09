@@ -471,11 +471,22 @@ impl ProxyManagerBuilder {
             .unwrap_or_else(|| Arc::new(RoundRobinStrategy::default()));
         let config = self.config.unwrap_or_default();
         let health_map: HealthMap = Arc::new(RwLock::new(HashMap::new()));
-        let health_checker = HealthChecker::new(
+        let checker = HealthChecker::new(
             config.clone(),
             Arc::clone(&storage),
             Arc::clone(&health_map),
         );
+
+        #[cfg(feature = "tls-profiled")]
+        let health_checker = if let Some(mode) = config.profiled_request_mode {
+            checker.with_profiled_mode(mode)?
+        } else {
+            checker
+        };
+
+        #[cfg(not(feature = "tls-profiled"))]
+        let health_checker = checker;
+
         Ok(ProxyManager {
             storage,
             strategy,

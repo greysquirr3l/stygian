@@ -1,7 +1,7 @@
 //! TLS-profiled HTTP client for the proxy health checker and fetcher.
 //!
 //! Enabled by the `tls-profiled` feature flag. Wraps
-//! [`stygian_browser::tls::build_profiled_client`] so that outgoing plain-HTTP
+//! [`stygian_browser::tls::build_profiled_client_preset`] so that outgoing plain-HTTP
 //! requests (health checks, proxy-list fetches) present the same TLS
 //! fingerprint and HTTP header set as a real browser, reducing the chance that
 //! the target blocks or fingerprints the checker itself.
@@ -24,19 +24,22 @@
 //! # Example
 //!
 //! ```no_run
-//! use stygian_proxy::http_client::ProfiledRequester;
+//! use stygian_proxy::http_client::{ProfiledRequestMode, ProfiledRequester};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let requester = ProfiledRequester::chrome()?;
+//! let requester = ProfiledRequester::chrome_mode(ProfiledRequestMode::Preset)?;
 //! let client = requester.client();
 //! # Ok(())
 //! # }
 //! ```
 
 use stygian_browser::tls::{
-    CHROME_131, EDGE_131, FIREFOX_133, SAFARI_18, TlsProfile, build_profiled_client,
+    CHROME_131, EDGE_131, FIREFOX_133, SAFARI_18, TlsControl, TlsProfile,
+    build_profiled_client_preset, build_profiled_client_with_control,
 };
 use thiserror::Error;
+
+pub use crate::types::ProfiledRequestMode;
 
 // ─── error ───────────────────────────────────────────────────────────────────
 
@@ -95,11 +98,109 @@ impl ProfiledRequester {
         profile: &'static TlsProfile,
         proxy_url: Option<&str>,
     ) -> Result<Self, ProfiledRequesterError> {
-        let client = build_profiled_client(profile, proxy_url)?;
+        let client = build_profiled_client_preset(profile, proxy_url)?;
         Ok(Self {
             client,
             profile_name: Box::leak(profile.name.clone().into_boxed_str()),
         })
+    }
+
+    /// Build from any static [`TlsProfile`] using a selectable mode.
+    ///
+    /// This is the recommended high-level constructor when callers want to
+    /// select compatibility behavior with a single parameter.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfiledRequesterError::Build`] if the TLS config or HTTP
+    /// client cannot be constructed.
+    pub fn from_profile_mode(
+        profile: &'static TlsProfile,
+        proxy_url: Option<&str>,
+        mode: ProfiledRequestMode,
+    ) -> Result<Self, ProfiledRequesterError> {
+        let client = match mode {
+            ProfiledRequestMode::Compatible => {
+                build_profiled_client_with_control(profile, proxy_url, TlsControl::compatible())?
+            }
+            ProfiledRequestMode::Preset => build_profiled_client_preset(profile, proxy_url)?,
+            ProfiledRequestMode::Strict => {
+                build_profiled_client_with_control(profile, proxy_url, TlsControl::strict())?
+            }
+            ProfiledRequestMode::StrictAll => {
+                build_profiled_client_with_control(profile, proxy_url, TlsControl::strict_all())?
+            }
+        };
+        Ok(Self {
+            client,
+            profile_name: Box::leak(profile.name.clone().into_boxed_str()),
+        })
+    }
+
+    /// Build from any static [`TlsProfile`] with an explicit [`TlsControl`].
+    ///
+    /// Use this constructor when you need deterministic compatibility/strict
+    /// behavior independent of profile-name presets.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfiledRequesterError::Build`] if the TLS config or HTTP
+    /// client cannot be constructed.
+    pub fn from_profile_with_control(
+        profile: &'static TlsProfile,
+        proxy_url: Option<&str>,
+        control: TlsControl,
+    ) -> Result<Self, ProfiledRequesterError> {
+        let client = build_profiled_client_with_control(profile, proxy_url, control)?;
+        Ok(Self {
+            client,
+            profile_name: Box::leak(profile.name.clone().into_boxed_str()),
+        })
+    }
+
+    /// Build from any static [`TlsProfile`] in compatible mode.
+    ///
+    /// Equivalent to calling [`Self::from_profile_with_control`] with
+    /// [`TlsControl::compatible`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfiledRequesterError::Build`] on construction failure.
+    pub fn from_profile_compatible(
+        profile: &'static TlsProfile,
+        proxy_url: Option<&str>,
+    ) -> Result<Self, ProfiledRequesterError> {
+        Self::from_profile_mode(profile, proxy_url, ProfiledRequestMode::Compatible)
+    }
+
+    /// Build from any static [`TlsProfile`] in strict mode.
+    ///
+    /// Equivalent to calling [`Self::from_profile_with_control`] with
+    /// [`TlsControl::strict`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfiledRequesterError::Build`] on construction failure.
+    pub fn from_profile_strict(
+        profile: &'static TlsProfile,
+        proxy_url: Option<&str>,
+    ) -> Result<Self, ProfiledRequesterError> {
+        Self::from_profile_mode(profile, proxy_url, ProfiledRequestMode::Strict)
+    }
+
+    /// Build from any static [`TlsProfile`] in strict-all mode.
+    ///
+    /// Equivalent to calling [`Self::from_profile_with_control`] with
+    /// [`TlsControl::strict_all`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfiledRequesterError::Build`] on construction failure.
+    pub fn from_profile_strict_all(
+        profile: &'static TlsProfile,
+        proxy_url: Option<&str>,
+    ) -> Result<Self, ProfiledRequesterError> {
+        Self::from_profile_mode(profile, proxy_url, ProfiledRequestMode::StrictAll)
     }
 
     /// Build a Chrome 131-profiled requester.
@@ -111,6 +212,15 @@ impl ProfiledRequester {
         Self::from_profile(&CHROME_131, None)
     }
 
+    /// Build a Chrome 131-profiled requester with the selected mode.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfiledRequesterError::Build`] on construction failure.
+    pub fn chrome_mode(mode: ProfiledRequestMode) -> Result<Self, ProfiledRequesterError> {
+        Self::from_profile_mode(&CHROME_131, None, mode)
+    }
+
     /// Build a Firefox 133-profiled requester.
     ///
     /// # Errors
@@ -118,6 +228,15 @@ impl ProfiledRequester {
     /// Returns [`ProfiledRequesterError::Build`] on construction failure.
     pub fn firefox() -> Result<Self, ProfiledRequesterError> {
         Self::from_profile(&FIREFOX_133, None)
+    }
+
+    /// Build a Firefox 133-profiled requester with the selected mode.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfiledRequesterError::Build`] on construction failure.
+    pub fn firefox_mode(mode: ProfiledRequestMode) -> Result<Self, ProfiledRequesterError> {
+        Self::from_profile_mode(&FIREFOX_133, None, mode)
     }
 
     /// Build a Safari 18-profiled requester.
@@ -129,6 +248,15 @@ impl ProfiledRequester {
         Self::from_profile(&SAFARI_18, None)
     }
 
+    /// Build a Safari 18-profiled requester with the selected mode.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfiledRequesterError::Build`] on construction failure.
+    pub fn safari_mode(mode: ProfiledRequestMode) -> Result<Self, ProfiledRequesterError> {
+        Self::from_profile_mode(&SAFARI_18, None, mode)
+    }
+
     /// Build an Edge 131-profiled requester.
     ///
     /// # Errors
@@ -136,6 +264,15 @@ impl ProfiledRequester {
     /// Returns [`ProfiledRequesterError::Build`] on construction failure.
     pub fn edge() -> Result<Self, ProfiledRequesterError> {
         Self::from_profile(&EDGE_131, None)
+    }
+
+    /// Build an Edge 131-profiled requester with the selected mode.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfiledRequesterError::Build`] on construction failure.
+    pub fn edge_mode(mode: ProfiledRequestMode) -> Result<Self, ProfiledRequesterError> {
+        Self::from_profile_mode(&EDGE_131, None, mode)
     }
 
     /// Build a requester using a profile weighted by real-world browser market
@@ -148,11 +285,26 @@ impl ProfiledRequester {
     /// Returns [`ProfiledRequesterError::Build`] on construction failure.
     pub fn random_weighted(seed: u64) -> Result<Self, ProfiledRequesterError> {
         let profile = TlsProfile::random_weighted(seed);
-        let client = build_profiled_client(profile, None)?;
+        let client = build_profiled_client_preset(profile, None)?;
         Ok(Self {
             client,
             profile_name: Box::leak(profile.name.clone().into_boxed_str()),
         })
+    }
+
+    /// Build a weighted-random profile requester with the selected mode.
+    ///
+    /// `seed` should differ across callers to get varied profiles.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfiledRequesterError::Build`] on construction failure.
+    pub fn random_weighted_mode(
+        seed: u64,
+        mode: ProfiledRequestMode,
+    ) -> Result<Self, ProfiledRequesterError> {
+        let profile = TlsProfile::random_weighted(seed);
+        Self::from_profile_mode(profile, None, mode)
     }
 
     /// Borrow the underlying [`reqwest::Client`].
@@ -191,6 +343,12 @@ mod tests {
     }
 
     #[test]
+    fn chrome_mode_preset_builds() {
+        let r = ProfiledRequester::chrome_mode(ProfiledRequestMode::Preset).unwrap();
+        assert_eq!(r.profile_name(), "Chrome 131");
+    }
+
+    #[test]
     fn firefox_requester_builds() {
         let r = ProfiledRequester::firefox().unwrap();
         assert_eq!(r.profile_name(), "Firefox 133");
@@ -218,9 +376,54 @@ mod tests {
     }
 
     #[test]
+    fn random_weighted_mode_compatible_builds() {
+        let r =
+            ProfiledRequester::random_weighted_mode(42, ProfiledRequestMode::Compatible).unwrap();
+        assert!(!r.profile_name().is_empty());
+    }
+
+    #[test]
     fn from_profile_with_custom_gives_correct_name() {
         let r = ProfiledRequester::from_profile(&CHROME_131, None).unwrap();
         assert_eq!(r.profile_name(), "Chrome 131");
+    }
+
+    #[test]
+    fn from_profile_with_control_gives_correct_name() {
+        let r = ProfiledRequester::from_profile_with_control(
+            &CHROME_131,
+            None,
+            TlsControl::compatible(),
+        )
+        .unwrap();
+        assert_eq!(r.profile_name(), "Chrome 131");
+    }
+
+    #[test]
+    fn from_profile_mode_preset_gives_correct_name() {
+        let r =
+            ProfiledRequester::from_profile_mode(&CHROME_131, None, ProfiledRequestMode::Preset)
+                .unwrap();
+        assert_eq!(r.profile_name(), "Chrome 131");
+    }
+
+    #[test]
+    fn from_profile_mode_compatible_gives_correct_name() {
+        let r = ProfiledRequester::from_profile_mode(
+            &CHROME_131,
+            None,
+            ProfiledRequestMode::Compatible,
+        )
+        .unwrap();
+        assert_eq!(r.profile_name(), "Chrome 131");
+    }
+
+    #[test]
+    fn strict_all_constructor_reports_unsupported_group_for_chrome() {
+        let err = ProfiledRequester::from_profile_strict_all(&CHROME_131, None)
+            .expect_err("strict_all should fail if a profile group is unsupported");
+        let msg = err.to_string();
+        assert!(msg.contains("unsupported supported_group"), "{msg}");
     }
 
     #[test]

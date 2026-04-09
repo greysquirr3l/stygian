@@ -222,11 +222,11 @@ impl FreeListFetcher {
     ///
     /// ```no_run
     /// use stygian_proxy::fetcher::{FreeListFetcher, FreeListSource};
-    /// use stygian_proxy::http_client::ProfiledRequester;
+    /// use stygian_proxy::http_client::{ProfiledRequestMode, ProfiledRequester};
     ///
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let fetcher = FreeListFetcher::new(vec![FreeListSource::TheSpeedXHttp])
-    ///     .with_profiled_client(ProfiledRequester::chrome()?);
+    ///     .with_profiled_client(ProfiledRequester::chrome_mode(ProfiledRequestMode::Preset)?);
     /// # Ok(())
     /// # }
     /// ```
@@ -238,6 +238,27 @@ impl FreeListFetcher {
     ) -> Self {
         self.client = requester.client().clone();
         self
+    }
+
+    /// Build and attach a profile-mode-based requester.
+    ///
+    /// Uses Chrome 131 as the baseline browser identity and applies `mode`
+    /// to TLS control mapping.
+    ///
+    /// Only available when the `tls-profiled` feature is enabled.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::ProxyError::ConfigError`] if the profiled
+    /// requester cannot be constructed.
+    #[cfg(feature = "tls-profiled")]
+    pub fn with_profiled_mode(
+        self,
+        mode: crate::types::ProfiledRequestMode,
+    ) -> crate::error::ProxyResult<Self> {
+        let requester = crate::http_client::ProfiledRequester::chrome_mode(mode)
+            .map_err(|e| crate::error::ProxyError::ConfigError(e.to_string()))?;
+        Ok(self.with_profiled_client(requester))
     }
 
     /// Attach extra tags to every proxy produced by this fetcher.

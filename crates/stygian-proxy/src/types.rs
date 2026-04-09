@@ -28,6 +28,23 @@ pub enum ProxyType {
     Socks5,
 }
 
+/// TLS-profiled request mode for proxy-side HTTP operations.
+///
+/// Used by `tls-profiled` integrations to decide how strictly browser TLS
+/// profiles should be mapped onto rustls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProfiledRequestMode {
+    /// Broad compatibility: skip unknown entries and use safe fallbacks.
+    Compatible,
+    /// Profile-aware preset selected from the profile name.
+    Preset,
+    /// Strict cipher-suite mapping with compatibility group fallback.
+    Strict,
+    /// Strict cipher-suite + group mapping without fallback.
+    StrictAll,
+}
+
 /// A proxy endpoint with optional authentication credentials.
 ///
 /// `Debug` output masks `password` to prevent accidental credential logging.
@@ -221,6 +238,14 @@ pub struct ProxyConfig {
     /// Sticky-session policy for domain→proxy binding.
     #[serde(default)]
     pub sticky_policy: crate::session::StickyPolicy,
+    /// Optional default mode for TLS-profiled helper clients.
+    ///
+    /// When set and `tls-profiled` is enabled, `ProxyManager` initializes its
+    /// `HealthChecker` with a Chrome-profiled requester using this mode.
+    ///
+    /// Ignored when `tls-profiled` is disabled.
+    #[serde(default)]
+    pub profiled_request_mode: Option<ProfiledRequestMode>,
 }
 
 impl Default for ProxyConfig {
@@ -232,6 +257,7 @@ impl Default for ProxyConfig {
             circuit_open_threshold: 5,
             circuit_half_open_after: Duration::from_secs(30),
             sticky_policy: crate::session::StickyPolicy::default(),
+            profiled_request_mode: None,
         }
     }
 }
