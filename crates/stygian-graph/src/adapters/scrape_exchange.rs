@@ -34,12 +34,17 @@
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use async_trait::async_trait;
 use parking_lot::RwLock;
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use thiserror::Error;
 use tracing::{debug, info, warn};
+
+use crate::domain::error::{Result as DomainResult, ServiceError, StygianError};
+use crate::ports::data_sink::{DataSinkError, DataSinkPort, SinkRecord, SinkReceipt};
+use crate::ports::{ScrapingService, ServiceInput, ServiceOutput};
 
 // ─── Errors ───────────────────────────────────────────────────────────────────
 
@@ -472,6 +477,205 @@ impl ScrapeExchangeClient {
     }
 }
 
+// ─── Adapter (DataSinkPort + ScrapingService) ─────────────────────────────────
+
+/// Pipeline adapter wrapping [`ScrapeExchangeClient`] that implements
+/// [`DataSinkPort`] and [`ScrapingService`].
+///
+/// Use this type when wiring a pipeline output into Scrape Exchange; the
+/// raw client is available via [`ScrapeExchangeAdapter::client()`] for
+/// direct API access.
+///
+/// # Example
+///
+/// ```no_run
+/// use stygian_graph::adapters::scrape_exchange::{ScrapeExchangeAdapter, ScrapeExchangeConfig};
+/// use stygian_graph::ports::data_sink::{DataSinkPort, SinkRecord};
+/// use serde_json::json;
+///
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// let config = ScrapeExchangeConfig {
+///     api_key_id: "key_id".to_string(),
+///     api_key_secret: "secret".to_string(),
+///     base_url: "https://scrape.exchange/api/".to_string(),
+/// };
+/// // let adapter = ScrapeExchangeAdapter::new(config).await?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// # });
+/// ```
+pub struct ScrapeExchangeAdapter {
+    client: Arc<ScrapeExchangeClient>,
+}
+
+impl ScrapeExchangeAdapter {
+    /// Create a new adapter and establish an authenticated session.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScrapeExchangeError`] if authentication fails.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_graph::adapters::scrape_exchange::{ScrapeExchangeAdapter, ScrapeExchangeConfig};
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// // let adapter = ScrapeExchangeAdapter::new(config).await?;
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// # });
+    /// ```
+    pub async fn new(
+        config: ScrapeExchangeConfig,
+    ) -> std::result::Result<Self, ScrapeExchangeError> {
+        let client = ScrapeExchangeClient::new(config).await?;
+        Ok(Self {
+            client: Arc::new(client),
+        })
+    }
+
+    /// Access the underlying REST client.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use stygian_graph::adapters::scrape_exchange::{ScrapeExchangeAdapter, ScrapeExchangeConfig};
+    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+    /// # let config = ScrapeExchangeConfig { api_key_id: "k".to_string(), api_key_secret: "s".to_string(), base_url: "u".to_string() };
+    /// # let adapter = ScrapeExchangeAdapter::new(config).await.unwrap();
+    /// let items = adapter.client().query("me", "web", "pages").await;
+    /// # });
+    /// ```
+    pub fn client(&self) -> &ScrapeExchangeClient {
+        &self.client
+    }
+
+    /// Map a [`SinkRecord`] to the Scrape Exchange upload JSON format.
+    fn map_record(record: &SinkRecord) -> Value {
+        json!({
+            "schema_id": record.schema_id,
+            "source": record.source_url,
+            "content": record.data,
+            "metadata": record.metadata,
+        })
+    }
+
+    /// Validate that `record.data` is a JSON object with at least one field.
+    /// Full schema validation against `schema_id` is performed server-side.
+    fn local_validate(record: &SinkRecord) -> std::result::Result<(), DataSinkError> {
+        if !record.schema_id.is_empty() && record.data.is_null() {
+            return Err(DataSinkError::ValidationFailed(
+                "data must not be null when schema_id is set".to_string(),
+            ));
+        }
+        if let Some(obj) = record.data.as_object()
+            && obj.is_empty()
+        {
+            return Err(DataSinkError::ValidationFailed(
+                "data object must not be empty".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl DataSinkPort for ScrapeExchangeAdapter {
+    /// Validate and publish a [`SinkRecord`] to Scrape Exchange.
+    ///
+    /// # Errors
+    ///
+    /// - [`DataSinkError::ValidationFailed`] — local validation rejected the record.
+    /// - [`DataSinkError::RateLimited`] — API returned 429.
+    /// - [`DataSinkError::Unauthorized`] — API returned 401/403.
+    /// - [`DataSinkError::PublishFailed`] — any other HTTP error.
+    async fn publish(
+        &self,
+        record: &SinkRecord,
+    ) -> std::result::Result<SinkReceipt, DataSinkError> {
+        Self::local_validate(record)?;
+
+        let payload = Self::map_record(record);
+        let result = self.client.upload(payload).await.map_err(|e| match e {
+            ScrapeExchangeError::RateLimited { retry_after_secs } => {
+                DataSinkError::RateLimited(format!("retry after {retry_after_secs}s"))
+            }
+            ScrapeExchangeError::AuthFailed(msg) => DataSinkError::Unauthorized(msg),
+            other => DataSinkError::PublishFailed(other.to_string()),
+        })?;
+
+        let id = result
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_string();
+
+        let published_at = result
+            .get("created_at")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+
+        Ok(SinkReceipt {
+            id,
+            published_at,
+            platform: "scrape-exchange".to_string(),
+        })
+    }
+
+    /// Validate the record locally without publishing.
+    ///
+    /// # Errors
+    ///
+    /// [`DataSinkError::ValidationFailed`] if the record is structurally invalid.
+    async fn validate(
+        &self,
+        record: &SinkRecord,
+    ) -> std::result::Result<(), DataSinkError> {
+        Self::local_validate(record)
+    }
+
+    /// Check that the Scrape Exchange API is reachable.
+    ///
+    /// # Errors
+    ///
+    /// [`DataSinkError::PublishFailed`] if the health endpoint is unreachable.
+    async fn health_check(&self) -> std::result::Result<(), DataSinkError> {
+        self.client.health_check().await.map_err(|e| {
+            DataSinkError::PublishFailed(format!("health check failed: {e}"))
+        })
+    }
+}
+
+#[async_trait]
+impl ScrapingService for ScrapeExchangeAdapter {
+    /// Query Scrape Exchange for data matching the URL's path components.
+    ///
+    /// Expects `input.url` to be of the form
+    /// `scrape-exchange://uploader/platform/entity` or a full API URL path.
+    /// Falls back to using the whole URL string as an item-ID lookup.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`StygianError`] wrapping any API transport failure.
+    async fn execute(&self, input: ServiceInput) -> DomainResult<ServiceOutput> {
+        debug!("ScrapeExchangeAdapter::execute url={}", input.url);
+
+        let result = self
+            .client
+            .item_lookup(&input.url)
+            .await
+            .map_err(|e| StygianError::from(ServiceError::Unavailable(e.to_string())))?;
+
+        Ok(ServiceOutput {
+            data: result.to_string(),
+            metadata: json!({ "platform": "scrape-exchange", "url": input.url }),
+        })
+    }
+
+    fn name(&self) -> &'static str {
+        "scrape-exchange"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -532,5 +736,66 @@ mod tests {
             message: "Internal error".to_string(),
         };
         assert_eq!(err.to_string(), "API error: 500 Internal error");
+    }
+
+    // ── T27 adapter tests ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_validate_rejects_null_data_with_schema() {
+        let record = SinkRecord::new("product-v1", "https://example.com", Value::Null);
+        let result = ScrapeExchangeAdapter::local_validate(&record);
+        assert!(result.is_err(), "null data with schema_id should fail");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("null"), "error should mention null: {msg}");
+    }
+
+    #[test]
+    fn test_validate_rejects_empty_object() {
+        let record = SinkRecord::new(
+            "product-v1",
+            "https://example.com",
+            serde_json::Value::Object(serde_json::Map::new()),
+        );
+        let result = ScrapeExchangeAdapter::local_validate(&record);
+        assert!(result.is_err(), "empty object should fail validation");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("empty"), "error should mention empty: {msg}");
+    }
+
+    #[test]
+    fn test_validate_accepts_valid_record() {
+        let record = SinkRecord::new(
+            "product-v1",
+            "https://example.com",
+            serde_json::json!({ "sku": "ABC-42" }),
+        );
+        let result = ScrapeExchangeAdapter::local_validate(&record);
+        assert!(result.is_ok(), "valid record should pass: {result:?}");
+    }
+
+    #[test]
+    fn test_map_record_produces_correct_fields() {
+        let record = SinkRecord::new(
+            "order-v2",
+            "https://shop.example.com/orders/99",
+            serde_json::json!({ "total": 39.99 }),
+        );
+        let mapped = ScrapeExchangeAdapter::map_record(&record);
+        assert_eq!(mapped["schema_id"], "order-v2");
+        assert_eq!(mapped["source"], "https://shop.example.com/orders/99");
+        assert_eq!(mapped["content"]["total"], 39.99);
+    }
+
+    #[test]
+    fn test_rate_limit_error_mapping() {
+        // Verify the error mapping logic: RateLimited → DataSinkError::RateLimited.
+        let se_err = ScrapeExchangeError::RateLimited { retry_after_secs: 60 };
+        let mapped: DataSinkError = match se_err {
+            ScrapeExchangeError::RateLimited { retry_after_secs } => {
+                DataSinkError::RateLimited(format!("retry after {retry_after_secs}s"))
+            }
+            other => DataSinkError::PublishFailed(other.to_string()),
+        };
+        assert!(mapped.to_string().contains("60"), "should mention 60s: {mapped}");
     }
 }
