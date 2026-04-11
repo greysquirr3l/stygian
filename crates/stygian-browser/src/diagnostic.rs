@@ -188,8 +188,7 @@ impl TransportDiagnostic {
         }
         if observed.ja4.is_some() && expected_ja4.is_none() {
             mismatches.push(
-                "ja4 was provided but no expected JA4 could be derived from user-agent"
-                    .to_string(),
+                "ja4 was provided but no expected JA4 could be derived from user-agent".to_string(),
             );
         }
         if (observed.http3_perk_text.is_some() || observed.http3_perk_hash.is_some())
