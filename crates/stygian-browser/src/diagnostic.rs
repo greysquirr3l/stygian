@@ -61,6 +61,22 @@ pub enum CheckId {
     HeadlessUserAgent,
     /// `Notification.permission` must not be pre-granted (automation artefact).
     NotificationPermission,
+    /// `window.matchMedia` must be a function (PX env-bitmask bit 0).
+    MatchMediaPresent,
+    /// `document.elementFromPoint` must be a function (PX env-bitmask bit 1).
+    ElementFromPointPresent,
+    /// `window.requestAnimationFrame` must be a function (PX env-bitmask bit 2).
+    RequestAnimationFramePresent,
+    /// `window.getComputedStyle` must be a function (PX env-bitmask bit 3).
+    GetComputedStylePresent,
+    /// `CSS.supports` must exist and be callable (PX env-bitmask bit 4).
+    CssSupportsPresent,
+    /// `navigator.sendBeacon` must be a function (PX env-bitmask bit 5).
+    SendBeaconPresent,
+    /// `document.execCommand` must be a function (PX env-bitmask bit 6).
+    ExecCommandPresent,
+    /// `process.versions.node` must be absent — not a Node.js environment (PX env-bitmask bit 7).
+    NodeJsAbsent,
 }
 
 // ── CheckResult ───────────────────────────────────────────────────────────────
@@ -76,6 +92,136 @@ pub struct CheckResult {
     pub passed: bool,
     /// Diagnostic detail returned by the JavaScript evaluation.
     pub details: String,
+}
+
+/// Optional observed transport fingerprints to compare against expected values.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TransportObservations {
+    /// Observed JA3 hash (lower/upper hex accepted).
+    pub ja3_hash: Option<String>,
+    /// Observed JA4 fingerprint string.
+    pub ja4: Option<String>,
+    /// Observed HTTP/3 perk text (`SETTINGS|PSEUDO_HEADERS`).
+    pub http3_perk_text: Option<String>,
+    /// Observed HTTP/3 perk hash.
+    pub http3_perk_hash: Option<String>,
+}
+
+/// Transport-level diagnostics emitted alongside JavaScript stealth checks.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransportDiagnostic {
+    /// User-Agent sampled from the live page.
+    pub user_agent: String,
+    /// Built-in profile name inferred from User-Agent, if any.
+    pub expected_profile: Option<String>,
+    /// Expected JA3 raw string from the inferred profile.
+    pub expected_ja3_raw: Option<String>,
+    /// Expected JA3 hash from the inferred profile.
+    pub expected_ja3_hash: Option<String>,
+    /// Expected JA4 fingerprint from the inferred profile.
+    pub expected_ja4: Option<String>,
+    /// Expected HTTP/3 perk text derived from User-Agent.
+    pub expected_http3_perk_text: Option<String>,
+    /// Expected HTTP/3 perk hash derived from User-Agent.
+    pub expected_http3_perk_hash: Option<String>,
+    /// Caller-supplied observed transport values.
+    pub observed: TransportObservations,
+    /// `true` when all supplied observations match expected fingerprints.
+    /// `None` when no observations were supplied.
+    pub transport_match: Option<bool>,
+    /// Human-readable mismatch reasons.
+    pub mismatches: Vec<String>,
+}
+
+impl TransportDiagnostic {
+    /// Build transport diagnostics from `user_agent` and optional observations.
+    #[must_use]
+    pub fn from_user_agent_and_observations(
+        user_agent: &str,
+        observed: Option<&TransportObservations>,
+    ) -> Self {
+        let observed = observed.cloned().unwrap_or_default();
+
+        let expected_profile = crate::tls::expected_tls_profile_from_user_agent(user_agent);
+        let expected_ja3 = crate::tls::expected_ja3_from_user_agent(user_agent);
+        let expected_ja4 = crate::tls::expected_ja4_from_user_agent(user_agent);
+        let expected_http3 = crate::tls::expected_http3_perk_from_user_agent(user_agent);
+
+        let mut mismatches = Vec::new();
+
+        if let (Some(expected), Some(observed_hash)) = (
+            expected_ja3.as_ref().map(|j| j.hash.as_str()),
+            observed.ja3_hash.as_deref(),
+        ) && !observed_hash.eq_ignore_ascii_case(expected)
+        {
+            mismatches.push(format!(
+                "ja3_hash mismatch: expected '{expected}', observed '{observed_hash}'"
+            ));
+        }
+
+        if let (Some(expected), Some(observed_ja4)) = (
+            expected_ja4.as_ref().map(|j| j.fingerprint.as_str()),
+            observed.ja4.as_deref(),
+        ) && observed_ja4 != expected
+        {
+            mismatches.push(format!(
+                "ja4 mismatch: expected '{expected}', observed '{observed_ja4}'"
+            ));
+        }
+
+        if let Some(expected) = expected_http3.as_ref() {
+            let cmp = expected.compare(
+                observed.http3_perk_text.as_deref(),
+                observed.http3_perk_hash.as_deref(),
+            );
+            mismatches.extend(cmp.mismatches);
+        }
+
+        // If callers supplied observed transport fields that cannot be compared
+        // due to missing expectations, surface that explicitly instead of
+        // reporting a false positive match.
+        if observed.ja3_hash.is_some() && expected_ja3.is_none() {
+            mismatches.push(
+                "ja3_hash was provided but no expected JA3 could be derived from user-agent"
+                    .to_string(),
+            );
+        }
+        if observed.ja4.is_some() && expected_ja4.is_none() {
+            mismatches.push(
+                "ja4 was provided but no expected JA4 could be derived from user-agent".to_string(),
+            );
+        }
+        if (observed.http3_perk_text.is_some() || observed.http3_perk_hash.is_some())
+            && expected_http3.is_none()
+        {
+            mismatches.push(
+                "http3 perk observation was provided but no expected HTTP/3 fingerprint could be derived from user-agent"
+                    .to_string(),
+            );
+        }
+
+        let has_observed = observed.ja3_hash.is_some()
+            || observed.ja4.is_some()
+            || observed.http3_perk_text.is_some()
+            || observed.http3_perk_hash.is_some();
+
+        Self {
+            user_agent: user_agent.to_string(),
+            expected_profile: expected_profile.map(|p| p.name.clone()),
+            expected_ja3_raw: expected_ja3.as_ref().map(|j| j.raw.clone()),
+            expected_ja3_hash: expected_ja3.as_ref().map(|j| j.hash.clone()),
+            expected_ja4: expected_ja4.as_ref().map(|j| j.fingerprint.clone()),
+            expected_http3_perk_text: expected_http3
+                .as_ref()
+                .map(crate::tls::Http3Perk::perk_text),
+            expected_http3_perk_hash: expected_http3
+                .as_ref()
+                .map(crate::tls::Http3Perk::perk_hash),
+            observed,
+            transport_match: has_observed.then_some(mismatches.is_empty()),
+            mismatches,
+        }
+    }
 }
 
 // ── DiagnosticReport ──────────────────────────────────────────────────────────
@@ -103,6 +249,9 @@ pub struct DiagnosticReport {
     pub passed_count: usize,
     /// Number of checks where `passed == false`.
     pub failed_count: usize,
+    /// Optional transport-layer diagnostics (JA3/JA4/HTTP3 perk).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transport: Option<TransportDiagnostic>,
 }
 
 impl DiagnosticReport {
@@ -114,7 +263,15 @@ impl DiagnosticReport {
             checks,
             passed_count,
             failed_count,
+            transport: None,
         }
+    }
+
+    /// Attach transport diagnostics to this report.
+    #[must_use]
+    pub fn with_transport(mut self, transport: TransportDiagnostic) -> Self {
+        self.transport = Some(transport);
+        self
     }
 
     /// Returns `true` when every check passed.
@@ -274,6 +431,64 @@ const SCRIPT_NOTIFICATION: &str = concat!(
     "})"
 );
 
+const SCRIPT_MATCH_MEDIA: &str = concat!(
+    "JSON.stringify({",
+    "passed:typeof window.matchMedia==='function',",
+    "details:typeof window.matchMedia",
+    "})"
+);
+
+const SCRIPT_ELEMENT_FROM_POINT: &str = concat!(
+    "JSON.stringify({",
+    "passed:typeof document.elementFromPoint==='function',",
+    "details:typeof document.elementFromPoint",
+    "})"
+);
+
+const SCRIPT_RAF: &str = concat!(
+    "JSON.stringify({",
+    "passed:typeof window.requestAnimationFrame==='function',",
+    "details:typeof window.requestAnimationFrame",
+    "})"
+);
+
+const SCRIPT_GET_COMPUTED_STYLE: &str = concat!(
+    "JSON.stringify({",
+    "passed:typeof window.getComputedStyle==='function',",
+    "details:typeof window.getComputedStyle",
+    "})"
+);
+
+const SCRIPT_CSS_SUPPORTS: &str = concat!(
+    "JSON.stringify({",
+    "passed:typeof CSS!=='undefined'&&typeof CSS.supports==='function',",
+    "details:typeof CSS",
+    "})"
+);
+
+const SCRIPT_SEND_BEACON: &str = concat!(
+    "JSON.stringify({",
+    "passed:typeof navigator.sendBeacon==='function',",
+    "details:typeof navigator.sendBeacon",
+    "})"
+);
+
+const SCRIPT_EXEC_COMMAND: &str = concat!(
+    "JSON.stringify({",
+    "passed:typeof document.execCommand==='function',",
+    "details:typeof document.execCommand",
+    "})"
+);
+
+const SCRIPT_NODEJS_ABSENT: &str = concat!(
+    "JSON.stringify({",
+    "passed:typeof process==='undefined'",
+    "||process.versions==null",
+    "||typeof process.versions.node==='undefined',",
+    "details:typeof process",
+    "})"
+);
+
 // ── Static check catalogue ────────────────────────────────────────────────────
 
 /// Return all built-in stealth detection checks.
@@ -335,6 +550,46 @@ static CHECKS: &[DetectionCheck] = &[
         description: "Notification.permission must not be pre-granted",
         script: SCRIPT_NOTIFICATION,
     },
+    DetectionCheck {
+        id: CheckId::MatchMediaPresent,
+        description: "window.matchMedia must be a function (PX env-bitmask bit 0)",
+        script: SCRIPT_MATCH_MEDIA,
+    },
+    DetectionCheck {
+        id: CheckId::ElementFromPointPresent,
+        description: "document.elementFromPoint must be a function (PX env-bitmask bit 1)",
+        script: SCRIPT_ELEMENT_FROM_POINT,
+    },
+    DetectionCheck {
+        id: CheckId::RequestAnimationFramePresent,
+        description: "window.requestAnimationFrame must be a function (PX env-bitmask bit 2)",
+        script: SCRIPT_RAF,
+    },
+    DetectionCheck {
+        id: CheckId::GetComputedStylePresent,
+        description: "window.getComputedStyle must be a function (PX env-bitmask bit 3)",
+        script: SCRIPT_GET_COMPUTED_STYLE,
+    },
+    DetectionCheck {
+        id: CheckId::CssSupportsPresent,
+        description: "CSS.supports must exist and be callable (PX env-bitmask bit 4)",
+        script: SCRIPT_CSS_SUPPORTS,
+    },
+    DetectionCheck {
+        id: CheckId::SendBeaconPresent,
+        description: "navigator.sendBeacon must be a function (PX env-bitmask bit 5)",
+        script: SCRIPT_SEND_BEACON,
+    },
+    DetectionCheck {
+        id: CheckId::ExecCommandPresent,
+        description: "document.execCommand must be a function (PX env-bitmask bit 6)",
+        script: SCRIPT_EXEC_COMMAND,
+    },
+    DetectionCheck {
+        id: CheckId::NodeJsAbsent,
+        description: "process.versions.node must be absent — not a Node.js environment (PX env-bitmask bit 7)",
+        script: SCRIPT_NODEJS_ABSENT,
+    },
 ];
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -346,8 +601,8 @@ mod tests {
     use std::collections::HashSet;
 
     #[test]
-    fn all_checks_returns_ten_entries() {
-        assert_eq!(all_checks().len(), 10);
+    fn all_checks_returns_eighteen_entries() {
+        assert_eq!(all_checks().len(), 18);
     }
 
     #[test]
@@ -427,7 +682,7 @@ mod tests {
             .collect();
         let report = DiagnosticReport::new(results);
         assert!(report.is_clean());
-        assert_eq!(report.passed_count, 10);
+        assert_eq!(report.passed_count, 18);
         assert_eq!(report.failed_count, 0);
         assert!((report.coverage_pct() - 100.0).abs() < 0.001);
         assert_eq!(report.failures().count(), 0);
@@ -444,7 +699,7 @@ mod tests {
         let report = DiagnosticReport::new(results);
         assert!(!report.is_clean());
         assert_eq!(report.failed_count, 2);
-        assert_eq!(report.passed_count, 8);
+        assert_eq!(report.passed_count, 16);
         assert_eq!(report.failures().count(), 2);
     }
 
