@@ -123,7 +123,10 @@ mod tests {
     #[tokio::test]
     async fn proxy_manager_implements_port() -> Result<(), Box<dyn std::error::Error>> {
         let storage = Arc::new(MemoryProxyStore::default());
-        let mgr = Arc::new(ProxyManager::with_round_robin(storage.clone(), ProxyConfig::default())?);
+        let mgr = Arc::new(ProxyManager::with_round_robin(
+            storage.clone(),
+            ProxyConfig::default(),
+        )?);
         mgr.add_proxy(make_proxy("http://a.test:8080")).await?;
 
         // Access through the trait object.

@@ -493,7 +493,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_sitemapindex_extracts_nested_urls() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    fn parse_sitemapindex_extracts_nested_urls()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
         let urls = parse_sitemapindex(SITEMAPINDEX_XML)?;
         assert_eq!(urls.len(), 2);
         assert_eq!(
