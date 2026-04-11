@@ -61,6 +61,22 @@ pub enum CheckId {
     HeadlessUserAgent,
     /// `Notification.permission` must not be pre-granted (automation artefact).
     NotificationPermission,
+    /// `window.matchMedia` must be a function (PX env-bitmask bit 0).
+    MatchMediaPresent,
+    /// `document.elementFromPoint` must be a function (PX env-bitmask bit 1).
+    ElementFromPointPresent,
+    /// `window.requestAnimationFrame` must be a function (PX env-bitmask bit 2).
+    RequestAnimationFramePresent,
+    /// `window.getComputedStyle` must be a function (PX env-bitmask bit 3).
+    GetComputedStylePresent,
+    /// `CSS.supports` must exist and be callable (PX env-bitmask bit 4).
+    CssSupportsPresent,
+    /// `navigator.sendBeacon` must be a function (PX env-bitmask bit 5).
+    SendBeaconPresent,
+    /// `document.execCommand` must be a function (PX env-bitmask bit 6).
+    ExecCommandPresent,
+    /// `process.versions.node` must be absent — not a Node.js environment (PX env-bitmask bit 7).
+    NodeJsAbsent,
 }
 
 // ── CheckResult ───────────────────────────────────────────────────────────────
@@ -274,6 +290,64 @@ const SCRIPT_NOTIFICATION: &str = concat!(
     "})"
 );
 
+const SCRIPT_MATCH_MEDIA: &str = concat!(
+    "JSON.stringify({",
+    "passed:typeof window.matchMedia==='function',",
+    "details:typeof window.matchMedia",
+    "})"
+);
+
+const SCRIPT_ELEMENT_FROM_POINT: &str = concat!(
+    "JSON.stringify({",
+    "passed:typeof document.elementFromPoint==='function',",
+    "details:typeof document.elementFromPoint",
+    "})"
+);
+
+const SCRIPT_RAF: &str = concat!(
+    "JSON.stringify({",
+    "passed:typeof window.requestAnimationFrame==='function',",
+    "details:typeof window.requestAnimationFrame",
+    "})"
+);
+
+const SCRIPT_GET_COMPUTED_STYLE: &str = concat!(
+    "JSON.stringify({",
+    "passed:typeof window.getComputedStyle==='function',",
+    "details:typeof window.getComputedStyle",
+    "})"
+);
+
+const SCRIPT_CSS_SUPPORTS: &str = concat!(
+    "JSON.stringify({",
+    "passed:typeof CSS!=='undefined'&&typeof CSS.supports==='function',",
+    "details:typeof CSS",
+    "})"
+);
+
+const SCRIPT_SEND_BEACON: &str = concat!(
+    "JSON.stringify({",
+    "passed:typeof navigator.sendBeacon==='function',",
+    "details:typeof navigator.sendBeacon",
+    "})"
+);
+
+const SCRIPT_EXEC_COMMAND: &str = concat!(
+    "JSON.stringify({",
+    "passed:typeof document.execCommand==='function',",
+    "details:typeof document.execCommand",
+    "})"
+);
+
+const SCRIPT_NODEJS_ABSENT: &str = concat!(
+    "JSON.stringify({",
+    "passed:typeof process==='undefined'",
+    "||typeof process.versions==='undefined'",
+    "||typeof process.versions.node==='undefined',",
+    "details:typeof process",
+    "})"
+);
+
 // ── Static check catalogue ────────────────────────────────────────────────────
 
 /// Return all built-in stealth detection checks.
@@ -335,6 +409,46 @@ static CHECKS: &[DetectionCheck] = &[
         description: "Notification.permission must not be pre-granted",
         script: SCRIPT_NOTIFICATION,
     },
+    DetectionCheck {
+        id: CheckId::MatchMediaPresent,
+        description: "window.matchMedia must be a function (PX env-bitmask bit 0)",
+        script: SCRIPT_MATCH_MEDIA,
+    },
+    DetectionCheck {
+        id: CheckId::ElementFromPointPresent,
+        description: "document.elementFromPoint must be a function (PX env-bitmask bit 1)",
+        script: SCRIPT_ELEMENT_FROM_POINT,
+    },
+    DetectionCheck {
+        id: CheckId::RequestAnimationFramePresent,
+        description: "window.requestAnimationFrame must be a function (PX env-bitmask bit 2)",
+        script: SCRIPT_RAF,
+    },
+    DetectionCheck {
+        id: CheckId::GetComputedStylePresent,
+        description: "window.getComputedStyle must be a function (PX env-bitmask bit 3)",
+        script: SCRIPT_GET_COMPUTED_STYLE,
+    },
+    DetectionCheck {
+        id: CheckId::CssSupportsPresent,
+        description: "CSS.supports must exist and be callable (PX env-bitmask bit 4)",
+        script: SCRIPT_CSS_SUPPORTS,
+    },
+    DetectionCheck {
+        id: CheckId::SendBeaconPresent,
+        description: "navigator.sendBeacon must be a function (PX env-bitmask bit 5)",
+        script: SCRIPT_SEND_BEACON,
+    },
+    DetectionCheck {
+        id: CheckId::ExecCommandPresent,
+        description: "document.execCommand must be a function (PX env-bitmask bit 6)",
+        script: SCRIPT_EXEC_COMMAND,
+    },
+    DetectionCheck {
+        id: CheckId::NodeJsAbsent,
+        description: "process.versions.node must be absent — not a Node.js environment (PX env-bitmask bit 7)",
+        script: SCRIPT_NODEJS_ABSENT,
+    },
 ];
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -347,7 +461,7 @@ mod tests {
 
     #[test]
     fn all_checks_returns_ten_entries() {
-        assert_eq!(all_checks().len(), 10);
+        assert_eq!(all_checks().len(), 18);
     }
 
     #[test]
@@ -427,7 +541,7 @@ mod tests {
             .collect();
         let report = DiagnosticReport::new(results);
         assert!(report.is_clean());
-        assert_eq!(report.passed_count, 10);
+        assert_eq!(report.passed_count, 18);
         assert_eq!(report.failed_count, 0);
         assert!((report.coverage_pct() - 100.0).abs() < 0.001);
         assert_eq!(report.failures().count(), 0);
@@ -444,7 +558,7 @@ mod tests {
         let report = DiagnosticReport::new(results);
         assert!(!report.is_clean());
         assert_eq!(report.failed_count, 2);
-        assert_eq!(report.passed_count, 8);
+        assert_eq!(report.passed_count, 16);
         assert_eq!(report.failures().count(), 2);
     }
 
