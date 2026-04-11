@@ -245,6 +245,7 @@ impl HealthChecker {
     }
 }
 
+#[cfg(feature = "tls-profiled")]
 fn proxy_url_with_auth(proxy_url: &str, username: Option<&str>, password: Option<&str>) -> String {
     let (Some(user), Some(pass)) = (username, password) else {
         return proxy_url.to_string();
@@ -327,6 +328,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "tls-profiled")]
     #[test]
     fn proxy_url_with_auth_injects_credentials() {
         let proxy_url = proxy_url_with_auth(
@@ -337,6 +339,7 @@ mod tests {
         assert!(proxy_url.starts_with("http://alice:s3cr3t@proxy.example.com:8080"));
     }
 
+    #[cfg(feature = "tls-profiled")]
     #[test]
     fn proxy_url_with_auth_leaves_existing_credentials_untouched() {
         let proxy_url = proxy_url_with_auth(
