@@ -177,15 +177,15 @@ impl HealthChecker {
                     p.profile(),
                     Some(&routed_proxy_url),
                 )
-                    .map(crate::http_client::ProfiledRequester::into_client)
-                    .map_err(|e| {
-                        tracing::warn!(
-                            error = %e,
-                            proxy = %routed_proxy_url,
-                            "tls-profiled health-check client build failed; falling back to vanilla"
-                        );
-                    })
-                    .ok()
+                .map(crate::http_client::ProfiledRequester::into_client)
+                .map_err(|e| {
+                    tracing::warn!(
+                        error = %e,
+                        proxy = %routed_proxy_url,
+                        "tls-profiled health-check client build failed; falling back to vanilla"
+                    );
+                })
+                .ok()
             });
 
             #[cfg(not(feature = "tls-profiled"))]
@@ -329,8 +329,11 @@ mod tests {
 
     #[test]
     fn proxy_url_with_auth_injects_credentials() {
-        let proxy_url =
-            proxy_url_with_auth("http://proxy.example.com:8080", Some("alice"), Some("s3cr3t"));
+        let proxy_url = proxy_url_with_auth(
+            "http://proxy.example.com:8080",
+            Some("alice"),
+            Some("s3cr3t"),
+        );
         assert!(proxy_url.starts_with("http://alice:s3cr3t@proxy.example.com:8080"));
     }
 
