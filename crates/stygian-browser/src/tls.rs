@@ -710,6 +710,45 @@ pub fn expected_http3_perk_from_user_agent(user_agent: &str) -> Option<Http3Perk
     None
 }
 
+/// Resolve the expected built-in TLS profile for a given User-Agent.
+///
+/// Returns `None` when no supported browser family can be inferred.
+#[must_use]
+pub fn expected_tls_profile_from_user_agent(user_agent: &str) -> Option<&'static TlsProfile> {
+    let ua = user_agent.to_ascii_lowercase();
+
+    if ua.contains("edg/") {
+        return Some(&EDGE_131);
+    }
+
+    if ua.contains("firefox/") {
+        return Some(&FIREFOX_133);
+    }
+
+    // Safari check excludes Chromium UAs that include the Safari token.
+    if ua.contains("safari/") && !ua.contains("chrome/") && !ua.contains("edg/") {
+        return Some(&SAFARI_18);
+    }
+
+    if ua.contains("chrome/") {
+        return Some(&CHROME_131);
+    }
+
+    None
+}
+
+/// Return expected JA3 hash for a User-Agent if a built-in profile matches.
+#[must_use]
+pub fn expected_ja3_from_user_agent(user_agent: &str) -> Option<Ja3Hash> {
+    expected_tls_profile_from_user_agent(user_agent).map(TlsProfile::ja3)
+}
+
+/// Return expected JA4 fingerprint for a User-Agent if a built-in profile matches.
+#[must_use]
+pub fn expected_ja4_from_user_agent(user_agent: &str) -> Option<Ja4> {
+    expected_tls_profile_from_user_agent(user_agent).map(TlsProfile::ja4)
+}
+
 // ── profile methods ──────────────────────────────────────────────────────────
 
 /// Truncate a hex string to at most `n` characters on a char boundary.

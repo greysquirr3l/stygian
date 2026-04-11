@@ -94,6 +94,113 @@ pub struct CheckResult {
     pub details: String,
 }
 
+/// Optional observed transport fingerprints to compare against expected values.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TransportObservations {
+    /// Observed JA3 hash (lower/upper hex accepted).
+    pub ja3_hash: Option<String>,
+    /// Observed JA4 fingerprint string.
+    pub ja4: Option<String>,
+    /// Observed HTTP/3 perk text (`SETTINGS|PSEUDO_HEADERS`).
+    pub http3_perk_text: Option<String>,
+    /// Observed HTTP/3 perk hash.
+    pub http3_perk_hash: Option<String>,
+}
+
+/// Transport-level diagnostics emitted alongside JavaScript stealth checks.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransportDiagnostic {
+    /// User-Agent sampled from the live page.
+    pub user_agent: String,
+    /// Built-in profile name inferred from User-Agent, if any.
+    pub expected_profile: Option<String>,
+    /// Expected JA3 raw string from the inferred profile.
+    pub expected_ja3_raw: Option<String>,
+    /// Expected JA3 hash from the inferred profile.
+    pub expected_ja3_hash: Option<String>,
+    /// Expected JA4 fingerprint from the inferred profile.
+    pub expected_ja4: Option<String>,
+    /// Expected HTTP/3 perk text derived from User-Agent.
+    pub expected_http3_perk_text: Option<String>,
+    /// Expected HTTP/3 perk hash derived from User-Agent.
+    pub expected_http3_perk_hash: Option<String>,
+    /// Caller-supplied observed transport values.
+    pub observed: TransportObservations,
+    /// `true` when all supplied observations match expected fingerprints.
+    /// `None` when no observations were supplied.
+    pub transport_match: Option<bool>,
+    /// Human-readable mismatch reasons.
+    pub mismatches: Vec<String>,
+}
+
+impl TransportDiagnostic {
+    /// Build transport diagnostics from `user_agent` and optional observations.
+    #[must_use]
+    pub fn from_user_agent_and_observations(
+        user_agent: &str,
+        observed: Option<&TransportObservations>,
+    ) -> Self {
+        let observed = observed.cloned().unwrap_or_default();
+
+        let expected_profile = crate::tls::expected_tls_profile_from_user_agent(user_agent);
+        let expected_ja3 = crate::tls::expected_ja3_from_user_agent(user_agent);
+        let expected_ja4 = crate::tls::expected_ja4_from_user_agent(user_agent);
+        let expected_http3 = crate::tls::expected_http3_perk_from_user_agent(user_agent);
+
+        let mut mismatches = Vec::new();
+
+        if let (Some(expected), Some(observed_hash)) = (
+            expected_ja3.as_ref().map(|j| j.hash.as_str()),
+            observed.ja3_hash.as_deref(),
+        ) && !observed_hash.eq_ignore_ascii_case(expected)
+        {
+            mismatches.push(format!(
+                "ja3_hash mismatch: expected '{expected}', observed '{observed_hash}'"
+            ));
+        }
+
+        if let (Some(expected), Some(observed_ja4)) = (
+            expected_ja4.as_ref().map(|j| j.fingerprint.as_str()),
+            observed.ja4.as_deref(),
+        ) && observed_ja4 != expected
+        {
+            mismatches.push(format!(
+                "ja4 mismatch: expected '{expected}', observed '{observed_ja4}'"
+            ));
+        }
+
+        if let Some(expected) = expected_http3.as_ref() {
+            let cmp = expected.compare(
+                observed.http3_perk_text.as_deref(),
+                observed.http3_perk_hash.as_deref(),
+            );
+            mismatches.extend(cmp.mismatches);
+        }
+
+        let has_observed = observed.ja3_hash.is_some()
+            || observed.ja4.is_some()
+            || observed.http3_perk_text.is_some()
+            || observed.http3_perk_hash.is_some();
+
+        Self {
+            user_agent: user_agent.to_string(),
+            expected_profile: expected_profile.map(|p| p.name.clone()),
+            expected_ja3_raw: expected_ja3.as_ref().map(|j| j.raw.clone()),
+            expected_ja3_hash: expected_ja3.as_ref().map(|j| j.hash.clone()),
+            expected_ja4: expected_ja4.as_ref().map(|j| j.fingerprint.clone()),
+            expected_http3_perk_text: expected_http3
+                .as_ref()
+                .map(crate::tls::Http3Perk::perk_text),
+            expected_http3_perk_hash: expected_http3
+                .as_ref()
+                .map(crate::tls::Http3Perk::perk_hash),
+            observed,
+            transport_match: has_observed.then_some(mismatches.is_empty()),
+            mismatches,
+        }
+    }
+}
+
 // ── DiagnosticReport ──────────────────────────────────────────────────────────
 
 /// Aggregate result from running all detection checks.
@@ -119,6 +226,9 @@ pub struct DiagnosticReport {
     pub passed_count: usize,
     /// Number of checks where `passed == false`.
     pub failed_count: usize,
+    /// Optional transport-layer diagnostics (JA3/JA4/HTTP3 perk).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transport: Option<TransportDiagnostic>,
 }
 
 impl DiagnosticReport {
@@ -130,7 +240,15 @@ impl DiagnosticReport {
             checks,
             passed_count,
             failed_count,
+            transport: None,
         }
+    }
+
+    /// Attach transport diagnostics to this report.
+    #[must_use]
+    pub fn with_transport(mut self, transport: TransportDiagnostic) -> Self {
+        self.transport = Some(transport);
+        self
     }
 
     /// Returns `true` when every check passed.

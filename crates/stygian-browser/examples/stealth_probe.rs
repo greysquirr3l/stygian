@@ -21,12 +21,14 @@ use std::sync::Arc;
 
 use serde_json::json;
 use stygian_browser::config::StealthLevel;
-use stygian_browser::tls::expected_http3_perk_from_user_agent;
+use stygian_browser::diagnostic::TransportObservations;
 use stygian_browser::{BrowserConfig, BrowserPool, WaitUntil};
 
 struct ProbeArgs {
     threshold: f64,
     urls: Vec<String>,
+    observed_ja3_hash: Option<String>,
+    observed_ja4: Option<String>,
     observed_http3_perk_text: Option<String>,
     observed_http3_perk_hash: Option<String>,
 }
@@ -38,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if args.urls.is_empty() {
         eprintln!(
-            "usage: stealth_probe [--threshold 0.90] [--http3-perk-text TEXT] [--http3-perk-hash HASH] <url>..."
+            "usage: stealth_probe [--threshold 0.90] [--ja3-hash HASH] [--ja4 FP] [--http3-perk-text TEXT] [--http3-perk-hash HASH] <url>..."
         );
         std::process::exit(2);
     }
@@ -101,31 +103,19 @@ async fn probe_url(
     page.navigate(url, WaitUntil::DomContentLoaded, Duration::from_secs(20))
         .await?;
 
-    let report = page.verify_stealth().await?;
-    let user_agent = page.eval::<String>("navigator.userAgent").await.ok();
+    let observations = TransportObservations {
+        ja3_hash: args.observed_ja3_hash.clone(),
+        ja4: args.observed_ja4.clone(),
+        http3_perk_text: args.observed_http3_perk_text.clone(),
+        http3_perk_hash: args.observed_http3_perk_hash.clone(),
+    };
+    let report = page
+        .verify_stealth_with_transport(Some(observations))
+        .await?;
 
     // coverage_pct() returns 0.0–100.0; normalise to 0.0–1.0 for threshold comparison.
     let score = report.coverage_pct() / 100.0;
     let ok = score >= args.threshold;
-
-    let http3 = user_agent.as_deref().and_then(|ua| {
-        expected_http3_perk_from_user_agent(ua).map(|expected| {
-            let expected_text = expected.perk_text();
-            let expected_hash = expected.perk_hash();
-            let comparison = expected.compare(
-                args.observed_http3_perk_text.as_deref(),
-                args.observed_http3_perk_hash.as_deref(),
-            );
-
-            json!({
-                "expected_perk_text": expected_text,
-                "expected_perk_hash": expected_hash,
-                "observed_perk_text": args.observed_http3_perk_text,
-                "observed_perk_hash": args.observed_http3_perk_hash,
-                "comparison": comparison,
-            })
-        })
-    });
 
     let failed_checks: Vec<serde_json::Value> = report
         .failures()
@@ -143,14 +133,13 @@ async fn probe_url(
 
     Ok(json!({
         "url": url,
-        "user_agent": user_agent,
         "score": score,
         "score_pct": report.coverage_pct(),
         "passed_count": report.passed_count,
         "failed_count": report.failed_count,
         "failed_checks": failed_checks,
         "threshold": args.threshold,
-        "http3": http3,
+        "transport": report.transport,
         "ok": ok,
     }))
 }
@@ -158,6 +147,8 @@ async fn probe_url(
 fn parse_args(args: &[String]) -> Result<ProbeArgs, Box<dyn std::error::Error>> {
     let mut threshold = 0.90_f64;
     let mut urls = Vec::new();
+    let mut observed_ja3_hash = None;
+    let mut observed_ja4 = None;
     let mut observed_http3_perk_text = None;
     let mut observed_http3_perk_hash = None;
     let mut iter = args.iter();
@@ -172,6 +163,16 @@ fn parse_args(args: &[String]) -> Result<ProbeArgs, Box<dyn std::error::Error>> 
             threshold = val
                 .parse::<f64>()
                 .map_err(|_| "--threshold must be a float in range 0.0–1.0")?;
+        } else if let Some(val) = arg.strip_prefix("--ja3-hash=") {
+            observed_ja3_hash = Some(val.to_string());
+        } else if arg == "--ja3-hash" {
+            let val = iter.next().ok_or("--ja3-hash requires a value")?;
+            observed_ja3_hash = Some(val.clone());
+        } else if let Some(val) = arg.strip_prefix("--ja4=") {
+            observed_ja4 = Some(val.to_string());
+        } else if arg == "--ja4" {
+            let val = iter.next().ok_or("--ja4 requires a value")?;
+            observed_ja4 = Some(val.clone());
         } else if let Some(val) = arg.strip_prefix("--http3-perk-text=") {
             observed_http3_perk_text = Some(val.to_string());
         } else if arg == "--http3-perk-text" {
@@ -190,6 +191,8 @@ fn parse_args(args: &[String]) -> Result<ProbeArgs, Box<dyn std::error::Error>> 
     Ok(ProbeArgs {
         threshold,
         urls,
+        observed_ja3_hash,
+        observed_ja4,
         observed_http3_perk_text,
         observed_http3_perk_hash,
     })
