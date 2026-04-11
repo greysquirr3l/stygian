@@ -43,7 +43,7 @@ use thiserror::Error;
 use tracing::{debug, info, warn};
 
 use crate::domain::error::{Result as DomainResult, ServiceError, StygianError};
-use crate::ports::data_sink::{DataSinkError, DataSinkPort, SinkRecord, SinkReceipt};
+use crate::ports::data_sink::{DataSinkError, DataSinkPort, SinkReceipt, SinkRecord};
 use crate::ports::{ScrapingService, ServiceInput, ServiceOutput};
 
 // ─── Errors ───────────────────────────────────────────────────────────────────
@@ -626,10 +626,7 @@ impl DataSinkPort for ScrapeExchangeAdapter {
     /// # Errors
     ///
     /// [`DataSinkError::ValidationFailed`] if the record is structurally invalid.
-    async fn validate(
-        &self,
-        record: &SinkRecord,
-    ) -> std::result::Result<(), DataSinkError> {
+    async fn validate(&self, record: &SinkRecord) -> std::result::Result<(), DataSinkError> {
         Self::local_validate(record)
     }
 
@@ -639,9 +636,10 @@ impl DataSinkPort for ScrapeExchangeAdapter {
     ///
     /// [`DataSinkError::PublishFailed`] if the health endpoint is unreachable.
     async fn health_check(&self) -> std::result::Result<(), DataSinkError> {
-        self.client.health_check().await.map_err(|e| {
-            DataSinkError::PublishFailed(format!("health check failed: {e}"))
-        })
+        self.client
+            .health_check()
+            .await
+            .map_err(|e| DataSinkError::PublishFailed(format!("health check failed: {e}")))
     }
 }
 
@@ -673,6 +671,315 @@ impl ScrapingService for ScrapeExchangeAdapter {
 
     fn name(&self) -> &'static str {
         "scrape-exchange"
+    }
+}
+
+use futures::stream::StreamExt;
+use tokio::time::timeout;
+use tokio_tungstenite::connect_async;
+use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+
+use crate::ports::stream_source::{StreamEvent, StreamSourcePort};
+
+// ─── WebSocket feed (T28) ─────────────────────────────────────────────────────
+
+/// Server-side filter options for the Scrape Exchange real-time message feed.
+///
+/// All fields are optional; omitting a field means "no filter on that dimension".
+///
+/// # Example
+///
+/// ```
+/// use stygian_graph::adapters::scrape_exchange::FeedFilter;
+///
+/// let filter = FeedFilter {
+///     platform: Some("web".to_string()),
+///     entity: Some("products".to_string()),
+///     uploader: None,
+///     creator_id: None,
+///     schema_owner: None,
+///     schema_version: None,
+/// };
+/// assert_eq!(filter.platform.as_deref(), Some("web"));
+/// ```
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FeedFilter {
+    /// Filter by platform (e.g. `"web"`, `"mobile"`).
+    pub platform: Option<String>,
+    /// Filter by entity type (e.g. `"products"`, `"listings"`).
+    pub entity: Option<String>,
+    /// Filter by uploader username.
+    pub uploader: Option<String>,
+    /// Filter by creator user ID.
+    pub creator_id: Option<String>,
+    /// Filter by schema owner (client-side).
+    pub schema_owner: Option<String>,
+    /// Filter by schema version string (client-side).
+    pub schema_version: Option<String>,
+}
+
+/// Which message content to request from the feed.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FeedMessageType {
+    /// Receive the complete scraped data payload.
+    #[default]
+    Full,
+    /// Receive upload metadata only (no content).
+    UploadMetadata,
+    /// Receive platform metadata.
+    PlatformMetadata,
+}
+
+/// Configuration for the Scrape Exchange WebSocket feed adapter.
+///
+/// # Example
+///
+/// ```
+/// use stygian_graph::adapters::scrape_exchange::{FeedConfig, FeedFilter, FeedMessageType};
+///
+/// let config = FeedConfig {
+///     filter: FeedFilter {
+///         platform: Some("web".to_string()),
+///         ..Default::default()
+///     },
+///     message_type: FeedMessageType::Full,
+///     max_reconnect_attempts: 5,
+///     initial_backoff_ms: 500,
+/// };
+/// assert_eq!(config.max_reconnect_attempts, 5);
+/// ```
+#[derive(Debug, Clone)]
+pub struct FeedConfig {
+    /// Server-side (and client-side) filter to apply.
+    pub filter: FeedFilter,
+    /// Which message format to receive.
+    pub message_type: FeedMessageType,
+    /// Maximum number of reconnection attempts on disconnect.
+    pub max_reconnect_attempts: u32,
+    /// Initial reconnection backoff in milliseconds (doubles each attempt).
+    pub initial_backoff_ms: u64,
+}
+
+impl Default for FeedConfig {
+    fn default() -> Self {
+        Self {
+            filter: FeedFilter::default(),
+            message_type: FeedMessageType::Full,
+            max_reconnect_attempts: 5,
+            initial_backoff_ms: 500,
+        }
+    }
+}
+
+/// Adapter that subscribes to the Scrape Exchange real-time WebSocket feed,
+/// implementing [`StreamSourcePort`].
+///
+/// Connect by calling [`StreamSourcePort::subscribe`] with a `wss://` URL
+/// pointing at the Scrape Exchange messages endpoint
+/// (`/api/messages/v1`), or use [`ScrapeExchangeFeed::subscribe_with_auth`]
+/// to pass a pre-negotiated JWT bearer token.
+///
+/// # Example
+///
+/// ```no_run
+/// use stygian_graph::adapters::scrape_exchange::{ScrapeExchangeFeed, FeedConfig};
+/// use stygian_graph::ports::stream_source::StreamSourcePort;
+///
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// let feed = ScrapeExchangeFeed::new(FeedConfig::default());
+/// // let events = feed.subscribe("wss://scrape.exchange/api/messages/v1", Some(50)).await?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// # });
+/// ```
+pub struct ScrapeExchangeFeed {
+    config: FeedConfig,
+    /// Optional JWT token for authenticated feeds.
+    bearer_token: Option<String>,
+}
+
+impl ScrapeExchangeFeed {
+    /// Create a new feed adapter.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_graph::adapters::scrape_exchange::{ScrapeExchangeFeed, FeedConfig};
+    ///
+    /// let feed = ScrapeExchangeFeed::new(FeedConfig::default());
+    /// ```
+    #[must_use]
+    pub fn new(config: FeedConfig) -> Self {
+        Self {
+            config,
+            bearer_token: None,
+        }
+    }
+
+    /// Attach a JWT bearer token for authenticated WebSocket connections.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_graph::adapters::scrape_exchange::{ScrapeExchangeFeed, FeedConfig};
+    ///
+    /// let feed = ScrapeExchangeFeed::new(FeedConfig::default())
+    ///     .with_bearer_token("eyJ...");
+    /// ```
+    #[must_use]
+    pub fn with_bearer_token(mut self, token: impl Into<String>) -> Self {
+        self.bearer_token = Some(token.into());
+        self
+    }
+
+    /// Compute exponential backoff duration for reconnect attempt `n` (0-indexed).
+    fn backoff_duration(&self, attempt: u32) -> Duration {
+        let ms = self
+            .config
+            .initial_backoff_ms
+            .saturating_mul(1_u64 << attempt);
+        Duration::from_millis(ms.min(30_000))
+    }
+
+    /// Build the authenticated HTTP request (with optional Bearer header).
+    fn build_request(
+        &self,
+        url: &str,
+    ) -> std::result::Result<
+        tokio_tungstenite::tungstenite::handshake::client::Request,
+        ScrapeExchangeError,
+    > {
+        let mut req = url
+            .into_client_request()
+            .map_err(|e| ScrapeExchangeError::InvalidConfig(format!("invalid WS URL: {e}")))?;
+
+        if let Some(token) = &self.bearer_token {
+            let value = format!("Bearer {token}")
+                .parse()
+                .map_err(|e| ScrapeExchangeError::InvalidConfig(format!("invalid token: {e}")))?;
+            req.headers_mut().insert("Authorization", value);
+        }
+        Ok(req)
+    }
+
+    /// Apply client-side filters from [`FeedFilter`] to a received event.
+    fn passes_client_filter(&self, event: &StreamEvent) -> bool {
+        let filter = &self.config.filter;
+        if filter.schema_owner.is_none() && filter.schema_version.is_none() {
+            return true;
+        }
+        // Parse data as JSON to check schema fields.
+        let Ok(val) = serde_json::from_str::<Value>(&event.data) else {
+            return true; // non-JSON events pass through
+        };
+        if let Some(owner) = &filter.schema_owner
+            && val.get("schema_owner").and_then(Value::as_str) != Some(owner.as_str())
+        {
+            return false;
+        }
+        if let Some(version) = &filter.schema_version
+            && val.get("schema_version").and_then(Value::as_str) != Some(version.as_str())
+        {
+            return false;
+        }
+        true
+    }
+
+    /// Inner subscribe — single connection attempt.
+    async fn subscribe_once(
+        &self,
+        url: &str,
+        max_events: Option<usize>,
+    ) -> std::result::Result<Vec<StreamEvent>, ScrapeExchangeError> {
+        let req = self.build_request(url)?;
+        let (ws_stream, _) = connect_async(req)
+            .await
+            .map_err(|e| ScrapeExchangeError::InvalidConfig(format!("WS connect failed: {e}")))?;
+
+        let (_, mut read) = ws_stream.split();
+        let mut events = Vec::new();
+        let deadline = Duration::from_secs(120);
+
+        loop {
+            let cap = max_events.unwrap_or(usize::MAX);
+            if events.len() >= cap {
+                break;
+            }
+
+            let msg = match timeout(deadline, read.next()).await {
+                Ok(Some(Ok(m))) => m,
+                Ok(Some(Err(e))) => {
+                    warn!("WS message error: {e}");
+                    break;
+                }
+                Ok(None) | Err(_) => break, // stream closed or timeout
+            };
+
+            let text = match msg {
+                Message::Text(t) => t.to_string(),
+                Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => continue,
+                Message::Close(_) => break,
+                Message::Binary(b) => String::from_utf8_lossy(&b).into_owned(),
+            };
+
+            let event = StreamEvent {
+                id: None,
+                event_type: Some("upload".to_string()),
+                data: text,
+            };
+
+            if self.passes_client_filter(&event) {
+                events.push(event);
+            }
+        }
+
+        Ok(events)
+    }
+}
+
+#[async_trait]
+impl StreamSourcePort for ScrapeExchangeFeed {
+    /// Subscribe to the Scrape Exchange WebSocket feed.
+    ///
+    /// On disconnect, automatically reconnects with exponential backoff
+    /// up to [`FeedConfig::max_reconnect_attempts`] times.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::domain::error::StygianError`] if all reconnect attempts are exhausted.
+    async fn subscribe(
+        &self,
+        url: &str,
+        max_events: Option<usize>,
+    ) -> crate::domain::error::Result<Vec<StreamEvent>> {
+        let mut attempt = 0u32;
+        loop {
+            match self.subscribe_once(url, max_events).await {
+                Ok(events) => return Ok(events),
+                Err(e) => {
+                    if attempt >= self.config.max_reconnect_attempts {
+                        return Err(StygianError::from(ServiceError::Unavailable(format!(
+                            "WS feed failed after {} attempts: {e}",
+                            attempt + 1
+                        ))));
+                    }
+                    let delay = self.backoff_duration(attempt);
+                    warn!(
+                        "WS feed attempt {}/{} failed ({e}), retrying in {}ms",
+                        attempt + 1,
+                        self.config.max_reconnect_attempts,
+                        delay.as_millis()
+                    );
+                    tokio::time::sleep(delay).await;
+                    attempt += 1;
+                }
+            }
+        }
+    }
+
+    fn source_name(&self) -> &str {
+        "scrape-exchange-feed"
     }
 }
 
@@ -789,13 +1096,87 @@ mod tests {
     #[test]
     fn test_rate_limit_error_mapping() {
         // Verify the error mapping logic: RateLimited → DataSinkError::RateLimited.
-        let se_err = ScrapeExchangeError::RateLimited { retry_after_secs: 60 };
+        let se_err = ScrapeExchangeError::RateLimited {
+            retry_after_secs: 60,
+        };
         let mapped: DataSinkError = match se_err {
             ScrapeExchangeError::RateLimited { retry_after_secs } => {
                 DataSinkError::RateLimited(format!("retry after {retry_after_secs}s"))
             }
             other => DataSinkError::PublishFailed(other.to_string()),
         };
-        assert!(mapped.to_string().contains("60"), "should mention 60s: {mapped}");
+        assert!(
+            mapped.to_string().contains("60"),
+            "should mention 60s: {mapped}"
+        );
+    }
+
+    // ── T28 WebSocket feed tests ───────────────────────────────────────────────
+
+    #[test]
+    fn test_feed_filter_serialization() {
+        let filter = FeedFilter {
+            platform: Some("web".to_string()),
+            entity: Some("products".to_string()),
+            uploader: Some("alice".to_string()),
+            creator_id: None,
+            schema_owner: None,
+            schema_version: None,
+        };
+        let json = serde_json::to_string(&filter).expect("serialize");
+        assert!(json.contains("\"platform\":\"web\""), "platform: {json}");
+        assert!(json.contains("\"entity\":\"products\""), "entity: {json}");
+        assert!(json.contains("\"uploader\":\"alice\""), "uploader: {json}");
+    }
+
+    #[test]
+    fn test_feed_backoff_timing() {
+        let config = FeedConfig {
+            initial_backoff_ms: 100,
+            max_reconnect_attempts: 5,
+            ..Default::default()
+        };
+        let feed = ScrapeExchangeFeed::new(config);
+        assert_eq!(feed.backoff_duration(0), Duration::from_millis(100));
+        assert_eq!(feed.backoff_duration(1), Duration::from_millis(200));
+        assert_eq!(feed.backoff_duration(2), Duration::from_millis(400));
+        // cap at 30s
+        assert_eq!(feed.backoff_duration(20), Duration::from_millis(30_000));
+    }
+
+    #[test]
+    fn test_client_filter_schema_owner() {
+        let config = FeedConfig {
+            filter: FeedFilter {
+                schema_owner: Some("alice".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let feed = ScrapeExchangeFeed::new(config);
+
+        let matching = StreamEvent {
+            id: None,
+            event_type: Some("upload".to_string()),
+            data: r#"{"schema_owner":"alice","v":1}"#.to_string(),
+        };
+        let non_matching = StreamEvent {
+            id: None,
+            event_type: Some("upload".to_string()),
+            data: r#"{"schema_owner":"bob","v":1}"#.to_string(),
+        };
+        assert!(feed.passes_client_filter(&matching), "alice should pass");
+        assert!(!feed.passes_client_filter(&non_matching), "bob should fail");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires live Scrape Exchange WebSocket endpoint"]
+    async fn test_live_feed_connect() {
+        let feed = ScrapeExchangeFeed::new(FeedConfig::default());
+        let events = feed
+            .subscribe("wss://scrape.exchange/api/messages/v1", Some(1))
+            .await
+            .expect("connect");
+        assert!(!events.is_empty(), "expected at least one event");
     }
 }
