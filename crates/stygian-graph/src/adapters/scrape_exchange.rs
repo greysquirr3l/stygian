@@ -3,7 +3,7 @@
 //! Implements a typed client for the Scrape Exchange platform with JWT authentication,
 //! automatic token refresh, and endpoints for:
 //!
-//! - Publishing scraped records via [`DataSinkPort`](crate::ports::data_sink::DataSinkPort)
+//! - Publishing scraped records via [`DataSinkPort`]
 //! - Querying published data
 //! - Item-level lookups
 //! - Rate-limited retry logic
