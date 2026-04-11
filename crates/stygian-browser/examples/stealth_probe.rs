@@ -21,15 +21,25 @@ use std::sync::Arc;
 
 use serde_json::json;
 use stygian_browser::config::StealthLevel;
+use stygian_browser::tls::expected_http3_perk_from_user_agent;
 use stygian_browser::{BrowserConfig, BrowserPool, WaitUntil};
+
+struct ProbeArgs {
+    threshold: f64,
+    urls: Vec<String>,
+    observed_http3_perk_text: Option<String>,
+    observed_http3_perk_hash: Option<String>,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let raw_args: Vec<String> = std::env::args().skip(1).collect();
-    let (threshold, urls) = parse_args(&raw_args)?;
+    let args = parse_args(&raw_args)?;
 
-    if urls.is_empty() {
-        eprintln!("usage: stealth_probe [--threshold 0.90] <url>...");
+    if args.urls.is_empty() {
+        eprintln!(
+            "usage: stealth_probe [--threshold 0.90] [--http3-perk-text TEXT] [--http3-perk-hash HASH] <url>..."
+        );
         std::process::exit(2);
     }
 
@@ -40,11 +50,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let pool = BrowserPool::new(config).await?;
 
-    let mut results = Vec::with_capacity(urls.len());
+    let mut results = Vec::with_capacity(args.urls.len());
     let mut any_failed = false;
 
-    for url in &urls {
-        match probe_url(&pool, url, threshold).await {
+    for url in &args.urls {
+        match probe_url(&pool, url, &args).await {
             Ok(entry) => {
                 if !entry
                     .get("ok")
@@ -79,7 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn probe_url(
     pool: &Arc<BrowserPool>,
     url: &str,
-    threshold: f64,
+    args: &ProbeArgs,
 ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     let handle = pool.acquire().await?;
     let mut page = handle
@@ -92,10 +102,30 @@ async fn probe_url(
         .await?;
 
     let report = page.verify_stealth().await?;
+    let user_agent = page.eval::<String>("navigator.userAgent").await.ok();
 
     // coverage_pct() returns 0.0–100.0; normalise to 0.0–1.0 for threshold comparison.
     let score = report.coverage_pct() / 100.0;
-    let ok = score >= threshold;
+    let ok = score >= args.threshold;
+
+    let http3 = user_agent.as_deref().and_then(|ua| {
+        expected_http3_perk_from_user_agent(ua).map(|expected| {
+            let expected_text = expected.perk_text();
+            let expected_hash = expected.perk_hash();
+            let comparison = expected.compare(
+                args.observed_http3_perk_text.as_deref(),
+                args.observed_http3_perk_hash.as_deref(),
+            );
+
+            json!({
+                "expected_perk_text": expected_text,
+                "expected_perk_hash": expected_hash,
+                "observed_perk_text": args.observed_http3_perk_text,
+                "observed_perk_hash": args.observed_http3_perk_hash,
+                "comparison": comparison,
+            })
+        })
+    });
 
     let failed_checks: Vec<serde_json::Value> = report
         .failures()
@@ -113,19 +143,23 @@ async fn probe_url(
 
     Ok(json!({
         "url": url,
+        "user_agent": user_agent,
         "score": score,
         "score_pct": report.coverage_pct(),
         "passed_count": report.passed_count,
         "failed_count": report.failed_count,
         "failed_checks": failed_checks,
-        "threshold": threshold,
+        "threshold": args.threshold,
+        "http3": http3,
         "ok": ok,
     }))
 }
 
-fn parse_args(args: &[String]) -> Result<(f64, Vec<String>), Box<dyn std::error::Error>> {
+fn parse_args(args: &[String]) -> Result<ProbeArgs, Box<dyn std::error::Error>> {
     let mut threshold = 0.90_f64;
     let mut urls = Vec::new();
+    let mut observed_http3_perk_text = None;
+    let mut observed_http3_perk_hash = None;
     let mut iter = args.iter();
 
     while let Some(arg) = iter.next() {
@@ -138,10 +172,25 @@ fn parse_args(args: &[String]) -> Result<(f64, Vec<String>), Box<dyn std::error:
             threshold = val
                 .parse::<f64>()
                 .map_err(|_| "--threshold must be a float in range 0.0–1.0")?;
+        } else if let Some(val) = arg.strip_prefix("--http3-perk-text=") {
+            observed_http3_perk_text = Some(val.to_string());
+        } else if arg == "--http3-perk-text" {
+            let val = iter.next().ok_or("--http3-perk-text requires a value")?;
+            observed_http3_perk_text = Some(val.clone());
+        } else if let Some(val) = arg.strip_prefix("--http3-perk-hash=") {
+            observed_http3_perk_hash = Some(val.to_string());
+        } else if arg == "--http3-perk-hash" {
+            let val = iter.next().ok_or("--http3-perk-hash requires a value")?;
+            observed_http3_perk_hash = Some(val.clone());
         } else {
             urls.push(arg.clone());
         }
     }
 
-    Ok((threshold, urls))
+    Ok(ProbeArgs {
+        threshold,
+        urls,
+        observed_http3_perk_text,
+        observed_http3_perk_hash,
+    })
 }

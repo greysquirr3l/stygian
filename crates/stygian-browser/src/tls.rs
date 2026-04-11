@@ -594,6 +594,122 @@ impl fmt::Display for Ja4 {
     }
 }
 
+// ── HTTP/3 Perk ─────────────────────────────────────────────────────────────
+
+/// HTTP/3 fingerprint representation inspired by the "perk" format:
+/// `SETTINGS|PSEUDO_HEADERS`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Http3Perk {
+    /// Ordered HTTP/3 settings as `(id, value)` tuples.
+    pub settings: Vec<(u64, u64)>,
+    /// Pseudo-header order compact token (for example: `"masp"`, `"mpas"`).
+    pub pseudo_headers: String,
+    /// Whether a GREASE setting should be represented in the text form.
+    pub has_grease: bool,
+}
+
+/// Result of comparing expected and observed HTTP/3 perk data.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Http3PerkComparison {
+    /// `true` only when all available observed fields match expected values.
+    pub matches: bool,
+    /// Human-readable mismatch reasons.
+    pub mismatches: Vec<String>,
+}
+
+const fn is_quic_grease(value: u64) -> bool {
+    let low = value & 0xffff;
+    let a = (low >> 8) & 0xff;
+    let b = low & 0xff;
+    a == b && (a & 0x0f) == 0x0a
+}
+
+impl Http3Perk {
+    /// Return canonical `perk_text` as `SETTINGS|PSEUDO_HEADERS`.
+    #[must_use]
+    pub fn perk_text(&self) -> String {
+        let mut parts: Vec<String> = self
+            .settings
+            .iter()
+            .filter(|(id, _)| !is_quic_grease(*id))
+            .map(|(id, value)| format!("{id}:{value}"))
+            .collect();
+
+        if self.has_grease || self.settings.iter().any(|(id, _)| is_quic_grease(*id)) {
+            parts.push("GREASE".to_string());
+        }
+
+        format!("{}|{}", parts.join(";"), self.pseudo_headers)
+    }
+
+    /// Return MD5 hash of [`perk_text`](Self::perk_text), lowercase hex.
+    #[must_use]
+    pub fn perk_hash(&self) -> String {
+        md5_hex(self.perk_text().as_bytes())
+    }
+
+    /// Compare observed perk text/hash against this expected fingerprint.
+    #[must_use]
+    pub fn compare(
+        &self,
+        observed_text: Option<&str>,
+        observed_hash: Option<&str>,
+    ) -> Http3PerkComparison {
+        let expected_text = self.perk_text();
+        let expected_hash = self.perk_hash();
+
+        let mut mismatches = Vec::new();
+
+        if let Some(text) = observed_text
+            && text != expected_text
+        {
+            mismatches.push(format!(
+                "perk_text mismatch: expected '{expected_text}', observed '{text}'"
+            ));
+        }
+
+        if let Some(hash) = observed_hash
+            && !hash.eq_ignore_ascii_case(&expected_hash)
+        {
+            mismatches.push(format!(
+                "perk_hash mismatch: expected '{expected_hash}', observed '{hash}'"
+            ));
+        }
+
+        Http3PerkComparison {
+            matches: mismatches.is_empty() && (observed_text.is_some() || observed_hash.is_some()),
+            mismatches,
+        }
+    }
+}
+
+/// Build an expected HTTP/3 perk fingerprint from a User-Agent string.
+///
+/// Returns `None` when the browser family is unknown or unsupported.
+#[must_use]
+pub fn expected_http3_perk_from_user_agent(user_agent: &str) -> Option<Http3Perk> {
+    let ua = user_agent.to_ascii_lowercase();
+
+    // Chromium family: Chrome/Edge share the same high-level HTTP/3 pattern.
+    if ua.contains("edg/") || ua.contains("chrome/") {
+        return Some(Http3Perk {
+            settings: vec![(1, 65_536), (6, 262_144), (7, 100), (51, 1)],
+            pseudo_headers: "masp".to_string(),
+            has_grease: true,
+        });
+    }
+
+    if ua.contains("firefox/") {
+        return Some(Http3Perk {
+            settings: vec![(1, 65_536), (7, 20), (727_725_890, 0)],
+            pseudo_headers: "mpas".to_string(),
+            has_grease: false,
+        });
+    }
+
+    None
+}
+
 // ── profile methods ──────────────────────────────────────────────────────────
 
 /// Truncate a hex string to at most `n` characters on a char boundary.
@@ -784,6 +900,14 @@ impl TlsProfile {
         }
     }
 
+    /// Return an expected HTTP/3 perk fingerprint for this profile.
+    ///
+    /// Returns `None` for profiles where no stable reference shape is encoded.
+    #[must_use]
+    pub fn http3_perk(&self) -> Option<Http3Perk> {
+        expected_http3_perk_from_user_agent(&default_user_agent_from_profile_name(&self.name))
+    }
+
     /// Select a built-in TLS profile weighted by real browser market share.
     ///
     /// Distribution mirrors [`DeviceProfile`](super::fingerprint::DeviceProfile)
@@ -825,6 +949,20 @@ impl TlsProfile {
                 _ => &FIREFOX_133,
             },
         }
+    }
+}
+
+fn default_user_agent_from_profile_name(profile_name: &str) -> String {
+    let name = profile_name.to_ascii_lowercase();
+    if name.contains("firefox") {
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0"
+            .to_string()
+    } else if name.contains("edge") {
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0"
+            .to_string()
+    } else {
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            .to_string()
     }
 }
 
@@ -1934,6 +2072,40 @@ mod tests {
     fn ja4_display() {
         let ja4 = CHROME_131.ja4();
         assert_eq!(format!("{ja4}"), ja4.fingerprint);
+    }
+
+    #[test]
+    fn http3_perk_chrome_text_and_hash_are_stable() {
+        let Some(perk) = CHROME_131.http3_perk() else {
+            panic!("chrome should have perk");
+        };
+        let text = perk.perk_text();
+        assert_eq!(text, "1:65536;6:262144;7:100;51:1;GREASE|masp");
+        assert_eq!(perk.perk_hash().len(), 32);
+    }
+
+    #[test]
+    fn expected_perk_from_user_agent_detects_firefox() {
+        let ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0";
+        let Some(perk) = expected_http3_perk_from_user_agent(ua) else {
+            panic!("firefox should resolve");
+        };
+        assert_eq!(perk.perk_text(), "1:65536;7:20;727725890:0|mpas");
+    }
+
+    #[test]
+    fn http3_perk_compare_detects_text_mismatch() {
+        let Some(perk) = CHROME_131.http3_perk() else {
+            panic!("chrome should have perk");
+        };
+        let cmp = perk.compare(Some("1:65536|masp"), None);
+        assert!(!cmp.matches);
+        assert_eq!(cmp.mismatches.len(), 1);
+        assert!(
+            cmp.mismatches
+                .first()
+                .is_some_and(|mismatch| mismatch.contains("perk_text mismatch"))
+        );
     }
 
     #[test]
