@@ -188,6 +188,10 @@ fn parse_args(args: &[String]) -> Result<ProbeArgs, Box<dyn std::error::Error>> 
         }
     }
 
+    if !(0.0..=1.0).contains(&threshold) {
+        return Err("--threshold must be a float in range 0.0–1.0".into());
+    }
+
     Ok(ProbeArgs {
         threshold,
         urls,

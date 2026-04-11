@@ -944,7 +944,25 @@ impl TlsProfile {
     /// Returns `None` for profiles where no stable reference shape is encoded.
     #[must_use]
     pub fn http3_perk(&self) -> Option<Http3Perk> {
-        expected_http3_perk_from_user_agent(&default_user_agent_from_profile_name(&self.name))
+        match self.name.as_str() {
+            name if name.starts_with("Chrome ") => Some(Http3Perk {
+                settings: vec![(1, 65_536), (6, 262_144), (7, 100), (51, 1)],
+                pseudo_headers: "masp".to_string(),
+                has_grease: true,
+            }),
+            name if name.starts_with("Edge ") => Some(Http3Perk {
+                settings: vec![(1, 65_536), (6, 262_144), (7, 100), (51, 1)],
+                pseudo_headers: "masp".to_string(),
+                has_grease: true,
+            }),
+            name if name.starts_with("Firefox ") => Some(Http3Perk {
+                settings: vec![(1, 65_536), (7, 20), (727_725_890, 0)],
+                pseudo_headers: "mpas".to_string(),
+                has_grease: false,
+            }),
+            name if name.starts_with("Safari ") => None,
+            _ => None,
+        }
     }
 
     /// Select a built-in TLS profile weighted by real browser market share.
@@ -988,20 +1006,6 @@ impl TlsProfile {
                 _ => &FIREFOX_133,
             },
         }
-    }
-}
-
-fn default_user_agent_from_profile_name(profile_name: &str) -> String {
-    let name = profile_name.to_ascii_lowercase();
-    if name.contains("firefox") {
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0"
-            .to_string()
-    } else if name.contains("edge") {
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0"
-            .to_string()
-    } else {
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-            .to_string()
     }
 }
 

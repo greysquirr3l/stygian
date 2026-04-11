@@ -177,6 +177,30 @@ impl TransportDiagnostic {
             mismatches.extend(cmp.mismatches);
         }
 
+        // If callers supplied observed transport fields that cannot be compared
+        // due to missing expectations, surface that explicitly instead of
+        // reporting a false positive match.
+        if observed.ja3_hash.is_some() && expected_ja3.is_none() {
+            mismatches.push(
+                "ja3_hash was provided but no expected JA3 could be derived from user-agent"
+                    .to_string(),
+            );
+        }
+        if observed.ja4.is_some() && expected_ja4.is_none() {
+            mismatches.push(
+                "ja4 was provided but no expected JA4 could be derived from user-agent"
+                    .to_string(),
+            );
+        }
+        if (observed.http3_perk_text.is_some() || observed.http3_perk_hash.is_some())
+            && expected_http3.is_none()
+        {
+            mismatches.push(
+                "http3 perk observation was provided but no expected HTTP/3 fingerprint could be derived from user-agent"
+                    .to_string(),
+            );
+        }
+
         let has_observed = observed.ja3_hash.is_some()
             || observed.ja4.is_some()
             || observed.http3_perk_text.is_some()
@@ -460,7 +484,7 @@ const SCRIPT_EXEC_COMMAND: &str = concat!(
 const SCRIPT_NODEJS_ABSENT: &str = concat!(
     "JSON.stringify({",
     "passed:typeof process==='undefined'",
-    "||typeof process.versions==='undefined'",
+    "||process.versions==null",
     "||typeof process.versions.node==='undefined',",
     "details:typeof process",
     "})"
@@ -578,7 +602,7 @@ mod tests {
     use std::collections::HashSet;
 
     #[test]
-    fn all_checks_returns_ten_entries() {
+    fn all_checks_returns_eighteen_entries() {
         assert_eq!(all_checks().len(), 18);
     }
 
