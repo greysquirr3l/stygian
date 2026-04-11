@@ -7,7 +7,7 @@ High-performance, anti-detection browser automation library for Rust.
 
 Built on the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) via
 [`chromiumoxide`](https://github.com/mattsse/chromiumoxide) with comprehensive stealth features
-for bypassing modern anti-bot systems: Cloudflare, DataDome, PerimeterX, Akamai.
+for bypassing modern anti-bot systems: Cloudflare, `DataDome`, `PerimeterX`, Akamai.
 
 ---
 
@@ -206,7 +206,7 @@ fingerprinting while keeping values plausible (real GPU family names are used).
 
 ### CDP Leak Protection
 
-The Chrome DevTools Protocol itself can expose automation.  Three modes are
+The Chrome `DevTools` Protocol itself can expose automation.  Three modes are
 available via `CdpFixMode`:
 
 | Mode | Protection | Compatibility |
