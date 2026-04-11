@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::storage::ProxyStoragePort;
 use crate::types::ProxyConfig;
 
-/// Shared health map type.  
+/// Shared health map type.
 /// `true` = proxy is currently considered healthy.
 pub type HealthMap = Arc<RwLock<HashMap<Uuid, bool>>>;
 
@@ -38,7 +38,7 @@ pub struct HealthChecker {
 
 impl HealthChecker {
     /// Access the shared health map (read it to filter candidates).
-    pub fn health_map(&self) -> &HealthMap {
+    pub const fn health_map(&self) -> &HealthMap {
         &self.health_map
     }
 
@@ -126,7 +126,7 @@ impl HealthChecker {
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 tokio::select! {
-                    _ = token.cancelled() => {
+                    () = token.cancelled() => {
                         tracing::info!("health checker: shutdown requested");
                         break;
                     }
@@ -200,8 +200,9 @@ impl HealthChecker {
             }
         }
 
-        let total = updates.len() as u32;
-        let healthy_count = updates.iter().filter(|(_, h, _)| *h).count() as u32;
+        let total = u32::try_from(updates.len()).unwrap_or(u32::MAX);
+        let healthy_count =
+            u32::try_from(updates.iter().filter(|(_, h, _)| *h).count()).unwrap_or(u32::MAX);
 
         {
             let mut map = self.health_map.write().await;
@@ -276,7 +277,7 @@ async fn do_check(
         .map_err(|e| e.to_string())?
         .error_for_status()
         .map_err(|e| e.to_string())?;
-    Ok(start.elapsed().as_millis() as u64)
+    Ok(start.elapsed().as_millis().try_into().unwrap_or(u64::MAX))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -306,7 +307,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn healthy_and_unhealthy_proxies() {
+    async fn healthy_and_unhealthy_proxies() -> crate::error::ProxyResult<()> {
         // Mock server acts as both the HTTP proxy and the health-check target.
         // reqwest sends the GET in absolute-form; wiremock responds 200.
         let server = MockServer::start().await;
@@ -317,12 +318,9 @@ mod tests {
 
         let storage = Arc::new(MemoryProxyStore::default());
         // Proxy 1: URL points to the mock server → health check will succeed.
-        storage.add(make_proxy(&server.uri())).await.unwrap();
+        storage.add(make_proxy(&server.uri())).await?;
         // Proxy 2: invalid address → health check will fail.
-        storage
-            .add(make_proxy("http://192.0.2.1:9999"))
-            .await
-            .unwrap();
+        storage.add(make_proxy("http://192.0.2.1:9999")).await?;
 
         let health_map: HealthMap = Arc::new(RwLock::new(HashMap::new()));
         let config = ProxyConfig {
@@ -337,8 +335,10 @@ mod tests {
         let map = health_map.read().await;
         let healthy = map.values().filter(|&&v| v).count();
         let unhealthy = map.values().filter(|&&v| !v).count();
+        drop(map);
         assert_eq!(healthy, 1, "expected 1 healthy proxy");
         assert_eq!(unhealthy, 1, "expected 1 unhealthy proxy");
+        Ok(())
     }
 
     #[tokio::test]

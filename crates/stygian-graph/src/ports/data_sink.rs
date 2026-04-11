@@ -240,10 +240,11 @@ pub trait DataSinkPort: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use serde_json::{Value, json};
 
     #[test]
-    fn sink_record_construction_and_serde_roundtrip() {
+    fn sink_record_construction_and_serde_roundtrip()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
         let record = SinkRecord::new(
             "product-v1",
             "https://shop.example.com/items/42",
@@ -254,32 +255,46 @@ mod tests {
 
         assert_eq!(record.schema_id, "product-v1");
         assert_eq!(record.source_url, "https://shop.example.com/items/42");
-        assert_eq!(record.data["sku"], "ABC-42");
-        assert_eq!(record.metadata["run_id"], "abc123");
-        assert_eq!(record.metadata["tenant"], "acme");
+        assert_eq!(
+            record.data.get("sku").and_then(Value::as_str),
+            Some("ABC-42")
+        );
+        assert_eq!(
+            record.metadata.get("run_id").map(String::as_str),
+            Some("abc123")
+        );
+        assert_eq!(
+            record.metadata.get("tenant").map(String::as_str),
+            Some("acme")
+        );
 
         // Round-trip through JSON
-        let json_str = serde_json::to_string(&record).expect("serialize");
-        let restored: SinkRecord = serde_json::from_str(&json_str).expect("deserialize");
+        let json_str = serde_json::to_string(&record)?;
+        let restored: SinkRecord = serde_json::from_str(&json_str)?;
 
         assert_eq!(restored.schema_id, record.schema_id);
         assert_eq!(restored.source_url, record.source_url);
-        assert_eq!(restored.metadata["run_id"], "abc123");
+        assert_eq!(
+            restored.metadata.get("run_id").map(String::as_str),
+            Some("abc123")
+        );
+        Ok(())
     }
 
     #[test]
-    fn sink_receipt_serde_roundtrip() {
+    fn sink_receipt_serde_roundtrip() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let receipt = SinkReceipt {
             id: "rec-001".to_string(),
             published_at: "2026-04-09T00:00:00Z".to_string(),
             platform: "test-sink".to_string(),
         };
 
-        let json_str = serde_json::to_string(&receipt).expect("serialize");
-        let restored: SinkReceipt = serde_json::from_str(&json_str).expect("deserialize");
+        let json_str = serde_json::to_string(&receipt)?;
+        let restored: SinkReceipt = serde_json::from_str(&json_str)?;
 
         assert_eq!(restored.id, receipt.id);
         assert_eq!(restored.platform, receipt.platform);
+        Ok(())
     }
 
     #[test]

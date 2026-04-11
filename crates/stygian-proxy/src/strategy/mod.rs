@@ -121,7 +121,9 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn all_unhealthy_returns_error() {
         let c = vec![candidate(1, false, 1, 0), candidate(2, false, 1, 0)];
-        let err = RoundRobinStrategy::default().select(&c).await.unwrap_err();
-        assert!(matches!(err, ProxyError::AllProxiesUnhealthy));
+        assert!(matches!(
+            RoundRobinStrategy::default().select(&c).await,
+            Err(ProxyError::AllProxiesUnhealthy)
+        ));
     }
 }

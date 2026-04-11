@@ -35,7 +35,7 @@ use crate::ports::{ScrapingService, ServiceInput, ServiceOutput};
 // DatabaseSource
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Adapter: PostgreSQL database as a pipeline data source.
+/// Adapter: `PostgreSQL` database as a pipeline data source.
 ///
 /// Wraps a `sqlx::PgPool` and implements both [`DataSourcePort`] (for direct
 /// querying) and [`ScrapingService`] (for DAG pipeline integration).
@@ -56,11 +56,11 @@ pub struct DatabaseSource {
 }
 
 impl DatabaseSource {
-    /// Connect to a PostgreSQL database.
+    /// Connect to a `PostgreSQL` database.
     ///
     /// # Arguments
     ///
-    /// * `database_url` - PostgreSQL connection string
+    /// * `database_url` - `PostgreSQL` connection string
     ///
     /// # Example
     ///
@@ -169,7 +169,7 @@ impl DataSourcePort for DatabaseSource {
 }
 
 impl DatabaseSource {
-    /// Extract a column value from a PgRow as a serde_json::Value.
+    /// Extract a column value from a `PgRow` as a `serde_json::Value`.
     ///
     /// Handles common Postgres types; falls back to the debug representation
     /// for unsupported types.
@@ -242,8 +242,10 @@ impl ScrapingService for DatabaseSource {
     /// # }
     /// ```
     async fn execute(&self, input: ServiceInput) -> Result<ServiceOutput> {
-        let query_str = input.params["query"]
-            .as_str()
+        let query_str = input
+            .params
+            .get("query")
+            .and_then(|v| v.as_str())
             .ok_or_else(|| {
                 StygianError::Service(ServiceError::InvalidResponse(
                     "missing 'query' in params".into(),
@@ -251,12 +253,14 @@ impl ScrapingService for DatabaseSource {
             })?
             .to_string();
 
-        let parameters: Vec<Value> = input.params["parameters"]
-            .as_array()
+        let parameters: Vec<Value> = input
+            .params
+            .get("parameters")
+            .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default();
 
-        let limit = input.params["limit"].as_u64();
+        let limit = input.params.get("limit").and_then(Value::as_u64);
 
         let params = QueryParams {
             query: query_str,

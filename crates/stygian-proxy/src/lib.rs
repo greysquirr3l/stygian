@@ -1,4 +1,5 @@
 //! # stygian-proxy
+#![allow(clippy::multiple_crate_versions)]
 //!
 //! High-performance, resilient proxy rotation for the Stygian scraping ecosystem.
 //!
@@ -7,7 +8,7 @@
 //! - Pluggable rotation strategies: round-robin, random, weighted, least-used
 //! - Per-proxy latency and success-rate tracking via atomics
 //! - Async health checker with configurable intervals
-//! - Per-proxy circuit breaker (Closed → Open → HalfOpen)
+//! - Per-proxy circuit breaker (`Closed -> Open -> HalfOpen`)
 //! - In-memory proxy pool (no external DB required)
 //! - `graph` feature: [`ProxyManagerPort`] trait for stygian-graph HTTP adapters
 //! - `browser` feature: per-context proxy binding for stygian-browser

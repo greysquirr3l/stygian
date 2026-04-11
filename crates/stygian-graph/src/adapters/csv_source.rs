@@ -47,7 +47,7 @@ pub enum Delimiter {
 }
 
 impl Delimiter {
-    fn as_byte(self) -> u8 {
+    const fn as_byte(self) -> u8 {
         match self {
             Self::Comma => b',',
             Self::Tab => b'\t',
@@ -67,7 +67,7 @@ impl Delimiter {
                 // Try single-char custom delimiter
                 let bytes = s.as_bytes();
                 if bytes.len() == 1 {
-                    Self::Custom(bytes[0])
+                    Self::Custom(bytes.first().copied().unwrap_or(b','))
                 } else {
                     Self::Comma
                 }
@@ -134,24 +134,19 @@ impl CsvSource {
                 continue;
             }
 
-            let row = if headers.is_empty() {
-                // Generate column_0, column_1, ... keys
-                let mut map = Map::new();
-                for (i, field) in record.iter().enumerate() {
-                    map.insert(format!("column_{i}"), Value::String(field.to_string()));
-                }
-                Value::Object(map)
-            } else {
-                let mut map = Map::new();
-                for (i, field) in record.iter().enumerate() {
-                    let key = headers
+            let mut map = Map::new();
+            for (i, field) in record.iter().enumerate() {
+                let key = if headers.is_empty() {
+                    format!("column_{i}")
+                } else {
+                    headers
                         .get(i)
                         .cloned()
-                        .unwrap_or_else(|| format!("column_{i}"));
-                    map.insert(key, Value::String(field.to_string()));
-                }
-                Value::Object(map)
-            };
+                        .unwrap_or_else(|| format!("column_{i}"))
+                };
+                map.insert(key, Value::String(field.to_string()));
+            }
+            let row = Value::Object(map);
 
             rows.push(row);
 
@@ -171,21 +166,24 @@ fn strip_bom(s: &str) -> &str {
     s.strip_prefix('\u{FEFF}').unwrap_or(s)
 }
 
-/// Extract delimiter, skip, limit, and has_headers from params.
+/// Extract `delimiter`, `skip`, `limit`, and `has_headers` from params.
 fn extract_csv_params(params: &Value) -> (Delimiter, usize, Option<u64>, bool) {
     let delimiter = params
         .get("delimiter")
-        .and_then(|v| v.as_str())
-        .map(Delimiter::from_str)
-        .unwrap_or(Delimiter::Comma);
+        .and_then(serde_json::Value::as_str)
+        .map_or(Delimiter::Comma, Delimiter::from_str);
 
-    let skip = params.get("skip").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+    let skip_u64 = params
+        .get("skip")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    let skip = usize::try_from(skip_u64).unwrap_or(usize::MAX);
 
-    let limit = params.get("limit").and_then(|v| v.as_u64());
+    let limit = params.get("limit").and_then(serde_json::Value::as_u64);
 
     let has_headers = params
         .get("has_headers")
-        .and_then(|v| v.as_bool())
+        .and_then(serde_json::Value::as_bool)
         .unwrap_or(true);
 
     (delimiter, skip, limit, has_headers)
@@ -208,7 +206,11 @@ impl DataSourcePort for CsvSource {
             ))));
         }
 
-        let extra = params.parameters.first().cloned().unwrap_or(json!({}));
+        let extra = params
+            .parameters
+            .first()
+            .cloned()
+            .unwrap_or_else(|| json!({}));
         let (delimiter, skip, _, has_headers) = extract_csv_params(&extra);
         let limit = params.limit;
 
@@ -234,7 +236,7 @@ impl DataSourcePort for CsvSource {
         Ok(()) // File-based — always "healthy"
     }
 
-    fn source_name(&self) -> &str {
+    fn source_name(&self) -> &'static str {
         "csv"
     }
 }
@@ -302,6 +304,7 @@ impl ScrapingService for CsvSource {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use std::io::Cursor;

@@ -11,16 +11,16 @@
 //! use stygian_graph::ports::CachePort;
 //! use std::time::Duration;
 //!
-//! # tokio::runtime::Runtime::new().unwrap().block_on(async {
+//! # async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
 //! let config = RedisCacheConfig {
 //!     url: "redis://127.0.0.1:6379".into(),
 //!     key_prefix: Some("myapp:".into()),
 //!     default_ttl: Some(Duration::from_secs(3600)),
 //!     pool_size: 8,
 //! };
-//! let cache = RedisCache::new(config).expect("redis connection pool");
-//! cache.set("page:1", "html".into(), None).await.unwrap();
-//! # });
+//! let cache = RedisCache::new(config)?;
+//! cache.set("page:1", "html".into(), None).await?;
+//! # Ok(()) }
 //! ```
 
 use crate::domain::error::{CacheError, Result, StygianError};
@@ -91,12 +91,11 @@ impl Default for RedisCacheConfig {
 /// use stygian_graph::adapters::cache_redis::{RedisCache, RedisCacheConfig};
 /// use stygian_graph::ports::CachePort;
 ///
-/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let cache = RedisCache::new(RedisCacheConfig::default())
-///     .expect("pool creation");
-/// cache.set("k", "v".into(), None).await.unwrap();
-/// assert_eq!(cache.get("k").await.unwrap(), Some("v".into()));
-/// # });
+/// # async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
+/// let cache = RedisCache::new(RedisCacheConfig::default())?;
+/// cache.set("k", "v".into(), None).await?;
+/// assert_eq!(cache.get("k").await?, Some("v".into()));
+/// # Ok(()) }
 /// ```
 pub struct RedisCache {
     pool: Pool,
@@ -119,8 +118,10 @@ impl RedisCache {
     /// ```no_run
     /// use stygian_graph::adapters::cache_redis::{RedisCache, RedisCacheConfig};
     ///
-    /// let cache = RedisCache::new(RedisCacheConfig::default())
-    ///     .expect("pool creation");
+    /// # fn run() -> stygian_graph::domain::error::Result<()> {
+    /// let cache = RedisCache::new(RedisCacheConfig::default())?;
+    /// # let _ = cache;
+    /// # Ok(()) }
     /// ```
     pub fn new(config: RedisCacheConfig) -> Result<Self> {
         let pool_cfg = PoolConfig::from_url(&config.url);
@@ -149,10 +150,9 @@ impl RedisCache {
 
     /// Build the full key by prepending the optional prefix.
     fn full_key(&self, key: &str) -> String {
-        match &self.key_prefix {
-            Some(prefix) => format!("{prefix}{key}"),
-            None => key.to_string(),
-        }
+        self.key_prefix
+            .as_ref()
+            .map_or_else(|| key.to_string(), |prefix| format!("{prefix}{key}"))
     }
 
     /// Check connectivity to the Redis backend.
@@ -167,10 +167,10 @@ impl RedisCache {
     ///
     /// ```no_run
     /// # use stygian_graph::adapters::cache_redis::{RedisCache, RedisCacheConfig};
-    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-    /// let cache = RedisCache::new(RedisCacheConfig::default()).unwrap();
-    /// cache.healthcheck().await.unwrap();
-    /// # });
+    /// # async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    /// let cache = RedisCache::new(RedisCacheConfig::default())?;
+    /// cache.healthcheck().await?;
+    /// # Ok(()) }
     /// ```
     pub async fn healthcheck(&self) -> Result<()> {
         let mut conn = self.pool.get().await.map_err(|e| {
@@ -197,10 +197,11 @@ impl CachePort for RedisCache {
     /// ```no_run
     /// # use stygian_graph::adapters::cache_redis::{RedisCache, RedisCacheConfig};
     /// # use stygian_graph::ports::CachePort;
-    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-    /// # let cache = RedisCache::new(RedisCacheConfig::default()).unwrap();
-    /// let val = cache.get("mykey").await.unwrap();
-    /// # });
+    /// # async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    /// # let cache = RedisCache::new(RedisCacheConfig::default())?;
+    /// let val = cache.get("mykey").await?;
+    /// # let _ = val;
+    /// # Ok(()) }
     /// ```
     async fn get(&self, key: &str) -> Result<Option<String>> {
         let full_key = self.full_key(key);
@@ -224,10 +225,10 @@ impl CachePort for RedisCache {
     /// # use stygian_graph::adapters::cache_redis::{RedisCache, RedisCacheConfig};
     /// # use stygian_graph::ports::CachePort;
     /// # use std::time::Duration;
-    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-    /// # let cache = RedisCache::new(RedisCacheConfig::default()).unwrap();
-    /// cache.set("k", "v".into(), Some(Duration::from_secs(60))).await.unwrap();
-    /// # });
+    /// # async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    /// # let cache = RedisCache::new(RedisCacheConfig::default())?;
+    /// cache.set("k", "v".into(), Some(Duration::from_secs(60))).await?;
+    /// # Ok(()) }
     /// ```
     async fn set(&self, key: &str, value: String, ttl: Option<Duration>) -> Result<()> {
         let full_key = self.full_key(key);
@@ -238,11 +239,11 @@ impl CachePort for RedisCache {
 
         match effective_ttl {
             Some(duration) => {
-                let millis = duration.as_millis();
+                let ttl_millis = duration.as_millis().try_into().unwrap_or(u64::MAX);
                 // PSETEX key milliseconds value
                 redis::cmd("PSETEX")
                     .arg(&full_key)
-                    .arg(millis as u64)
+                    .arg(ttl_millis)
                     .arg(&value)
                     .query_async::<()>(&mut conn)
                     .await
@@ -271,10 +272,10 @@ impl CachePort for RedisCache {
     /// ```no_run
     /// # use stygian_graph::adapters::cache_redis::{RedisCache, RedisCacheConfig};
     /// # use stygian_graph::ports::CachePort;
-    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-    /// # let cache = RedisCache::new(RedisCacheConfig::default()).unwrap();
-    /// cache.invalidate("stale-key").await.unwrap();
-    /// # });
+    /// # async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    /// # let cache = RedisCache::new(RedisCacheConfig::default())?;
+    /// cache.invalidate("stale-key").await?;
+    /// # Ok(()) }
     /// ```
     async fn invalidate(&self, key: &str) -> Result<()> {
         let full_key = self.full_key(key);
@@ -294,12 +295,12 @@ impl CachePort for RedisCache {
     /// ```no_run
     /// # use stygian_graph::adapters::cache_redis::{RedisCache, RedisCacheConfig};
     /// # use stygian_graph::ports::CachePort;
-    /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-    /// # let cache = RedisCache::new(RedisCacheConfig::default()).unwrap();
-    /// if cache.exists("k").await.unwrap() {
+    /// # async fn run() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    /// # let cache = RedisCache::new(RedisCacheConfig::default())?;
+    /// if cache.exists("k").await? {
     ///     println!("hit");
     /// }
-    /// # });
+    /// # Ok(()) }
     /// ```
     async fn exists(&self, key: &str) -> Result<bool> {
         let full_key = self.full_key(key);
@@ -320,27 +321,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn full_key_without_prefix() {
+    fn full_key_without_prefix() -> Result<()> {
         let cache = RedisCache::new(RedisCacheConfig {
             url: "redis://127.0.0.1:6379".into(),
             key_prefix: None,
             default_ttl: None,
             pool_size: 1,
-        })
-        .expect("pool creation");
+        })?;
         assert_eq!(cache.full_key("abc"), "abc");
+        Ok(())
     }
 
     #[test]
-    fn full_key_with_prefix() {
+    fn full_key_with_prefix() -> Result<()> {
         let cache = RedisCache::new(RedisCacheConfig {
             url: "redis://127.0.0.1:6379".into(),
             key_prefix: Some("ns:".into()),
             default_ttl: None,
             pool_size: 1,
-        })
-        .expect("pool creation");
+        })?;
         assert_eq!(cache.full_key("abc"), "ns:abc");
+        Ok(())
     }
 
     #[test]
@@ -365,120 +366,112 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires running Redis/Valkey (docker-compose up -d valkey)"]
-    async fn integration_set_get_invalidate_cycle() {
+    async fn integration_set_get_invalidate_cycle() -> Result<()> {
         let cache = RedisCache::new(RedisCacheConfig {
             url: "redis://127.0.0.1:6379".into(),
             key_prefix: Some("test:integ:".into()),
             ..Default::default()
-        })
-        .expect("pool");
+        })?;
 
         // healthcheck
-        cache.healthcheck().await.expect("ping");
+        cache.healthcheck().await?;
 
         let key = "integration_cycle";
 
         // set
         cache
             .set(key, "hello".into(), Some(Duration::from_secs(30)))
-            .await
-            .expect("set");
+            .await?;
 
         // get
-        let val = cache.get(key).await.expect("get");
+        let val = cache.get(key).await?;
         assert_eq!(val, Some("hello".into()));
 
         // exists
-        assert!(cache.exists(key).await.expect("exists"));
+        assert!(cache.exists(key).await?);
 
         // invalidate
-        cache.invalidate(key).await.expect("invalidate");
-        let val = cache.get(key).await.expect("get after invalidate");
+        cache.invalidate(key).await?;
+        let val = cache.get(key).await?;
         assert_eq!(val, None);
-        assert!(!cache.exists(key).await.expect("exists after invalidate"));
+        assert!(!cache.exists(key).await?);
+        Ok(())
     }
 
     #[tokio::test]
     #[ignore = "requires running Redis/Valkey (docker-compose up -d valkey)"]
-    async fn integration_ttl_expiration() {
+    async fn integration_ttl_expiration() -> Result<()> {
         let cache = RedisCache::new(RedisCacheConfig {
             url: "redis://127.0.0.1:6379".into(),
             key_prefix: Some("test:ttl:".into()),
             ..Default::default()
-        })
-        .expect("pool");
+        })?;
 
         let key = "short_lived";
         cache
             .set(key, "expires".into(), Some(Duration::from_millis(200)))
-            .await
-            .expect("set");
+            .await?;
 
         // immediately present
-        assert_eq!(cache.get(key).await.expect("get"), Some("expires".into()));
+        assert_eq!(cache.get(key).await?, Some("expires".into()));
 
         // wait for expiration
         tokio::time::sleep(Duration::from_millis(350)).await;
 
         // gone
-        assert_eq!(cache.get(key).await.expect("get after ttl"), None);
+        assert_eq!(cache.get(key).await?, None);
+        Ok(())
     }
 
     #[tokio::test]
     #[ignore = "requires running Redis/Valkey (docker-compose up -d valkey)"]
-    async fn integration_key_namespacing_isolation() {
+    async fn integration_key_namespacing_isolation() -> Result<()> {
         let cache_a = RedisCache::new(RedisCacheConfig {
             url: "redis://127.0.0.1:6379".into(),
             key_prefix: Some("ns_a:".into()),
             ..Default::default()
-        })
-        .expect("pool a");
+        })?;
 
         let cache_b = RedisCache::new(RedisCacheConfig {
             url: "redis://127.0.0.1:6379".into(),
             key_prefix: Some("ns_b:".into()),
             ..Default::default()
-        })
-        .expect("pool b");
+        })?;
 
         let key = "shared_name";
 
         cache_a
             .set(key, "alpha".into(), Some(Duration::from_secs(30)))
-            .await
-            .expect("set a");
+            .await?;
         cache_b
             .set(key, "beta".into(), Some(Duration::from_secs(30)))
-            .await
-            .expect("set b");
+            .await?;
 
-        assert_eq!(cache_a.get(key).await.expect("get a"), Some("alpha".into()));
-        assert_eq!(cache_b.get(key).await.expect("get b"), Some("beta".into()));
+        assert_eq!(cache_a.get(key).await?, Some("alpha".into()));
+        assert_eq!(cache_b.get(key).await?, Some("beta".into()));
 
         // cleanup
-        cache_a.invalidate(key).await.expect("del a");
-        cache_b.invalidate(key).await.expect("del b");
+        cache_a.invalidate(key).await?;
+        cache_b.invalidate(key).await?;
+        Ok(())
     }
 
     #[tokio::test]
     #[ignore = "requires running Redis/Valkey (docker-compose up -d valkey)"]
-    async fn integration_default_ttl_applied() {
+    async fn integration_default_ttl_applied() -> Result<()> {
         let cache = RedisCache::new(RedisCacheConfig {
             url: "redis://127.0.0.1:6379".into(),
             key_prefix: Some("test:dttl:".into()),
             default_ttl: Some(Duration::from_millis(200)),
             pool_size: 2,
-        })
-        .expect("pool");
+        })?;
 
         let key = "default_ttl_key";
-        cache
-            .set(key, "has_default".into(), None)
-            .await
-            .expect("set");
+        cache.set(key, "has_default".into(), None).await?;
 
-        assert!(cache.exists(key).await.expect("exists"));
+        assert!(cache.exists(key).await?);
         tokio::time::sleep(Duration::from_millis(350)).await;
-        assert!(!cache.exists(key).await.expect("expired"));
+        assert!(!cache.exists(key).await?);
+        Ok(())
     }
 }

@@ -65,7 +65,7 @@ pub struct ProxyManagerBridge {
 
 impl ProxyManagerBridge {
     /// Create a new bridge backed by `manager`.
-    pub fn new(manager: Arc<ProxyManager>) -> Self {
+    pub const fn new(manager: Arc<ProxyManager>) -> Self {
         Self { manager }
     }
 }
@@ -103,52 +103,48 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bridge_returns_proxy_url_and_handle() {
+    async fn bridge_returns_proxy_url_and_handle() -> Result<(), Box<dyn std::error::Error>> {
         let storage = Arc::new(MemoryProxyStore::default());
-        let mgr = Arc::new(
-            ProxyManager::with_round_robin(storage.clone(), ProxyConfig::default()).unwrap(),
-        );
-        mgr.add_proxy(make_proxy("http://p.test:8080"))
-            .await
-            .unwrap();
+        let mgr = Arc::new(ProxyManager::with_round_robin(
+            storage.clone(),
+            ProxyConfig::default(),
+        )?);
+        mgr.add_proxy(make_proxy("http://p.test:8080")).await?;
 
         let bridge = ProxyManagerBridge::new(mgr);
-        let (url, handle) = bridge.bind_proxy().await.unwrap();
+        let (url, handle) = bridge.bind_proxy().await?;
         assert_eq!(url, "http://p.test:8080");
         handle.mark_success();
+        Ok(())
     }
 
     /// Simulates a browser crash: drop handle without success → circuit opens.
     #[tokio::test]
-    async fn crash_records_failure() {
+    async fn crash_records_failure() -> Result<(), Box<dyn std::error::Error>> {
         let storage = Arc::new(MemoryProxyStore::default());
-        let mgr = Arc::new(
-            ProxyManager::with_round_robin(
-                storage.clone(),
-                ProxyConfig {
-                    circuit_open_threshold: 1,
-                    ..ProxyConfig::default()
-                },
-            )
-            .unwrap(),
-        );
-        mgr.add_proxy(make_proxy("http://q.test:8080"))
-            .await
-            .unwrap();
+        let mgr = Arc::new(ProxyManager::with_round_robin(
+            storage.clone(),
+            ProxyConfig {
+                circuit_open_threshold: 1,
+                ..ProxyConfig::default()
+            },
+        )?);
+        mgr.add_proxy(make_proxy("http://q.test:8080")).await?;
 
         let bridge = ProxyManagerBridge::new(Arc::clone(&mgr));
         {
-            let (_url, _handle) = bridge.bind_proxy().await.unwrap();
+            let (_url, _handle) = bridge.bind_proxy().await?;
             // Drop without mark_success → simulates a crash.
         }
 
         // After one failure (threshold = 1) the circuit should be open.
-        let stats = mgr.pool_stats().await.unwrap();
+        let stats = mgr.pool_stats().await?;
         assert_eq!(
             stats.open, 1,
             "circuit should open after crash (open = {})",
             stats.open
         );
+        Ok(())
     }
 
     /// `ProxyHandle::direct()` is usable as a no-proxy binding.

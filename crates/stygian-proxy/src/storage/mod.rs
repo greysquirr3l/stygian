@@ -281,65 +281,78 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn add_list_remove() {
+    async fn add_list_remove() -> crate::error::ProxyResult<()> {
         let store = MemoryProxyStore::default();
-        let r1 = store.add(make_proxy("http://a.test:8080")).await.unwrap();
-        let r2 = store.add(make_proxy("http://b.test:8080")).await.unwrap();
-        let r3 = store.add(make_proxy("http://c.test:8080")).await.unwrap();
-        assert_eq!(store.list().await.unwrap().len(), 3);
-        store.remove(r2.id).await.unwrap();
-        let remaining = store.list().await.unwrap();
+        let r1 = store.add(make_proxy("http://a.test:8080")).await?;
+        let r2 = store.add(make_proxy("http://b.test:8080")).await?;
+        let r3 = store.add(make_proxy("http://c.test:8080")).await?;
+        assert_eq!(store.list().await?.len(), 3);
+        store.remove(r2.id).await?;
+        let remaining = store.list().await?;
         assert_eq!(remaining.len(), 2);
         let ids: Vec<_> = remaining.iter().map(|r| r.id).collect();
         assert!(ids.contains(&r1.id));
         assert!(ids.contains(&r3.id));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn invalid_url_rejected() {
+    async fn invalid_url_rejected() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let store = MemoryProxyStore::default();
-        let err = store.add(make_proxy("not-a-url")).await.unwrap_err();
+        let err = store
+            .add(make_proxy("not-a-url"))
+            .await
+            .err()
+            .ok_or_else(|| std::io::Error::other("invalid URL should be rejected"))?;
         assert!(matches!(
             err,
             crate::error::ProxyError::InvalidProxyUrl { .. }
         ));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn invalid_url_empty_host() {
+    async fn invalid_url_empty_host() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let store = MemoryProxyStore::default();
-        let err = store.add(make_proxy("http://:8080")).await.unwrap_err();
+        let err = store
+            .add(make_proxy("http://:8080"))
+            .await
+            .err()
+            .ok_or_else(|| std::io::Error::other("empty host URL should be rejected"))?;
         assert!(matches!(
             err,
             crate::error::ProxyError::InvalidProxyUrl { .. }
         ));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn concurrent_metrics_updates() {
+    async fn concurrent_metrics_updates() -> std::result::Result<(), Box<dyn std::error::Error>> {
         use tokio::task::JoinSet;
 
         let store = Arc::new(MemoryProxyStore::default());
         let record = store
             .add(make_proxy("http://proxy.test:3128"))
             .await
-            .unwrap();
+            .map_err(|e| std::io::Error::other(format!("failed to add proxy: {e}")))?;
         let id = record.id;
 
         let mut tasks = JoinSet::new();
         for i in 0u64..50 {
             let s = Arc::clone(&store);
-            tasks.spawn(async move {
-                s.update_metrics(id, i % 2 == 0, i * 10).await.unwrap();
-            });
+            tasks.spawn(async move { s.update_metrics(id, i % 2 == 0, i * 10).await });
         }
         while let Some(res) = tasks.join_next().await {
-            res.unwrap();
+            let inner = res.map_err(|e| std::io::Error::other(format!("join failed: {e}")))?;
+            inner.map_err(|e| std::io::Error::other(format!("update_metrics failed: {e}")))?;
         }
 
         // Verify totals are internally consistent.
         let guard = store.inner.read().await;
-        let metrics = guard.get(&id).map(|(_, m)| Arc::clone(m)).unwrap();
+        let metrics = guard
+            .get(&id)
+            .map(|(_, m)| Arc::clone(m))
+            .ok_or_else(|| std::io::Error::other("missing metrics for inserted proxy"))?;
         drop(guard);
 
         let total = metrics.requests_total.load(Ordering::Relaxed);
@@ -347,5 +360,6 @@ mod tests {
         let failures = metrics.failures.load(Ordering::Relaxed);
         assert_eq!(total, 50);
         assert_eq!(successes + failures, 50);
+        Ok(())
     }
 }

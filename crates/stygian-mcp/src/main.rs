@@ -1,3 +1,4 @@
+#![allow(clippy::multiple_crate_versions)]
 //! `stygian-mcp` — unified MCP server for stygian.
 //!
 //! Starts the aggregated MCP server that merges stygian-graph,

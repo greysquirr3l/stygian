@@ -126,18 +126,15 @@ async fn trigger_handler(
 
     // Verify signature if secret is configured
     if let Some(ref secret) = state.config.secret {
-        match &signature {
-            Some(sig) => {
-                if !AxumWebhookTrigger::verify_hmac(secret, sig, &body) {
-                    warn!("webhook signature verification failed");
-                    return StatusCode::UNAUTHORIZED;
-                }
-                debug!("webhook signature verified");
-            }
-            None => {
-                warn!("webhook missing signature header, secret is configured");
+        if let Some(sig) = &signature {
+            if !AxumWebhookTrigger::verify_hmac(secret, sig, &body) {
+                warn!("webhook signature verification failed");
                 return StatusCode::UNAUTHORIZED;
             }
+            debug!("webhook signature verified");
+        } else {
+            warn!("webhook missing signature header, secret is configured");
+            return StatusCode::UNAUTHORIZED;
         }
     }
 
@@ -165,10 +162,12 @@ async fn trigger_handler(
         .and_then(|v| v.to_str().ok())
         .map(String::from);
 
-    let received_at_ms = SystemTime::now()
+    let received_at_ms: u64 = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
-        .as_millis() as u64;
+        .as_millis()
+        .try_into()
+        .unwrap_or(0);
 
     let event = WebhookEvent {
         method: "POST".into(),
@@ -239,7 +238,11 @@ impl WebhookTrigger for AxumWebhookTrigger {
     }
 
     async fn stop_listener(&self, handle: WebhookListenerHandle) -> Result<()> {
-        if let Some(tx) = self.shutdown.lock().await.take() {
+        let shutdown_tx = {
+            let mut shutdown = self.shutdown.lock().await;
+            shutdown.take()
+        };
+        if let Some(tx) = shutdown_tx {
             let _ = tx.send(());
             info!(id = %handle.id, "webhook listener stopped");
         }
@@ -247,16 +250,14 @@ impl WebhookTrigger for AxumWebhookTrigger {
     }
 
     async fn recv_event(&self) -> Result<Option<WebhookEvent>> {
-        match self.rx.lock().await.recv().await {
+        let mut rx = self.rx.lock().await;
+        match rx.recv().await {
             Ok(event) => Ok(Some(event)),
             Err(broadcast::error::RecvError::Closed) => Ok(None),
             Err(broadcast::error::RecvError::Lagged(n)) => {
                 warn!(skipped = n, "webhook receiver lagged, events dropped");
                 // Try again after lag
-                match self.rx.lock().await.recv().await {
-                    Ok(event) => Ok(Some(event)),
-                    _ => Ok(None),
-                }
+                Ok(rx.recv().await.ok())
             }
         }
     }
@@ -293,7 +294,7 @@ impl ScrapingService for AxumWebhookTrigger {
         let timeout_secs = input
             .params
             .get("timeout_secs")
-            .and_then(|v| v.as_u64())
+            .and_then(serde_json::Value::as_u64)
             .unwrap_or(60);
 
         let config = WebhookConfig {
@@ -345,17 +346,21 @@ impl ScrapingService for AxumWebhookTrigger {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Write as _;
 
     #[test]
-    fn test_hex_decode_valid() {
-        let result = hex_decode("48656c6c6f").unwrap();
+    fn test_hex_decode_valid() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let result =
+            hex_decode("48656c6c6f").map_err(|()| std::io::Error::other("hex decode failed"))?;
         assert_eq!(result, b"Hello");
+        Ok(())
     }
 
     #[test]
-    fn test_hex_decode_empty() {
-        let result = hex_decode("").unwrap();
+    fn test_hex_decode_empty() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let result = hex_decode("").map_err(|()| std::io::Error::other("hex decode failed"))?;
         assert!(result.is_empty());
+        Ok(())
     }
 
     #[test]
@@ -369,22 +374,23 @@ mod tests {
     }
 
     #[test]
-    fn test_verify_hmac_valid() {
+    fn test_verify_hmac_valid() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let secret = "test-secret";
         let body = b"test body";
 
         // Compute expected signature
-        let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
+        let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+            .map_err(|err| std::io::Error::other(format!("hmac init failed: {err}")))?;
         mac.update(body);
         let result = mac.finalize();
-        let hex: String = result
-            .into_bytes()
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect();
+        let mut hex = String::with_capacity(64);
+        for b in result.into_bytes() {
+            write!(hex, "{b:02x}")?;
+        }
         let signature = format!("sha256={hex}");
 
         assert!(AxumWebhookTrigger::verify_hmac(secret, &signature, body));
+        Ok(())
     }
 
     #[test]
@@ -406,16 +412,16 @@ mod tests {
     }
 
     #[test]
-    fn test_verify_hmac_wrong_secret() {
+    fn test_verify_hmac_wrong_secret() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let body = b"test body";
-        let mut mac = HmacSha256::new_from_slice(b"correct-secret").unwrap();
+        let mut mac = HmacSha256::new_from_slice(b"correct-secret")
+            .map_err(|err| std::io::Error::other(format!("hmac init failed: {err}")))?;
         mac.update(body);
         let result = mac.finalize();
-        let hex: String = result
-            .into_bytes()
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect();
+        let mut hex = String::with_capacity(64);
+        for b in result.into_bytes() {
+            write!(hex, "{b:02x}")?;
+        }
         let signature = format!("sha256={hex}");
 
         assert!(!AxumWebhookTrigger::verify_hmac(
@@ -423,6 +429,7 @@ mod tests {
             &signature,
             body
         ));
+        Ok(())
     }
 
     #[test]
@@ -432,16 +439,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_start_and_stop_listener() {
+    async fn test_start_and_stop_listener() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let trigger = AxumWebhookTrigger::new();
         let config = WebhookConfig {
             bind_address: "127.0.0.1:0".into(), // OS-assigned port
             ..Default::default()
         };
 
-        let handle = trigger.start_listener(config).await.unwrap();
+        let handle = trigger.start_listener(config).await?;
         assert!(handle.id.starts_with("webhook-"));
 
-        trigger.stop_listener(handle).await.unwrap();
+        trigger.stop_listener(handle).await?;
+        Ok(())
     }
 }

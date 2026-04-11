@@ -22,6 +22,7 @@ for bypassing modern anti-bot systems: Cloudflare, `DataDome`, `PerimeterX`, Aka
 | **WebRTC control** | Block, proxy-route, or allow WebRTC — prevent IP leaks |
 | **Fingerprint generation** | Statistically-weighted device profiles (Windows, Mac, Linux, Android, iOS) |
 | **Stealth levels** | `None` / `Basic` / `Advanced` — tune evasion vs. performance |
+| **Structured extraction** | `#[derive(Extract)]` maps CSS selectors onto Rust structs (opt-in: `features = ["extract"]`) |
 
 ---
 

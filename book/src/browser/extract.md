@@ -8,19 +8,21 @@ imperative loops.
 
 ## Dependency
 
-Add `stygian-extract-derive` to your `Cargo.toml`:
+Enable the `extract` feature on `stygian-browser` in your `Cargo.toml`:
 
 ```toml
-stygian-extract-derive = { version = "*" }
-stygian-browser         = { version = "*" }
+stygian-browser = { version = "*", features = ["extract"] }
 ```
+
+> Do **not** add `stygian-extract-derive` directly — it is an internal proc-macro crate
+> re-exported through `stygian_browser::extract`.
 
 ---
 
 ## Quick start
 
 ```rust,no_run
-use stygian_extract_derive::Extract;
+use stygian_browser::extract::Extract;
 use stygian_browser::PageHandle;
 
 #[derive(Debug, Extract)]
@@ -144,7 +146,7 @@ Each element matching `div.g` acts as a scoped root for that item's selectors.
 ## Full example — news article
 
 ```rust,no_run
-use stygian_extract_derive::Extract;
+use stygian_browser::extract::Extract;
 use stygian_browser::PageHandle;
 
 #[derive(Debug, Extract)]

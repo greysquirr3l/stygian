@@ -44,9 +44,9 @@ pub enum JsonType {
     /// JSON string
     String,
     /// Homogeneous array with inferred item type
-    Array(Box<JsonType>),
+    Array(Box<Self>),
     /// Object with field name → inferred type mapping
-    Object(BTreeMap<std::string::String, JsonType>),
+    Object(BTreeMap<String, Self>),
     /// Mixed / conflicting types (e.g. field is sometimes string, sometimes int)
     Mixed,
 }
@@ -85,7 +85,7 @@ impl JsonType {
                 if arr.is_empty() {
                     return Self::Array(Box::new(Self::Mixed));
                 }
-                let first = Self::infer(&arr[0]);
+                let first = arr.first().map_or(Self::Mixed, Self::infer);
                 let uniform = arr.iter().skip(1).all(|v| Self::infer(v) == first);
                 if uniform {
                     Self::Array(Box::new(first))
@@ -120,10 +120,9 @@ impl JsonType {
             Self::Bool => "boolean",
             Self::Integer => "integer",
             Self::Float => "number",
-            Self::String => "string",
+            Self::String | Self::Mixed => "string",
             Self::Array(_) => "array",
             Self::Object(_) => "object",
-            Self::Mixed => "string", // fallback
         }
     }
 }
@@ -203,9 +202,8 @@ impl PaginationStyle {
     /// ```
     #[must_use]
     pub fn detect(body: &Value) -> Self {
-        let obj = match body.as_object() {
-            Some(o) => o,
-            None => return Self::default(),
+        let Some(obj) = body.as_object() else {
+            return Self::default();
         };
         Self {
             has_data_wrapper: obj.contains_key("data"),
@@ -275,18 +273,19 @@ impl ResponseShape {
         let pagination_detected = pagination_style.is_paginated();
 
         // Try to extract fields from data[0] if it's a wrapped array
-        let (fields, sample) = if let Some(arr) = body.get("data").and_then(Value::as_array) {
-            if let Some(first) = arr.first() {
-                let inferred = match JsonType::infer(first) {
-                    JsonType::Object(m) => m,
-                    other => BTreeMap::from([("value".into(), other)]),
-                };
-                (inferred, Some(first.clone()))
-            } else {
-                (BTreeMap::new(), None)
-            }
-        } else {
-            match JsonType::infer(body) {
+        let (fields, sample) = body
+            .get("data")
+            .and_then(Value::as_array)
+            .and_then(|arr| {
+                arr.first().map(|first| {
+                    let inferred = match JsonType::infer(first) {
+                        JsonType::Object(m) => m,
+                        other => BTreeMap::from([("value".into(), other)]),
+                    };
+                    (inferred, Some(first.clone()))
+                })
+            })
+            .unwrap_or_else(|| match JsonType::infer(body) {
                 JsonType::Object(m) => {
                     let sample = Some(body.clone());
                     (m, sample)
@@ -295,8 +294,7 @@ impl ResponseShape {
                     BTreeMap::from([("value".into(), other)]),
                     Some(body.clone()),
                 ),
-            }
-        };
+            });
 
         Self {
             fields,
@@ -374,7 +372,7 @@ impl DiscoveryReport {
     /// assert!(report.endpoints().is_empty());
     /// ```
     #[must_use]
-    pub fn endpoints(&self) -> &BTreeMap<String, ResponseShape> {
+    pub const fn endpoints(&self) -> &BTreeMap<String, ResponseShape> {
         &self.endpoints
     }
 }
@@ -393,7 +391,10 @@ mod tests {
         assert_eq!(JsonType::infer(&json!(null)), JsonType::Null);
         assert_eq!(JsonType::infer(&json!(true)), JsonType::Bool);
         assert_eq!(JsonType::infer(&json!(42)), JsonType::Integer);
-        assert_eq!(JsonType::infer(&json!(3.14)), JsonType::Float);
+        assert_eq!(
+            JsonType::infer(&json!(std::f64::consts::PI)),
+            JsonType::Float
+        );
         assert_eq!(JsonType::infer(&json!("hello")), JsonType::String);
     }
 
@@ -410,16 +411,19 @@ mod tests {
     }
 
     #[test]
-    fn json_type_infer_object() {
+    fn json_type_infer_object() -> Result<(), Box<dyn std::error::Error>> {
         let t = JsonType::infer(&json!({"name": "Alice", "age": 30}));
         match t {
             JsonType::Object(fields) => {
                 assert_eq!(fields.len(), 2);
-                assert_eq!(fields["name"], JsonType::String);
-                assert_eq!(fields["age"], JsonType::Integer);
+                let name_type = fields.get("name").ok_or("missing 'name' field")?;
+                assert_eq!(name_type, &JsonType::String);
+                let age_type = fields.get("age").ok_or("missing 'age' field")?;
+                assert_eq!(age_type, &JsonType::Integer);
             }
-            other => panic!("expected Object, got {other:?}"),
+            other => return Err(format!("expected Object, got {other:?}").into()),
         }
+        Ok(())
     }
 
     #[test]

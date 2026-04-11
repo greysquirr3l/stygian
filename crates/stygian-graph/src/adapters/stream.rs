@@ -134,7 +134,7 @@ impl StreamSourcePort for SseSource {
         Ok(events)
     }
 
-    fn source_name(&self) -> &str {
+    fn source_name(&self) -> &'static str {
         "sse"
     }
 }
@@ -152,7 +152,11 @@ impl ScrapingService for SseSource {
     /// { "max_events": 10 }
     /// ```
     async fn execute(&self, input: ServiceInput) -> Result<ServiceOutput> {
-        let max_events = input.params["max_events"].as_u64().map(|n| n as usize);
+        let max_events = input
+            .params
+            .get("max_events")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|n| usize::try_from(n).ok());
 
         let events = self.subscribe(&input.url, max_events).await?;
         let event_count = events.len();
@@ -180,35 +184,41 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_event_basic() {
+    fn parse_event_basic() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let lines = vec![
             "event:message".to_string(),
             "data:{\"price\":29.99}".to_string(),
         ];
-        let event = SseSource::parse_event(&lines).unwrap();
+        let event = SseSource::parse_event(&lines)
+            .ok_or_else(|| std::io::Error::other("expected parse_event to return Some"))?;
         assert_eq!(event.event_type.as_deref(), Some("message"));
         assert_eq!(event.data, r#"{"price":29.99}"#);
         assert!(event.id.is_none());
+        Ok(())
     }
 
     #[test]
-    fn parse_event_with_id() {
+    fn parse_event_with_id() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let lines = vec![
             "id:42".to_string(),
             "event:update".to_string(),
             "data:hello".to_string(),
         ];
-        let event = SseSource::parse_event(&lines).unwrap();
+        let event = SseSource::parse_event(&lines)
+            .ok_or_else(|| std::io::Error::other("expected parse_event to return Some"))?;
         assert_eq!(event.id.as_deref(), Some("42"));
         assert_eq!(event.event_type.as_deref(), Some("update"));
         assert_eq!(event.data, "hello");
+        Ok(())
     }
 
     #[test]
-    fn parse_event_multiline_data() {
+    fn parse_event_multiline_data() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let lines = vec!["data:line one".to_string(), "data:line two".to_string()];
-        let event = SseSource::parse_event(&lines).unwrap();
+        let event = SseSource::parse_event(&lines)
+            .ok_or_else(|| std::io::Error::other("expected parse_event to return Some"))?;
         assert_eq!(event.data, "line one\nline two");
+        Ok(())
     }
 
     #[test]

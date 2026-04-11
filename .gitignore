@@ -1,7 +1,7 @@
 # =============================================================================
 # Rust build output
 # =============================================================================
-/target
+target/
 debug/
 **/*.rs.bk
 *.pdb
@@ -89,3 +89,4 @@ reference_materials/
 crates/stygian-proxy/docs
 .obliviate.toml
 PROGRESS-*.md
+docs/spider-gap-analysis.md

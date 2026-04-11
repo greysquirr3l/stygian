@@ -46,7 +46,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for url in &urls {
         match probe_url(&pool, url, threshold).await {
             Ok(entry) => {
-                if !entry["ok"].as_bool().unwrap_or(false) {
+                if !entry
+                    .get("ok")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false)
+                {
                     any_failed = true;
                 }
                 results.push(entry);

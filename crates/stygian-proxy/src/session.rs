@@ -66,7 +66,7 @@ impl StickyPolicy {
     }
 
     /// Create a domain-scoped policy with the default TTL (5 minutes).
-    pub fn domain_default() -> Self {
+    pub const fn domain_default() -> Self {
         Self::Domain {
             ttl: Duration::from_secs(DEFAULT_TTL_SECS),
         }
@@ -274,12 +274,7 @@ mod tests {
     #[test]
     fn policy_domain_default_ttl() {
         let policy = StickyPolicy::domain_default();
-        match policy {
-            StickyPolicy::Domain { ttl } => {
-                assert_eq!(ttl, Duration::from_secs(300));
-            }
-            _ => panic!("expected Domain variant"),
-        }
+        assert!(matches!(policy, StickyPolicy::Domain { ttl } if ttl == Duration::from_secs(300)));
     }
 
     #[test]
@@ -289,13 +284,11 @@ mod tests {
     }
 
     #[test]
-    fn policy_serde_roundtrip() {
+    fn policy_serde_roundtrip() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let policy = StickyPolicy::domain(Duration::from_secs(120));
-        let json = serde_json::to_string(&policy).unwrap();
-        let back: StickyPolicy = serde_json::from_str(&json).unwrap();
-        match back {
-            StickyPolicy::Domain { ttl } => assert_eq!(ttl, Duration::from_secs(120)),
-            _ => panic!("expected Domain variant"),
-        }
+        let json = serde_json::to_string(&policy)?;
+        let back: StickyPolicy = serde_json::from_str(&json)?;
+        assert!(matches!(back, StickyPolicy::Domain { ttl } if ttl == Duration::from_secs(120)));
+        Ok(())
     }
 }

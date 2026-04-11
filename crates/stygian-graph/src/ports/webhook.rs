@@ -190,7 +190,7 @@ mod tests {
     }
 
     #[test]
-    fn test_webhook_event_serialisation() {
+    fn test_webhook_event_serialisation() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let event = WebhookEvent {
             method: "POST".into(),
             path: "/trigger".into(),
@@ -200,10 +200,11 @@ mod tests {
             signature: None,
             source_ip: Some("127.0.0.1".into()),
         };
-        let json = serde_json::to_string(&event).unwrap();
-        let back: WebhookEvent = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&event)?;
+        let back: WebhookEvent = serde_json::from_str(&json)?;
         assert_eq!(back.method, "POST");
         assert_eq!(back.source_ip.as_deref(), Some("127.0.0.1"));
+        Ok(())
     }
 
     #[test]

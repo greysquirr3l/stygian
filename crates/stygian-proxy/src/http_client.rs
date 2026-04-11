@@ -308,12 +308,12 @@ impl ProfiledRequester {
     }
 
     /// Borrow the underlying [`reqwest::Client`].
-    pub fn client(&self) -> &reqwest::Client {
+    pub const fn client(&self) -> &reqwest::Client {
         &self.client
     }
 
     /// The human-readable name of the TLS profile in use.
-    pub fn profile_name(&self) -> &str {
+    pub const fn profile_name(&self) -> &str {
         self.profile_name
     }
 
@@ -332,104 +332,121 @@ impl ProfiledRequester {
 // ─── tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
     #[test]
-    fn chrome_requester_builds() {
-        let r = ProfiledRequester::chrome().unwrap();
+    fn chrome_requester_builds() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let r = ProfiledRequester::chrome()?;
         assert_eq!(r.profile_name(), "Chrome 131");
+        Ok(())
     }
 
     #[test]
-    fn chrome_mode_preset_builds() {
-        let r = ProfiledRequester::chrome_mode(ProfiledRequestMode::Preset).unwrap();
+    fn chrome_mode_preset_builds() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let r = ProfiledRequester::chrome_mode(ProfiledRequestMode::Preset)?;
         assert_eq!(r.profile_name(), "Chrome 131");
+        Ok(())
     }
 
     #[test]
-    fn firefox_requester_builds() {
-        let r = ProfiledRequester::firefox().unwrap();
+    fn firefox_requester_builds() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let r = ProfiledRequester::firefox()?;
         assert_eq!(r.profile_name(), "Firefox 133");
+        Ok(())
     }
 
     #[test]
-    fn safari_requester_builds() {
-        let r = ProfiledRequester::safari().unwrap();
+    fn safari_requester_builds() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let r = ProfiledRequester::safari()?;
         assert_eq!(r.profile_name(), "Safari 18");
+        Ok(())
     }
 
     #[test]
-    fn edge_requester_builds() {
-        let r = ProfiledRequester::edge().unwrap();
+    fn edge_requester_builds() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let r = ProfiledRequester::edge()?;
         assert_eq!(r.profile_name(), "Edge 131");
+        Ok(())
     }
 
     #[test]
-    fn random_weighted_requester_varies() {
-        let a = ProfiledRequester::random_weighted(1).unwrap();
-        let b = ProfiledRequester::random_weighted(999_999).unwrap();
+    fn random_weighted_requester_varies() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let a = ProfiledRequester::random_weighted(1)?;
+        let b = ProfiledRequester::random_weighted(999_999)?;
         // Not guaranteed to differ, but the distribution should produce at
         // least two distinct profiles across a wider seed range.
         let _ = (a.profile_name(), b.profile_name()); // just ensure no panic
+        Ok(())
     }
 
     #[test]
-    fn random_weighted_mode_compatible_builds() {
-        let r =
-            ProfiledRequester::random_weighted_mode(42, ProfiledRequestMode::Compatible).unwrap();
+    fn random_weighted_mode_compatible_builds()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let r = ProfiledRequester::random_weighted_mode(42, ProfiledRequestMode::Compatible)?;
         assert!(!r.profile_name().is_empty());
+        Ok(())
     }
 
     #[test]
-    fn from_profile_with_custom_gives_correct_name() {
-        let r = ProfiledRequester::from_profile(&CHROME_131, None).unwrap();
+    fn from_profile_with_custom_gives_correct_name()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let r = ProfiledRequester::from_profile(&CHROME_131, None)?;
         assert_eq!(r.profile_name(), "Chrome 131");
+        Ok(())
     }
 
     #[test]
-    fn from_profile_with_control_gives_correct_name() {
+    fn from_profile_with_control_gives_correct_name()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
         let r = ProfiledRequester::from_profile_with_control(
             &CHROME_131,
             None,
             TlsControl::compatible(),
-        )
-        .unwrap();
+        )?;
         assert_eq!(r.profile_name(), "Chrome 131");
+        Ok(())
     }
 
     #[test]
-    fn from_profile_mode_preset_gives_correct_name() {
+    fn from_profile_mode_preset_gives_correct_name()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
         let r =
-            ProfiledRequester::from_profile_mode(&CHROME_131, None, ProfiledRequestMode::Preset)
-                .unwrap();
+            ProfiledRequester::from_profile_mode(&CHROME_131, None, ProfiledRequestMode::Preset)?;
         assert_eq!(r.profile_name(), "Chrome 131");
+        Ok(())
     }
 
     #[test]
-    fn from_profile_mode_compatible_gives_correct_name() {
+    fn from_profile_mode_compatible_gives_correct_name()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
         let r = ProfiledRequester::from_profile_mode(
             &CHROME_131,
             None,
             ProfiledRequestMode::Compatible,
-        )
-        .unwrap();
+        )?;
         assert_eq!(r.profile_name(), "Chrome 131");
+        Ok(())
     }
 
     #[test]
-    fn strict_all_constructor_reports_unsupported_group_for_chrome() {
+    fn strict_all_constructor_reports_unsupported_group_for_chrome()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
         let err = ProfiledRequester::from_profile_strict_all(&CHROME_131, None)
-            .expect_err("strict_all should fail if a profile group is unsupported");
+            .err()
+            .ok_or_else(|| {
+                std::io::Error::other("strict_all should fail if a profile group is unsupported")
+            })?;
         let msg = err.to_string();
         assert!(msg.contains("unsupported supported_group"), "{msg}");
+        Ok(())
     }
 
     #[test]
-    fn clone_is_shallow() {
-        let r = ProfiledRequester::chrome().unwrap();
+    fn clone_is_shallow() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let r = ProfiledRequester::chrome()?;
         let r2 = r.clone();
         assert_eq!(r.profile_name(), r2.profile_name());
+        Ok(())
     }
 }

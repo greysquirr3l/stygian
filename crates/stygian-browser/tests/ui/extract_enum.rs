@@ -1,6 +1,6 @@
 //! trybuild: applying #[derive(Extract)] to an enum must produce compile_error!
 
-use stygian_browser::extract::Extract;
+use stygian_extract_derive::Extract;
 
 #[derive(Extract)]
 enum MyEnum {

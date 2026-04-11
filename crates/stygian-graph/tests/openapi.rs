@@ -1,4 +1,4 @@
-//! OpenAPI adapter integration tests (live network).
+//! `OpenAPI` adapter integration tests (live network).
 //!
 //! These tests hit the public Petstore v3 demo API and are gated behind the
 //! `PETSTORE_LIVE=1` environment variable.  Run with:

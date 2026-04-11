@@ -62,7 +62,8 @@ fn error_response(id: &Value, code: i64, message: &str) -> Value {
     })
 }
 
-fn ok_response(id: &Value, result: Value) -> Value {
+fn ok_response(id: &Value, result: impl Into<Value>) -> Value {
+    let result = result.into();
     json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -239,22 +240,23 @@ impl McpProxyServer {
     }
 
     async fn handle(&self, req: &Value) -> Value {
-        let id = &req["id"];
-        let method = req["method"].as_str().unwrap_or("");
+        let id = req.get("id").unwrap_or(&Value::Null);
+        let method = req.get("method").and_then(Value::as_str).unwrap_or("");
 
         match method {
-            "initialize" => self.handle_initialize(id),
-            "initialized" => json!({"jsonrpc":"2.0","id":id,"result":{}}),
-            "notifications/initialized" | "ping" => json!({"jsonrpc":"2.0","id":id,"result":{}}),
-            "tools/list" => self.handle_tools_list(id),
+            "initialize" => Self::handle_initialize(id),
+            "initialized" | "notifications/initialized" | "ping" => {
+                json!({"jsonrpc":"2.0","id":id,"result":{}})
+            }
+            "tools/list" => Self::handle_tools_list(id),
             "tools/call" => self.handle_tools_call(id, req).await,
-            "resources/list" => self.handle_resources_list(id).await,
+            "resources/list" => Self::handle_resources_list(id),
             "resources/read" => self.handle_resources_read(id, req).await,
             _ => error_response(id, -32601, &format!("Method not found: {method}")),
         }
     }
 
-    fn handle_initialize(&self, id: &Value) -> Value {
+    fn handle_initialize(id: &Value) -> Value {
         ok_response(
             id,
             json!({
@@ -271,7 +273,7 @@ impl McpProxyServer {
         )
     }
 
-    fn handle_tools_list(&self, id: &Value) -> Value {
+    fn handle_tools_list(id: &Value) -> Value {
         ok_response(
             id,
             json!({
@@ -348,8 +350,9 @@ impl McpProxyServer {
     }
 
     async fn handle_tools_call(&self, id: &Value, req: &Value) -> Value {
-        let name = req["params"]["name"].as_str().unwrap_or("");
-        let args = &req["params"]["arguments"];
+        let params = req.get("params").unwrap_or(&Value::Null);
+        let name = params.get("name").and_then(Value::as_str).unwrap_or("");
+        let args = params.get("arguments").unwrap_or(&Value::Null);
 
         match name {
             "proxy_add" => self.tool_proxy_add(id, args).await,
@@ -362,7 +365,7 @@ impl McpProxyServer {
         }
     }
 
-    async fn handle_resources_list(&self, id: &Value) -> Value {
+    fn handle_resources_list(id: &Value) -> Value {
         ok_response(
             id,
             json!({
@@ -377,7 +380,11 @@ impl McpProxyServer {
     }
 
     async fn handle_resources_read(&self, id: &Value, req: &Value) -> Value {
-        let uri = req["params"]["uri"].as_str().unwrap_or("");
+        let uri = req
+            .get("params")
+            .and_then(|v| v.get("uri"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
         if uri != "proxy://pool/stats" {
             return error_response(id, -32602, &format!("Unknown resource: {uri}"));
         }
@@ -398,14 +405,15 @@ impl McpProxyServer {
 
     // ── proxy_add ─────────────────────────────────────────────────────────────
 
+    #[allow(clippy::too_many_lines)]
     async fn tool_proxy_add(&self, id: &Value, args: &Value) -> Value {
-        let Some(url) = args["url"].as_str() else {
+        let Some(url) = args.get("url").and_then(Value::as_str) else {
             return error_response(id, -32602, "Missing required parameter: url");
         };
 
         let proxy_type = {
             // Prefer the explicit `proxy_type` argument; otherwise infer from the URL scheme.
-            let explicit = args["proxy_type"].as_str();
+            let explicit = args.get("proxy_type").and_then(Value::as_str);
             let scheme = url.split_once("://").map(|(s, _)| s);
             let type_str = explicit.or(scheme).unwrap_or("http").to_ascii_lowercase();
             match type_str.as_str() {
@@ -424,15 +432,27 @@ impl McpProxyServer {
                 }
             }
         };
-        let username = args["username"].as_str().map(str::to_string);
-        let password = args["password"].as_str().map(str::to_string);
+        let username = args
+            .get("username")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let password = args
+            .get("password")
+            .and_then(Value::as_str)
+            .map(str::to_string);
         let weight = match args.get("weight") {
             None => 1u32,
             Some(v) => match v.as_u64() {
-                Some(w) if w <= u64::from(u32::MAX) => w as u32,
-                Some(_) => {
-                    return error_response(id, -32602, "Invalid parameter: weight out of range");
-                }
+                Some(w) => match u32::try_from(w) {
+                    Ok(weight) => weight,
+                    Err(_) => {
+                        return error_response(
+                            id,
+                            -32602,
+                            "Invalid parameter: weight out of range",
+                        );
+                    }
+                },
                 None => {
                     return error_response(
                         id,
@@ -500,13 +520,12 @@ impl McpProxyServer {
     // ── proxy_remove ─────────────────────────────────────────────────────────
 
     async fn tool_proxy_remove(&self, id: &Value, args: &Value) -> Value {
-        let Some(proxy_id_str) = args["proxy_id"].as_str() else {
+        let Some(proxy_id_str) = args.get("proxy_id").and_then(Value::as_str) else {
             return error_response(id, -32602, "Missing required parameter: proxy_id");
         };
 
-        let proxy_id = match Uuid::parse_str(proxy_id_str) {
-            Ok(u) => u,
-            Err(_) => return error_response(id, -32602, "Invalid proxy_id: must be a UUID"),
+        let Ok(proxy_id) = Uuid::parse_str(proxy_id_str) else {
+            return error_response(id, -32602, "Invalid proxy_id: must be a UUID");
         };
 
         match self.manager.remove_proxy(proxy_id).await {
@@ -565,7 +584,7 @@ impl McpProxyServer {
     // ── proxy_acquire_for_domain ──────────────────────────────────────────────
 
     async fn tool_proxy_acquire_for_domain(&self, id: &Value, args: &Value) -> Value {
-        let Some(domain) = args["domain"].as_str() else {
+        let Some(domain) = args.get("domain").and_then(Value::as_str) else {
             return error_response(id, -32602, "Missing required parameter: domain");
         };
 
@@ -595,10 +614,10 @@ impl McpProxyServer {
     // ── proxy_release ─────────────────────────────────────────────────────────
 
     async fn tool_proxy_release(&self, id: &Value, args: &Value) -> Value {
-        let Some(token) = args["handle_token"].as_str() else {
+        let Some(token) = args.get("handle_token").and_then(Value::as_str) else {
             return error_response(id, -32602, "Missing required parameter: handle_token");
         };
-        let success = args["success"].as_bool().unwrap_or(true);
+        let success = args.get("success").and_then(Value::as_bool).unwrap_or(true);
 
         let mut store = self.handles.lock().await;
         let Some(handle) = store.remove(token) else {
@@ -638,63 +657,105 @@ fn stats_to_json(stats: &PoolStats) -> Value {
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
     #[test]
-    fn server_builds() {
-        let _ = McpProxyServer::new().unwrap();
+    fn server_builds() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let _ = McpProxyServer::new()?;
+        Ok(())
     }
 
     #[test]
-    fn initialize_response_has_version() {
-        let server = McpProxyServer::new().unwrap();
+    fn initialize_response_has_version() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let server = McpProxyServer::new()?;
         let id = json!(1);
-        let resp = server.handle_initialize(&id);
-        assert_eq!(resp["result"]["protocolVersion"], "2025-11-25");
-        assert_eq!(resp["result"]["serverInfo"]["name"], "stygian-proxy");
+        let resp = McpProxyServer::handle_initialize(&id);
+        assert_eq!(
+            resp.get("result")
+                .and_then(|r| r.get("protocolVersion"))
+                .and_then(Value::as_str),
+            Some("2025-11-25")
+        );
+        assert_eq!(
+            resp.get("result")
+                .and_then(|r| r.get("serverInfo"))
+                .and_then(|s| s.get("name"))
+                .and_then(Value::as_str),
+            Some("stygian-proxy")
+        );
+        let _ = server; // keep test parity with prior server construction
+        Ok(())
     }
 
     #[test]
-    fn tools_list_has_all_tools() {
-        let server = McpProxyServer::new().unwrap();
+    fn tools_list_has_all_tools() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let server = McpProxyServer::new()?;
         let id = json!(1);
-        let resp = server.handle_tools_list(&id);
-        let tools = resp["result"]["tools"].as_array().unwrap();
-        let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+        let resp = McpProxyServer::handle_tools_list(&id);
+        let tools = resp
+            .get("result")
+            .and_then(|r| r.get("tools"))
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                std::io::Error::other("tools list response should include tools array")
+            })?;
+        let names: Vec<&str> = tools
+            .iter()
+            .filter_map(|tool| tool.get("name").and_then(Value::as_str))
+            .collect();
         assert!(names.contains(&"proxy_add"));
         assert!(names.contains(&"proxy_remove"));
         assert!(names.contains(&"proxy_pool_stats"));
         assert!(names.contains(&"proxy_acquire"));
         assert!(names.contains(&"proxy_acquire_for_domain"));
         assert!(names.contains(&"proxy_release"));
+        let _ = server;
+        Ok(())
     }
 
     #[tokio::test]
-    async fn proxy_add_missing_url_returns_error() {
-        let server = McpProxyServer::new().unwrap();
+    async fn proxy_add_missing_url_returns_error()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let server = McpProxyServer::new()?;
         let id = json!(1);
         let args = json!({});
         let resp = server.tool_proxy_add(&id, &args).await;
-        assert!(resp["error"].is_object());
+        assert!(resp.get("error").is_some_and(Value::is_object));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn pool_stats_returns_empty_on_fresh_manager() {
-        let server = McpProxyServer::new().unwrap();
+    async fn pool_stats_returns_empty_on_fresh_manager()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let server = McpProxyServer::new()?;
         let id = json!(1);
         let resp = server.tool_proxy_pool_stats(&id).await;
-        let text = resp["result"]["content"][0]["text"].as_str().unwrap();
-        let parsed: Value = serde_json::from_str(text).unwrap();
-        assert_eq!(parsed["total"], 0);
+        let text = resp
+            .get("result")
+            .and_then(|r| r.get("content"))
+            .and_then(Value::as_array)
+            .and_then(|content| content.first())
+            .and_then(|item| item.get("text"))
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                std::io::Error::other("pool_stats response should include content[0].text")
+            })?;
+        let parsed: Value = serde_json::from_str(text)?;
+        assert_eq!(parsed.get("total").and_then(Value::as_u64), Some(0));
+        Ok(())
     }
 
     #[tokio::test]
-    async fn acquire_on_empty_pool_returns_error() {
-        let server = McpProxyServer::new().unwrap();
+    async fn acquire_on_empty_pool_returns_error()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let server = McpProxyServer::new()?;
         let id = json!(1);
         let resp = server.tool_proxy_acquire(&id).await;
-        assert!(resp["error"].is_object(), "empty pool should return error");
+        assert!(
+            resp.get("error").is_some_and(Value::is_object),
+            "empty pool should return error"
+        );
+        Ok(())
     }
 }

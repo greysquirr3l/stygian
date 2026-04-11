@@ -80,7 +80,7 @@ pub struct WebSocketSource {
 
 impl WebSocketSource {
     /// Create a new WebSocket source with custom configuration.
-    pub fn new(config: WebSocketConfig) -> Self {
+    pub const fn new(config: WebSocketConfig) -> Self {
         Self { config }
     }
 
@@ -93,14 +93,17 @@ impl WebSocketSource {
         if let Some(token) = params.get("bearer_token").and_then(|v| v.as_str()) {
             cfg.bearer_token = Some(token.to_string());
         }
-        if let Some(t) = params.get("timeout_secs").and_then(|v| v.as_u64()) {
+        if let Some(t) = params
+            .get("timeout_secs")
+            .and_then(serde_json::Value::as_u64)
+        {
             cfg.timeout_secs = t;
         }
         if let Some(r) = params
             .get("max_reconnect_attempts")
-            .and_then(|v| v.as_u64())
+            .and_then(serde_json::Value::as_u64)
         {
-            cfg.max_reconnect_attempts = r as u32;
+            cfg.max_reconnect_attempts = u32::try_from(r).unwrap_or(u32::MAX);
         }
         cfg
     }
@@ -255,7 +258,7 @@ impl StreamSourcePort for WebSocketSource {
         }))
     }
 
-    fn source_name(&self) -> &str {
+    fn source_name(&self) -> &'static str {
         "websocket"
     }
 }
@@ -277,8 +280,8 @@ impl ScrapingService for WebSocketSource {
         let max_events = input
             .params
             .get("max_events")
-            .and_then(|v| v.as_u64())
-            .map(|n| n as usize);
+            .and_then(serde_json::Value::as_u64)
+            .map(|n| usize::try_from(n).unwrap_or(usize::MAX));
 
         let events = self.collect_events(&input.url, max_events, &cfg).await?;
         let count = events.len();
@@ -308,36 +311,41 @@ impl ScrapingService for WebSocketSource {
 
 #[cfg(test)]
 mod tests {
+    use base64::Engine;
+
     use super::*;
 
     #[test]
-    fn map_text_frame() {
+    fn map_text_frame() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let msg = Message::Text(r#"{"price": 42.5}"#.into());
-        let event = map_message_to_event(msg, 0).expect("should map");
+        let event =
+            map_message_to_event(msg, 0).ok_or_else(|| std::io::Error::other("should map"))?;
         assert_eq!(event.id.as_deref(), Some("0"));
         assert_eq!(event.event_type.as_deref(), Some("text"));
         assert_eq!(event.data, r#"{"price": 42.5}"#);
+        Ok(())
     }
 
     #[test]
-    fn map_binary_frame_to_base64() {
+    fn map_binary_frame_to_base64() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let data = vec![0xDE, 0xAD, 0xBE, 0xEF];
         let msg = Message::Binary(data.into());
-        let event = map_message_to_event(msg, 1).expect("should map");
+        let event =
+            map_message_to_event(msg, 1).ok_or_else(|| std::io::Error::other("should map"))?;
         assert_eq!(event.event_type.as_deref(), Some("binary"));
         // Verify it's valid base64
-        use base64::Engine;
-        let decoded = base64::engine::general_purpose::STANDARD
-            .decode(&event.data)
-            .expect("valid base64");
+        let decoded = base64::engine::general_purpose::STANDARD.decode(&event.data)?;
         assert_eq!(decoded, vec![0xDE, 0xAD, 0xBE, 0xEF]);
+        Ok(())
     }
 
     #[test]
-    fn map_ping_frame() {
+    fn map_ping_frame() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let msg = Message::Ping(vec![1, 2, 3].into());
-        let event = map_message_to_event(msg, 2).expect("should map");
+        let event =
+            map_message_to_event(msg, 2).ok_or_else(|| std::io::Error::other("should map"))?;
         assert_eq!(event.event_type.as_deref(), Some("ping"));
+        Ok(())
     }
 
     #[test]
@@ -398,14 +406,14 @@ mod tests {
         }
 
         assert_eq!(events.len(), 2);
-        assert_eq!(events[0].id.as_deref(), Some("0"));
-        assert_eq!(events[1].id.as_deref(), Some("1"));
+        assert_eq!(events.first().and_then(|e| e.id.as_deref()), Some("0"));
+        assert_eq!(events.get(1).and_then(|e| e.id.as_deref()), Some("1"));
     }
 
     // Integration tests require a running WebSocket server — marked #[ignore]
     #[tokio::test]
     #[ignore = "requires WebSocket echo server"]
-    async fn connect_to_echo_server() {
+    async fn connect_to_echo_server() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let source = WebSocketSource::new(WebSocketConfig {
             subscribe_message: Some("hello".into()),
             timeout_secs: 5,
@@ -413,8 +421,8 @@ mod tests {
         });
         let events = source
             .subscribe("ws://127.0.0.1:9001/echo", Some(1))
-            .await
-            .expect("connect");
+            .await?;
         assert!(!events.is_empty());
+        Ok(())
     }
 }

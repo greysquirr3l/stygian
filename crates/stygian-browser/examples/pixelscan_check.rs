@@ -11,7 +11,7 @@
 //! improvements without re-parsing the page manually each time.
 //!
 //! Network architecture notes (from inspection):
-//!   - Bot check signals are POSTed to `/s/api/afp`, `/s/api/cb`, `/s/api/ci`
+//!   - Bot check signals are `POSTed` to `/s/api/afp`, `/s/api/cb`, `/s/api/ci`
 //!   - Fingerprint data is sent to `/s/api/gf`, `/s/api/co`, `/s/api/a/f`
 //!   - All evaluation is *server-side*; the Angular app just renders the result
 //!   - Canvas/WebGL blobs ship via `/s/api/cwg` and a blob: URL (canvas worker)
@@ -266,7 +266,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let final_url = page.url().await.unwrap_or_else(|_| TARGET_URL.to_string());
     let verdict: Option<String> = page.eval(VERDICT_SCRIPT).await.ok();
     let cards: Value = page.eval(CARDS_SCRIPT).await.unwrap_or(json!([]));
-    let details: Value = page.eval(DETAILS_SCRIPT).await.unwrap_or(json!({}));
+    let details: Value = page
+        .eval(DETAILS_SCRIPT)
+        .await
+        .unwrap_or_else(|_| json!({}));
 
     // ── Build report ──────────────────────────────────────────────────────────
     let report = json!({

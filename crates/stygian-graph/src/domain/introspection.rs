@@ -260,10 +260,10 @@ pub struct NodeQuery {
     /// Filter by ID pattern (substring match)
     pub id_pattern: Option<String>,
 
-    /// Only root nodes (in_degree = 0)
+    /// Only root nodes (`in_degree = 0`)
     pub is_root: Option<bool>,
 
-    /// Only leaf nodes (out_degree = 0)
+    /// Only leaf nodes (`out_degree = 0`)
     pub is_leaf: Option<bool>,
 
     /// Minimum depth

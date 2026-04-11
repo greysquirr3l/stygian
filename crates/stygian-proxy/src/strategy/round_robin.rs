@@ -51,6 +51,9 @@ impl RotationStrategy for RoundRobinStrategy {
             .counter
             .fetch_add(1, Ordering::Relaxed)
             .wrapping_rem(healthy.len());
-        Ok(healthy[idx])
+        healthy
+            .get(idx)
+            .copied()
+            .ok_or(ProxyError::AllProxiesUnhealthy)
     }
 }

@@ -982,7 +982,6 @@ impl StreamSourcePort for ScrapeExchangeFeed {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
@@ -1004,14 +1003,13 @@ mod tests {
     }
 
     #[test]
-    fn test_jwt_token_parsing() {
+    fn test_jwt_token_parsing() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let json_str = r#"{"access_token":"test_jwt","token_type":"Bearer","expires_in":3600}"#;
-        let result: std::result::Result<JwtTokenResponse, _> = serde_json::from_str(json_str);
-        assert!(result.is_ok());
-        let response = result.unwrap();
+        let response: JwtTokenResponse = serde_json::from_str(json_str)?;
         assert_eq!(response.access_token, "test_jwt");
         assert_eq!(response.token_type, "Bearer");
         assert_eq!(response.expires_in, 3600);
+        Ok(())
     }
 
     #[test]
@@ -1047,25 +1045,34 @@ mod tests {
     // ── T27 adapter tests ─────────────────────────────────────────────────────
 
     #[test]
-    fn test_validate_rejects_null_data_with_schema() {
+    fn test_validate_rejects_null_data_with_schema()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
         let record = SinkRecord::new("product-v1", "https://example.com", Value::Null);
         let result = ScrapeExchangeAdapter::local_validate(&record);
-        assert!(result.is_err(), "null data with schema_id should fail");
-        let msg = result.unwrap_err().to_string();
+        let msg = match result.err() {
+            Some(err) => err.to_string(),
+            None => {
+                return Err(std::io::Error::other("null data with schema_id should fail").into());
+            }
+        };
         assert!(msg.contains("null"), "error should mention null: {msg}");
+        Ok(())
     }
 
     #[test]
-    fn test_validate_rejects_empty_object() {
+    fn test_validate_rejects_empty_object() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let record = SinkRecord::new(
             "product-v1",
             "https://example.com",
             serde_json::Value::Object(serde_json::Map::new()),
         );
         let result = ScrapeExchangeAdapter::local_validate(&record);
-        assert!(result.is_err(), "empty object should fail validation");
-        let msg = result.unwrap_err().to_string();
+        let msg = match result.err() {
+            Some(err) => err.to_string(),
+            None => return Err(std::io::Error::other("empty object should fail validation").into()),
+        };
         assert!(msg.contains("empty"), "error should mention empty: {msg}");
+        Ok(())
     }
 
     #[test]
@@ -1087,9 +1094,20 @@ mod tests {
             serde_json::json!({ "total": 39.99 }),
         );
         let mapped = ScrapeExchangeAdapter::map_record(&record);
-        assert_eq!(mapped["schema_id"], "order-v2");
-        assert_eq!(mapped["source"], "https://shop.example.com/orders/99");
-        assert_eq!(mapped["content"]["total"], 39.99);
+        assert_eq!(
+            mapped.get("schema_id"),
+            Some(&serde_json::json!("order-v2"))
+        );
+        assert_eq!(
+            mapped.get("source"),
+            Some(&serde_json::json!("https://shop.example.com/orders/99"))
+        );
+        let total = mapped
+            .get("content")
+            .and_then(serde_json::Value::as_object)
+            .and_then(|content| content.get("total"))
+            .and_then(serde_json::Value::as_f64);
+        assert_eq!(total, Some(39.99));
     }
 
     #[test]
@@ -1113,7 +1131,7 @@ mod tests {
     // ── T28 WebSocket feed tests ───────────────────────────────────────────────
 
     #[test]
-    fn test_feed_filter_serialization() {
+    fn test_feed_filter_serialization() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let filter = FeedFilter {
             platform: Some("web".to_string()),
             entity: Some("products".to_string()),
@@ -1122,10 +1140,11 @@ mod tests {
             schema_owner: None,
             schema_version: None,
         };
-        let json = serde_json::to_string(&filter).expect("serialize");
+        let json = serde_json::to_string(&filter)?;
         assert!(json.contains("\"platform\":\"web\""), "platform: {json}");
         assert!(json.contains("\"entity\":\"products\""), "entity: {json}");
         assert!(json.contains("\"uploader\":\"alice\""), "uploader: {json}");
+        Ok(())
     }
 
     #[test]
@@ -1170,12 +1189,12 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires live Scrape Exchange WebSocket endpoint"]
-    async fn test_live_feed_connect() {
+    async fn test_live_feed_connect() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let feed = ScrapeExchangeFeed::new(FeedConfig::default());
         let events = feed
             .subscribe("wss://scrape.exchange/api/messages/v1", Some(1))
-            .await
-            .expect("connect");
+            .await?;
         assert!(!events.is_empty(), "expected at least one event");
+        Ok(())
     }
 }

@@ -126,7 +126,7 @@ pub enum FreeListSource {
 }
 
 impl FreeListSource {
-    fn url(&self) -> &str {
+    const fn url(&self) -> &str {
         match self {
             Self::TheSpeedXHttp => {
                 "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt"
@@ -147,7 +147,7 @@ impl FreeListSource {
         }
     }
 
-    fn proxy_type(&self) -> ProxyType {
+    const fn proxy_type(&self) -> ProxyType {
         match self {
             Self::TheSpeedXHttp | Self::ClarketmHttp | Self::OpenProxyListHttp => ProxyType::Http,
             #[cfg(feature = "socks")]
@@ -237,6 +237,7 @@ impl FreeListFetcher {
         requester: crate::http_client::ProfiledRequester,
     ) -> Self {
         self.client = requester.client().clone();
+        drop(requester);
         self
     }
 
@@ -388,7 +389,7 @@ impl ProxyFetcher for FreeListFetcher {
                 origin: self
                     .sources
                     .iter()
-                    .map(|s| s.url())
+                    .map(FreeListSource::url)
                     .collect::<Vec<_>>()
                     .join(", "),
                 message: "all sources returned empty or failed".into(),
@@ -527,9 +528,18 @@ mod tests {
             .collect();
 
         assert_eq!(parsed.len(), 3);
-        assert_eq!(parsed[0].url, "http://1.2.3.4:8080");
-        assert_eq!(parsed[1].url, "http://5.6.7.8:3128");
-        assert_eq!(parsed[2].url, "http://[2001:db8::1]:8081");
+        assert_eq!(
+            parsed.first().map(|proxy| proxy.url.as_str()),
+            Some("http://1.2.3.4:8080")
+        );
+        assert_eq!(
+            parsed.get(1).map(|proxy| proxy.url.as_str()),
+            Some("http://5.6.7.8:3128")
+        );
+        assert_eq!(
+            parsed.get(2).map(|proxy| proxy.url.as_str()),
+            Some("http://[2001:db8::1]:8081")
+        );
     }
 
     #[test]
@@ -548,21 +558,28 @@ mod tests {
     }
 
     #[test]
-    fn free_list_fetcher_empty_sources_is_config_error() {
+    fn free_list_fetcher_empty_sources_is_config_error()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
         let fetcher = FreeListFetcher::new(vec![]);
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_time()
             .build()
-            .unwrap_or_else(|e| panic!("failed to build runtime for test: {e}"));
+            .map_err(|e| std::io::Error::other(format!("failed to build runtime for test: {e}")))?;
         let err = rt
             .block_on(fetcher.fetch())
-            .expect_err("empty sources should fail");
+            .err()
+            .ok_or_else(|| std::io::Error::other("empty sources should fail"))?;
         match err {
             ProxyError::ConfigError(msg) => {
                 assert!(msg.contains("no sources configured"));
             }
-            other => panic!("unexpected error variant: {other}"),
+            other => {
+                return Err(
+                    std::io::Error::other(format!("unexpected error variant: {other}")).into(),
+                );
+            }
         }
+        Ok(())
     }
 
     #[test]

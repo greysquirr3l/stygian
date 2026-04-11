@@ -42,7 +42,6 @@ const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2024
 /// # }
 /// ```
 pub struct McpAggregator {
-    graph: Arc<McpGraphServer>,
     browser: Arc<McpBrowserServer>,
     proxy: Arc<McpProxyServer>,
     /// Cancellation token for the proxy background health-check and session-purge tasks.
@@ -62,12 +61,10 @@ impl McpAggregator {
     /// initialised (e.g. required system binaries are missing).
     pub async fn try_new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let pool = BrowserPool::new(stygian_browser::BrowserConfig::default()).await?;
-        let graph = Arc::new(McpGraphServer::new());
         let browser = Arc::new(McpBrowserServer::new(pool));
         let proxy = Arc::new(McpProxyServer::new()?);
         let (proxy_token, proxy_bg) = proxy.start_background();
         Ok(Self {
-            graph,
             browser,
             proxy,
             proxy_token,
@@ -143,21 +140,17 @@ impl McpAggregator {
             ));
         }
 
-        let method = match req.get("method").and_then(Value::as_str) {
-            Some(method) => method,
-            None => {
-                return Some(error_response(
-                    id,
-                    -32600,
-                    "Invalid request: missing string 'method'",
-                ));
-            }
+        let Some(method) = req.get("method").and_then(Value::as_str) else {
+            return Some(error_response(
+                id,
+                -32600,
+                "Invalid request: missing string 'method'",
+            ));
         };
 
         let response = match method {
             "initialize" => handle_initialize(req),
-            "initialized" | "notifications/initialized" => ok_response(id, json!({})),
-            "ping" => ok_response(id, json!({})),
+            "initialized" | "notifications/initialized" | "ping" => ok_response(id, &json!({})),
             "tools/list" => self.handle_tools_list(id).await,
             "tools/call" => self.handle_tools_call(id, req).await,
             "resources/list" => self.handle_resources_list(id).await,
@@ -178,19 +171,31 @@ impl McpAggregator {
         let list_req = json!({"jsonrpc":"2.0","id":0,"method":"tools/list","params":{}});
 
         // Graph tools — prefix each name with `graph_`.
-        let graph_resp = self.graph.handle_request(&list_req).await;
-        let graph_tools: Vec<Value> = graph_resp["result"]["tools"]
-            .as_array()
+        let graph_resp = McpGraphServer::handle_request(&list_req).await;
+        let graph_tools: Vec<Value> = graph_resp
+            .get("result")
+            .and_then(|r| r.get("tools"))
+            .and_then(serde_json::Value::as_array)
             .cloned()
             .unwrap_or_default()
             .into_iter()
             .map(|mut t| {
-                if let Some(name) = t["name"].as_str() {
-                    let prefixed = format!("graph_{name}");
-                    t["name"] = json!(prefixed);
-                    // Prefix description so the LLM understands the namespace.
-                    let desc = t["description"].as_str().unwrap_or("").to_string();
-                    t["description"] = json!(format!("[graph] {desc}"));
+                if let Some(obj) = t.as_object_mut() {
+                    let name = obj
+                        .get("name")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_owned);
+                    if let Some(name) = name {
+                        let prefixed = format!("graph_{name}");
+                        let desc = obj
+                            .get("description")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("")
+                            .to_string();
+                        obj.insert("name".to_string(), json!(prefixed));
+                        // Prefix description so the LLM understands the namespace.
+                        obj.insert("description".to_string(), json!(format!("[graph] {desc}")));
+                    }
                 }
                 t
             })
@@ -198,15 +203,19 @@ impl McpAggregator {
 
         // Browser tools — already prefixed (`browser_*`).
         let browser_resp = self.browser.dispatch(&list_req).await;
-        let browser_tools: Vec<Value> = browser_resp["result"]["tools"]
-            .as_array()
+        let browser_tools: Vec<Value> = browser_resp
+            .get("result")
+            .and_then(|r| r.get("tools"))
+            .and_then(serde_json::Value::as_array)
             .cloned()
             .unwrap_or_default();
 
         // Proxy tools — already prefixed (`proxy_*`).
         let proxy_resp = self.proxy.handle_request(&list_req).await;
-        let proxy_tools: Vec<Value> = proxy_resp["result"]["tools"]
-            .as_array()
+        let proxy_tools: Vec<Value> = proxy_resp
+            .get("result")
+            .and_then(|r| r.get("tools"))
+            .and_then(serde_json::Value::as_array)
             .cloned()
             .unwrap_or_default();
 
@@ -242,18 +251,20 @@ impl McpAggregator {
             .flatten()
             .collect();
 
-        ok_response(id, json!({ "tools": all_tools }))
+        ok_response(id, &json!({ "tools": all_tools }))
     }
 
     // ── tools/call ────────────────────────────────────────────────────────────
 
     async fn handle_tools_call(&self, id: &Value, req: &Value) -> Value {
-        let params = &req["params"];
-        let name = match params["name"].as_str() {
-            Some(n) => n,
-            None => return error_response(id, -32602, "Missing tool 'name'"),
+        let Some(params) = req.get("params") else {
+            return error_response(id, -32602, "Missing tool 'name'");
         };
-        let args = &params["arguments"];
+        let Some(name) = params.get("name").and_then(Value::as_str) else {
+            return error_response(id, -32602, "Missing tool 'name'");
+        };
+        let empty = Value::Null;
+        let args = params.get("arguments").unwrap_or(&empty);
 
         if let Some(short) = name.strip_prefix("graph_") {
             // Route to graph sub-server with un-prefixed name.
@@ -263,7 +274,7 @@ impl McpAggregator {
                 "method": "tools/call",
                 "params": { "name": short, "arguments": args }
             });
-            self.graph.handle_request(&sub).await
+            McpGraphServer::handle_request(&sub).await
         } else if name.starts_with("browser_") {
             let sub = json!({
                 "jsonrpc": "2.0",
@@ -296,15 +307,19 @@ impl McpAggregator {
 
         // Collect browser resources (active sessions).
         let browser_resp = self.browser.dispatch(&list_req).await;
-        let browser_resources: Vec<Value> = browser_resp["result"]["resources"]
-            .as_array()
+        let browser_resources: Vec<Value> = browser_resp
+            .get("result")
+            .and_then(|r| r.get("resources"))
+            .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default();
 
         // Collect proxy resources (pool stats).
         let proxy_resp = self.proxy.handle_request(&list_req).await;
-        let proxy_resources: Vec<Value> = proxy_resp["result"]["resources"]
-            .as_array()
+        let proxy_resources: Vec<Value> = proxy_resp
+            .get("result")
+            .and_then(|r| r.get("resources"))
+            .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default();
 
@@ -313,13 +328,17 @@ impl McpAggregator {
             .flatten()
             .collect();
 
-        ok_response(id, json!({ "resources": all }))
+        ok_response(id, &json!({ "resources": all }))
     }
 
     // ── resources/read ────────────────────────────────────────────────────────
 
     async fn handle_resources_read(&self, id: &Value, req: &Value) -> Value {
-        let uri = req["params"]["uri"].as_str().unwrap_or("");
+        let uri = req
+            .get("params")
+            .and_then(|p| p.get("uri"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
 
         if uri.starts_with("browser://") {
             self.browser.dispatch(req).await
@@ -333,83 +352,49 @@ impl McpAggregator {
     // ── Cross-crate tool: scrape_proxied ─────────────────────────────────────
 
     async fn tool_scrape_proxied(&self, id: &Value, args: &Value) -> Value {
-        let url = match args["url"].as_str() {
-            Some(u) => u.to_string(),
-            None => return error_response(id, -32602, "Missing 'url'"),
+        let Some(url) = args.get("url").and_then(Value::as_str).map(str::to_owned) else {
+            return error_response(id, -32602, "Missing 'url'");
         };
-
-        let timeout_secs = args["timeout_secs"].as_u64().unwrap_or(30);
+        let timeout_secs = args
+            .get("timeout_secs")
+            .and_then(Value::as_u64)
+            .unwrap_or(30);
 
         // 1. Acquire a proxy from the pool.
-        let acquire_req = json!({
-            "jsonrpc": "2.0", "id": 0, "method": "tools/call",
-            "params": { "name": "proxy_acquire", "arguments": {} }
-        });
-        let acquire_resp = self.proxy.handle_request(&acquire_req).await;
-        // Propagate a real error from proxy_acquire before falling back to the generic message.
-        if !acquire_resp["error"].is_null() {
-            let code = acquire_resp["error"]["code"]
-                .as_i64()
-                .and_then(|c| i32::try_from(c).ok())
-                .unwrap_or(-32603);
-            return error_response(
-                id,
-                code,
-                acquire_resp["error"]["message"]
-                    .as_str()
-                    .unwrap_or("No proxy available — add proxies via proxy_add first"),
-            );
-        }
-        let handle_info = parse_content_text(&acquire_resp);
-        let handle_token = match handle_info["handle_token"].as_str() {
-            Some(t) => t.to_string(),
-            None => {
-                return error_response(
-                    id,
-                    -32603,
-                    "No proxy available — add proxies via proxy_add first",
-                );
-            }
-        };
-        let proxy_url = match handle_info["proxy_url"].as_str() {
-            Some(u) => u.to_string(),
-            None => {
-                release_proxy(&self.proxy, &handle_token, false).await;
-                return error_response(id, -32603, "proxy_acquire returned no proxy_url");
-            }
+        let (handle_token, proxy_url) = match self.acquire_proxy_and_token(id).await {
+            Ok(v) => v,
+            Err(e) => return e,
         };
 
         // 2. Scrape via the acquired proxy, forwarding the caller's timeout.
-        let scrape_req = json!({
+        let scrape_resp = McpGraphServer::handle_request(&json!({
             "jsonrpc": "2.0", "id": 0, "method": "tools/call",
             "params": {
                 "name": "scrape",
                 "arguments": { "url": url, "proxy_url": proxy_url, "timeout_secs": timeout_secs }
             }
-        });
-        let scrape_resp = self.graph.handle_request(&scrape_req).await;
-        let success = scrape_resp["error"].is_null();
+        }))
+        .await;
+        let success = scrape_resp.get("error").is_none_or(Value::is_null);
 
         // 3. Release the proxy handle (mark success/failure for circuit-breaker).
         release_proxy(&self.proxy, &handle_token, success).await;
 
         // 4. Propagate scrape result.
         if success {
-            let text = scrape_resp["result"]["content"][0]["text"].clone();
-            ok_response(
-                id,
-                json!({
-                    "content": [{"type": "text", "text": text}]
-                }),
-            )
+            let text = mcp_content_text_raw(&scrape_resp);
+            ok_response(id, &json!({ "content": [{"type": "text", "text": text}] }))
         } else {
-            // Rewrite the id so it matches the caller's request, not the internal sub-request.
-            let code = scrape_resp["error"]["code"]
-                .as_i64()
+            let code = scrape_resp
+                .get("error")
+                .and_then(|e| e.get("code"))
+                .and_then(Value::as_i64)
                 .and_then(|c| i32::try_from(c).ok())
                 .unwrap_or(-32603);
-            let message = scrape_resp["error"]["message"]
-                .as_str()
+            let message = scrape_resp
+                .get("error")
+                .and_then(|e| e.get("message"))
+                .and_then(Value::as_str)
                 .unwrap_or("Graph scrape failed");
             error_response(id, code, message)
         }
@@ -418,170 +403,103 @@ impl McpAggregator {
     // ── Cross-crate tool: browser_proxied ────────────────────────────────────
 
     async fn tool_browser_proxied(&self, id: &Value, args: &Value) -> Value {
-        let url = match args["url"].as_str() {
-            Some(u) => u.to_string(),
-            None => return error_response(id, -32602, "Missing 'url'"),
+        let Some(url) = args.get("url").and_then(Value::as_str).map(str::to_owned) else {
+            return error_response(id, -32602, "Missing 'url'");
         };
 
         // 1. Acquire a proxy.
-        let acquire_req = json!({
-            "jsonrpc": "2.0", "id": 0, "method": "tools/call",
-            "params": { "name": "proxy_acquire", "arguments": {} }
-        });
-        let acquire_resp = self.proxy.handle_request(&acquire_req).await;
-        if !acquire_resp["error"].is_null() {
-            let code = acquire_resp["error"]["code"]
-                .as_i64()
-                .and_then(|c| i32::try_from(c).ok())
-                .unwrap_or(-32603);
-            return error_response(
-                id,
-                code,
-                acquire_resp["error"]["message"]
-                    .as_str()
-                    .unwrap_or("No proxy available — add proxies via proxy_add first"),
-            );
-        }
-        let handle_info = parse_content_text(&acquire_resp);
-        let handle_token = match handle_info["handle_token"].as_str() {
-            Some(t) => t.to_string(),
-            None => {
-                return error_response(
-                    id,
-                    -32603,
-                    "No proxy available — add proxies via proxy_add first",
-                );
-            }
-        };
-        let proxy_url = match handle_info["proxy_url"].as_str() {
-            Some(u) => u.to_string(),
-            None => {
-                release_proxy(&self.proxy, &handle_token, false).await;
-                return error_response(id, -32603, "proxy_acquire returned no proxy_url");
-            }
+        let (handle_token, proxy_url) = match self.acquire_proxy_and_token(id).await {
+            Ok(v) => v,
+            Err(e) => return e,
         };
 
         // 2. Acquire a browser session. Note: the `proxy` argument is stored as session
         //    metadata in stygian-browser but does not yet route network traffic through the
         //    proxy at browser-launch level. Pass it for forward-compatibility.
-        let acquire_browser_req = json!({
-            "jsonrpc": "2.0", "id": 0, "method": "tools/call",
-            "params": { "name": "browser_acquire", "arguments": { "proxy": proxy_url } }
-        });
-        let acquire_browser_resp = self.browser.dispatch(&acquire_browser_req).await;
+        let acquire_browser_resp = self
+            .browser
+            .dispatch(&json!({
+                "jsonrpc": "2.0", "id": 0, "method": "tools/call",
+                "params": { "name": "browser_acquire", "arguments": { "proxy": proxy_url } }
+            }))
+            .await;
         // MCP tool failures from stygian-browser appear as result.isError=true.
-        let acquire_is_error = acquire_browser_resp["result"]["isError"].as_bool() == Some(true);
+        let acquire_is_error = acquire_browser_resp
+            .get("result")
+            .and_then(|r| r.get("isError"))
+            .and_then(Value::as_bool)
+            == Some(true);
         let session_info = parse_content_text(&acquire_browser_resp);
-        let session_id = match session_info["session_id"].as_str() {
-            Some(s) => s.to_string(),
-            None => {
-                release_proxy(&self.proxy, &handle_token, false).await;
-                let err_msg = if acquire_is_error {
-                    acquire_browser_resp["result"]["content"]
-                        .get(0)
-                        .and_then(|c| c["text"].as_str())
-                        .unwrap_or("Failed to acquire browser session")
-                } else {
-                    "Failed to acquire browser session"
-                };
-                return error_response(id, -32603, err_msg);
-            }
+        let Some(session_id) = session_info
+            .get("session_id")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+        else {
+            release_proxy(&self.proxy, &handle_token, false).await;
+            let err_msg = if acquire_is_error {
+                mcp_error_message(&acquire_browser_resp)
+                    .unwrap_or("Failed to acquire browser session")
+            } else {
+                "Failed to acquire browser session"
+            };
+            return error_response(id, -32603, err_msg);
         };
 
         // 3. Navigate to URL.
-        let nav_req = json!({
-            "jsonrpc": "2.0", "id": 0, "method": "tools/call",
-            "params": {
-                "name": "browser_navigate",
-                "arguments": { "session_id": session_id, "url": url }
-            }
-        });
-        let nav_resp = self.browser.dispatch(&nav_req).await;
-        // MCP tool failures may appear as result.isError=true with error=null.
-        let nav_ok =
-            nav_resp["error"].is_null() && nav_resp["result"]["isError"].as_bool() != Some(true);
-
-        // Short-circuit: if navigation failed, release resources and propagate the error.
-        if !nav_ok {
-            let _ = self
-                .browser
-                .dispatch(&json!({
-                    "jsonrpc": "2.0", "id": 0, "method": "tools/call",
-                    "params": {
-                        "name": "browser_release",
-                        "arguments": { "session_id": session_id }
-                    }
-                }))
-                .await;
-            release_proxy(&self.proxy, &handle_token, false).await;
-            // Prefer error.message; fall back to result.content[0].text (isError path).
-            let nav_err = nav_resp["error"]["message"]
-                .as_str()
-                .or_else(|| {
-                    nav_resp["result"]["content"]
-                        .get(0)
-                        .and_then(|c| c["text"].as_str())
-                })
-                .unwrap_or("Browser navigation failed");
-            return error_response(id, -32603, nav_err);
-        }
-
-        // 4. Capture HTML content.
-        let content_req = json!({
-            "jsonrpc": "2.0", "id": 0, "method": "tools/call",
-            "params": {
-                "name": "browser_content",
-                "arguments": { "session_id": session_id }
-            }
-        });
-        let content_resp = self.browser.dispatch(&content_req).await;
-        let content_ok = content_resp["error"].is_null()
-            && content_resp["result"]["isError"].as_bool() != Some(true);
-
-        // 5. Release browser session.
-        let _ = self
+        let nav_resp = self
             .browser
             .dispatch(&json!({
                 "jsonrpc": "2.0", "id": 0, "method": "tools/call",
                 "params": {
-                    "name": "browser_release",
-                    "arguments": { "session_id": session_id }
+                    "name": "browser_navigate",
+                    "arguments": { "session_id": session_id, "url": url }
                 }
             }))
             .await;
+        // Short-circuit: if navigation failed, release resources and propagate the error.
+        if is_mcp_error_or_tool_error(&nav_resp) {
+            self.browser_release(&session_id).await;
+            release_proxy(&self.proxy, &handle_token, false).await;
+            let nav_err = mcp_error_message(&nav_resp).unwrap_or("Browser navigation failed");
+            return error_response(id, -32603, nav_err);
+        }
 
-        // 6. Release proxy — success only if both nav and content succeeded.
+        // 4. Capture HTML content.
+        let content_resp = self
+            .browser
+            .dispatch(&json!({
+                "jsonrpc": "2.0", "id": 0, "method": "tools/call",
+                "params": { "name": "browser_content", "arguments": { "session_id": session_id } }
+            }))
+            .await;
+        let content_ok = !is_mcp_error_or_tool_error(&content_resp);
+
+        // 5. Release browser session and proxy — success only if content succeeded.
+        self.browser_release(&session_id).await;
         release_proxy(&self.proxy, &handle_token, content_ok).await;
 
         if !content_ok {
-            // Prefer error.message; fall back to result.content[0].text (isError path).
-            let content_err = content_resp["error"]["message"]
-                .as_str()
-                .or_else(|| {
-                    content_resp["result"]["content"]
-                        .get(0)
-                        .and_then(|c| c["text"].as_str())
-                })
-                .unwrap_or("Browser content retrieval failed");
+            let content_err =
+                mcp_error_message(&content_resp).unwrap_or("Browser content retrieval failed");
             return error_response(id, -32603, content_err);
         }
 
-        // 7. Return combined result — parse sub-tool text fields as JSON to avoid
+        // 6. Return combined result — parse sub-tool text fields as JSON to avoid
         //    double-encoded strings in the aggregated output.
-        let nav_text_raw = &nav_resp["result"]["content"][0]["text"];
-        let html_text_raw = &content_resp["result"]["content"][0]["text"];
-        let nav_json = nav_text_raw
+        let nav_raw = mcp_content_text_raw(&nav_resp);
+        let html_raw = mcp_content_text_raw(&content_resp);
+        let nav_json = nav_raw
             .as_str()
             .and_then(|s| serde_json::from_str::<Value>(s).ok())
-            .unwrap_or_else(|| nav_text_raw.clone());
-        let html_json = html_text_raw
+            .unwrap_or_else(|| nav_raw.clone());
+        let html_json = html_raw
             .as_str()
             .and_then(|s| serde_json::from_str::<Value>(s).ok())
-            .unwrap_or_else(|| html_text_raw.clone());
+            .unwrap_or_else(|| html_raw.clone());
 
         ok_response(
             id,
-            json!({
+            &json!({
                 "content": [{
                     "type": "text",
                     "text": serde_json::to_string(&json!({
@@ -592,6 +510,71 @@ impl McpAggregator {
                 }]
             }),
         )
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    /// Acquire a proxy from the pool, returning `(handle_token, proxy_url)` on success
+    /// or a ready-made JSON-RPC error response on the `Err` side.
+    async fn acquire_proxy_and_token(&self, id: &Value) -> Result<(String, String), Value> {
+        let acquire_resp = self
+            .proxy
+            .handle_request(&json!({
+                "jsonrpc": "2.0", "id": 0, "method": "tools/call",
+                "params": { "name": "proxy_acquire", "arguments": {} }
+            }))
+            .await;
+        if let Some(err) = acquire_resp.get("error").filter(|e| !e.is_null()) {
+            let code = err
+                .get("code")
+                .and_then(Value::as_i64)
+                .and_then(|c| i32::try_from(c).ok())
+                .unwrap_or(-32603);
+            let message = err
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("No proxy available — add proxies via proxy_add first");
+            return Err(error_response(id, code, message));
+        }
+        let handle_info = parse_content_text(&acquire_resp);
+        let Some(handle_token) = handle_info
+            .get("handle_token")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+        else {
+            return Err(error_response(
+                id,
+                -32603,
+                "No proxy available — add proxies via proxy_add first",
+            ));
+        };
+        let Some(proxy_url) = handle_info
+            .get("proxy_url")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+        else {
+            release_proxy(&self.proxy, &handle_token, false).await;
+            return Err(error_response(
+                id,
+                -32603,
+                "proxy_acquire returned no proxy_url",
+            ));
+        };
+        Ok((handle_token, proxy_url))
+    }
+
+    /// Release a browser session via the browser sub-server.
+    async fn browser_release(&self, session_id: &str) {
+        let _ = self
+            .browser
+            .dispatch(&json!({
+                "jsonrpc": "2.0", "id": 0, "method": "tools/call",
+                "params": {
+                    "name": "browser_release",
+                    "arguments": { "session_id": session_id }
+                }
+            }))
+            .await;
     }
 }
 
@@ -610,7 +593,10 @@ impl Drop for McpAggregator {
 
 fn handle_initialize(req: &Value) -> Value {
     let id = req.get("id").unwrap_or(&Value::Null);
-    let requested = req["params"]["protocolVersion"].as_str();
+    let requested = req
+        .get("params")
+        .and_then(|p| p.get("protocolVersion"))
+        .and_then(Value::as_str);
 
     let protocol_version = match requested {
         Some(version) if SUPPORTED_PROTOCOL_VERSIONS.contains(&version) => version,
@@ -624,12 +610,15 @@ fn handle_initialize(req: &Value) -> Value {
                 ),
             );
         }
-        None => SUPPORTED_PROTOCOL_VERSIONS[0],
+        None => SUPPORTED_PROTOCOL_VERSIONS
+            .first()
+            .copied()
+            .unwrap_or("2024-11-05"),
     };
 
     ok_response(
         id,
-        json!({
+        &json!({
             "protocolVersion": protocol_version,
             "capabilities": {
                 "tools":     { "listChanged": false },
@@ -643,7 +632,7 @@ fn handle_initialize(req: &Value) -> Value {
     )
 }
 
-fn ok_response(id: &Value, result: Value) -> Value {
+fn ok_response(id: &Value, result: &Value) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "result": result })
 }
 
@@ -658,10 +647,53 @@ fn error_response(id: &Value, code: i32, message: &str) -> Value {
 /// Extract the first content text item from an MCP response and parse it as
 /// JSON.  Falls back to `Value::Null` on any parsing failure.
 fn parse_content_text(resp: &Value) -> Value {
-    resp["result"]["content"][0]["text"]
-        .as_str()
+    resp.get("result")
+        .and_then(|r| r.get("content"))
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("text"))
+        .and_then(Value::as_str)
         .and_then(|s| serde_json::from_str(s).ok())
         .unwrap_or(Value::Null)
+}
+
+/// Extract the raw first-content-item text from an MCP response as an owned `Value`.
+///
+/// Returns `Value::Null` if no content text is present.
+fn mcp_content_text_raw(resp: &Value) -> Value {
+    resp.get("result")
+        .and_then(|r| r.get("content"))
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("text"))
+        .cloned()
+        .unwrap_or(Value::Null)
+}
+
+/// Returns `true` if the response has a non-null `error` field or `result.isError = true`.
+fn is_mcp_error_or_tool_error(resp: &Value) -> bool {
+    !resp.get("error").is_none_or(Value::is_null)
+        || resp
+            .get("result")
+            .and_then(|r| r.get("isError"))
+            .and_then(Value::as_bool)
+            == Some(true)
+}
+
+/// Extract the error message from a JSON-RPC / MCP tool-error response.
+///
+/// Checks `error.message` first; falls back to `result.content[0].text`
+/// (the `isError` path used by `stygian-browser`).
+fn mcp_error_message(resp: &Value) -> Option<&str> {
+    resp.get("error")
+        .filter(|e| !e.is_null())
+        .and_then(|e| e.get("message"))
+        .and_then(Value::as_str)
+        .or_else(|| {
+            resp.get("result")
+                .and_then(|r| r.get("content"))
+                .and_then(|c| c.get(0))
+                .and_then(|c| c.get("text"))
+                .and_then(Value::as_str)
+        })
 }
 
 fn is_jsonrpc_notification(req: &Value) -> bool {
@@ -694,42 +726,59 @@ mod tests {
 
     /// Validate that the aggregator routes `graph_scrape` to the graph server.
     #[tokio::test]
-    async fn test_routes_graph_tool() {
-        let graph = Arc::new(McpGraphServer::new());
-        let proxy = Arc::new(McpProxyServer::new().expect("proxy server init"));
-        // Build a minimal aggregator without actually starting a browser.
-        // We skip browser construction in unit tests (no binary available).
-        // Only the routing logic is tested here.
+    async fn test_routes_graph_tool() -> Result<(), Box<dyn std::error::Error>> {
+        let proxy = Arc::new(McpProxyServer::new()?);
         let list_req = json!({
             "jsonrpc": "2.0", "id": 1,
             "method": "tools/list",
             "params": {}
         });
-        let resp = graph.handle_request(&list_req).await;
-        let tools = resp["result"]["tools"].as_array().expect("tools array");
+        let resp = McpGraphServer::handle_request(&list_req).await;
+        let tools = resp
+            .get("result")
+            .and_then(|r| r.get("tools"))
+            .and_then(Value::as_array)
+            .ok_or("graph tools/list missing result.tools")?;
         // Confirm graph server exposes `scrape` (un-prefixed).
-        assert!(tools.iter().any(|t| t["name"] == "scrape"));
+        assert!(
+            tools
+                .iter()
+                .any(|t| t.get("name").and_then(Value::as_str) == Some("scrape"))
+        );
         // Proxy list should not contain `scrape`.
         let proxy_resp = proxy.handle_request(&list_req).await;
-        let proxy_tools = proxy_resp["result"]["tools"]
-            .as_array()
-            .expect("tools array");
-        assert!(!proxy_tools.iter().any(|t| t["name"] == "scrape"));
+        let proxy_tools = proxy_resp
+            .get("result")
+            .and_then(|r| r.get("tools"))
+            .and_then(Value::as_array)
+            .ok_or("proxy tools/list missing result.tools")?;
+        assert!(
+            !proxy_tools
+                .iter()
+                .any(|t| t.get("name").and_then(Value::as_str) == Some("scrape"))
+        );
         drop(proxy);
+        Ok(())
     }
 
     #[test]
     fn test_error_response_structure() {
         let resp = error_response(&json!(42), -32602, "bad param");
-        assert_eq!(resp["error"]["code"], -32602);
-        assert_eq!(resp["id"], 42);
+        assert_eq!(
+            resp.pointer("/error/code").and_then(Value::as_i64),
+            Some(-32602)
+        );
+        assert_eq!(resp.get("id").and_then(Value::as_i64), Some(42));
     }
 
     #[test]
     fn test_ok_response_structure() {
-        let resp = ok_response(&json!(1), json!({"foo": "bar"}));
-        assert_eq!(resp["result"]["foo"], "bar");
-        assert_eq!(resp["jsonrpc"], "2.0");
+        let resp = ok_response(&json!(1), &json!({"foo": "bar"}));
+        assert_eq!(
+            resp.pointer("/result/foo").and_then(Value::as_str),
+            Some("bar")
+        );
+        assert_eq!(resp.get("jsonrpc").and_then(Value::as_str), Some("2.0"));
     }
 
     #[test]
@@ -741,7 +790,11 @@ mod tests {
             "params": { "protocolVersion": "2024-11-05" }
         });
         let resp = handle_initialize(&req);
-        assert_eq!(resp["result"]["protocolVersion"], "2024-11-05");
+        assert_eq!(
+            resp.pointer("/result/protocolVersion")
+                .and_then(Value::as_str),
+            Some("2024-11-05")
+        );
     }
 
     #[test]
@@ -753,59 +806,74 @@ mod tests {
             "params": { "protocolVersion": "1999-01-01" }
         });
         let resp = handle_initialize(&req);
-        assert_eq!(resp["error"]["code"], -32602);
+        assert_eq!(
+            resp.pointer("/error/code").and_then(Value::as_i64),
+            Some(-32602)
+        );
     }
 
     /// `scrape_proxied` with no proxies in the pool must return an error
     /// (not silently succeed or panic).
     #[tokio::test]
-    async fn test_scrape_proxied_no_proxy_returns_error() {
-        let graph = Arc::new(McpGraphServer::new());
-        let proxy = Arc::new(McpProxyServer::new().expect("proxy server init"));
-        // Build a minimal graph+proxy aggregator without a real browser.
-        // We test cross-crate error propagation by calling scrape_proxied
-        // directly on a graph+proxy combination with an empty proxy pool.
+    async fn test_scrape_proxied_no_proxy_returns_error() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let proxy = Arc::new(McpProxyServer::new()?);
         let id = json!(99);
-        // With no proxies registered the acquire call must fail.
         let acquire_req = json!({
             "jsonrpc": "2.0", "id": 0, "method": "tools/call",
             "params": { "name": "proxy_acquire", "arguments": {} }
         });
         let acquire_resp = proxy.handle_request(&acquire_req).await;
         // Simulate the scrape_proxied acquire-failure branch.
-        let resp = if !acquire_resp["error"].is_null() {
-            let code = acquire_resp["error"]["code"]
-                .as_i64()
-                .and_then(|c| i32::try_from(c).ok())
-                .unwrap_or(-32603);
-            let message = acquire_resp["error"]["message"]
-                .as_str()
-                .unwrap_or("No proxy available");
-            error_response(&id, code, message)
-        } else {
+        let resp = if acquire_resp.get("error").is_none_or(Value::is_null) {
             // parse_content_text returns Null for empty pool → no handle_token
             let handle_info = parse_content_text(&acquire_resp);
-            if handle_info["handle_token"].as_str().is_none() {
+            if handle_info
+                .get("handle_token")
+                .and_then(Value::as_str)
+                .is_none()
+            {
                 error_response(
                     &id,
                     -32603,
                     "No proxy available — add proxies via proxy_add first",
                 )
             } else {
-                ok_response(&id, json!({"unexpected": "success"}))
+                ok_response(&id, &json!({"unexpected": "success"}))
             }
+        } else {
+            let code = acquire_resp
+                .get("error")
+                .and_then(|e| e.get("code"))
+                .and_then(Value::as_i64)
+                .and_then(|c| i32::try_from(c).ok())
+                .unwrap_or(-32603);
+            let message = acquire_resp
+                .get("error")
+                .and_then(|e| e.get("message"))
+                .and_then(Value::as_str)
+                .unwrap_or("No proxy available");
+            error_response(&id, code, message)
         };
-        assert!(!resp["error"].is_null(), "expected an error response");
-        assert_eq!(resp["id"], 99, "id must be the caller's id, not 0");
-        drop(graph);
+        assert!(
+            resp.get("error").is_some_and(|e| !e.is_null()),
+            "expected an error response"
+        );
+        assert_eq!(
+            resp.get("id").and_then(Value::as_i64),
+            Some(99),
+            "id must be the caller's id, not 0"
+        );
         drop(proxy);
+        Ok(())
     }
 
     /// `browser_proxied` must propagate a JSON-RPC error with the correct caller id
     /// when proxy acquisition fails (empty pool).
     #[tokio::test]
-    async fn test_browser_proxied_acquire_failure_uses_caller_id() {
-        let proxy = Arc::new(McpProxyServer::new().expect("proxy server init"));
+    async fn test_browser_proxied_acquire_failure_uses_caller_id()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let proxy = Arc::new(McpProxyServer::new()?);
         let id = json!(77);
         let acquire_req = json!({
             "jsonrpc": "2.0", "id": 0, "method": "tools/call",
@@ -814,33 +882,46 @@ mod tests {
         let acquire_resp = proxy.handle_request(&acquire_req).await;
         // With an empty pool the acquire either errors or returns no handle_token.
         // Either way the caller's id must survive in the response.
-        let resp = if !acquire_resp["error"].is_null() {
-            let code = acquire_resp["error"]["code"]
-                .as_i64()
-                .and_then(|c| i32::try_from(c).ok())
-                .unwrap_or(-32603);
-            let message = acquire_resp["error"]["message"]
-                .as_str()
-                .unwrap_or("No proxy available");
-            error_response(&id, code, message)
-        } else {
+        let resp = if acquire_resp.get("error").is_none_or(Value::is_null) {
             let handle_info = parse_content_text(&acquire_resp);
-            if handle_info["handle_token"].as_str().is_none() {
+            if handle_info
+                .get("handle_token")
+                .and_then(Value::as_str)
+                .is_none()
+            {
                 error_response(
                     &id,
                     -32603,
                     "No proxy available — add proxies via proxy_add first",
                 )
             } else {
-                ok_response(&id, json!({"unexpected": "success"}))
+                ok_response(&id, &json!({"unexpected": "success"}))
             }
+        } else {
+            let code = acquire_resp
+                .get("error")
+                .and_then(|e| e.get("code"))
+                .and_then(Value::as_i64)
+                .and_then(|c| i32::try_from(c).ok())
+                .unwrap_or(-32603);
+            let message = acquire_resp
+                .get("error")
+                .and_then(|e| e.get("message"))
+                .and_then(Value::as_str)
+                .unwrap_or("No proxy available");
+            error_response(&id, code, message)
         };
-        assert!(!resp["error"].is_null(), "expected an error response");
+        assert!(
+            resp.get("error").is_some_and(|e| !e.is_null()),
+            "expected an error response"
+        );
         // The critical invariant: id must be 77, not the internal sub-request id 0.
         assert_eq!(
-            resp["id"], 77,
+            resp.get("id").and_then(Value::as_i64),
+            Some(77),
             "caller id must be preserved in error response"
         );
+        Ok(())
     }
 
     /// Verify that `parse_content_text` returns Null on a JSON-RPC error response
@@ -874,44 +955,58 @@ mod tests {
             "method": "tools/list"
         });
         let id = req.get("id").unwrap_or(&Value::Null);
-        let resp = if req.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
-            error_response(id, -32600, "Invalid request: expected jsonrpc='2.0'")
+        let resp = if req.get("jsonrpc").and_then(Value::as_str) == Some("2.0") {
+            ok_response(id, &json!({}))
         } else {
-            ok_response(id, json!({}))
+            error_response(id, -32600, "Invalid request: expected jsonrpc='2.0'")
         };
-        assert_eq!(resp["error"]["code"], -32600);
-        assert_eq!(resp["id"], Value::Null);
+        assert_eq!(
+            resp.pointer("/error/code").and_then(Value::as_i64),
+            Some(-32600)
+        );
+        assert!(resp.get("id").is_none_or(Value::is_null));
     }
 
     /// `tools/list` aggregation: graph tools get a `graph_` prefix and a `[graph]` description
     /// prefix; proxy tools keep their existing `proxy_` prefix; all lists are merged.
     #[tokio::test]
-    async fn test_tools_list_prefixes_graph_tools() {
-        let graph = Arc::new(McpGraphServer::new());
-        let proxy = Arc::new(McpProxyServer::new().expect("proxy server init"));
+    async fn test_tools_list_prefixes_graph_tools() -> Result<(), Box<dyn std::error::Error>> {
+        let proxy = Arc::new(McpProxyServer::new()?);
 
         let list_req = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {} });
 
         // Graph: un-prefixed names like `scrape`
-        let graph_resp = graph.handle_request(&list_req).await;
-        let graph_tools = graph_resp["result"]["tools"].as_array().expect("tools");
+        let graph_resp = McpGraphServer::handle_request(&list_req).await;
+        let graph_tools = graph_resp
+            .get("result")
+            .and_then(|r| r.get("tools"))
+            .and_then(Value::as_array)
+            .ok_or("graph tools/list missing result.tools")?;
         assert!(
-            graph_tools.iter().any(|t| t["name"] == "scrape"),
+            graph_tools
+                .iter()
+                .any(|t| t.get("name").and_then(Value::as_str) == Some("scrape")),
             "graph server exposes un-prefixed 'scrape'"
         );
 
         // Proxy: already prefixed
         let proxy_resp = proxy.handle_request(&list_req).await;
-        let proxy_tools = proxy_resp["result"]["tools"].as_array().expect("tools");
+        let proxy_tools = proxy_resp
+            .get("result")
+            .and_then(|r| r.get("tools"))
+            .and_then(Value::as_array)
+            .ok_or("proxy tools/list missing result.tools")?;
         assert!(
-            proxy_tools.iter().any(|t| t["name"] == "proxy_add"),
+            proxy_tools
+                .iter()
+                .any(|t| t.get("name").and_then(Value::as_str) == Some("proxy_add")),
             "proxy server exposes 'proxy_add'"
         );
 
         // Simulate the prefixing logic from handle_tools_list
         let prefixed: Vec<String> = graph_tools
             .iter()
-            .filter_map(|t| t["name"].as_str())
+            .filter_map(|t| t.get("name").and_then(Value::as_str))
             .map(|n| format!("graph_{n}"))
             .collect();
         assert!(
@@ -922,26 +1017,27 @@ mod tests {
             !prefixed.contains(&"scrape".to_string()),
             "un-prefixed 'scrape' must not appear after prefixing"
         );
+        Ok(())
     }
 
     /// `tools/call` dispatch: names with `graph_` prefix are routed to the graph server with
     /// the prefix stripped; `proxy_` names are routed to the proxy server unchanged.
     #[tokio::test]
-    async fn test_tools_call_dispatch_by_prefix() {
-        let graph = Arc::new(McpGraphServer::new());
-        let proxy = Arc::new(McpProxyServer::new().expect("proxy server init"));
+    async fn test_tools_call_dispatch_by_prefix() -> Result<(), Box<dyn std::error::Error>> {
+        let proxy = Arc::new(McpProxyServer::new()?);
 
         // graph_pipeline_validate → graph server with name `pipeline_validate`
         let graph_call = json!({
             "jsonrpc": "2.0", "id": 2, "method": "tools/call",
             "params": { "name": "pipeline_validate", "arguments": { "toml": "" } }
         });
-        let graph_resp = graph.handle_request(&graph_call).await;
+        let graph_resp = McpGraphServer::handle_request(&graph_call).await;
         // pipeline_validate with empty string returns a result (not an unknown-method error)
         assert!(
-            graph_resp["error"].is_null()
-                || graph_resp["result"]["content"][0]["text"]
-                    .as_str()
+            graph_resp.get("error").is_none_or(Value::is_null)
+                || graph_resp
+                    .pointer("/result/content/0/text")
+                    .and_then(Value::as_str)
                     .is_some(),
             "graph server must respond to pipeline_validate"
         );
@@ -953,31 +1049,42 @@ mod tests {
         });
         let proxy_resp = proxy.handle_request(&proxy_call).await;
         // Should get an error about missing `url`, not about an unknown tool
-        let err_msg = proxy_resp["error"]["message"]
-            .as_str()
-            .or_else(|| proxy_resp["result"]["content"][0]["text"].as_str())
+        let err_msg = proxy_resp
+            .get("error")
+            .and_then(|e| e.get("message"))
+            .and_then(Value::as_str)
+            .or_else(|| {
+                proxy_resp
+                    .pointer("/result/content/0/text")
+                    .and_then(Value::as_str)
+            })
             .unwrap_or("");
         assert!(
             err_msg.contains("url") || err_msg.contains("required") || !err_msg.is_empty(),
             "proxy server must respond to proxy_add (got: {err_msg})"
         );
+        Ok(())
     }
 
     /// `resources/list` aggregation: proxy resources (pool stats) must be collected.
     #[tokio::test]
-    async fn test_resources_list_includes_proxy() {
-        let proxy = Arc::new(McpProxyServer::new().expect("proxy server init"));
+    async fn test_resources_list_includes_proxy() -> Result<(), Box<dyn std::error::Error>> {
+        let proxy = Arc::new(McpProxyServer::new()?);
 
         let list_req =
             json!({ "jsonrpc": "2.0", "id": 4, "method": "resources/list", "params": {} });
         let proxy_resp = proxy.handle_request(&list_req).await;
-        let resources = proxy_resp["result"]["resources"].as_array();
+        let resources = proxy_resp
+            .get("result")
+            .and_then(|r| r.get("resources"))
+            .and_then(Value::as_array);
         // The proxy pool stats resource is always present at proxy://pool/stats
         assert!(
-            resources.map_or(false, |r| r
+            resources.is_some_and(|r| r
                 .iter()
-                .any(|res| { res["uri"].as_str() == Some("proxy://pool/stats") })),
+                .any(|res| res.get("uri").and_then(Value::as_str) == Some("proxy://pool/stats"))),
             "proxy resources/list must contain proxy://pool/stats"
         );
+        Ok(())
     }
 }

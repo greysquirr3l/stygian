@@ -294,6 +294,7 @@ impl ProxyManager {
     /// Select one proxy via the rotation strategy, returning its URL, circuit
     /// breaker, and ID.  Used by both [`acquire_proxy`](Self::acquire_proxy) and
     /// [`acquire_for_domain`](Self::acquire_for_domain).
+    #[allow(clippy::significant_drop_tightening)]
     async fn select_proxy_inner(&self) -> ProxyResult<(String, Arc<CircuitBreaker>, Uuid)> {
         let with_metrics = self.storage.list_with_metrics().await?;
         if with_metrics.is_empty() {
@@ -303,15 +304,15 @@ impl ProxyManager {
         // Drop both read guards before the async `strategy.select` await to avoid holding
         // locks across await points. We snapshot the CB map so we can look up the selected id.
         let (candidates, cb_snapshot) = {
-            let health_map = self.health_checker.health_map().read().await;
-            let cb_map = self.circuit_breakers.read().await;
+            let health_map_ref = Arc::clone(self.health_checker.health_map());
+            let health_map = health_map_ref.read().await;
+            let cb_map_ref = Arc::clone(&self.circuit_breakers);
+            let cb_map = cb_map_ref.read().await;
             let candidates: Vec<ProxyCandidate> = with_metrics
                 .iter()
                 .map(|(record, metrics)| {
                     let healthy = health_map.get(&record.id).copied().unwrap_or(true);
-                    let available = cb_map
-                        .get(&record.id)
-                        .map_or(true, |cb| cb.is_available());
+                    let available = cb_map.get(&record.id).is_none_or(|cb| cb.is_available());
                     ProxyCandidate {
                         id: record.id,
                         weight: record.proxy.weight,
@@ -421,10 +422,7 @@ impl ProxyManager {
             if health_map.get(&r.id).copied().unwrap_or(true) {
                 healthy += 1;
             }
-            if cb_map
-                .get(&r.id)
-                .map_or(false, |cb| !cb.is_available())
-            {
+            if cb_map.get(&r.id).is_some_and(|cb| !cb.is_available()) {
                 open += 1;
             }
         }

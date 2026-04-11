@@ -33,7 +33,7 @@ pub struct AgentRequest {
     /// Optional context to feed alongside the prompt (e.g. scraped content
     /// from an upstream pipeline node).
     pub context: Option<String>,
-    /// Provider-specific parameters (temperature, max_tokens, etc.).
+    /// Provider-specific parameters (`temperature`, `max_tokens`, etc.).
     pub parameters: Value,
 }
 

@@ -31,7 +31,7 @@ use serde_json::json;
 // ─── Domain types ─────────────────────────────────────────────────────────────
 
 /// A single feed item extracted from RSS/Atom.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FeedItem {
     /// Item title.
     pub title: Option<String>,
@@ -61,7 +61,7 @@ pub struct RssFeedAdapter {
 
 impl RssFeedAdapter {
     /// Create a new RSS feed adapter.
-    pub fn new(client: reqwest::Client) -> Self {
+    pub const fn new(client: reqwest::Client) -> Self {
         Self { client }
     }
 }
@@ -152,8 +152,13 @@ impl ScrapingService for RssFeedAdapter {
             }
         }
 
-        if let Some(limit) = input.params.get("limit").and_then(|v| v.as_u64()) {
-            items.truncate(limit as usize);
+        if let Some(limit) = input
+            .params
+            .get("limit")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|n| usize::try_from(n).ok())
+        {
+            items.truncate(limit);
         }
 
         let count = items.len();
@@ -250,9 +255,12 @@ mod tests {
   </entry>
 </feed>"#;
 
-    fn parse_test_feed(xml: &str) -> Vec<FeedItem> {
-        let feed = parser::parse(xml.as_bytes()).expect("parse");
-        feed.entries
+    fn parse_test_feed(
+        xml: &str,
+    ) -> std::result::Result<Vec<FeedItem>, Box<dyn std::error::Error>> {
+        let feed = parser::parse(xml.as_bytes())?;
+        let items = feed
+            .entries
             .iter()
             .map(|entry| {
                 let title = entry.title.as_ref().map(|t| t.content.clone());
@@ -273,32 +281,41 @@ mod tests {
                     id,
                 }
             })
-            .collect()
+            .collect();
+        Ok(items)
     }
 
     #[test]
-    fn parse_rss_with_3_items() {
-        let items = parse_test_feed(RSS_FEED);
+    fn parse_rss_with_3_items() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let items = parse_test_feed(RSS_FEED)?;
         assert_eq!(items.len(), 3);
-        assert_eq!(items[0].title.as_deref(), Some("First Post"));
-        assert_eq!(items[0].link.as_deref(), Some("https://example.com/post/1"));
-        assert!(items[0].published.is_some());
-        assert_eq!(items[0].summary.as_deref(), Some("Summary of first post"));
+        let first = items
+            .first()
+            .ok_or_else(|| std::io::Error::other("expected first item"))?;
+        assert_eq!(first.title.as_deref(), Some("First Post"));
+        assert_eq!(first.link.as_deref(), Some("https://example.com/post/1"));
+        assert!(first.published.is_some());
+        assert_eq!(first.summary.as_deref(), Some("Summary of first post"));
+        Ok(())
     }
 
     #[test]
-    fn parse_atom_with_authors() {
-        let items = parse_test_feed(ATOM_FEED);
+    fn parse_atom_with_authors() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let items = parse_test_feed(ATOM_FEED)?;
         assert_eq!(items.len(), 2);
-        assert_eq!(items[0].title.as_deref(), Some("Atom Entry One"));
-        assert_eq!(items[0].authors, vec!["Alice".to_string()]);
-        assert_eq!(items[0].categories, vec!["rust".to_string()]);
-        assert_eq!(items[0].link.as_deref(), Some("https://example.com/atom/1"));
+        let first = items
+            .first()
+            .ok_or_else(|| std::io::Error::other("expected first atom item"))?;
+        assert_eq!(first.title.as_deref(), Some("Atom Entry One"));
+        assert_eq!(first.authors, vec!["Alice".to_string()]);
+        assert_eq!(first.categories, vec!["rust".to_string()]);
+        assert_eq!(first.link.as_deref(), Some("https://example.com/atom/1"));
+        Ok(())
     }
 
     #[test]
-    fn filter_by_since_date() {
-        let mut items = parse_test_feed(RSS_FEED);
+    fn filter_by_since_date() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let mut items = parse_test_feed(RSS_FEED)?;
         // Keep only items published in March 2026 or later
         items.retain(|item| {
             item.published
@@ -306,33 +323,45 @@ mod tests {
                 .is_some_and(|pub_date| pub_date >= "2026-03-01")
         });
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].title.as_deref(), Some("First Post"));
+        let first = items
+            .first()
+            .ok_or_else(|| std::io::Error::other("expected one filtered item"))?;
+        assert_eq!(first.title.as_deref(), Some("First Post"));
+        Ok(())
     }
 
     #[test]
-    fn filter_by_categories() {
-        let mut items = parse_test_feed(RSS_FEED);
-        let filter_cats = vec!["tech"];
+    fn filter_by_categories() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let mut items = parse_test_feed(RSS_FEED)?;
+        let filter_cats = ["tech"];
         items.retain(|item| {
             item.categories
                 .iter()
                 .any(|c| filter_cats.contains(&c.as_str()))
         });
         assert_eq!(items.len(), 2);
-        assert_eq!(items[0].title.as_deref(), Some("First Post"));
-        assert_eq!(items[1].title.as_deref(), Some("Third Post"));
+        let first = items
+            .first()
+            .ok_or_else(|| std::io::Error::other("expected first filtered item"))?;
+        let second = items
+            .get(1)
+            .ok_or_else(|| std::io::Error::other("expected second filtered item"))?;
+        assert_eq!(first.title.as_deref(), Some("First Post"));
+        assert_eq!(second.title.as_deref(), Some("Third Post"));
+        Ok(())
     }
 
     #[test]
-    fn empty_feed_returns_empty_array() {
+    fn empty_feed_returns_empty_array() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
     <title>Empty Feed</title>
   </channel>
 </rss>"#;
-        let items = parse_test_feed(xml);
+        let items = parse_test_feed(xml)?;
         assert!(items.is_empty());
+        Ok(())
     }
 
     #[test]
@@ -343,25 +372,43 @@ mod tests {
     }
 
     #[test]
-    fn limit_truncates_items() {
-        let mut items = parse_test_feed(RSS_FEED);
+    fn limit_truncates_items() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let mut items = parse_test_feed(RSS_FEED)?;
         assert_eq!(items.len(), 3);
         items.truncate(2);
         assert_eq!(items.len(), 2);
+        Ok(())
     }
 
     #[test]
-    fn rss_items_have_ids() {
-        let items = parse_test_feed(RSS_FEED);
-        assert!(!items[0].id.is_empty());
-        assert!(!items[1].id.is_empty());
-        assert!(!items[2].id.is_empty());
+    fn rss_items_have_ids() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let items = parse_test_feed(RSS_FEED)?;
+        let first = items
+            .first()
+            .ok_or_else(|| std::io::Error::other("expected first rss item"))?;
+        let second = items
+            .get(1)
+            .ok_or_else(|| std::io::Error::other("expected second rss item"))?;
+        let third = items
+            .get(2)
+            .ok_or_else(|| std::io::Error::other("expected third rss item"))?;
+        assert!(!first.id.is_empty());
+        assert!(!second.id.is_empty());
+        assert!(!third.id.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn atom_feed_has_categories() {
-        let items = parse_test_feed(ATOM_FEED);
-        assert_eq!(items[0].categories, vec!["rust"]);
-        assert!(items[1].categories.is_empty());
+    fn atom_feed_has_categories() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let items = parse_test_feed(ATOM_FEED)?;
+        let first = items
+            .first()
+            .ok_or_else(|| std::io::Error::other("expected first atom item"))?;
+        let second = items
+            .get(1)
+            .ok_or_else(|| std::io::Error::other("expected second atom item"))?;
+        assert_eq!(first.categories, vec!["rust"]);
+        assert!(second.categories.is_empty());
+        Ok(())
     }
 }

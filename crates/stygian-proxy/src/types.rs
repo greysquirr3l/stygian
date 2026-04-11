@@ -148,6 +148,12 @@ pub struct ProxyMetrics {
 }
 
 impl ProxyMetrics {
+    fn saturating_u64_to_f64(value: u64) -> f64 {
+        u32::try_from(value)
+            .ok()
+            .map_or_else(|| f64::from(u32::MAX), f64::from)
+    }
+
     /// Returns the fraction of requests that succeeded, in `[0.0, 1.0]`.
     ///
     /// Returns `0.0` when no requests have been recorded.
@@ -166,7 +172,8 @@ impl ProxyMetrics {
         if total == 0 {
             return 0.0;
         }
-        self.successes.load(Ordering::Relaxed) as f64 / total as f64
+        Self::saturating_u64_to_f64(self.successes.load(Ordering::Relaxed))
+            / Self::saturating_u64_to_f64(total)
     }
 
     /// Returns the average request latency in milliseconds.
@@ -187,7 +194,8 @@ impl ProxyMetrics {
         if total == 0 {
             return 0.0;
         }
-        self.total_latency_ms.load(Ordering::Relaxed) as f64 / total as f64
+        Self::saturating_u64_to_f64(self.total_latency_ms.load(Ordering::Relaxed))
+            / Self::saturating_u64_to_f64(total)
     }
 }
 

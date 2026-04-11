@@ -62,7 +62,7 @@ pub type BoxedProxyManager = Arc<dyn ProxyManagerPort>;
 #[async_trait]
 impl ProxyManagerPort for ProxyManager {
     async fn acquire_proxy(&self) -> ProxyResult<ProxyHandle> {
-        ProxyManager::acquire_proxy(self).await
+        Self::acquire_proxy(self).await
     }
 }
 
@@ -107,9 +107,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn noop_returns_direct_handle() {
+    async fn noop_returns_direct_handle() -> Result<(), Box<dyn std::error::Error>> {
         let noop = NoopProxyManager;
-        let handle = noop.acquire_proxy().await.unwrap();
+        let handle = noop.acquire_proxy().await?;
         assert!(
             handle.proxy_url.is_empty(),
             "direct handle should have empty URL"
@@ -117,22 +117,20 @@ mod tests {
         // Dropping without mark_success should NOT trip any circuit breaker
         // (the noop CB has threshold u32::MAX).
         drop(handle);
+        Ok(())
     }
 
     #[tokio::test]
-    async fn proxy_manager_implements_port() {
+    async fn proxy_manager_implements_port() -> Result<(), Box<dyn std::error::Error>> {
         let storage = Arc::new(MemoryProxyStore::default());
-        let mgr = Arc::new(
-            ProxyManager::with_round_robin(storage.clone(), ProxyConfig::default()).unwrap(),
-        );
-        mgr.add_proxy(make_proxy("http://a.test:8080"))
-            .await
-            .unwrap();
+        let mgr = Arc::new(ProxyManager::with_round_robin(storage.clone(), ProxyConfig::default())?);
+        mgr.add_proxy(make_proxy("http://a.test:8080")).await?;
 
         // Access through the trait object.
         let port: &dyn ProxyManagerPort = mgr.as_ref();
-        let handle = port.acquire_proxy().await.unwrap();
+        let handle = port.acquire_proxy().await?;
         assert!(!handle.proxy_url.is_empty());
         handle.mark_success();
+        Ok(())
     }
 }

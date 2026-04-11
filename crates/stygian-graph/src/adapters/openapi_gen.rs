@@ -42,7 +42,7 @@ use std::collections::BTreeMap;
 // SpecConfig
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Configuration for the generated OpenAPI specification.
+/// Configuration for the generated `OpenAPI 3.0` specification.
 ///
 /// # Example
 ///
@@ -83,7 +83,7 @@ impl Default for SpecConfig {
 // OpenApiGenerator
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Generates an OpenAPI 3.0 specification from a [`DiscoveryReport`].
+/// Generates an `OpenAPI 3.0` specification from a [`DiscoveryReport`].
 ///
 /// # Example
 ///
@@ -187,7 +187,7 @@ impl OpenApiGenerator {
         }
     }
 
-    /// Convert a field map to an OpenAPI object schema.
+    /// Convert a field map to an `OpenAPI` object schema.
     fn fields_to_schema(fields: &BTreeMap<String, JsonType>) -> Schema {
         let properties: IndexMap<String, ReferenceOr<Box<Schema>>> = fields
             .iter()
@@ -208,7 +208,7 @@ impl OpenApiGenerator {
         }
     }
 
-    /// Convert a [`JsonType`] to an OpenAPI schema.
+    /// Convert a [`JsonType`] to an `OpenAPI` schema.
     fn json_type_to_schema(jt: &JsonType) -> Schema {
         match jt {
             JsonType::Null => Schema {
@@ -216,7 +216,7 @@ impl OpenApiGenerator {
                     nullable: true,
                     ..Default::default()
                 },
-                schema_kind: SchemaKind::Type(OaType::String(Default::default())),
+                schema_kind: SchemaKind::Type(OaType::String(openapiv3::StringType::default())),
             },
             JsonType::Bool => Schema {
                 schema_data: SchemaData::default(),
@@ -224,15 +224,15 @@ impl OpenApiGenerator {
             },
             JsonType::Integer => Schema {
                 schema_data: SchemaData::default(),
-                schema_kind: SchemaKind::Type(OaType::Integer(Default::default())),
+                schema_kind: SchemaKind::Type(OaType::Integer(openapiv3::IntegerType::default())),
             },
             JsonType::Float => Schema {
                 schema_data: SchemaData::default(),
-                schema_kind: SchemaKind::Type(OaType::Number(Default::default())),
+                schema_kind: SchemaKind::Type(OaType::Number(openapiv3::NumberType::default())),
             },
             JsonType::String | JsonType::Mixed => Schema {
                 schema_data: SchemaData::default(),
-                schema_kind: SchemaKind::Type(OaType::String(Default::default())),
+                schema_kind: SchemaKind::Type(OaType::String(openapiv3::StringType::default())),
             },
             JsonType::Array(inner) => Schema {
                 schema_data: SchemaData::default(),
@@ -303,15 +303,14 @@ mod tests {
     }
 
     #[test]
-    fn spec_serialises_to_yaml() {
+    fn spec_serialises_to_yaml() -> Result<(), Box<dyn std::error::Error>> {
         let mut report = DiscoveryReport::new();
         report.add_endpoint("health", ResponseShape::from_body(&json!({"status": "ok"})));
 
         let spec = OpenApiGenerator::generate(&report, &SpecConfig::default());
-        let yaml = serde_yaml::to_string(&spec);
-        assert!(yaml.is_ok());
-        let yaml = yaml.expect("yaml serialisation");
+        let yaml = serde_yaml::to_string(&spec)?;
         assert!(yaml.contains("health"));
         assert!(yaml.contains("3.0.3"));
+        Ok(())
     }
 }
