@@ -172,9 +172,9 @@ pub struct SinkReceipt {
 ///
 /// # Object safety
 ///
-/// The trait uses `async fn` (Rust 2024 native async trait) and is therefore
-/// object-safe with the `async_trait` erasure approach already used in this
-/// workspace. Callers that need `dyn DataSinkPort` use it through `Arc`.
+/// Native `async fn` in traits is not object-safe by itself. This trait uses
+/// `#[async_trait]`, which erases async methods into boxed futures and enables
+/// usage as `dyn DataSinkPort` through `Arc` in this workspace.
 ///
 /// # Example
 ///

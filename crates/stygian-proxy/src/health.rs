@@ -168,13 +168,20 @@ impl HealthChecker {
             // client per proxy that routes through that proxy's URL so health
             // checks present a browser TLS fingerprint for proxy-routed requests.
             #[cfg(feature = "tls-profiled")]
+            let routed_proxy_url =
+                proxy_url_with_auth(&proxy_url, username.as_deref(), password.as_deref());
+
+            #[cfg(feature = "tls-profiled")]
             let preset_client: Option<reqwest::Client> = self.profiled.as_ref().and_then(|p| {
-                crate::http_client::ProfiledRequester::from_profile(p.profile(), Some(&proxy_url))
+                crate::http_client::ProfiledRequester::from_profile(
+                    p.profile(),
+                    Some(&routed_proxy_url),
+                )
                     .map(crate::http_client::ProfiledRequester::into_client)
                     .map_err(|e| {
                         tracing::warn!(
                             error = %e,
-                            proxy = %proxy_url,
+                            proxy = %routed_proxy_url,
                             "tls-profiled health-check client build failed; falling back to vanilla"
                         );
                     })
@@ -238,6 +245,25 @@ impl HealthChecker {
     }
 }
 
+fn proxy_url_with_auth(proxy_url: &str, username: Option<&str>, password: Option<&str>) -> String {
+    let (Some(user), Some(pass)) = (username, password) else {
+        return proxy_url.to_string();
+    };
+
+    let Ok(mut url) = reqwest::Url::parse(proxy_url) else {
+        return proxy_url.to_string();
+    };
+
+    if url.username().is_empty() && url.set_username(user).is_err() {
+        return proxy_url.to_string();
+    }
+    if url.password().is_none() && url.set_password(Some(pass)).is_err() {
+        return proxy_url.to_string();
+    }
+
+    url.to_string()
+}
+
 async fn do_check(
     proxy_url: &str,
     username: Option<&str>,
@@ -299,6 +325,23 @@ mod tests {
             weight: 1,
             tags: vec![],
         }
+    }
+
+    #[test]
+    fn proxy_url_with_auth_injects_credentials() {
+        let proxy_url =
+            proxy_url_with_auth("http://proxy.example.com:8080", Some("alice"), Some("s3cr3t"));
+        assert!(proxy_url.starts_with("http://alice:s3cr3t@proxy.example.com:8080"));
+    }
+
+    #[test]
+    fn proxy_url_with_auth_leaves_existing_credentials_untouched() {
+        let proxy_url = proxy_url_with_auth(
+            "http://already:present@proxy.example.com:8080",
+            Some("alice"),
+            Some("s3cr3t"),
+        );
+        assert!(proxy_url.starts_with("http://already:present@proxy.example.com:8080"));
     }
 
     #[tokio::test]

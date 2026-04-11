@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   elided; `map_or(true/false, ...)` replaced with `is_none_or()`/`is_some_and()`
 - `stygian-mcp`: `main.rs` gains `#![allow(clippy::multiple_crate_versions)]` — binary
   targets are checked separately from the library and require their own allow attribute
-- `stygian-proxy`: `client()` and `profile_name()` on `ProfiledRequester` are now `const fn`
+- `stygian-proxy`: `client()` on `ProfiledRequester` is now `const fn`
 - `stygian-browser`: `stygian-extract-derive` added as unconditional dev-dependency so
   trybuild UI tests compile regardless of features; trybuild does not forward feature flags
   to subprocess compilations, so UI test files now import directly from `stygian_extract_derive`
