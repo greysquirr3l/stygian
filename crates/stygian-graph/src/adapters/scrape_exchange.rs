@@ -3,7 +3,7 @@
 //! Implements a typed client for the Scrape Exchange platform with JWT authentication,
 //! automatic token refresh, and endpoints for:
 //!
-//! - Publishing scraped records via [`DataSinkPort`](crate::ports::DataSinkPort)
+//! - Publishing scraped records via [`DataSinkPort`](crate::ports::data_sink::DataSinkPort)
 //! - Querying published data
 //! - Item-level lookups
 //! - Rate-limited retry logic
@@ -776,7 +776,7 @@ impl Default for FeedConfig {
 ///
 /// Connect by calling [`StreamSourcePort::subscribe`] with a `wss://` URL
 /// pointing at the Scrape Exchange messages endpoint
-/// (`/api/messages/v1`), or use [`ScrapeExchangeFeed::subscribe_with_auth`]
+/// (`/api/messages/v1`), or use [`ScrapeExchangeFeed::with_bearer_token`]
 /// to pass a pre-negotiated JWT bearer token.
 ///
 /// # Example

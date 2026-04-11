@@ -1,6 +1,6 @@
-//! DataSink port — outbound counterpart to [`DataSourcePort`](super::data_source).
+//! DataSink port — outbound counterpart to [`DataSourcePort`](crate::ports::data_source::DataSourcePort).
 //!
-//! [`DataSinkPort`] is the abstraction that lets pipeline nodes publish scraped
+//! [`DataSinkPort`](crate::ports::data_sink::DataSinkPort) is the abstraction that lets pipeline nodes publish scraped
 //! records to an external system without being coupled to any particular backend
 //! (file system, webhook endpoint, message queue, Scrape Exchange, etc.).
 //!
