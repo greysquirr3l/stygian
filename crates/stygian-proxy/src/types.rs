@@ -148,10 +148,15 @@ pub struct ProxyMetrics {
 }
 
 impl ProxyMetrics {
-    fn saturating_u64_to_f64(value: u64) -> f64 {
-        u32::try_from(value)
-            .ok()
-            .map_or_else(|| f64::from(u32::MAX), f64::from)
+    /// Cast a `u64` counter to `f64` for ratio computation.
+    ///
+    /// `u64` can represent values up to ~1.8 × 10¹⁹; `f64` has 53-bit
+    /// mantissa, so precision loss begins around 9 × 10¹⁵.  For long-running
+    /// proxies that number is never reached in practice, and direct casting
+    /// preserves ratios correctly (unlike saturating to `u32::MAX`).
+    #[allow(clippy::cast_precision_loss)]
+    fn u64_as_f64(value: u64) -> f64 {
+        value as f64
     }
 
     /// Returns the fraction of requests that succeeded, in `[0.0, 1.0]`.
@@ -172,8 +177,7 @@ impl ProxyMetrics {
         if total == 0 {
             return 0.0;
         }
-        Self::saturating_u64_to_f64(self.successes.load(Ordering::Relaxed))
-            / Self::saturating_u64_to_f64(total)
+        Self::u64_as_f64(self.successes.load(Ordering::Relaxed)) / Self::u64_as_f64(total)
     }
 
     /// Returns the average request latency in milliseconds.
@@ -194,8 +198,7 @@ impl ProxyMetrics {
         if total == 0 {
             return 0.0;
         }
-        Self::saturating_u64_to_f64(self.total_latency_ms.load(Ordering::Relaxed))
-            / Self::saturating_u64_to_f64(total)
+        Self::u64_as_f64(self.total_latency_ms.load(Ordering::Relaxed)) / Self::u64_as_f64(total)
     }
 }
 

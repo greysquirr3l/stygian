@@ -156,14 +156,6 @@ impl HealthChecker {
         let health_url = self.config.health_check_url.clone();
         let timeout = self.config.health_check_timeout;
 
-        // When a profiled client is available, clone it for all tasks in this
-        // cycle. The reqwest::Client inside is Arc-backed so cloning is cheap.
-        #[cfg(feature = "tls-profiled")]
-        let base_client: Option<reqwest::Client> =
-            self.profiled.as_ref().map(|r| r.client().clone());
-        #[cfg(not(feature = "tls-profiled"))]
-        let base_client: Option<reqwest::Client> = None;
-
         let mut set: JoinSet<(Uuid, Result<u64, String>)> = JoinSet::new();
         for record in records {
             let proxy_url = record.proxy.url.clone();
@@ -171,7 +163,27 @@ impl HealthChecker {
             let password = record.proxy.password.clone();
             let id = record.id;
             let check_url = health_url.clone();
-            let client_opt = base_client.clone();
+
+            // When the `tls-profiled` feature is enabled, build a fresh profiled
+            // client per proxy that routes through that proxy's URL so health
+            // checks present a browser TLS fingerprint for proxy-routed requests.
+            #[cfg(feature = "tls-profiled")]
+            let preset_client: Option<reqwest::Client> = self.profiled.as_ref().and_then(|p| {
+                crate::http_client::ProfiledRequester::from_profile(p.profile(), Some(&proxy_url))
+                    .map(crate::http_client::ProfiledRequester::into_client)
+                    .map_err(|e| {
+                        tracing::warn!(
+                            error = %e,
+                            proxy = %proxy_url,
+                            "tls-profiled health-check client build failed; falling back to vanilla"
+                        );
+                    })
+                    .ok()
+            });
+
+            #[cfg(not(feature = "tls-profiled"))]
+            let preset_client: Option<reqwest::Client> = None;
+
             set.spawn(async move {
                 let result = do_check(
                     &proxy_url,
@@ -179,7 +191,7 @@ impl HealthChecker {
                     password.as_deref(),
                     &check_url,
                     timeout,
-                    client_opt.as_ref(),
+                    preset_client,
                 )
                 .await;
                 (id, result)
@@ -232,35 +244,18 @@ async fn do_check(
     password: Option<&str>,
     health_url: &str,
     timeout: std::time::Duration,
-    base_client: Option<&reqwest::Client>,
+    preset_client: Option<reqwest::Client>,
 ) -> Result<u64, String> {
-    let mut proxy = reqwest::Proxy::all(proxy_url).map_err(|e| e.to_string())?;
-    if let (Some(user), Some(pass)) = (username, password) {
-        proxy = proxy.basic_auth(user, pass);
-    }
-
-    // Re-use the profiled base client when available; add the per-proxy
-    // routing on top via a fresh builder derived from its config.
-    // reqwest::Client doesn't expose a `with_proxy` clone method, so we
-    // build a lightweight wrapper client that inherits TLS via the default
-    // builder when no base is provided, or re-uses the profiled one for the
-    // HTTP-layer headers while adding proxy routing.
-    let client = if let Some(base) = base_client {
-        // Clone is cheap (Arc-backed). We can't patch the proxy into the
-        // already-built client, so we fall back to a vanilla client for
-        // proxy-routed health checks when a profiled client is present.
-        // The profiled client is used for direct (no-proxy) checks.
-        if proxy_url.is_empty() {
-            base.clone()
-        } else {
-            let _ = base; // profiled client available but proxy routing needed
-            reqwest::Client::builder()
-                .proxy(proxy)
-                .timeout(timeout)
-                .build()
-                .map_err(|e| e.to_string())?
-        }
+    // Use the pre-built profiled client (already includes proxy routing) when
+    // available; otherwise build a vanilla client with per-proxy routing and
+    // optional basic-auth credentials.
+    let client = if let Some(c) = preset_client {
+        c
     } else {
+        let mut proxy = reqwest::Proxy::all(proxy_url).map_err(|e| e.to_string())?;
+        if let (Some(user), Some(pass)) = (username, password) {
+            proxy = proxy.basic_auth(user, pass);
+        }
         reqwest::Client::builder()
             .proxy(proxy)
             .timeout(timeout)

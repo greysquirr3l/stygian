@@ -302,8 +302,8 @@ impl ProxyManager {
         }
 
         // Drop both read guards before the async `strategy.select` await to avoid holding
-        // locks across await points. We snapshot the CB map so we can look up the selected id.
-        let (candidates, cb_snapshot) = {
+        // locks across await points. After selection, re-acquire for a single O(1) lookup.
+        let candidates = {
             let health_map_ref = Arc::clone(self.health_checker.health_map());
             let health_map = health_map_ref.read().await;
             let cb_map_ref = Arc::clone(&self.circuit_breakers);
@@ -321,16 +321,18 @@ impl ProxyManager {
                     }
                 })
                 .collect();
-            let cb_snapshot: HashMap<Uuid, Arc<CircuitBreaker>> =
-                cb_map.iter().map(|(k, v)| (*k, Arc::clone(v))).collect();
-            (candidates, cb_snapshot)
+            candidates
             // health_map and cb_map drop here
         };
 
         let selected = self.strategy.select(&candidates).await?;
         let id = selected.id;
 
-        let cb = cb_snapshot
+        // Single O(1) lookup — re-acquire only after the await point.
+        let cb = self
+            .circuit_breakers
+            .read()
+            .await
             .get(&id)
             .cloned()
             .ok_or(ProxyError::PoolExhausted)?;

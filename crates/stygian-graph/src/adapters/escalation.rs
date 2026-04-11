@@ -84,7 +84,7 @@ fn is_cloudflare_challenge(body: &str) -> bool {
         || body.contains("Checking if the site connection is secure")
 }
 
-/// Returns `true` if the body contains a   `DataDome` interstitial marker.
+/// Returns `true` if the body contains a `DataDome` interstitial marker.
 fn is_datadome_interstitial(body: &str) -> bool {
     body.contains("datadome") || body.contains("dd_referrer")
 }

@@ -81,8 +81,8 @@ pub enum ProfiledRequesterError {
 #[derive(Clone, Debug)]
 pub struct ProfiledRequester {
     client: reqwest::Client,
-    /// Human-readable profile name for diagnostics.
-    profile_name: &'static str,
+    /// Static TLS profile this requester was built from.
+    profile: &'static TlsProfile,
 }
 
 impl ProfiledRequester {
@@ -99,10 +99,7 @@ impl ProfiledRequester {
         proxy_url: Option<&str>,
     ) -> Result<Self, ProfiledRequesterError> {
         let client = build_profiled_client_preset(profile, proxy_url)?;
-        Ok(Self {
-            client,
-            profile_name: Box::leak(profile.name.clone().into_boxed_str()),
-        })
+        Ok(Self { client, profile })
     }
 
     /// Build from any static [`TlsProfile`] using a selectable mode.
@@ -131,10 +128,7 @@ impl ProfiledRequester {
                 build_profiled_client_with_control(profile, proxy_url, TlsControl::strict_all())?
             }
         };
-        Ok(Self {
-            client,
-            profile_name: Box::leak(profile.name.clone().into_boxed_str()),
-        })
+        Ok(Self { client, profile })
     }
 
     /// Build from any static [`TlsProfile`] with an explicit [`TlsControl`].
@@ -152,10 +146,7 @@ impl ProfiledRequester {
         control: TlsControl,
     ) -> Result<Self, ProfiledRequesterError> {
         let client = build_profiled_client_with_control(profile, proxy_url, control)?;
-        Ok(Self {
-            client,
-            profile_name: Box::leak(profile.name.clone().into_boxed_str()),
-        })
+        Ok(Self { client, profile })
     }
 
     /// Build from any static [`TlsProfile`] in compatible mode.
@@ -286,10 +277,7 @@ impl ProfiledRequester {
     pub fn random_weighted(seed: u64) -> Result<Self, ProfiledRequesterError> {
         let profile = TlsProfile::random_weighted(seed);
         let client = build_profiled_client_preset(profile, None)?;
-        Ok(Self {
-            client,
-            profile_name: Box::leak(profile.name.clone().into_boxed_str()),
-        })
+        Ok(Self { client, profile })
     }
 
     /// Build a weighted-random profile requester with the selected mode.
@@ -312,9 +300,20 @@ impl ProfiledRequester {
         &self.client
     }
 
+    /// Consume the requester and return the underlying [`reqwest::Client`].
+    #[must_use]
+    pub fn into_client(self) -> reqwest::Client {
+        self.client
+    }
+
+    /// Return the static [`TlsProfile`] this requester was built from.
+    pub const fn profile(&self) -> &'static TlsProfile {
+        self.profile
+    }
+
     /// The human-readable name of the TLS profile in use.
-    pub const fn profile_name(&self) -> &str {
-        self.profile_name
+    pub fn profile_name(&self) -> &str {
+        &self.profile.name
     }
 
     /// Return `true` if the profile negotiates HTTP/2 (h2 in ALPN).
@@ -325,7 +324,7 @@ impl ProfiledRequester {
         // We can't query reqwest's ALPN config after construction, so we
         // derive it from the profile name as a best-effort hint. All four
         // built-in profiles include H2.
-        !self.profile_name.contains("HTTP/1.1-only")
+        !self.profile.name.contains("HTTP/1.1-only")
     }
 }
 
