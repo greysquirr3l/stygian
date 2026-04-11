@@ -1,4 +1,5 @@
 //! Unified MCP (Model Context Protocol) aggregator for Stygian.
+#![allow(clippy::multiple_crate_versions)]
 //!
 //! Merges the tool surfaces of `stygian-graph`, `stygian-browser`, and
 //! `stygian-proxy` into a single MCP server.  An LLM agent connecting to

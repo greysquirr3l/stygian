@@ -1,4 +1,4 @@
-//! ProxyManager: unified proxy pool orchestrator.
+//! `ProxyManager`: unified proxy pool orchestrator.
 //!
 //! Assembles storage, rotation strategy, health checker, and per-proxy circuit
 //! breakers into a single ergonomic API.
@@ -61,7 +61,7 @@ pub struct ProxyHandle {
 }
 
 impl ProxyHandle {
-    fn new(proxy_url: String, circuit_breaker: Arc<CircuitBreaker>) -> Self {
+    const fn new(proxy_url: String, circuit_breaker: Arc<CircuitBreaker>) -> Self {
         Self {
             proxy_url,
             circuit_breaker,
@@ -71,7 +71,7 @@ impl ProxyHandle {
         }
     }
 
-    fn new_sticky(
+    const fn new_sticky(
         proxy_url: String,
         circuit_breaker: Arc<CircuitBreaker>,
         session_key: String,
@@ -239,6 +239,7 @@ impl ProxyManager {
     /// proceed past that point until both the storage record *and* its CB entry
     /// exist.  Without this ordering a concurrent `acquire_proxy` could select
     /// the new proxy before its CB was registered, breaking failure accounting.
+    #[allow(clippy::significant_drop_tightening)]
     pub async fn add_proxy(&self, proxy: Proxy) -> ProxyResult<Uuid> {
         let mut cb_map = self.circuit_breakers.write().await;
         let record = self.storage.add(proxy).await?;
@@ -246,7 +247,7 @@ impl ProxyManager {
             record.id,
             Arc::new(CircuitBreaker::new(
                 self.config.circuit_open_threshold,
-                self.config.circuit_half_open_after.as_millis() as u64,
+                u64::try_from(self.config.circuit_half_open_after.as_millis()).unwrap_or(u64::MAX),
             )),
         );
         Ok(record.id)
@@ -276,7 +277,7 @@ impl ProxyManager {
             loop {
                 tokio::select! {
                     _ = interval.tick() => { sessions.purge_expired(); }
-                    _ = purge_token.cancelled() => break,
+                    () = purge_token.cancelled() => break,
                 }
             }
         });
@@ -293,37 +294,48 @@ impl ProxyManager {
     /// Select one proxy via the rotation strategy, returning its URL, circuit
     /// breaker, and ID.  Used by both [`acquire_proxy`](Self::acquire_proxy) and
     /// [`acquire_for_domain`](Self::acquire_for_domain).
+    #[allow(clippy::significant_drop_tightening)]
     async fn select_proxy_inner(&self) -> ProxyResult<(String, Arc<CircuitBreaker>, Uuid)> {
         let with_metrics = self.storage.list_with_metrics().await?;
         if with_metrics.is_empty() {
             return Err(ProxyError::PoolExhausted);
         }
 
-        let health_map = self.health_checker.health_map().read().await;
-        let cb_map = self.circuit_breakers.read().await;
+        // Drop both read guards before the async `strategy.select` await to avoid holding
+        // locks across await points. After selection, re-acquire for a single O(1) lookup.
+        let candidates = {
+            let health_map_ref = Arc::clone(self.health_checker.health_map());
+            let health_map = health_map_ref.read().await;
+            let cb_map_ref = Arc::clone(&self.circuit_breakers);
+            let cb_map = cb_map_ref.read().await;
+            let candidates: Vec<ProxyCandidate> = with_metrics
+                .iter()
+                .map(|(record, metrics)| {
+                    let healthy = health_map.get(&record.id).copied().unwrap_or(true);
+                    let available = cb_map.get(&record.id).is_none_or(|cb| cb.is_available());
+                    ProxyCandidate {
+                        id: record.id,
+                        weight: record.proxy.weight,
+                        metrics: Arc::clone(metrics),
+                        healthy: healthy && available,
+                    }
+                })
+                .collect();
+            candidates
+            // health_map and cb_map drop here
+        };
 
-        let candidates: Vec<ProxyCandidate> = with_metrics
-            .iter()
-            .map(|(record, metrics)| {
-                let healthy = health_map.get(&record.id).copied().unwrap_or(true);
-                let available = cb_map
-                    .get(&record.id)
-                    .map(|cb| cb.is_available())
-                    .unwrap_or(true);
-                ProxyCandidate {
-                    id: record.id,
-                    weight: record.proxy.weight,
-                    metrics: Arc::clone(metrics),
-                    healthy: healthy && available,
-                }
-            })
-            .collect();
-
-        drop(health_map);
         let selected = self.strategy.select(&candidates).await?;
         let id = selected.id;
 
-        let cb = cb_map.get(&id).cloned().ok_or(ProxyError::PoolExhausted)?;
+        // Single O(1) lookup — re-acquire only after the await point.
+        let cb = self
+            .circuit_breakers
+            .read()
+            .await
+            .get(&id)
+            .cloned()
+            .ok_or(ProxyError::PoolExhausted)?;
         let url = with_metrics
             .iter()
             .find(|(r, _)| r.id == id)
@@ -412,14 +424,12 @@ impl ProxyManager {
             if health_map.get(&r.id).copied().unwrap_or(true) {
                 healthy += 1;
             }
-            if cb_map
-                .get(&r.id)
-                .map(|cb| !cb.is_available())
-                .unwrap_or(false)
-            {
+            if cb_map.get(&r.id).is_some_and(|cb| !cb.is_available()) {
                 open += 1;
             }
         }
+        drop(health_map);
+        drop(cb_map);
         Ok(PoolStats {
             total,
             healthy,
@@ -442,16 +452,19 @@ pub struct ProxyManagerBuilder {
 }
 
 impl ProxyManagerBuilder {
+    #[must_use]
     pub fn storage(mut self, s: Arc<dyn ProxyStoragePort>) -> Self {
         self.storage = Some(s);
         self
     }
 
+    #[must_use]
     pub fn strategy(mut self, s: BoxedRotationStrategy) -> Self {
         self.strategy = Some(s);
         self
     }
 
+    #[must_use]
     pub fn config(mut self, c: ProxyConfig) -> Self {
         self.config = Some(c);
         self
@@ -471,11 +484,22 @@ impl ProxyManagerBuilder {
             .unwrap_or_else(|| Arc::new(RoundRobinStrategy::default()));
         let config = self.config.unwrap_or_default();
         let health_map: HealthMap = Arc::new(RwLock::new(HashMap::new()));
-        let health_checker = HealthChecker::new(
+        let checker = HealthChecker::new(
             config.clone(),
             Arc::clone(&storage),
             Arc::clone(&health_map),
         );
+
+        #[cfg(feature = "tls-profiled")]
+        let health_checker = if let Some(mode) = config.profiled_request_mode {
+            checker.with_profiled_mode(mode)?
+        } else {
+            checker
+        };
+
+        #[cfg(not(feature = "tls-profiled"))]
+        let health_checker = checker;
+
         Ok(ProxyManager {
             storage,
             strategy,
@@ -492,7 +516,12 @@ impl ProxyManagerBuilder {
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::significant_drop_tightening,
+    clippy::manual_let_else,
+    clippy::panic
+)]
 mod tests {
     use std::collections::HashSet;
     use std::time::Duration;
@@ -618,7 +647,7 @@ mod tests {
         assert_eq!(cb.state(), STATE_CLOSED);
     }
 
-    /// start() launches the health checker and cancel causes clean exit.
+    /// `start()` launches the health checker and `cancel` causes clean exit.
     #[tokio::test]
     async fn start_and_graceful_shutdown() {
         let store = storage();
@@ -634,6 +663,53 @@ mod tests {
         token.cancel();
         let result = tokio::time::timeout(Duration::from_secs(1), handle).await;
         assert!(result.is_ok(), "health checker task should exit within 1s");
+    }
+
+    #[cfg(feature = "tls-profiled")]
+    #[tokio::test]
+    async fn builder_accepts_profiled_request_mode_preset() {
+        let store = storage();
+        let cfg = ProxyConfig {
+            profiled_request_mode: Some(crate::types::ProfiledRequestMode::Preset),
+            ..ProxyConfig::default()
+        };
+
+        let result = ProxyManager::builder()
+            .storage(store)
+            .strategy(Arc::new(RoundRobinStrategy::default()))
+            .config(cfg)
+            .build();
+
+        assert!(
+            result.is_ok(),
+            "builder should accept profiled preset mode: {:?}",
+            result.err()
+        );
+    }
+
+    #[cfg(feature = "tls-profiled")]
+    #[tokio::test]
+    async fn builder_rejects_profiled_request_mode_strict_all_for_chrome() {
+        let store = storage();
+        let cfg = ProxyConfig {
+            profiled_request_mode: Some(crate::types::ProfiledRequestMode::StrictAll),
+            ..ProxyConfig::default()
+        };
+
+        let result = ProxyManager::builder()
+            .storage(store)
+            .strategy(Arc::new(RoundRobinStrategy::default()))
+            .config(cfg)
+            .build();
+
+        let Err(err) = result else {
+            panic!("strict_all should fail for default Chrome baseline profile")
+        };
+
+        assert!(
+            matches!(err, ProxyError::ConfigError(_)),
+            "expected ConfigError, got {err:?}"
+        );
     }
 
     // ── sticky session tests ─────────────────────────────────────────────────
@@ -792,7 +868,7 @@ mod tests {
         assert_eq!(mgr.sessions.active_count(), 0);
     }
 
-    /// pool_stats includes active_sessions.
+    /// `pool_stats` includes `active_sessions`.
     #[tokio::test]
     async fn pool_stats_includes_sessions() {
         let store = storage();

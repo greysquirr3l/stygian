@@ -44,17 +44,20 @@ impl RotationStrategy for WeightedStrategy {
             return Err(ProxyError::AllProxiesUnhealthy);
         }
 
-        let total: u64 = healthy.iter().map(|c| c.weight as u64).sum();
+        let total: u64 = healthy.iter().map(|c| u64::from(c.weight)).sum();
         let mut cursor: u64 = rand::rng().random_range(0..total);
 
         for candidate in &healthy {
-            if cursor < candidate.weight as u64 {
+            if cursor < u64::from(candidate.weight) {
                 return Ok(candidate);
             }
-            cursor -= candidate.weight as u64;
+            cursor -= u64::from(candidate.weight);
         }
 
         // Unreachable: cursor always exhausts within the loop.
-        Ok(healthy[healthy.len() - 1])
+        healthy
+            .last()
+            .copied()
+            .ok_or(crate::error::ProxyError::AllProxiesUnhealthy)
     }
 }

@@ -23,7 +23,7 @@
 //! ```
 
 use async_trait::async_trait;
-use serde_json::json;
+use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
@@ -63,13 +63,13 @@ impl DocumentSource {
     /// let source = DocumentSource::new();
     /// ```
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { _priv: () }
     }
 
     /// Return the name of this source.
     #[must_use]
-    pub fn source_name(&self) -> &str {
+    pub const fn source_name(&self) -> &'static str {
         "filesystem"
     }
 
@@ -90,7 +90,7 @@ impl DocumentSource {
         Self::walk_dir(
             &query.path,
             query.recursive,
-            &query.glob_pattern,
+            query.glob_pattern.as_deref(),
             &mut paths,
         )
         .await?;
@@ -101,7 +101,7 @@ impl DocumentSource {
     async fn walk_dir(
         dir: &Path,
         recursive: bool,
-        glob: &Option<String>,
+        glob: Option<&str>,
         out: &mut Vec<PathBuf>,
     ) -> Result<()> {
         let mut entries = fs::read_dir(dir).await.map_err(|e| {
@@ -240,7 +240,7 @@ impl DocumentSourcePort for DocumentSource {
         Ok(docs)
     }
 
-    fn source_name(&self) -> &str {
+    fn source_name(&self) -> &'static str {
         "filesystem"
     }
 }
@@ -274,16 +274,28 @@ impl ScrapingService for DocumentSource {
     /// # }
     /// ```
     async fn execute(&self, input: ServiceInput) -> Result<ServiceOutput> {
-        let path_str = input.params["path"].as_str().ok_or_else(|| {
-            StygianError::Service(ServiceError::InvalidResponse(
-                "missing 'path' in params".into(),
-            ))
-        })?;
+        let path_str = input
+            .params
+            .get("path")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                StygianError::Service(ServiceError::InvalidResponse(
+                    "missing 'path' in params".into(),
+                ))
+            })?;
 
         let query = DocumentQuery {
             path: PathBuf::from(path_str),
-            recursive: input.params["recursive"].as_bool().unwrap_or(false),
-            glob_pattern: input.params["glob_pattern"].as_str().map(String::from),
+            recursive: input
+                .params
+                .get("recursive")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            glob_pattern: input
+                .params
+                .get("glob_pattern")
+                .and_then(Value::as_str)
+                .map(String::from),
         };
 
         let docs = self.read_documents(query).await?;

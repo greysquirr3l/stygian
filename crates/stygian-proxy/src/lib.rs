@@ -1,4 +1,5 @@
 //! # stygian-proxy
+#![allow(clippy::multiple_crate_versions)]
 //!
 //! High-performance, resilient proxy rotation for the Stygian scraping ecosystem.
 //!
@@ -7,7 +8,7 @@
 //! - Pluggable rotation strategies: round-robin, random, weighted, least-used
 //! - Per-proxy latency and success-rate tracking via atomics
 //! - Async health checker with configurable intervals
-//! - Per-proxy circuit breaker (Closed → Open → HalfOpen)
+//! - Per-proxy circuit breaker (`Closed -> Open -> HalfOpen`)
 //! - In-memory proxy pool (no external DB required)
 //! - `graph` feature: [`ProxyManagerPort`] trait for stygian-graph HTTP adapters
 //! - `browser` feature: per-context proxy binding for stygian-browser
@@ -39,6 +40,9 @@ pub mod graph;
 #[cfg(feature = "browser")]
 pub mod browser;
 
+#[cfg(feature = "tls-profiled")]
+pub mod http_client;
+
 /// MCP (Model Context Protocol) server — exposes proxy pool tools
 #[cfg(feature = "mcp")]
 pub mod mcp;
@@ -55,10 +59,13 @@ pub use strategy::{
     BoxedRotationStrategy, LeastUsedStrategy, ProxyCandidate, RandomStrategy, RotationStrategy,
     RoundRobinStrategy, WeightedStrategy,
 };
-pub use types::{Proxy, ProxyConfig, ProxyMetrics, ProxyRecord, ProxyType};
+pub use types::{ProfiledRequestMode, Proxy, ProxyConfig, ProxyMetrics, ProxyRecord, ProxyType};
 
 #[cfg(feature = "graph")]
 pub use graph::{BoxedProxyManager, NoopProxyManager, ProxyManagerPort};
 
 #[cfg(feature = "browser")]
 pub use browser::{BrowserProxySource, ProxyManagerBridge};
+
+#[cfg(feature = "tls-profiled")]
+pub use http_client::{ProfiledRequester, ProfiledRequesterError};

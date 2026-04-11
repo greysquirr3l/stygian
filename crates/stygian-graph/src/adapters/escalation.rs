@@ -84,12 +84,12 @@ fn is_cloudflare_challenge(body: &str) -> bool {
         || body.contains("Checking if the site connection is secure")
 }
 
-/// Returns `true` if the body contains a DataDome interstitial marker.
+/// Returns `true` if the body contains a `DataDome` interstitial marker.
 fn is_datadome_interstitial(body: &str) -> bool {
     body.contains("datadome") || body.contains("dd_referrer")
 }
 
-/// Returns `true` if the body contains a PerimeterX challenge marker.
+/// Returns `true` if the body contains a `PerimeterX` challenge marker.
 fn is_perimeterx_challenge(body: &str) -> bool {
     body.contains("_pxParam") || body.contains("_px.js") || body.contains("blockScript")
 }
@@ -125,7 +125,7 @@ impl DefaultEscalationPolicy {
 
     /// Build a [`ResponseContext`] from an HTTP status code and response body.
     ///
-    /// Inspects the body for Cloudflare, DataDome, PerimeterX, and CAPTCHA
+    /// Inspects the body for Cloudflare, `DataDome`, `PerimeterX`, and CAPTCHA
     /// markers.  All anti-bot challenge types map to `has_cloudflare_challenge`
     /// (the field name reflects its original purpose but covers all vendors).
     pub fn context_from_body(status: u16, body: &str) -> ResponseContext {
@@ -144,12 +144,18 @@ impl DefaultEscalationPolicy {
     /// If the domain has a valid (non-expired) cache entry, returns that tier
     /// instead of [`EscalationConfig::base_tier`], skipping unnecessary tiers.
     pub fn initial_tier_for_domain(&self, domain: &str) -> EscalationTier {
-        let cache = self.cache.read().expect("escalation cache poisoned");
-        if let Some((tier, expires_at)) = cache.get(domain)
-            && Instant::now() < *expires_at
+        let result = {
+            let cache = self
+                .cache
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            cache.get(domain).copied()
+        };
+        if let Some((tier, expires_at)) = result
+            && Instant::now() < expires_at
         {
             tracing::debug!(domain, tier = %tier, "using cached initial escalation tier");
-            return *tier;
+            return tier;
         }
         self.config.base_tier
     }
@@ -164,7 +170,10 @@ impl DefaultEscalationPolicy {
             return; // nothing meaningful to cache
         }
         let expires_at = Instant::now() + self.config.cache_ttl;
-        let mut cache = self.cache.write().expect("escalation cache poisoned");
+        let mut cache = self
+            .cache
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let should_insert = cache.get(domain).is_none_or(|(cached, _)| tier >= *cached);
         if should_insert {
             tracing::info!(domain, tier = %tier, "caching successful escalation tier");
@@ -177,7 +186,10 @@ impl DefaultEscalationPolicy {
     /// Returns the number of entries removed.  Safe to call on any schedule;
     /// the T20 pipeline executor calls this periodically.
     pub fn purge_expired_cache(&self) -> usize {
-        let mut cache = self.cache.write().expect("escalation cache poisoned");
+        let mut cache = self
+            .cache
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let now = Instant::now();
         let before = cache.len();
         cache.retain(|_, (_, expires_at)| now < *expires_at);
@@ -285,6 +297,7 @@ impl EscalatingScrapingService {
     }
 
     /// Register a concrete service for an escalation tier (builder style).
+    #[must_use]
     pub fn with_tier(mut self, tier: EscalationTier, service: Arc<dyn ScrapingService>) -> Self {
         self.tier_services.insert(tier, service);
         self
@@ -318,8 +331,7 @@ impl ScrapingService for EscalatingScrapingService {
             let (actual_tier, service) =
                 self.service_at_or_above(current_tier).ok_or_else(|| {
                     StygianError::Service(ServiceError::Unavailable(format!(
-                        "no service configured for escalation tier '{}' or above",
-                        current_tier
+                        "no service configured for escalation tier '{current_tier}' or above"
                     )))
                 })?;
 
@@ -337,8 +349,8 @@ impl ScrapingService for EscalatingScrapingService {
                     let status = output
                         .metadata
                         .get("status_code")
-                        .and_then(|v| v.as_u64())
-                        .map_or(200, |s| s as u16);
+                        .and_then(serde_json::Value::as_u64)
+                        .map_or(200_u16, |s| u16::try_from(s).unwrap_or(200_u16));
                     let ctx = DefaultEscalationPolicy::context_from_body(status, &output.data);
 
                     if let Some(next_tier) = self.policy.should_escalate(&ctx, current_tier) {
@@ -731,10 +743,18 @@ mod tests {
         );
         let output = svc.execute(test_input()).await.unwrap();
         assert_eq!(
-            output.metadata["escalation_tier"].as_str().unwrap(),
+            output
+                .metadata
+                .get("escalation_tier")
+                .and_then(serde_json::Value::as_str)
+                .unwrap(),
             "http_plain"
         );
-        let path = output.metadata["escalation_path"].as_array().unwrap();
+        let path = output
+            .metadata
+            .get("escalation_path")
+            .and_then(serde_json::Value::as_array)
+            .unwrap();
         assert!(path.is_empty());
     }
 
@@ -758,12 +778,23 @@ mod tests {
             );
         let output = svc.execute(test_input()).await.unwrap();
         assert_eq!(
-            output.metadata["escalation_tier"].as_str().unwrap(),
+            output
+                .metadata
+                .get("escalation_tier")
+                .and_then(serde_json::Value::as_str)
+                .unwrap(),
             "http_tls_profiled"
         );
-        let path = output.metadata["escalation_path"].as_array().unwrap();
+        let path = output
+            .metadata
+            .get("escalation_path")
+            .and_then(serde_json::Value::as_array)
+            .unwrap();
         assert_eq!(path.len(), 1);
-        assert_eq!(path[0].as_str().unwrap(), "http_plain");
+        assert_eq!(
+            path.first().and_then(serde_json::Value::as_str).unwrap(),
+            "http_plain"
+        );
     }
 
     #[tokio::test]
@@ -780,7 +811,11 @@ mod tests {
             );
         let output = svc.execute(test_input()).await.unwrap();
         assert_eq!(
-            output.metadata["escalation_tier"].as_str().unwrap(),
+            output
+                .metadata
+                .get("escalation_tier")
+                .and_then(serde_json::Value::as_str)
+                .unwrap(),
             "browser_basic"
         );
     }

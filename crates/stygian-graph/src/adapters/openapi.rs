@@ -95,7 +95,7 @@ pub struct OpenApiConfig {
 
 // ─── Adapter ──────────────────────────────────────────────────────────────────
 
-/// OpenAPI 3.x introspection adapter.
+/// `OpenAPI 3.x` introspection adapter.
 ///
 /// Thread-safe and cheaply cloneable — the inner `reqwest::Client` and the
 /// spec cache both use `Arc` internally.  Build once, share across tasks.
@@ -111,9 +111,9 @@ pub struct OpenApiConfig {
 pub struct OpenApiAdapter {
     /// Inner REST adapter — handles all actual HTTP calls.
     inner: RestApiAdapter,
-    /// HTTP client used exclusively to fetch OpenAPI spec documents.
+    /// HTTP client used exclusively to fetch `OpenAPI` spec documents.
     spec_client: Client,
-    /// Parsed specs keyed by their fetch URL.
+    /// Parsed specs keyed by their fetch `URL`.
     spec_cache: SpecCache,
     /// Lazily initialised proactive rate limiter, seeded from `params.rate_limit`
     /// on the first call.  Shared across all clones of this adapter.
@@ -184,9 +184,9 @@ fn svc_err(msg: impl Into<String>) -> StygianError {
     StygianError::from(ServiceError::Unavailable(msg.into()))
 }
 
-/// Fetch and parse an OpenAPI spec from `url`.
+/// Fetch and parse an `OpenAPI` spec from `url`.
 ///
-/// Tries JSON first (fast path), then falls back to YAML.
+/// Tries `JSON` first (fast path), then falls back to `YAML`.
 async fn fetch_spec(client: &Client, url: &str) -> Result<Arc<OpenAPI>> {
     let body = client
         .get(url)
@@ -337,11 +337,7 @@ fn build_url(server_url: &str, path_template: &str, args: &HashMap<String, Value
     for (key, val) in args {
         let placeholder = format!("{{{key}}}");
         if url.contains(placeholder.as_str()) {
-            let replacement = if let Some(s) = val.as_str() {
-                s.to_owned()
-            } else {
-                val.to_string()
-            };
+            let replacement = val.as_str().map_or_else(|| val.to_string(), str::to_owned);
             url = url.replace(placeholder.as_str(), &replacement);
         }
     }
@@ -366,11 +362,7 @@ fn build_rest_params(
         .iter()
         .filter_map(|name| {
             args.get(name.as_str()).map(|val| {
-                let s = if let Some(s) = val.as_str() {
-                    s.to_owned()
-                } else {
-                    val.to_string()
-                };
+                let s = val.as_str().map_or_else(|| val.to_string(), str::to_owned);
                 (name.clone(), Value::String(s))
             })
         })
@@ -419,7 +411,10 @@ fn parse_rate_limit_config(rl: &Value) -> RateLimitConfig {
         _ => RateLimitStrategy::SlidingWindow,
     };
     RateLimitConfig {
-        max_requests: rl["max_requests"].as_u64().map_or(100, |v| v as u32),
+        max_requests: rl["max_requests"]
+            .as_u64()
+            .and_then(|value| u32::try_from(value).ok())
+            .unwrap_or(100),
         window: Duration::from_secs(rl["window_secs"].as_u64().unwrap_or(60)),
         max_delay_ms: rl["max_delay_ms"].as_u64().unwrap_or(30_000),
         strategy,
@@ -430,11 +425,11 @@ fn parse_rate_limit_config(rl: &Value) -> RateLimitConfig {
 
 #[async_trait]
 impl ScrapingService for OpenApiAdapter {
-    /// Execute an OpenAPI operation and return the result.
+    /// Execute an `OpenAPI` operation and return the result.
     ///
     /// # `ServiceInput.url`
     ///
-    /// URL of the OpenAPI specification document (`.json` or `.yaml`).
+    /// `URL` of the `OpenAPI` specification document (`.json` or `.yaml`).
     ///
     /// # `ServiceInput.params` contract
     ///
@@ -671,16 +666,14 @@ mod tests {
 
     #[test]
     fn bind_path_params() {
-        let args: HashMap<String, Value> = [("petId".to_owned(), json!(42))].into_iter().collect();
+        let args: HashMap<String, Value> = HashMap::from([("petId".to_owned(), json!(42))]);
         let url = build_url("https://api.example.com/v1", "/pets/{petId}", &args);
         assert_eq!(url, "https://api.example.com/v1/pets/42");
     }
 
     #[test]
     fn bind_path_params_string() {
-        let args: HashMap<String, Value> = [("petId".to_owned(), json!("fluffy"))]
-            .into_iter()
-            .collect();
+        let args: HashMap<String, Value> = HashMap::from([("petId".to_owned(), json!("fluffy"))]);
         let url = build_url("https://api.example.com/v1", "/pets/{petId}", &args);
         assert_eq!(url, "https://api.example.com/v1/pets/fluffy");
     }

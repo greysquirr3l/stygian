@@ -270,26 +270,36 @@ fn base64_encode(input: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
     for chunk in input.chunks(3) {
-        let b0 = chunk[0] as usize;
+        let b0 = usize::from(*chunk.first().unwrap_or(&0));
         let b1 = if chunk.len() > 1 {
-            chunk[1] as usize
+            usize::from(*chunk.get(1).unwrap_or(&0))
         } else {
             0
         };
         let b2 = if chunk.len() > 2 {
-            chunk[2] as usize
+            usize::from(*chunk.get(2).unwrap_or(&0))
         } else {
             0
         };
-        let _ = write!(out, "{}", TABLE[b0 >> 2] as char);
-        let _ = write!(out, "{}", TABLE[((b0 & 3) << 4) | (b1 >> 4)] as char);
+        let first = TABLE.get(b0 >> 2).copied().unwrap_or_default();
+        let second = TABLE
+            .get(((b0 & 3) << 4) | (b1 >> 4))
+            .copied()
+            .unwrap_or_default();
+        let _ = write!(out, "{}", char::from(first));
+        let _ = write!(out, "{}", char::from(second));
         if chunk.len() > 1 {
-            let _ = write!(out, "{}", TABLE[((b1 & 0xf) << 2) | (b2 >> 6)] as char);
+            let third = TABLE
+                .get(((b1 & 0xf) << 2) | (b2 >> 6))
+                .copied()
+                .unwrap_or_default();
+            let _ = write!(out, "{}", char::from(third));
         } else {
             out.push('=');
         }
         if chunk.len() > 2 {
-            let _ = write!(out, "{}", TABLE[b2 & 0x3f] as char);
+            let fourth = TABLE.get(b2 & 0x3f).copied().unwrap_or_default();
+            let _ = write!(out, "{}", char::from(fourth));
         } else {
             out.push('=');
         }
@@ -313,14 +323,14 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
     let bytes = input.as_bytes();
     let mut i = 0;
     while i + 1 < bytes.len() {
-        let v0 = decode_char(bytes[i])?;
-        let v1 = decode_char(bytes[i + 1])?;
+        let v0 = decode_char(*bytes.get(i).unwrap_or(&0))?;
+        let v1 = decode_char(*bytes.get(i + 1).unwrap_or(&0))?;
         out.push((v0 << 2) | (v1 >> 4));
         if i + 2 < bytes.len() {
-            let v2 = decode_char(bytes[i + 2])?;
+            let v2 = decode_char(*bytes.get(i + 2).unwrap_or(&0))?;
             out.push(((v1 & 0xf) << 4) | (v2 >> 2));
             if i + 3 < bytes.len() {
-                let v3 = decode_char(bytes[i + 3])?;
+                let v3 = decode_char(*bytes.get(i + 3).unwrap_or(&0))?;
                 out.push(((v2 & 3) << 6) | v3);
             }
         }
@@ -339,7 +349,7 @@ mod tests {
     use serde_json::json;
 
     #[tokio::test]
-    async fn noop_returns_empty_output() {
+    async fn noop_returns_empty_output() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let signer = NoopSigningAdapter;
         let output = signer
             .sign(SigningInput {
@@ -349,15 +359,15 @@ mod tests {
                 body: None,
                 context: json!({}),
             })
-            .await
-            .unwrap();
+            .await?;
         assert!(output.headers.is_empty());
         assert!(output.query_params.is_empty());
         assert!(output.body_override.is_none());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn noop_is_erased_signing_port() {
+    async fn noop_is_erased_signing_port() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let signer: std::sync::Arc<dyn ErasedSigningPort> = std::sync::Arc::new(NoopSigningAdapter);
         let output = signer
             .erased_sign(SigningInput {
@@ -367,17 +377,19 @@ mod tests {
                 body: Some(b"{\"key\":\"val\"}".to_vec()),
                 context: json!({"session": "abc"}),
             })
-            .await
-            .unwrap();
+            .await?;
         assert!(output.headers.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn base64_roundtrip() {
+    fn base64_roundtrip() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let input = b"Hello, Stygian signing!";
         let encoded = base64_encode(input);
-        let decoded = base64_decode(&encoded).unwrap();
+        let decoded = base64_decode(&encoded)
+            .map_err(|e| std::io::Error::other(format!("base64 decode failed: {e}")))?;
         assert_eq!(decoded, input);
+        Ok(())
     }
 
     #[test]

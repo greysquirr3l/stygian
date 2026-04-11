@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-04-11
+
+### Changed
+
+- `workspace`: all crates now pass `clippy::pedantic` at maximum sensitivity with zero
+  warnings — `expect_used`, `unwrap_used`, `indexing_slicing`, `panic`, and `needless_pass_by_value`
+  are all denied workspace-wide; tests use `Result`-returning signatures with `?` propagation
+  and `pointer()`/`get()` chains for JSON field access instead of index operators
+- `stygian-mcp`: `ok_response` helper now accepts `result: &Value` (was owned) to fix
+  `needless_pass_by_value`; all call sites updated; `mcp_error_message` lifetime annotations
+  elided; `map_or(true/false, ...)` replaced with `is_none_or()`/`is_some_and()`
+- `stygian-mcp`: `main.rs` gains `#![allow(clippy::multiple_crate_versions)]` — binary
+  targets are checked separately from the library and require their own allow attribute
+- `stygian-proxy`: `client()` on `ProfiledRequester` is now `const fn`
+- `stygian-browser`: `stygian-extract-derive` added as unconditional dev-dependency so
+  trybuild UI tests compile regardless of features; trybuild does not forward feature flags
+  to subprocess compilations, so UI test files now import directly from `stygian_extract_derive`
+
+### Fixed
+
+- `stygian-browser`: trybuild UI tests (`extract_enum`, `extract_missing_selector`) no
+  longer fail with `unresolved import stygian_browser::extract` — the `extract` feature is
+  not forwarded by trybuild to subprocess builds; tests now import the proc-macro directly
+- `stygian-browser`: `[[test]] required-features = ["extract"]` removed — the UI test
+  binary no longer needs to be feature-gated since the proc-macro is always available as a
+  dev-dependency
+
+### Docs
+
+- `book/src/browser/extract.md`: dependency section corrected — users should enable
+  `features = ["extract"]` on `stygian-browser`, not add `stygian-extract-derive` directly;
+  import paths updated from `stygian_extract_derive::Extract` to `stygian_browser::extract::Extract`
+- `crates/stygian-browser/README.md`: structured extraction added to the feature table with
+  opt-in note (`features = ["extract"]`)
+
 ## [0.8.5] - 2026-04-08
 
 ### Fixed

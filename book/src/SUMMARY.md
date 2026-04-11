@@ -15,6 +15,8 @@
 - [Custom Adapters](./graph/custom-adapters.md)
 - [Distributed Execution](./graph/distributed.md)
 - [Tiered Escalation](./graph/escalation.md)
+- [Data Sinks](./graph/data-sinks.md)
+- [Scrape Exchange](./graph/scrape-exchange.md)
 - [Observability](./graph/observability.md)
 - [Performance Tuning](./graph/performance.md)
 

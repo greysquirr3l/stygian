@@ -11,7 +11,6 @@
 /// struct with a field missing `#[selector(...)]` both produce the expected
 /// compiler diagnostics.
 #[test]
-#[cfg(feature = "extract")]
 fn ui_tests() {
     let t = trybuild::TestCases::new();
     t.compile_fail("tests/ui/extract_enum.rs");

@@ -27,7 +27,7 @@ pub const STATE_HALF_OPEN: u8 = 2;
 pub struct CircuitBreaker {
     state: AtomicU8,
     failure_count: AtomicU32,
-    /// Milliseconds since UNIX_EPOCH of the last recorded failure.
+    /// Milliseconds since `UNIX_EPOCH` of the last recorded failure.
     last_failure: AtomicU64,
     threshold: u32,
     half_open_after_ms: u64,
@@ -35,7 +35,7 @@ pub struct CircuitBreaker {
 
 impl CircuitBreaker {
     /// Create a new breaker from config parameters.
-    pub fn new(threshold: u32, half_open_after_ms: u64) -> Self {
+    pub const fn new(threshold: u32, half_open_after_ms: u64) -> Self {
         Self {
             state: AtomicU8::new(STATE_CLOSED),
             failure_count: AtomicU32::new(0),
@@ -51,14 +51,13 @@ impl CircuitBreaker {
         self.state.load(Ordering::Acquire)
     }
 
-    /// Returns `true` when the proxy may be used (Closed or HalfOpen).
+    /// Returns `true` when the proxy may be used (`Closed` or `HalfOpen`).
     ///
     /// When the circuit is Open and enough time has elapsed since the last
-    /// failure the breaker transitions to HalfOpen and returns `true`.
+    /// failure the breaker transitions to `HalfOpen` and returns `true`.
     pub fn is_available(&self) -> bool {
         match self.state.load(Ordering::Acquire) {
-            STATE_CLOSED => true,
-            STATE_HALF_OPEN => true,
+            STATE_CLOSED | STATE_HALF_OPEN => true,
             STATE_OPEN => {
                 let elapsed_ms = now_ms().saturating_sub(self.last_failure.load(Ordering::Acquire));
                 if elapsed_ms >= self.half_open_after_ms {
@@ -82,8 +81,8 @@ impl CircuitBreaker {
 
     /// Record a successful request.
     ///
-    /// When the circuit is in HalfOpen this resets the failure count and
-    /// transitions back to Closed.
+    /// When the circuit is in `HalfOpen` this resets the failure count and
+    /// transitions back to `Closed`.
     pub fn record_success(&self) {
         if self
             .state
@@ -101,8 +100,8 @@ impl CircuitBreaker {
 
     /// Record a failed request.
     ///
-    /// In Closed: if the incremented count reaches the threshold the circuit
-    /// trips to Open.  In HalfOpen: immediately trips back to Open and resets
+    /// In `Closed`: if the incremented count reaches the threshold the circuit
+    /// trips to `Open`. In `HalfOpen`: immediately trips back to `Open` and resets
     /// the timer.
     pub fn record_failure(&self) {
         let count = self.failure_count.fetch_add(1, Ordering::AcqRel) + 1;
@@ -134,7 +133,9 @@ fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
-        .as_millis() as u64
+        .as_millis()
+        .try_into()
+        .unwrap_or(u64::MAX)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -204,7 +205,7 @@ mod tests {
             })
             .collect();
         for h in handles {
-            h.join().unwrap();
+            assert!(h.join().is_ok(), "worker thread should not panic");
         }
         assert_eq!(cb.state(), STATE_OPEN);
         assert!(cb.failure_count.load(Ordering::Relaxed) >= 5);

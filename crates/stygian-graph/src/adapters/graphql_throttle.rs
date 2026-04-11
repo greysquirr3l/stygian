@@ -249,7 +249,7 @@ impl BudgetGuard {
 
     /// The reserved cost held by this guard.
     #[must_use]
-    pub fn cost(&self) -> f64 {
+    pub const fn cost(&self) -> f64 {
         self.cost
     }
 

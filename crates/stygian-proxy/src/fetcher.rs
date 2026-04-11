@@ -126,7 +126,7 @@ pub enum FreeListSource {
 }
 
 impl FreeListSource {
-    fn url(&self) -> &str {
+    const fn url(&self) -> &str {
         match self {
             Self::TheSpeedXHttp => {
                 "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt"
@@ -147,7 +147,7 @@ impl FreeListSource {
         }
     }
 
-    fn proxy_type(&self) -> ProxyType {
+    const fn proxy_type(&self) -> ProxyType {
         match self {
             Self::TheSpeedXHttp | Self::ClarketmHttp | Self::OpenProxyListHttp => ProxyType::Http,
             #[cfg(feature = "socks")]
@@ -209,6 +209,57 @@ impl FreeListFetcher {
             client,
             tags: vec!["free-list".into()],
         }
+    }
+
+    /// Replace the internal HTTP client with a TLS-profiled one.
+    ///
+    /// Proxy-list fetch requests will carry a browser TLS fingerprint and
+    /// matching `Accept` / `Sec-CH-UA` headers.
+    ///
+    /// Only available with the `tls-profiled` feature.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_proxy::fetcher::{FreeListFetcher, FreeListSource};
+    /// use stygian_proxy::http_client::{ProfiledRequestMode, ProfiledRequester};
+    ///
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let fetcher = FreeListFetcher::new(vec![FreeListSource::TheSpeedXHttp])
+    ///     .with_profiled_client(ProfiledRequester::chrome_mode(ProfiledRequestMode::Preset)?);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[cfg(feature = "tls-profiled")]
+    #[must_use]
+    pub fn with_profiled_client(
+        mut self,
+        requester: crate::http_client::ProfiledRequester,
+    ) -> Self {
+        self.client = requester.client().clone();
+        drop(requester);
+        self
+    }
+
+    /// Build and attach a profile-mode-based requester.
+    ///
+    /// Uses Chrome 131 as the baseline browser identity and applies `mode`
+    /// to TLS control mapping.
+    ///
+    /// Only available when the `tls-profiled` feature is enabled.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::ProxyError::ConfigError`] if the profiled
+    /// requester cannot be constructed.
+    #[cfg(feature = "tls-profiled")]
+    pub fn with_profiled_mode(
+        self,
+        mode: crate::types::ProfiledRequestMode,
+    ) -> crate::error::ProxyResult<Self> {
+        let requester = crate::http_client::ProfiledRequester::chrome_mode(mode)
+            .map_err(|e| crate::error::ProxyError::ConfigError(e.to_string()))?;
+        Ok(self.with_profiled_client(requester))
     }
 
     /// Attach extra tags to every proxy produced by this fetcher.
@@ -338,7 +389,7 @@ impl ProxyFetcher for FreeListFetcher {
                 origin: self
                     .sources
                     .iter()
-                    .map(|s| s.url())
+                    .map(FreeListSource::url)
                     .collect::<Vec<_>>()
                     .join(", "),
                 message: "all sources returned empty or failed".into(),
@@ -477,9 +528,18 @@ mod tests {
             .collect();
 
         assert_eq!(parsed.len(), 3);
-        assert_eq!(parsed[0].url, "http://1.2.3.4:8080");
-        assert_eq!(parsed[1].url, "http://5.6.7.8:3128");
-        assert_eq!(parsed[2].url, "http://[2001:db8::1]:8081");
+        assert_eq!(
+            parsed.first().map(|proxy| proxy.url.as_str()),
+            Some("http://1.2.3.4:8080")
+        );
+        assert_eq!(
+            parsed.get(1).map(|proxy| proxy.url.as_str()),
+            Some("http://5.6.7.8:3128")
+        );
+        assert_eq!(
+            parsed.get(2).map(|proxy| proxy.url.as_str()),
+            Some("http://[2001:db8::1]:8081")
+        );
     }
 
     #[test]
@@ -498,21 +558,28 @@ mod tests {
     }
 
     #[test]
-    fn free_list_fetcher_empty_sources_is_config_error() {
+    fn free_list_fetcher_empty_sources_is_config_error()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
         let fetcher = FreeListFetcher::new(vec![]);
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_time()
             .build()
-            .unwrap_or_else(|e| panic!("failed to build runtime for test: {e}"));
+            .map_err(|e| std::io::Error::other(format!("failed to build runtime for test: {e}")))?;
         let err = rt
             .block_on(fetcher.fetch())
-            .expect_err("empty sources should fail");
+            .err()
+            .ok_or_else(|| std::io::Error::other("empty sources should fail"))?;
         match err {
             ProxyError::ConfigError(msg) => {
                 assert!(msg.contains("no sources configured"));
             }
-            other => panic!("unexpected error variant: {other}"),
+            other => {
+                return Err(
+                    std::io::Error::other(format!("unexpected error variant: {other}")).into(),
+                );
+            }
         }
+        Ok(())
     }
 
     #[test]

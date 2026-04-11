@@ -1171,6 +1171,101 @@ mod rustls_config {
     use super::*;
     use std::sync::Arc;
 
+    /// Controls how strictly a [`TlsProfile`] must map onto rustls features.
+    ///
+    /// This struct lets callers choose between broad compatibility and strict
+    /// profile enforcement:
+    ///
+    /// - **Compatible mode** (default) skips unsupported profile entries with
+    ///   warnings and falls back to provider defaults where needed.
+    /// - **Strict mode** returns an error for unsupported cipher suites.
+    /// - **Strict-all mode** returns an error for unsupported cipher suites
+    ///   and unsupported groups.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_browser::tls::TlsControl;
+    ///
+    /// let strict = TlsControl::strict();
+    /// assert!(strict.strict_cipher_suites);
+    /// ```
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct TlsControl {
+        /// Fail if any profile cipher suite is unsupported by rustls.
+        pub strict_cipher_suites: bool,
+        /// Fail if any profile supported-group entry is unsupported by rustls.
+        pub strict_supported_groups: bool,
+        /// If no profile groups can be mapped, use provider default groups.
+        pub fallback_to_provider_groups: bool,
+        /// Skip legacy JA3-only suites that rustls cannot implement.
+        pub allow_legacy_compat_suites: bool,
+    }
+
+    impl Default for TlsControl {
+        fn default() -> Self {
+            Self::compatible()
+        }
+    }
+
+    impl TlsControl {
+        /// Compatible mode: skip unknown entries and fall back to defaults.
+        #[must_use]
+        pub const fn compatible() -> Self {
+            Self {
+                strict_cipher_suites: false,
+                strict_supported_groups: false,
+                fallback_to_provider_groups: true,
+                allow_legacy_compat_suites: true,
+            }
+        }
+
+        /// Strict mode: reject unknown cipher suites.
+        #[must_use]
+        pub const fn strict() -> Self {
+            Self {
+                strict_cipher_suites: true,
+                strict_supported_groups: false,
+                fallback_to_provider_groups: true,
+                allow_legacy_compat_suites: true,
+            }
+        }
+
+        /// Strict-all mode: reject unknown entries and avoid fallback groups.
+        #[must_use]
+        pub const fn strict_all() -> Self {
+            Self {
+                strict_cipher_suites: true,
+                strict_supported_groups: true,
+                fallback_to_provider_groups: false,
+                allow_legacy_compat_suites: true,
+            }
+        }
+
+        /// Return a recommended control preset for a given profile.
+        ///
+        /// Browser profiles use strict cipher-suite checking while allowing
+        /// legacy JA3-only suites to be skipped when rustls has no equivalent.
+        /// Unknown/custom profiles default to compatible mode.
+        #[must_use]
+        pub fn for_profile(profile: &TlsProfile) -> Self {
+            let name = profile.name.to_ascii_lowercase();
+            if name.contains("chrome")
+                || name.contains("edge")
+                || name.contains("firefox")
+                || name.contains("safari")
+            {
+                Self::strict()
+            } else {
+                Self::compatible()
+            }
+        }
+    }
+
+    const fn is_legacy_compat_suite(id: u16) -> bool {
+        matches!(id, 0xc013 | 0xc014 | 0x009c | 0x009d | 0x002f | 0x0035)
+    }
+
     /// Error building a rustls [`ClientConfig`](rustls::ClientConfig) from a
     /// [`TlsProfile`].
     #[derive(Debug, thiserror::Error)]
@@ -1180,6 +1275,32 @@ mod rustls_config {
         /// crypto backend.
         #[error("no supported cipher suites in profile '{0}'")]
         NoCipherSuites(String),
+
+        /// Strict mode rejected an unsupported cipher suite.
+        #[error(
+            "unsupported cipher suite {cipher_suite_id:#06x} in profile '{profile}' under strict mode"
+        )]
+        UnsupportedCipherSuite {
+            /// Profile name used in the attempted mapping.
+            profile: String,
+            /// Unsupported IANA cipher suite code point.
+            cipher_suite_id: u16,
+        },
+
+        /// Strict mode rejected an unsupported key-exchange group.
+        #[error(
+            "unsupported supported_group {group_id:#06x} in profile '{profile}' under strict mode"
+        )]
+        UnsupportedSupportedGroup {
+            /// Profile name used in the attempted mapping.
+            profile: String,
+            /// Unsupported IANA supported-group code point.
+            group_id: u16,
+        },
+
+        /// No supported groups are available and fallback is disabled.
+        #[error("no supported key-exchange groups in profile '{0}'")]
+        NoSupportedGroups(String),
 
         /// rustls rejected the protocol version or configuration.
         #[error("rustls configuration: {0}")]
@@ -1242,6 +1363,33 @@ mod rustls_config {
         /// not configurable in rustls and are emitted (or not) based on the
         /// library version.
         pub fn to_rustls_config(&self) -> Result<TlsClientConfig, TlsConfigError> {
+            self.to_rustls_config_with_control(TlsControl::default())
+        }
+
+        /// Build a rustls `ClientConfig` using explicit control settings.
+        ///
+        /// This allows callers to opt into strict profile enforcement without
+        /// introducing native TLS dependencies.
+        ///
+        /// # Limitations
+        ///
+        /// rustls does not expose APIs to force exact `ClientHello` extension
+        /// ordering or GREASE emission. This method provides strict control
+        /// over the fields rustls does expose (cipher suites, groups, ALPN,
+        /// protocol versions).
+        ///
+        /// # Example
+        ///
+        /// ```
+        /// use stygian_browser::tls::{CHROME_131, TlsControl};
+        ///
+        /// let cfg = CHROME_131.to_rustls_config_with_control(TlsControl::strict());
+        /// assert!(cfg.is_ok());
+        /// ```
+        pub fn to_rustls_config_with_control(
+            &self,
+            control: TlsControl,
+        ) -> Result<TlsClientConfig, TlsConfigError> {
             let default = rustls::crypto::aws_lc_rs::default_provider();
 
             // ── cipher suites ──
@@ -1251,20 +1399,29 @@ mod rustls_config {
                 .map(|cs| (u16::from(cs.suite()), *cs))
                 .collect();
 
-            let ordered_suites: Vec<rustls::SupportedCipherSuite> = self
-                .cipher_suites
-                .iter()
-                .filter_map(|id| {
-                    suite_map.get(&id.0).copied().or_else(|| {
-                        tracing::warn!(
-                            cipher_suite_id = id.0,
-                            profile = %self.name,
-                            "cipher suite not supported by rustls aws-lc-rs backend, skipping"
-                        );
-                        None
-                    })
-                })
-                .collect();
+            let mut ordered_suites: Vec<rustls::SupportedCipherSuite> = Vec::new();
+            for id in &self.cipher_suites {
+                if let Some(cs) = suite_map.get(&id.0).copied() {
+                    ordered_suites.push(cs);
+                } else if control.allow_legacy_compat_suites && is_legacy_compat_suite(id.0) {
+                    tracing::warn!(
+                        cipher_suite_id = id.0,
+                        profile = %self.name,
+                        "legacy profile suite has no rustls equivalent, skipping"
+                    );
+                } else if control.strict_cipher_suites {
+                    return Err(TlsConfigError::UnsupportedCipherSuite {
+                        profile: self.name.clone(),
+                        cipher_suite_id: id.0,
+                    });
+                } else {
+                    tracing::warn!(
+                        cipher_suite_id = id.0,
+                        profile = %self.name,
+                        "cipher suite not supported by rustls aws-lc-rs backend, skipping"
+                    );
+                }
+            }
 
             if ordered_suites.is_empty() {
                 return Err(TlsConfigError::NoCipherSuites(self.name.clone()));
@@ -1280,24 +1437,29 @@ mod rustls_config {
                 .map(|g| (u16::from(g.name()), *g))
                 .collect();
 
-            let ordered_groups: Vec<&'static dyn rustls::crypto::SupportedKxGroup> = self
-                .supported_groups
-                .iter()
-                .filter_map(|sg| {
-                    group_map.get(&sg.iana_value()).copied().or_else(|| {
-                        tracing::warn!(
-                            group_id = sg.iana_value(),
-                            profile = %self.name,
-                            "key-exchange group not supported by rustls, skipping"
-                        );
-                        None
-                    })
-                })
-                .collect();
+            let mut ordered_groups: Vec<&'static dyn rustls::crypto::SupportedKxGroup> = Vec::new();
+            for sg in &self.supported_groups {
+                if let Some(group) = group_map.get(&sg.iana_value()).copied() {
+                    ordered_groups.push(group);
+                } else if control.strict_supported_groups {
+                    return Err(TlsConfigError::UnsupportedSupportedGroup {
+                        profile: self.name.clone(),
+                        group_id: sg.iana_value(),
+                    });
+                } else {
+                    tracing::warn!(
+                        group_id = sg.iana_value(),
+                        profile = %self.name,
+                        "key-exchange group not supported by rustls, skipping"
+                    );
+                }
+            }
 
             // Fall back to provider defaults when no profile groups matched.
-            let kx_groups = if ordered_groups.is_empty() {
+            let kx_groups = if ordered_groups.is_empty() && control.fallback_to_provider_groups {
                 default.kx_groups.clone()
+            } else if ordered_groups.is_empty() {
+                return Err(TlsConfigError::NoSupportedGroups(self.name.clone()));
             } else {
                 ordered_groups
             };
@@ -1343,6 +1505,9 @@ mod rustls_config {
 
 #[cfg(feature = "tls-config")]
 pub use rustls_config::{TlsClientConfig, TlsConfigError};
+
+#[cfg(feature = "tls-config")]
+pub use rustls_config::TlsControl;
 
 // ── reqwest integration ──────────────────────────────────────────────────────
 //
@@ -1417,6 +1582,91 @@ mod reqwest_client {
         }
     }
 
+    /// HTTP headers that match the browser identity of `profile`.
+    ///
+    /// Anti-bot systems cross-correlate HTTP headers (especially `Accept`,
+    /// `Accept-Language`, `Accept-Encoding`, and the `Sec-CH-UA` family)
+    /// against the TLS fingerprint. Mismatches between the TLS profile and
+    /// the HTTP headers are a strong detection signal.
+    ///
+    /// Returns a `HeaderMap` pre-populated with the headers a real browser
+    /// of this type would send on a standard navigation request.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_browser::tls::{browser_headers, CHROME_131};
+    ///
+    /// let headers = browser_headers(&CHROME_131);
+    /// assert!(headers.contains_key("accept"));
+    /// ```
+    pub fn browser_headers(profile: &TlsProfile) -> reqwest::header::HeaderMap {
+        use reqwest::header::{
+            ACCEPT, ACCEPT_ENCODING, ACCEPT_LANGUAGE, CACHE_CONTROL, HeaderMap, HeaderValue,
+            UPGRADE_INSECURE_REQUESTS,
+        };
+
+        let mut map = HeaderMap::new();
+        let name = profile.name.to_ascii_lowercase();
+
+        let is_firefox = name.contains("firefox");
+        let is_safari = name.contains("safari") && !name.contains("chrome");
+        let is_chromium = !(is_firefox || is_safari);
+
+        // Accept — differs between Chromium-family and Firefox/Safari.
+        let accept = if is_chromium {
+            // Chromium (Chrome / Edge)
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
+        } else {
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+        };
+
+        // Accept-Encoding — all modern browsers negotiate the same set.
+        let accept_encoding = "gzip, deflate, br";
+
+        // Accept-Language — pick a realistic primary locale. Passive
+        // fingerprinting rarely cares about the exact locale beyond the
+        // primary tag, so en-US is a safe baseline.
+        let accept_language = "en-US,en;q=0.9";
+
+        // Sec-CH-UA headers — Chromium-only.
+        if is_chromium {
+            let (brand, version) = if name.contains("edge") {
+                ("\"Microsoft Edge\";v=\"131\"", "131")
+            } else {
+                ("\"Google Chrome\";v=\"131\"", "131")
+            };
+
+            let sec_ch_ua =
+                format!("{brand}, \"Chromium\";v=\"{version}\", \"Not_A Brand\";v=\"24\"");
+
+            // These headers are valid ASCII so HeaderValue::from_str can only
+            // fail on control characters — which our strings never contain.
+            if let Ok(v) = HeaderValue::from_str(&sec_ch_ua) {
+                map.insert("sec-ch-ua", v);
+            }
+            map.insert("sec-ch-ua-mobile", HeaderValue::from_static("?0"));
+            map.insert(
+                "sec-ch-ua-platform",
+                HeaderValue::from_static("\"Windows\""),
+            );
+            map.insert("sec-fetch-dest", HeaderValue::from_static("document"));
+            map.insert("sec-fetch-mode", HeaderValue::from_static("navigate"));
+            map.insert("sec-fetch-site", HeaderValue::from_static("none"));
+            map.insert("sec-fetch-user", HeaderValue::from_static("?1"));
+            map.insert(UPGRADE_INSECURE_REQUESTS, HeaderValue::from_static("1"));
+        }
+
+        if let Ok(v) = HeaderValue::from_str(accept) {
+            map.insert(ACCEPT, v);
+        }
+        map.insert(ACCEPT_ENCODING, HeaderValue::from_static(accept_encoding));
+        map.insert(ACCEPT_LANGUAGE, HeaderValue::from_static(accept_language));
+        map.insert(CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+
+        map
+    }
+
     /// Build a [`reqwest::Client`] whose TLS `ClientHello` matches
     /// `profile`.
     ///
@@ -1425,6 +1675,8 @@ mod reqwest_client {
     ///   key-exchange groups, ALPN, and protocol versions.
     /// - Sets the `User-Agent` header to match the profile's browser
     ///   (via [`default_user_agent`]).
+    /// - Sets browser-matched HTTP headers via [`browser_headers`]
+    ///   (`Accept`, `Accept-Encoding`, `Sec-CH-UA`, etc.).
     /// - Enables cookie storage, gzip, and brotli decompression.
     /// - Routes through `proxy_url` when provided.
     ///
@@ -1444,7 +1696,52 @@ mod reqwest_client {
         profile: &TlsProfile,
         proxy_url: Option<&str>,
     ) -> Result<reqwest::Client, TlsClientError> {
-        let tls_config = profile.to_rustls_config()?;
+        build_profiled_client_with_control(profile, proxy_url, TlsControl::default())
+    }
+
+    /// Build a [`reqwest::Client`] using profile-specific control presets.
+    ///
+    /// This is a convenience wrapper for callers who want stronger defaults
+    /// without manually selecting [`TlsControl`] fields.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_browser::tls::{build_profiled_client_preset, CHROME_131};
+    ///
+    /// let client = build_profiled_client_preset(&CHROME_131, None).unwrap();
+    /// let _ = client;
+    /// ```
+    pub fn build_profiled_client_preset(
+        profile: &TlsProfile,
+        proxy_url: Option<&str>,
+    ) -> Result<reqwest::Client, TlsClientError> {
+        build_profiled_client_with_control(profile, proxy_url, TlsControl::for_profile(profile))
+    }
+
+    /// Build a [`reqwest::Client`] with explicit TLS profile control settings.
+    ///
+    /// This is the pure-Rust path for users who want stronger control without
+    /// introducing native build dependencies.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_browser::tls::{build_profiled_client_with_control, CHROME_131, TlsControl};
+    ///
+    /// let client = build_profiled_client_with_control(
+    ///     &CHROME_131,
+    ///     None,
+    ///     TlsControl::strict(),
+    /// ).unwrap();
+    /// let _ = client;
+    /// ```
+    pub fn build_profiled_client_with_control(
+        profile: &TlsProfile,
+        proxy_url: Option<&str>,
+        control: TlsControl,
+    ) -> Result<reqwest::Client, TlsClientError> {
+        let tls_config = profile.to_rustls_config_with_control(control)?;
 
         // Unwrap the Arc — we're the sole owner after `to_rustls_config`.
         let rustls_cfg =
@@ -1453,6 +1750,7 @@ mod reqwest_client {
         let mut builder = reqwest::Client::builder()
             .use_preconfigured_tls(rustls_cfg)
             .user_agent(default_user_agent(profile))
+            .default_headers(browser_headers(profile))
             .cookie_store(true)
             .gzip(true)
             .brotli(true);
@@ -1463,11 +1761,33 @@ mod reqwest_client {
 
         Ok(builder.build()?)
     }
+
+    /// Build a strict TLS-profiled [`reqwest::Client`].
+    ///
+    /// Strict mode rejects unsupported cipher suites instead of silently
+    /// skipping them.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_browser::tls::{build_profiled_client_strict, CHROME_131};
+    ///
+    /// let client = build_profiled_client_strict(&CHROME_131, None).unwrap();
+    /// let _ = client;
+    /// ```
+    pub fn build_profiled_client_strict(
+        profile: &TlsProfile,
+        proxy_url: Option<&str>,
+    ) -> Result<reqwest::Client, TlsClientError> {
+        build_profiled_client_with_control(profile, proxy_url, TlsControl::strict())
+    }
 }
 
 #[cfg(feature = "tls-config")]
 pub use reqwest_client::{
-    TlsClientError, build_profiled_client, default_user_agent, profile_for_device,
+    TlsClientError, browser_headers, build_profiled_client, build_profiled_client_preset,
+    build_profiled_client_strict, build_profiled_client_with_control, default_user_agent,
+    profile_for_device,
 };
 
 // ── tests ────────────────────────────────────────────────────────────────────
@@ -1753,6 +2073,95 @@ mod tests {
         }
 
         #[test]
+        fn strict_mode_rejects_unknown_cipher_suite() {
+            let profile = TlsProfile {
+                name: "StrictCipherTest".to_string(),
+                cipher_suites: vec![CipherSuiteId::TLS_AES_128_GCM_SHA256, CipherSuiteId(0xFFFF)],
+                tls_versions: vec![TlsVersion::Tls13],
+                extensions: vec![],
+                supported_groups: vec![SupportedGroup::X25519],
+                signature_algorithms: vec![],
+                alpn_protocols: vec![],
+            };
+
+            let err = profile
+                .to_rustls_config_with_control(TlsControl::strict())
+                .unwrap_err();
+
+            match err {
+                TlsConfigError::UnsupportedCipherSuite {
+                    cipher_suite_id, ..
+                } => {
+                    assert_eq!(cipher_suite_id, 0xFFFF);
+                }
+                other => panic!("expected UnsupportedCipherSuite, got: {other}"),
+            }
+        }
+
+        #[test]
+        fn compatible_mode_skips_unknown_cipher_suite() {
+            let mut profile = (*CHROME_131).clone();
+            profile.cipher_suites.push(CipherSuiteId(0xFFFF));
+
+            let cfg = profile.to_rustls_config_with_control(TlsControl::compatible());
+            assert!(cfg.is_ok(), "compatible mode should skip unknown suite");
+        }
+
+        #[test]
+        fn control_for_builtin_profiles_is_strict() {
+            for profile in [&*CHROME_131, &*FIREFOX_133, &*SAFARI_18, &*EDGE_131] {
+                let control = TlsControl::for_profile(profile);
+                assert!(
+                    control.strict_cipher_suites,
+                    "builtin profile '{}' should use strict cipher checking",
+                    profile.name
+                );
+            }
+        }
+
+        #[test]
+        fn control_for_custom_profile_is_compatible() {
+            let profile = TlsProfile {
+                name: "Custom Backend".to_string(),
+                cipher_suites: vec![CipherSuiteId::TLS_AES_128_GCM_SHA256],
+                tls_versions: vec![TlsVersion::Tls13],
+                extensions: vec![],
+                supported_groups: vec![SupportedGroup::X25519],
+                signature_algorithms: vec![],
+                alpn_protocols: vec![],
+            };
+
+            let control = TlsControl::for_profile(&profile);
+            assert!(!control.strict_cipher_suites);
+            assert!(!control.strict_supported_groups);
+            assert!(control.fallback_to_provider_groups);
+        }
+
+        #[test]
+        fn strict_all_without_groups_returns_error() {
+            let profile = TlsProfile {
+                name: "StrictGroupTest".to_string(),
+                cipher_suites: vec![CipherSuiteId::TLS_AES_128_GCM_SHA256],
+                tls_versions: vec![TlsVersion::Tls13],
+                extensions: vec![],
+                supported_groups: vec![],
+                signature_algorithms: vec![],
+                alpn_protocols: vec![],
+            };
+
+            let err = profile
+                .to_rustls_config_with_control(TlsControl::strict_all())
+                .unwrap_err();
+
+            match err {
+                TlsConfigError::NoSupportedGroups(name) => {
+                    assert_eq!(name, "StrictGroupTest");
+                }
+                other => panic!("expected NoSupportedGroups, got: {other}"),
+            }
+        }
+
+        #[test]
         fn into_arc_conversion() {
             let config = CHROME_131.to_rustls_config().unwrap();
             let arc: std::sync::Arc<rustls::ClientConfig> = config.into();
@@ -1791,6 +2200,42 @@ mod tests {
         }
 
         #[test]
+        fn build_profiled_client_strict_no_proxy() {
+            let client = build_profiled_client_strict(&CHROME_131, None);
+            assert!(
+                client.is_ok(),
+                "strict mode should build for built-in profile: {:?}",
+                client.err()
+            );
+        }
+
+        #[test]
+        fn build_profiled_client_preset_all_profiles() {
+            for profile in [&*CHROME_131, &*FIREFOX_133, &*SAFARI_18, &*EDGE_131] {
+                let result = build_profiled_client_preset(profile, None);
+                assert!(
+                    result.is_ok(),
+                    "preset builder should work for profile '{}': {:?}",
+                    profile.name,
+                    result.err()
+                );
+            }
+        }
+
+        #[test]
+        fn build_profiled_client_with_control_rejects_unknown_cipher_suite() {
+            let mut profile = (*CHROME_131).clone();
+            profile.cipher_suites.push(CipherSuiteId(0xFFFF));
+
+            let client = build_profiled_client_with_control(&profile, None, TlsControl::strict());
+
+            assert!(
+                client.is_err(),
+                "strict mode should reject unsupported cipher suite"
+            );
+        }
+
+        #[test]
         fn default_user_agent_matches_browser() {
             assert!(default_user_agent(&CHROME_131).contains("Chrome/131"));
             assert!(default_user_agent(&FIREFOX_133).contains("Firefox/133"));
@@ -1821,6 +2266,70 @@ mod tests {
             assert_eq!(
                 profile_for_device(&DeviceProfile::MobileIOS).name,
                 "Safari 18"
+            );
+        }
+
+        #[test]
+        fn browser_headers_chrome_has_sec_ch_ua() {
+            let headers = browser_headers(&CHROME_131);
+            assert!(
+                headers.contains_key("sec-ch-ua"),
+                "Chrome profile should have sec-ch-ua"
+            );
+            assert!(
+                headers.contains_key("sec-fetch-dest"),
+                "Chrome profile should have sec-fetch-dest"
+            );
+            let accept = headers.get("accept").unwrap().to_str().unwrap();
+            assert!(
+                accept.contains("image/avif"),
+                "Chrome accept should include avif"
+            );
+        }
+
+        #[test]
+        fn browser_headers_firefox_no_sec_ch_ua() {
+            let headers = browser_headers(&FIREFOX_133);
+            assert!(
+                !headers.contains_key("sec-ch-ua"),
+                "Firefox profile should not have sec-ch-ua"
+            );
+            let accept = headers.get("accept").unwrap().to_str().unwrap();
+            assert!(
+                accept.contains("text/html"),
+                "Firefox accept should include text/html"
+            );
+        }
+
+        #[test]
+        fn browser_headers_all_profiles_have_accept() {
+            for profile in [&*CHROME_131, &*FIREFOX_133, &*SAFARI_18, &*EDGE_131] {
+                let headers = browser_headers(profile);
+                assert!(
+                    headers.contains_key("accept"),
+                    "profile '{}' must have accept header",
+                    profile.name
+                );
+                assert!(
+                    headers.contains_key("accept-encoding"),
+                    "profile '{}' must have accept-encoding",
+                    profile.name
+                );
+                assert!(
+                    headers.contains_key("accept-language"),
+                    "profile '{}' must have accept-language",
+                    profile.name
+                );
+            }
+        }
+
+        #[test]
+        fn browser_headers_edge_uses_edge_brand() {
+            let headers = browser_headers(&EDGE_131);
+            let sec_ch_ua = headers.get("sec-ch-ua").unwrap().to_str().unwrap();
+            assert!(
+                sec_ch_ua.contains("Microsoft Edge"),
+                "Edge sec-ch-ua should identify Edge: {sec_ch_ua}"
             );
         }
     }

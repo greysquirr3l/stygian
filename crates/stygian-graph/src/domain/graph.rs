@@ -671,9 +671,8 @@ impl DagExecutor {
     /// ```
     #[must_use]
     pub fn execution_waves(&self) -> Vec<super::introspection::ExecutionWave> {
-        let topo = match toposort(&self.graph, None) {
-            Ok(t) => t,
-            Err(_) => return vec![],
+        let Ok(topo) = toposort(&self.graph, None) else {
+            return vec![];
         };
 
         let waves = self.build_execution_waves(&topo);
@@ -779,9 +778,8 @@ impl DagExecutor {
     fn compute_depths(&self) -> HashMap<NodeIndex, usize> {
         let mut depths = HashMap::new();
 
-        let topo = match toposort(&self.graph, None) {
-            Ok(t) => t,
-            Err(_) => return depths,
+        let Ok(topo) = toposort(&self.graph, None) else {
+            return depths;
         };
 
         for &idx in &topo {
@@ -791,8 +789,7 @@ impl DagExecutor {
                 .filter_map(|pred| depths.get(&pred))
                 .max()
                 .copied()
-                .map(|d| d + 1)
-                .unwrap_or(0);
+                .map_or(0, |d| d + 1);
             depths.insert(idx, max_pred_depth);
         }
 
@@ -865,7 +862,10 @@ impl DagExecutor {
 
         let node_count = self.graph.node_count();
         let avg_degree = if node_count > 0 {
-            total_degree as f64 / node_count as f64
+            match (u32::try_from(total_degree), u32::try_from(node_count)) {
+                (Ok(total), Ok(count)) if count > 0 => f64::from(total) / f64::from(count),
+                _ => f64::from(u32::MAX),
+            }
         } else {
             0.0
         };
@@ -1205,31 +1205,33 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════════════════
 
     #[test]
-    fn test_introspection_node_count() {
+    fn test_introspection_node_count() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut pipeline = Pipeline::new("test");
         pipeline.add_node(Node::new("a", "http", serde_json::json!({})));
         pipeline.add_node(Node::new("b", "http", serde_json::json!({})));
         pipeline.add_node(Node::new("c", "ai", serde_json::json!({})));
 
-        let executor = DagExecutor::from_pipeline(&pipeline).unwrap();
+        let executor = DagExecutor::from_pipeline(&pipeline)?;
         assert_eq!(executor.node_count(), 3);
         assert_eq!(executor.edge_count(), 0);
+        Ok(())
     }
 
     #[test]
-    fn test_introspection_node_ids() {
+    fn test_introspection_node_ids() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut pipeline = Pipeline::new("test");
         pipeline.add_node(Node::new("fetch", "http", serde_json::json!({})));
         pipeline.add_node(Node::new("extract", "ai", serde_json::json!({})));
 
-        let executor = DagExecutor::from_pipeline(&pipeline).unwrap();
+        let executor = DagExecutor::from_pipeline(&pipeline)?;
         let ids = executor.node_ids();
         assert!(ids.contains(&"fetch".to_string()));
         assert!(ids.contains(&"extract".to_string()));
+        Ok(())
     }
 
     #[test]
-    fn test_introspection_get_node() {
+    fn test_introspection_get_node() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut pipeline = Pipeline::new("test");
         pipeline.add_node(Node::new(
             "fetch",
@@ -1237,18 +1239,20 @@ mod tests {
             serde_json::json!({"url": "https://example.com"}),
         ));
 
-        let executor = DagExecutor::from_pipeline(&pipeline).unwrap();
+        let executor = DagExecutor::from_pipeline(&pipeline)?;
 
         let node = executor.get_node("fetch");
         assert!(node.is_some());
-        let node = node.unwrap();
+        let node = node.ok_or_else(|| std::io::Error::other("expected fetch node to exist"))?;
         assert_eq!(node.service, "http");
 
         assert!(executor.get_node("nonexistent").is_none());
+        Ok(())
     }
 
     #[test]
-    fn test_introspection_predecessors_successors() {
+    fn test_introspection_predecessors_successors()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut pipeline = Pipeline::new("test");
         pipeline.add_node(Node::new("a", "http", serde_json::json!({})));
         pipeline.add_node(Node::new("b", "http", serde_json::json!({})));
@@ -1256,7 +1260,7 @@ mod tests {
         pipeline.add_edge(Edge::new("a", "b"));
         pipeline.add_edge(Edge::new("b", "c"));
 
-        let executor = DagExecutor::from_pipeline(&pipeline).unwrap();
+        let executor = DagExecutor::from_pipeline(&pipeline)?;
 
         assert_eq!(executor.predecessors("a"), Vec::<String>::new());
         assert_eq!(executor.predecessors("b"), vec!["a".to_string()]);
@@ -1265,10 +1269,12 @@ mod tests {
         assert_eq!(executor.successors("a"), vec!["b".to_string()]);
         assert_eq!(executor.successors("b"), vec!["c".to_string()]);
         assert_eq!(executor.successors("c"), Vec::<String>::new());
+        Ok(())
     }
 
     #[test]
-    fn test_introspection_topological_order() {
+    fn test_introspection_topological_order() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
         let mut pipeline = Pipeline::new("test");
         pipeline.add_node(Node::new("a", "http", serde_json::json!({})));
         pipeline.add_node(Node::new("b", "http", serde_json::json!({})));
@@ -1276,19 +1282,30 @@ mod tests {
         pipeline.add_edge(Edge::new("a", "b"));
         pipeline.add_edge(Edge::new("b", "c"));
 
-        let executor = DagExecutor::from_pipeline(&pipeline).unwrap();
+        let executor = DagExecutor::from_pipeline(&pipeline)?;
         let order = executor.topological_order();
 
-        let a_pos = order.iter().position(|x| x == "a").unwrap();
-        let b_pos = order.iter().position(|x| x == "b").unwrap();
-        let c_pos = order.iter().position(|x| x == "c").unwrap();
+        let a_pos = order
+            .iter()
+            .position(|x| x == "a")
+            .ok_or_else(|| std::io::Error::other("expected node a in order"))?;
+        let b_pos = order
+            .iter()
+            .position(|x| x == "b")
+            .ok_or_else(|| std::io::Error::other("expected node b in order"))?;
+        let c_pos = order
+            .iter()
+            .position(|x| x == "c")
+            .ok_or_else(|| std::io::Error::other("expected node c in order"))?;
 
         assert!(a_pos < b_pos);
         assert!(b_pos < c_pos);
+        Ok(())
     }
 
     #[test]
-    fn test_introspection_execution_waves_diamond() {
+    fn test_introspection_execution_waves_diamond()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
         // Diamond: A → (B, C) → D
         let mut pipeline = Pipeline::new("diamond");
         pipeline.add_node(Node::new("A", "http", serde_json::json!({})));
@@ -1300,30 +1317,43 @@ mod tests {
         pipeline.add_edge(Edge::new("B", "D"));
         pipeline.add_edge(Edge::new("C", "D"));
 
-        let executor = DagExecutor::from_pipeline(&pipeline).unwrap();
+        let executor = DagExecutor::from_pipeline(&pipeline)?;
         let waves = executor.execution_waves();
 
         // Should have 3 waves: [A], [B, C], [D]
         assert_eq!(waves.len(), 3);
-        assert_eq!(waves[0].level, 0);
-        assert!(waves[0].node_ids.contains(&"A".to_string()));
-        assert_eq!(waves[1].level, 1);
-        assert!(waves[1].node_ids.contains(&"B".to_string()));
-        assert!(waves[1].node_ids.contains(&"C".to_string()));
-        assert_eq!(waves[2].level, 2);
-        assert!(waves[2].node_ids.contains(&"D".to_string()));
+        let first_wave = waves
+            .first()
+            .ok_or_else(|| std::io::Error::other("missing wave 0"))?;
+        let second_wave = waves
+            .get(1)
+            .ok_or_else(|| std::io::Error::other("missing wave 1"))?;
+        let third_wave = waves
+            .get(2)
+            .ok_or_else(|| std::io::Error::other("missing wave 2"))?;
+
+        assert_eq!(first_wave.level, 0);
+        assert!(first_wave.node_ids.contains(&"A".to_string()));
+        assert_eq!(second_wave.level, 1);
+        assert!(second_wave.node_ids.contains(&"B".to_string()));
+        assert!(second_wave.node_ids.contains(&"C".to_string()));
+        assert_eq!(third_wave.level, 2);
+        assert!(third_wave.node_ids.contains(&"D".to_string()));
+        Ok(())
     }
 
     #[test]
-    fn test_introspection_node_info() {
+    fn test_introspection_node_info() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut pipeline = Pipeline::new("test");
         pipeline.add_node(Node::new("fetch", "http", serde_json::json!({})));
         pipeline.add_node(Node::new("extract", "ai", serde_json::json!({})));
         pipeline.add_edge(Edge::new("fetch", "extract"));
 
-        let executor = DagExecutor::from_pipeline(&pipeline).unwrap();
+        let executor = DagExecutor::from_pipeline(&pipeline)?;
 
-        let info = executor.node_info("fetch").unwrap();
+        let info = executor
+            .node_info("fetch")
+            .ok_or_else(|| std::io::Error::other("expected fetch node info"))?;
         assert_eq!(info.id, "fetch");
         assert_eq!(info.service, "http");
         assert_eq!(info.depth, 0);
@@ -1331,14 +1361,17 @@ mod tests {
         assert_eq!(info.out_degree, 1);
         assert!(info.successors.contains(&"extract".to_string()));
 
-        let info = executor.node_info("extract").unwrap();
+        let info = executor
+            .node_info("extract")
+            .ok_or_else(|| std::io::Error::other("expected extract node info"))?;
         assert_eq!(info.depth, 1);
         assert_eq!(info.in_degree, 1);
         assert_eq!(info.out_degree, 0);
+        Ok(())
     }
 
     #[test]
-    fn test_introspection_connectivity() {
+    fn test_introspection_connectivity() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut pipeline = Pipeline::new("test");
         pipeline.add_node(Node::new("a", "http", serde_json::json!({})));
         pipeline.add_node(Node::new("b", "http", serde_json::json!({})));
@@ -1346,7 +1379,7 @@ mod tests {
         pipeline.add_edge(Edge::new("a", "b"));
         pipeline.add_edge(Edge::new("b", "c"));
 
-        let executor = DagExecutor::from_pipeline(&pipeline).unwrap();
+        let executor = DagExecutor::from_pipeline(&pipeline)?;
         let metrics = executor.connectivity();
 
         assert!(metrics.is_connected);
@@ -1354,10 +1387,11 @@ mod tests {
         assert_eq!(metrics.root_nodes, vec!["a".to_string()]);
         assert_eq!(metrics.leaf_nodes, vec!["c".to_string()]);
         assert_eq!(metrics.max_depth, 2);
+        Ok(())
     }
 
     #[test]
-    fn test_introspection_critical_path() {
+    fn test_introspection_critical_path() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut pipeline = Pipeline::new("test");
         pipeline.add_node(Node::new("a", "http", serde_json::json!({})));
         pipeline.add_node(Node::new("b", "http", serde_json::json!({})));
@@ -1365,15 +1399,16 @@ mod tests {
         pipeline.add_edge(Edge::new("a", "b"));
         pipeline.add_edge(Edge::new("b", "c"));
 
-        let executor = DagExecutor::from_pipeline(&pipeline).unwrap();
+        let executor = DagExecutor::from_pipeline(&pipeline)?;
         let critical = executor.critical_path();
 
         assert_eq!(critical.length, 3);
         assert_eq!(critical.nodes, vec!["a", "b", "c"]);
+        Ok(())
     }
 
     #[test]
-    fn test_introspection_impact_analysis() {
+    fn test_introspection_impact_analysis() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut pipeline = Pipeline::new("test");
         pipeline.add_node(Node::new("a", "http", serde_json::json!({})));
         pipeline.add_node(Node::new("b", "http", serde_json::json!({})));
@@ -1381,7 +1416,7 @@ mod tests {
         pipeline.add_edge(Edge::new("a", "b"));
         pipeline.add_edge(Edge::new("b", "c"));
 
-        let executor = DagExecutor::from_pipeline(&pipeline).unwrap();
+        let executor = DagExecutor::from_pipeline(&pipeline)?;
 
         let impact = executor.impact_analysis("b");
         assert_eq!(impact.node_id, "b");
@@ -1398,16 +1433,17 @@ mod tests {
         let impact = executor.impact_analysis("c");
         assert_eq!(impact.upstream.len(), 2);
         assert!(impact.downstream.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_introspection_snapshot() {
+    fn test_introspection_snapshot() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut pipeline = Pipeline::new("test");
         pipeline.add_node(Node::new("fetch", "http", serde_json::json!({})));
         pipeline.add_node(Node::new("extract", "ai", serde_json::json!({})));
         pipeline.add_edge(Edge::new("fetch", "extract"));
 
-        let executor = DagExecutor::from_pipeline(&pipeline).unwrap();
+        let executor = DagExecutor::from_pipeline(&pipeline)?;
         let snapshot = executor.snapshot();
 
         assert_eq!(snapshot.node_count, 2);
@@ -1419,10 +1455,11 @@ mod tests {
         assert_eq!(snapshot.critical_path.length, 2);
         assert_eq!(snapshot.service_distribution.get("http"), Some(&1));
         assert_eq!(snapshot.service_distribution.get("ai"), Some(&1));
+        Ok(())
     }
 
     #[test]
-    fn test_introspection_query_nodes() {
+    fn test_introspection_query_nodes() -> std::result::Result<(), Box<dyn std::error::Error>> {
         use super::super::introspection::NodeQuery;
 
         let mut pipeline = Pipeline::new("test");
@@ -1432,7 +1469,7 @@ mod tests {
         pipeline.add_edge(Edge::new("fetch1", "extract"));
         pipeline.add_edge(Edge::new("fetch2", "extract"));
 
-        let executor = DagExecutor::from_pipeline(&pipeline).unwrap();
+        let executor = DagExecutor::from_pipeline(&pipeline)?;
 
         // Query by service
         let http_nodes = executor.query_nodes(&NodeQuery::by_service("http"));
@@ -1448,6 +1485,10 @@ mod tests {
         // Query leaves
         let leaves = executor.query_nodes(&NodeQuery::leaves());
         assert_eq!(leaves.len(), 1);
-        assert_eq!(leaves[0].id, "extract");
+        let leaf = leaves
+            .first()
+            .ok_or_else(|| std::io::Error::other("expected one leaf node"))?;
+        assert_eq!(leaf.id, "extract");
+        Ok(())
     }
 }

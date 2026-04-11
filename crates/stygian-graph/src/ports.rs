@@ -781,3 +781,6 @@ pub mod webhook;
 
 /// Tiered request escalation port — decide when to escalate from plain HTTP to browser
 pub mod escalation;
+
+/// Data sink port — publish scraped records to an external system
+pub mod data_sink;

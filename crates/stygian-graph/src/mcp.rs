@@ -22,7 +22,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     McpGraphServer::new().run().await
+//!     McpGraphServer::run().await
 //! }
 //! ```
 //!
@@ -62,7 +62,7 @@ use crate::{
         rss_feed::RssFeedAdapter,
         sitemap::SitemapAdapter,
     },
-    application::pipeline_parser::{PipelineParser, ServiceDecl},
+    application::pipeline_parser::{NodeDecl, PipelineParser, ServiceDecl},
     ports::{ScrapingService, ServiceInput},
 };
 
@@ -77,11 +77,11 @@ fn error_response(id: &Value, code: i64, message: &str) -> Value {
 }
 
 fn ok_response(id: &Value, result: Value) -> Value {
-    json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "result": result
-    })
+    let mut map = serde_json::Map::new();
+    map.insert("jsonrpc".to_owned(), json!("2.0"));
+    map.insert("id".to_owned(), id.clone());
+    map.insert("result".to_owned(), result);
+    Value::Object(map)
 }
 
 // ─── Server ───────────────────────────────────────────────────────────────────
@@ -98,7 +98,7 @@ fn ok_response(id: &Value, result: Value) -> Value {
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-///     McpGraphServer::new().run().await
+///     McpGraphServer::run().await
 /// }
 /// ```
 pub struct McpGraphServer;
@@ -116,7 +116,7 @@ impl McpGraphServer {
     /// # Errors
     ///
     /// Returns an `Err` if the underlying I/O fails unrecoverably.
-    pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         info!("stygian-graph MCP server starting");
 
         let stdin = tokio::io::stdin();
@@ -144,7 +144,7 @@ impl McpGraphServer {
                         && req.get("jsonrpc").and_then(Value::as_str) == Some("2.0")
                         && req.get("id").is_none()
                         && req.get("method").and_then(Value::as_str).is_some();
-                    let response = self.handle(&req).await;
+                    let response = Self::handle(&req).await;
                     if is_well_formed_notification {
                         continue;
                     }
@@ -179,31 +179,35 @@ impl McpGraphServer {
     /// use serde_json::json;
     ///
     /// # tokio_test::block_on(async {
-    /// let server = McpGraphServer::new();
     /// let req = json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}});
-    /// let resp = server.handle_request(&req).await;
-    /// assert_eq!(resp["result"]["protocolVersion"], "2025-11-25");
+    /// let resp = McpGraphServer::handle_request(&req).await;
+    /// assert_eq!(
+    ///     resp.pointer("/result/protocolVersion").and_then(serde_json::Value::as_str),
+    ///     Some("2025-11-25")
+    /// );
     /// # });
     /// ```
-    pub async fn handle_request(&self, req: &Value) -> Value {
-        self.handle(req).await
+    pub async fn handle_request(req: &Value) -> Value {
+        Self::handle(req).await
     }
 
-    async fn handle(&self, req: &Value) -> Value {
-        let id = &req["id"];
-        let method = req["method"].as_str().unwrap_or("");
+    async fn handle(req: &Value) -> Value {
+        let null = Value::Null;
+        let id = req.get("id").unwrap_or(&null);
+        let method = req.get("method").and_then(Value::as_str).unwrap_or("");
 
         match method {
-            "initialize" => self.handle_initialize(id),
-            "initialized" => json!({"jsonrpc":"2.0","id":id,"result":{}}),
-            "notifications/initialized" | "ping" => json!({"jsonrpc":"2.0","id":id,"result":{}}),
-            "tools/list" => self.handle_tools_list(id),
-            "tools/call" => self.handle_tools_call(id, req).await,
+            "initialize" => Self::handle_initialize(id),
+            "initialized" | "notifications/initialized" | "ping" => {
+                json!({"jsonrpc":"2.0","id":id,"result":{}})
+            }
+            "tools/list" => Self::handle_tools_list(id),
+            "tools/call" => Self::handle_tools_call(id, req).await,
             _ => error_response(id, -32601, &format!("Method not found: {method}")),
         }
     }
 
-    fn handle_initialize(&self, id: &Value) -> Value {
+    fn handle_initialize(id: &Value) -> Value {
         ok_response(
             id,
             json!({
@@ -220,215 +224,232 @@ impl McpGraphServer {
         )
     }
 
-    fn handle_tools_list(&self, id: &Value) -> Value {
-        ok_response(
-            id,
+    fn scraping_tool_defs() -> Vec<Value> {
+        vec![
             json!({
-                "tools": [
-                    {
-                        "name": "scrape",
-                        "description": "Fetch a URL with anti-bot UA rotation and retry logic. Returns raw HTML/JSON content and response metadata.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "url":          { "type": "string",  "description": "Target URL" },
-                                "timeout_secs": { "type": "integer", "description": "Request timeout in seconds (default: 30)" },
-                                "proxy_url":    { "type": "string",  "description": "HTTP/SOCKS5 proxy URL (e.g. socks5://user:pass@host:1080)" },
-                                "rotate_ua":    { "type": "boolean", "description": "Rotate User-Agent on each request (default: true)" }
-                            },
-                            "required": ["url"]
-                        }
+                "name": "scrape",
+                "description": "Fetch a URL with anti-bot UA rotation and retry logic. Returns raw HTML/JSON content and response metadata.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "url":          { "type": "string",  "description": "Target URL" },
+                        "timeout_secs": { "type": "integer", "description": "Request timeout in seconds (default: 30)" },
+                        "proxy_url":    { "type": "string",  "description": "HTTP/SOCKS5 proxy URL (e.g. socks5://user:pass@host:1080)" },
+                        "rotate_ua":    { "type": "boolean", "description": "Rotate User-Agent on each request (default: true)" }
                     },
-                    {
-                        "name": "scrape_rest",
-                        "description": "Call a REST/JSON API. Supports bearer/API-key auth, arbitrary HTTP methods, query parameters, request bodies, pagination, and response path extraction.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "url":        { "type": "string", "description": "API endpoint URL" },
-                                "method":     { "type": "string", "description": "HTTP method (GET, POST, PUT, PATCH, DELETE — default: GET)" },
-                                "auth":       {
-                                    "type": "object",
-                                    "description": "Authentication config",
-                                    "properties": {
-                                        "type":  { "type": "string", "description": "bearer | api_key | basic | header" },
-                                        "token": { "type": "string", "description": "Token or credential value" },
-                                        "header":{ "type": "string", "description": "Custom header name (for type=header)" }
-                                    }
-                                },
-                                "query":      { "type": "object", "description": "URL query parameters as key-value pairs" },
-                                "body":       { "type": "object", "description": "Request body (JSON)" },
-                                "headers":    { "type": "object", "description": "Custom request headers" },
-                                "pagination": {
-                                    "type": "object",
-                                    "description": "Pagination config",
-                                    "properties": {
-                                        "strategy":  { "type": "string", "description": "link_header | offset | cursor" },
-                                        "max_pages": { "type": "integer", "description": "Maximum pages to fetch (default: 1)" }
-                                    }
-                                },
-                                "data_path":  { "type": "string", "description": "Dot-separated JSON path to extract (e.g. data.items)" }
-                            },
-                            "required": ["url"]
-                        }
-                    },
-                    {
-                        "name": "scrape_graphql",
-                        "description": "Execute a GraphQL query against any spec-compliant endpoint. Supports bearer/API-key auth, variables, and dot-path data extraction.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "url":       { "type": "string", "description": "GraphQL endpoint URL" },
-                                "query":     { "type": "string", "description": "GraphQL query or mutation string" },
-                                "variables": { "type": "object", "description": "Query variables (JSON object)" },
-                                "auth": {
-                                    "type": "object",
-                                    "description": "Auth config",
-                                    "properties": {
-                                        "kind":        { "type": "string", "description": "bearer | api_key | header | none" },
-                                        "token":       { "type": "string", "description": "Auth token or key" },
-                                        "header_name": { "type": "string", "description": "Custom header name (default: X-Api-Key)" }
-                                    }
-                                },
-                                "data_path":     { "type": "string", "description": "Dot-separated path to extract from response (e.g. data.countries)" },
-                                "timeout_secs":  { "type": "integer", "description": "Request timeout in seconds (default: 30)" }
-                            },
-                            "required": ["url", "query"]
-                        }
-                    },
-                    {
-                        "name": "scrape_sitemap",
-                        "description": "Parse a sitemap.xml or sitemap index and return all discovered URLs with their priorities and change frequencies.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "url":       { "type": "string",  "description": "Sitemap URL (sitemap.xml or sitemap index)" },
-                                "max_depth": { "type": "integer", "description": "Maximum sitemap index recursion depth (default: 5)" }
-                            },
-                            "required": ["url"]
-                        }
-                    },
-                    {
-                        "name": "scrape_rss",
-                        "description": "Parse an RSS or Atom feed and return all entries as structured JSON.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "url": { "type": "string", "description": "RSS/Atom feed URL" }
-                            },
-                            "required": ["url"]
-                        }
-                    },
-                    {
-                        "name": "pipeline_validate",
-                        "description": "Parse and validate a TOML pipeline definition without executing it. Returns the node list, service declarations, and computed execution order.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "toml": { "type": "string", "description": "TOML pipeline definition string" }
-                            },
-                            "required": ["toml"]
-                        }
-                    },
-                    {
-                        "name": "pipeline_run",
-                        "description": "Parse, validate, and execute a TOML pipeline DAG. HTTP, REST, GraphQL, sitemap, and RSS nodes are executed. AI/browser nodes are recorded in the skipped list.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "toml":         { "type": "string",  "description": "TOML pipeline definition string" },
-                                "timeout_secs": { "type": "integer", "description": "Per-node timeout in seconds (default: 30)" }
-                            },
-                            "required": ["toml"]
-                        }
-                    },
-                    {
-                        "name": "inspect",
-                        "description": "Get a complete snapshot of a pipeline's graph structure including nodes, edges, execution waves, critical path, and connectivity metrics.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "toml": { "type": "string", "description": "TOML pipeline definition string" }
-                            },
-                            "required": ["toml"]
-                        }
-                    },
-                    {
-                        "name": "node_info",
-                        "description": "Get detailed information about a specific node in the pipeline graph, including its service type, depth, predecessors, and successors.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "toml":    { "type": "string", "description": "TOML pipeline definition string" },
-                                "node_id": { "type": "string", "description": "Node ID to inspect" }
-                            },
-                            "required": ["toml", "node_id"]
-                        }
-                    },
-                    {
-                        "name": "impact",
-                        "description": "Analyze what would be affected by changing a node. Returns all upstream dependencies and downstream dependents.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "toml":    { "type": "string", "description": "TOML pipeline definition string" },
-                                "node_id": { "type": "string", "description": "Node ID to analyze impact for" }
-                            },
-                            "required": ["toml", "node_id"]
-                        }
-                    },
-                    {
-                        "name": "query_nodes",
-                        "description": "Query nodes in the pipeline graph by various criteria: service type, root/leaf status, depth range, or ID pattern.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "toml":       { "type": "string",  "description": "TOML pipeline definition string" },
-                                "service":    { "type": "string",  "description": "Filter by service type (http, ai, browser, etc.)" },
-                                "id_pattern": { "type": "string",  "description": "Filter by node ID substring match" },
-                                "is_root":    { "type": "boolean", "description": "Only return root nodes (no predecessors)" },
-                                "is_leaf":    { "type": "boolean", "description": "Only return leaf nodes (no successors)" },
-                                "min_depth":  { "type": "integer", "description": "Minimum depth from root nodes" },
-                                "max_depth":  { "type": "integer", "description": "Maximum depth from root nodes" }
-                            },
-                            "required": ["toml"]
-                        }
-                    }
-                ]
+                    "required": ["url"]
+                }
             }),
-        )
+            json!({
+                "name": "scrape_rest",
+                "description": "Call a REST/JSON API. Supports bearer/API-key auth, arbitrary HTTP methods, query parameters, request bodies, pagination, and response path extraction.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "url":        { "type": "string", "description": "API endpoint URL" },
+                        "method":     { "type": "string", "description": "HTTP method (GET, POST, PUT, PATCH, DELETE — default: GET)" },
+                        "auth":       {
+                            "type": "object",
+                            "description": "Authentication config",
+                            "properties": {
+                                "type":  { "type": "string", "description": "bearer | api_key | basic | header" },
+                                "token": { "type": "string", "description": "Token or credential value" },
+                                "header":{ "type": "string", "description": "Custom header name (for type=header)" }
+                            }
+                        },
+                        "query":      { "type": "object", "description": "URL query parameters as key-value pairs" },
+                        "body":       { "type": "object", "description": "Request body (JSON)" },
+                        "headers":    { "type": "object", "description": "Custom request headers" },
+                        "pagination": {
+                            "type": "object",
+                            "description": "Pagination config",
+                            "properties": {
+                                "strategy":  { "type": "string", "description": "link_header | offset | cursor" },
+                                "max_pages": { "type": "integer", "description": "Maximum pages to fetch (default: 1)" }
+                            }
+                        },
+                        "data_path":  { "type": "string", "description": "Dot-separated JSON path to extract (e.g. data.items)" }
+                    },
+                    "required": ["url"]
+                }
+            }),
+            json!({
+                "name": "scrape_graphql",
+                "description": "Execute a GraphQL query against any spec-compliant endpoint. Supports bearer/API-key auth, variables, and dot-path data extraction.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "url":       { "type": "string", "description": "GraphQL endpoint URL" },
+                        "query":     { "type": "string", "description": "GraphQL query or mutation string" },
+                        "variables": { "type": "object", "description": "Query variables (JSON object)" },
+                        "auth": {
+                            "type": "object",
+                            "description": "Auth config",
+                            "properties": {
+                                "kind":        { "type": "string", "description": "bearer | api_key | header | none" },
+                                "token":       { "type": "string", "description": "Auth token or key" },
+                                "header_name": { "type": "string", "description": "Custom header name (default: X-Api-Key)" }
+                            }
+                        },
+                        "data_path":     { "type": "string", "description": "Dot-separated path to extract from response (e.g. data.countries)" },
+                        "timeout_secs":  { "type": "integer", "description": "Request timeout in seconds (default: 30)" }
+                    },
+                    "required": ["url", "query"]
+                }
+            }),
+            json!({
+                "name": "scrape_sitemap",
+                "description": "Parse a sitemap.xml or sitemap index and return all discovered URLs with their priorities and change frequencies.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "url":       { "type": "string",  "description": "Sitemap URL (sitemap.xml or sitemap index)" },
+                        "max_depth": { "type": "integer", "description": "Maximum sitemap index recursion depth (default: 5)" }
+                    },
+                    "required": ["url"]
+                }
+            }),
+            json!({
+                "name": "scrape_rss",
+                "description": "Parse an RSS or Atom feed and return all entries as structured JSON.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "url": { "type": "string", "description": "RSS/Atom feed URL" }
+                    },
+                    "required": ["url"]
+                }
+            }),
+        ]
     }
 
-    async fn handle_tools_call(&self, id: &Value, req: &Value) -> Value {
-        let name = req["params"]["name"].as_str().unwrap_or("");
-        let args = &req["params"]["arguments"];
+    fn graph_tool_defs() -> Vec<Value> {
+        vec![
+            json!({
+                "name": "pipeline_validate",
+                "description": "Parse and validate a TOML pipeline definition without executing it. Returns the node list, service declarations, and computed execution order.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "toml": { "type": "string", "description": "TOML pipeline definition string" }
+                    },
+                    "required": ["toml"]
+                }
+            }),
+            json!({
+                "name": "pipeline_run",
+                "description": "Parse, validate, and execute a TOML pipeline DAG. HTTP, REST, GraphQL, sitemap, and RSS nodes are executed. AI/browser nodes are recorded in the skipped list.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "toml":         { "type": "string",  "description": "TOML pipeline definition string" },
+                        "timeout_secs": { "type": "integer", "description": "Per-node timeout in seconds (default: 30)" }
+                    },
+                    "required": ["toml"]
+                }
+            }),
+            json!({
+                "name": "inspect",
+                "description": "Get a complete snapshot of a pipeline's graph structure including nodes, edges, execution waves, critical path, and connectivity metrics.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "toml": { "type": "string", "description": "TOML pipeline definition string" }
+                    },
+                    "required": ["toml"]
+                }
+            }),
+            json!({
+                "name": "node_info",
+                "description": "Get detailed information about a specific node in the pipeline graph, including its service type, depth, predecessors, and successors.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "toml":    { "type": "string", "description": "TOML pipeline definition string" },
+                        "node_id": { "type": "string", "description": "Node ID to inspect" }
+                    },
+                    "required": ["toml", "node_id"]
+                }
+            }),
+            json!({
+                "name": "impact",
+                "description": "Analyze what would be affected by changing a node. Returns all upstream dependencies and downstream dependents.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "toml":    { "type": "string", "description": "TOML pipeline definition string" },
+                        "node_id": { "type": "string", "description": "Node ID to analyze impact for" }
+                    },
+                    "required": ["toml", "node_id"]
+                }
+            }),
+            json!({
+                "name": "query_nodes",
+                "description": "Query nodes in the pipeline graph by various criteria: service type, root/leaf status, depth range, or ID pattern.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "toml":       { "type": "string",  "description": "TOML pipeline definition string" },
+                        "service":    { "type": "string",  "description": "Filter by service type (http, ai, browser, etc.)" },
+                        "id_pattern": { "type": "string",  "description": "Filter by node ID substring match" },
+                        "is_root":    { "type": "boolean", "description": "Only return root nodes (no predecessors)" },
+                        "is_leaf":    { "type": "boolean", "description": "Only return leaf nodes (no successors)" },
+                        "min_depth":  { "type": "integer", "description": "Minimum depth from root nodes" },
+                        "max_depth":  { "type": "integer", "description": "Maximum depth from root nodes" }
+                    },
+                    "required": ["toml"]
+                }
+            }),
+        ]
+    }
+
+    fn handle_tools_list(id: &Value) -> Value {
+        let mut tools = Self::scraping_tool_defs();
+        tools.extend(Self::graph_tool_defs());
+        ok_response(id, json!({ "tools": tools }))
+    }
+
+    async fn handle_tools_call(id: &Value, req: &Value) -> Value {
+        let null = Value::Null;
+        let params = req.get("params").unwrap_or(&null);
+        let name = params.get("name").and_then(Value::as_str).unwrap_or("");
+        let args = params.get("arguments").cloned().unwrap_or(Value::Null);
 
         match name {
-            "scrape" => self.tool_scrape(id, args).await,
-            "scrape_rest" => self.tool_scrape_rest(id, args).await,
-            "scrape_graphql" => self.tool_scrape_graphql(id, args).await,
-            "scrape_sitemap" => self.tool_scrape_sitemap(id, args).await,
-            "scrape_rss" => self.tool_scrape_rss(id, args).await,
-            "pipeline_validate" => self.tool_pipeline_validate(id, args),
-            "pipeline_run" => self.tool_pipeline_run(id, args).await,
-            "inspect" => self.tool_graph_inspect(id, args),
-            "node_info" => self.tool_graph_node_info(id, args),
-            "impact" => self.tool_graph_impact(id, args),
-            "query_nodes" => self.tool_graph_query(id, args),
+            "scrape" => Self::tool_scrape(id, &args).await,
+            "scrape_rest" => Self::tool_scrape_rest(id, &args).await,
+            "scrape_graphql" => Self::tool_scrape_graphql(id, &args).await,
+            "scrape_sitemap" => Self::tool_scrape_sitemap(id, &args).await,
+            "scrape_rss" => Self::tool_scrape_rss(id, &args).await,
+            "pipeline_validate" => Self::tool_pipeline_validate(id, &args),
+            "pipeline_run" => Self::tool_pipeline_run(id, &args).await,
+            "inspect" => Self::tool_graph_inspect(id, &args),
+            "node_info" => Self::tool_graph_node_info(id, &args),
+            "impact" => Self::tool_graph_impact(id, &args),
+            "query_nodes" => Self::tool_graph_query(id, &args),
             _ => error_response(id, -32602, &format!("Unknown tool: {name}")),
         }
     }
 
     // ── scrape ───────────────────────────────────────────────────────────────
 
-    async fn tool_scrape(&self, id: &Value, args: &Value) -> Value {
-        let Some(url) = args["url"].as_str() else {
+    async fn tool_scrape(id: &Value, args: &Value) -> Value {
+        let Some(url) = args.get("url").and_then(Value::as_str) else {
             return error_response(id, -32602, "Missing required parameter: url");
         };
 
-        let timeout_secs = args["timeout_secs"].as_u64().unwrap_or(30);
-        let proxy_url = args["proxy_url"].as_str().map(str::to_string);
-        let rotate_ua = args["rotate_ua"].as_bool().unwrap_or(true);
+        let timeout_secs = args
+            .get("timeout_secs")
+            .and_then(Value::as_u64)
+            .unwrap_or(30);
+        let proxy_url = args
+            .get("proxy_url")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let rotate_ua = args
+            .get("rotate_ua")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
 
         let config = HttpConfig {
             timeout: std::time::Duration::from_secs(timeout_secs),
@@ -461,35 +482,36 @@ impl McpGraphServer {
 
     // ── scrape_rest ──────────────────────────────────────────────────────────
 
-    async fn tool_scrape_rest(&self, id: &Value, args: &Value) -> Value {
-        let Some(url) = args["url"].as_str() else {
+    async fn tool_scrape_rest(id: &Value, args: &Value) -> Value {
+        let Some(url) = args.get("url").and_then(Value::as_str) else {
             return error_response(id, -32602, "Missing required parameter: url");
         };
 
         // Build params JSON from explicit fields only; extra keys in `args` are intentionally
         // not forwarded — the REST adapter only reads the fields it recognises.
-        let mut params = json!({});
-        if let Some(method) = args["method"].as_str() {
-            params["method"] = json!(method);
+        let mut map = serde_json::Map::new();
+        if let Some(method) = args.get("method").and_then(Value::as_str) {
+            map.insert("method".to_owned(), json!(method));
         }
-        if !args["auth"].is_null() {
-            params["auth"] = args["auth"].clone();
+        if let Some(auth) = args.get("auth").filter(|v| !v.is_null()) {
+            map.insert("auth".to_owned(), auth.clone());
         }
-        if !args["query"].is_null() {
-            params["query"] = args["query"].clone();
+        if let Some(query) = args.get("query").filter(|v| !v.is_null()) {
+            map.insert("query".to_owned(), query.clone());
         }
-        if !args["body"].is_null() {
-            params["body"] = args["body"].clone();
+        if let Some(body) = args.get("body").filter(|v| !v.is_null()) {
+            map.insert("body".to_owned(), body.clone());
         }
-        if !args["headers"].is_null() {
-            params["headers"] = args["headers"].clone();
+        if let Some(headers) = args.get("headers").filter(|v| !v.is_null()) {
+            map.insert("headers".to_owned(), headers.clone());
         }
-        if !args["pagination"].is_null() {
-            params["pagination"] = args["pagination"].clone();
+        if let Some(pagination) = args.get("pagination").filter(|v| !v.is_null()) {
+            map.insert("pagination".to_owned(), pagination.clone());
         }
-        if let Some(dp) = args["data_path"].as_str() {
-            params["response"] = json!({ "data_path": dp });
+        if let Some(dp) = args.get("data_path").and_then(Value::as_str) {
+            map.insert("response".to_owned(), json!({ "data_path": dp }));
         }
+        let params = Value::Object(map);
 
         let adapter = RestApiAdapter::new();
         let input = ServiceInput {
@@ -516,15 +538,18 @@ impl McpGraphServer {
 
     // ── scrape_graphql ───────────────────────────────────────────────────────
 
-    async fn tool_scrape_graphql(&self, id: &Value, args: &Value) -> Value {
-        let Some(url) = args["url"].as_str() else {
+    async fn tool_scrape_graphql(id: &Value, args: &Value) -> Value {
+        let Some(url) = args.get("url").and_then(Value::as_str) else {
             return error_response(id, -32602, "Missing required parameter: url");
         };
-        let Some(query) = args["query"].as_str() else {
+        let Some(query) = args.get("query").and_then(Value::as_str) else {
             return error_response(id, -32602, "Missing required parameter: query");
         };
 
-        let timeout_secs = args["timeout_secs"].as_u64().unwrap_or(30);
+        let timeout_secs = args
+            .get("timeout_secs")
+            .and_then(Value::as_u64)
+            .unwrap_or(30);
 
         let config = GraphQlConfig {
             timeout_secs,
@@ -532,16 +557,18 @@ impl McpGraphServer {
         };
         let service = GraphQlService::new(config, None);
 
-        let mut params = json!({ "query": query });
-        if !args["variables"].is_null() {
-            params["variables"] = args["variables"].clone();
+        let mut gql_map = serde_json::Map::new();
+        gql_map.insert("query".to_owned(), json!(query));
+        if let Some(variables) = args.get("variables").filter(|v| !v.is_null()) {
+            gql_map.insert("variables".to_owned(), variables.clone());
         }
-        if !args["auth"].is_null() {
-            params["auth"] = args["auth"].clone();
+        if let Some(auth) = args.get("auth").filter(|v| !v.is_null()) {
+            gql_map.insert("auth".to_owned(), auth.clone());
         }
-        if let Some(dp) = args["data_path"].as_str() {
-            params["data_path"] = json!(dp);
+        if let Some(dp) = args.get("data_path").and_then(Value::as_str) {
+            gql_map.insert("data_path".to_owned(), json!(dp));
         }
+        let params = Value::Object(gql_map);
 
         let input = ServiceInput {
             url: url.to_string(),
@@ -567,12 +594,15 @@ impl McpGraphServer {
 
     // ── scrape_sitemap ───────────────────────────────────────────────────────
 
-    async fn tool_scrape_sitemap(&self, id: &Value, args: &Value) -> Value {
-        let Some(url) = args["url"].as_str() else {
+    async fn tool_scrape_sitemap(id: &Value, args: &Value) -> Value {
+        let Some(url) = args.get("url").and_then(Value::as_str) else {
             return error_response(id, -32602, "Missing required parameter: url");
         };
 
-        let max_depth = args["max_depth"].as_u64().unwrap_or(5) as usize;
+        let max_depth = args
+            .get("max_depth")
+            .and_then(Value::as_u64)
+            .map_or(5, |v| usize::try_from(v).unwrap_or(5));
         let client = reqwest::Client::new();
         let adapter = SitemapAdapter::new(client, max_depth);
         let input = ServiceInput {
@@ -599,8 +629,8 @@ impl McpGraphServer {
 
     // ── scrape_rss ───────────────────────────────────────────────────────────
 
-    async fn tool_scrape_rss(&self, id: &Value, args: &Value) -> Value {
-        let Some(url) = args["url"].as_str() else {
+    async fn tool_scrape_rss(id: &Value, args: &Value) -> Value {
+        let Some(url) = args.get("url").and_then(Value::as_str) else {
             return error_response(id, -32602, "Missing required parameter: url");
         };
 
@@ -630,8 +660,8 @@ impl McpGraphServer {
 
     // ── pipeline_validate ────────────────────────────────────────────────────
 
-    fn tool_pipeline_validate(&self, id: &Value, args: &Value) -> Value {
-        let Some(toml) = args["toml"].as_str() else {
+    fn tool_pipeline_validate(id: &Value, args: &Value) -> Value {
+        let Some(toml) = args.get("toml").and_then(Value::as_str) else {
             return error_response(id, -32602, "Missing required parameter: toml");
         };
 
@@ -707,12 +737,15 @@ impl McpGraphServer {
 
     // ── pipeline_run ─────────────────────────────────────────────────────────
 
-    async fn tool_pipeline_run(&self, id: &Value, args: &Value) -> Value {
-        let Some(toml) = args["toml"].as_str() else {
+    async fn tool_pipeline_run(id: &Value, args: &Value) -> Value {
+        let Some(toml) = args.get("toml").and_then(Value::as_str) else {
             return error_response(id, -32602, "Missing required parameter: toml");
         };
 
-        let timeout_secs = args["timeout_secs"].as_u64().unwrap_or(30);
+        let timeout_secs = args
+            .get("timeout_secs")
+            .and_then(Value::as_u64)
+            .unwrap_or(30);
 
         let def = match PipelineParser::from_str(toml) {
             Ok(d) => d,
@@ -728,7 +761,6 @@ impl McpGraphServer {
             Err(e) => return error_response(id, -32603, &format!("Topology error: {e}")),
         };
 
-        // Build a service-kind lookup by service name.
         let svc_kinds: HashMap<String, ServiceDecl> = def
             .services
             .iter()
@@ -746,8 +778,7 @@ impl McpGraphServer {
 
             let kind = svc_kinds
                 .get(&node.service)
-                .map(|s| s.kind.as_str())
-                .unwrap_or(node.service.as_str());
+                .map_or(node.service.as_str(), |s| s.kind.as_str());
 
             // Nodes without a URL are AI/transform nodes — skip.
             let Some(url) = node.url.as_deref() else {
@@ -755,135 +786,14 @@ impl McpGraphServer {
                 continue;
             };
 
-            match kind {
-                "http" => {
-                    let config = HttpConfig {
-                        timeout: std::time::Duration::from_secs(timeout_secs),
-                        ..HttpConfig::default()
-                    };
-                    let adapter = HttpAdapter::with_config(config);
-                    let input = ServiceInput {
-                        url: url.to_string(),
-                        params: json!({}),
-                    };
-                    match adapter.execute(input).await {
-                        Ok(out) => {
-                            outputs.insert(
-                                node_name.clone(),
-                                json!({ "data": out.data, "metadata": out.metadata }),
-                            );
-                        }
-                        Err(e) => {
-                            errors.insert(node_name.clone(), e.to_string());
-                        }
-                    }
+            match execute_pipeline_node(kind, url, node_name, node, timeout_secs).await {
+                Some(Ok(out)) => {
+                    outputs.insert(node_name.clone(), out);
                 }
-                "rest" => {
-                    let params = build_rest_params_from_node(node);
-                    let adapter = RestApiAdapter::new();
-                    let input = ServiceInput {
-                        url: url.to_string(),
-                        params,
-                    };
-                    match adapter.execute(input).await {
-                        Ok(out) => {
-                            outputs.insert(
-                                node_name.clone(),
-                                json!({ "data": out.data, "metadata": out.metadata }),
-                            );
-                        }
-                        Err(e) => {
-                            errors.insert(node_name.clone(), e.to_string());
-                        }
-                    }
+                Some(Err(e)) => {
+                    errors.insert(node_name.clone(), e);
                 }
-                "graphql" => {
-                    let query = node
-                        .params
-                        .get("query")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let config = GraphQlConfig {
-                        timeout_secs,
-                        ..GraphQlConfig::default()
-                    };
-                    let service = GraphQlService::new(config, None);
-                    let mut gql_params = json!({ "query": query });
-                    if let Some(variables) = node.params.get("variables") {
-                        gql_params["variables"] = toml_to_json(variables);
-                    }
-                    if let Some(auth) = node.params.get("auth") {
-                        gql_params["auth"] = toml_to_json(auth);
-                    }
-                    if let Some(dp) = node.params.get("data_path").and_then(|v| v.as_str()) {
-                        gql_params["data_path"] = json!(dp);
-                    }
-                    let input = ServiceInput {
-                        url: url.to_string(),
-                        params: gql_params,
-                    };
-                    match service.execute(input).await {
-                        Ok(out) => {
-                            outputs.insert(
-                                node_name.clone(),
-                                json!({ "data": out.data, "metadata": out.metadata }),
-                            );
-                        }
-                        Err(e) => {
-                            errors.insert(node_name.clone(), e.to_string());
-                        }
-                    }
-                }
-                "sitemap" => {
-                    let max_depth = node
-                        .params
-                        .get("max_depth")
-                        .and_then(|v| v.as_integer())
-                        .map_or(5, |v| v as usize);
-                    let client = reqwest::Client::new();
-                    let adapter = SitemapAdapter::new(client, max_depth);
-                    let input = ServiceInput {
-                        url: url.to_string(),
-                        params: json!({}),
-                    };
-                    match adapter.execute(input).await {
-                        Ok(out) => {
-                            outputs.insert(
-                                node_name.clone(),
-                                json!({ "data": out.data, "metadata": out.metadata }),
-                            );
-                        }
-                        Err(e) => {
-                            errors.insert(node_name.clone(), e.to_string());
-                        }
-                    }
-                }
-                "rss" => {
-                    let client = reqwest::Client::new();
-                    let adapter = RssFeedAdapter::new(client);
-                    let input = ServiceInput {
-                        url: url.to_string(),
-                        params: json!({}),
-                    };
-                    match adapter.execute(input).await {
-                        Ok(out) => {
-                            outputs.insert(
-                                node_name.clone(),
-                                json!({ "data": out.data, "metadata": out.metadata }),
-                            );
-                        }
-                        Err(e) => {
-                            errors.insert(node_name.clone(), e.to_string());
-                        }
-                    }
-                }
-                other => {
-                    warn!(
-                        kind = other,
-                        node = node_name,
-                        "skipping unsupported service kind in pipeline_run"
-                    );
+                None => {
                     skipped.push(node_name.clone());
                 }
             }
@@ -907,8 +817,8 @@ impl McpGraphServer {
 
     // ── Graph introspection tools ─────────────────────────────────────────────
 
-    fn tool_graph_inspect(&self, id: &Value, args: &Value) -> Value {
-        let Some(toml) = args["toml"].as_str() else {
+    fn tool_graph_inspect(id: &Value, args: &Value) -> Value {
+        let Some(toml) = args.get("toml").and_then(Value::as_str) else {
             return error_response(id, -32602, "Missing required parameter: toml");
         };
 
@@ -960,11 +870,11 @@ impl McpGraphServer {
         )
     }
 
-    fn tool_graph_node_info(&self, id: &Value, args: &Value) -> Value {
-        let Some(toml) = args["toml"].as_str() else {
+    fn tool_graph_node_info(id: &Value, args: &Value) -> Value {
+        let Some(toml) = args.get("toml").and_then(Value::as_str) else {
             return error_response(id, -32602, "Missing required parameter: toml");
         };
-        let Some(node_id) = args["node_id"].as_str() else {
+        let Some(node_id) = args.get("node_id").and_then(Value::as_str) else {
             return error_response(id, -32602, "Missing required parameter: node_id");
         };
 
@@ -1002,25 +912,27 @@ impl McpGraphServer {
             Err(e) => return error_response(id, -32603, &format!("Graph build error: {e}")),
         };
 
-        match executor.node_info(node_id) {
-            Some(info) => ok_response(
-                id,
-                json!({
-                    "content": [{
-                        "type": "text",
-                        "text": serde_json::to_string(&info).unwrap_or_default()
-                    }]
-                }),
-            ),
-            None => error_response(id, -32602, &format!("Node not found: {node_id}")),
-        }
+        executor.node_info(node_id).map_or_else(
+            || error_response(id, -32602, &format!("Node not found: {node_id}")),
+            |info| {
+                ok_response(
+                    id,
+                    json!({
+                        "content": [{
+                            "type": "text",
+                            "text": serde_json::to_string(&info).unwrap_or_default()
+                        }]
+                    }),
+                )
+            },
+        )
     }
 
-    fn tool_graph_impact(&self, id: &Value, args: &Value) -> Value {
-        let Some(toml) = args["toml"].as_str() else {
+    fn tool_graph_impact(id: &Value, args: &Value) -> Value {
+        let Some(toml) = args.get("toml").and_then(Value::as_str) else {
             return error_response(id, -32602, "Missing required parameter: toml");
         };
-        let Some(node_id) = args["node_id"].as_str() else {
+        let Some(node_id) = args.get("node_id").and_then(Value::as_str) else {
             return error_response(id, -32602, "Missing required parameter: node_id");
         };
 
@@ -1071,8 +983,8 @@ impl McpGraphServer {
         )
     }
 
-    fn tool_graph_query(&self, id: &Value, args: &Value) -> Value {
-        let Some(toml) = args["toml"].as_str() else {
+    fn tool_graph_query(id: &Value, args: &Value) -> Value {
+        let Some(toml) = args.get("toml").and_then(Value::as_str) else {
             return error_response(id, -32602, "Missing required parameter: toml");
         };
 
@@ -1112,13 +1024,25 @@ impl McpGraphServer {
 
         // Build the query from args
         let query = crate::domain::introspection::NodeQuery {
-            service: args["service"].as_str().map(String::from),
+            service: args
+                .get("service")
+                .and_then(Value::as_str)
+                .map(String::from),
             id: None,
-            id_pattern: args["id_pattern"].as_str().map(String::from),
-            is_root: args["is_root"].as_bool(),
-            is_leaf: args["is_leaf"].as_bool(),
-            min_depth: args["min_depth"].as_u64().map(|v| v as usize),
-            max_depth: args["max_depth"].as_u64().map(|v| v as usize),
+            id_pattern: args
+                .get("id_pattern")
+                .and_then(Value::as_str)
+                .map(String::from),
+            is_root: args.get("is_root").and_then(Value::as_bool),
+            is_leaf: args.get("is_leaf").and_then(Value::as_bool),
+            min_depth: args
+                .get("min_depth")
+                .and_then(Value::as_u64)
+                .map(|v| usize::try_from(v).unwrap_or(0)),
+            max_depth: args
+                .get("max_depth")
+                .and_then(Value::as_u64)
+                .map(|v| usize::try_from(v).unwrap_or(0)),
         };
 
         let results = executor.query_nodes(&query);
@@ -1143,14 +1067,154 @@ impl Default for McpGraphServer {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/// Build a [`GraphQlService`] and the corresponding [`ServiceInput`] from a pipeline node.
+///
+/// Extracts `query`, `variables`, `auth`, and `data_path` from the node's TOML params.
+fn build_graphql_node_request(
+    node: &NodeDecl,
+    url: &str,
+    timeout_secs: u64,
+) -> (GraphQlService, ServiceInput) {
+    let query = node
+        .params
+        .get("query")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let config = GraphQlConfig {
+        timeout_secs,
+        ..GraphQlConfig::default()
+    };
+    let service = GraphQlService::new(config, None);
+    let mut gql_map = serde_json::Map::new();
+    gql_map.insert("query".to_owned(), json!(query));
+    if let Some(variables) = node.params.get("variables") {
+        gql_map.insert("variables".to_owned(), toml_to_json(variables));
+    }
+    if let Some(auth) = node.params.get("auth") {
+        gql_map.insert("auth".to_owned(), toml_to_json(auth));
+    }
+    if let Some(dp) = node.params.get("data_path").and_then(|v| v.as_str()) {
+        gql_map.insert("data_path".to_owned(), json!(dp));
+    }
+    (
+        service,
+        ServiceInput {
+            url: url.to_string(),
+            params: Value::Object(gql_map),
+        },
+    )
+}
+
+/// Execute a single pipeline node of a given service kind.
+///
+/// Returns `None` if the kind is not supported (node is skipped);
+/// returns `Some(Ok(value))` on success or `Some(Err(message))` on failure.
+async fn execute_pipeline_node(
+    kind: &str,
+    url: &str,
+    node_name: &str,
+    node: &NodeDecl,
+    timeout_secs: u64,
+) -> Option<Result<Value, String>> {
+    match kind {
+        "http" => {
+            let config = HttpConfig {
+                timeout: std::time::Duration::from_secs(timeout_secs),
+                ..HttpConfig::default()
+            };
+            let adapter = HttpAdapter::with_config(config);
+            let input = ServiceInput {
+                url: url.to_string(),
+                params: json!({}),
+            };
+            Some(
+                adapter
+                    .execute(input)
+                    .await
+                    .map(|out| json!({ "data": out.data, "metadata": out.metadata }))
+                    .map_err(|e| e.to_string()),
+            )
+        }
+        "rest" => {
+            let params = build_rest_params_from_node(node);
+            let adapter = RestApiAdapter::new();
+            let input = ServiceInput {
+                url: url.to_string(),
+                params,
+            };
+            Some(
+                adapter
+                    .execute(input)
+                    .await
+                    .map(|out| json!({ "data": out.data, "metadata": out.metadata }))
+                    .map_err(|e| e.to_string()),
+            )
+        }
+        "graphql" => {
+            let (service, input) = build_graphql_node_request(node, url, timeout_secs);
+            Some(
+                service
+                    .execute(input)
+                    .await
+                    .map(|out| json!({ "data": out.data, "metadata": out.metadata }))
+                    .map_err(|e| e.to_string()),
+            )
+        }
+        "sitemap" => {
+            let max_depth = node
+                .params
+                .get("max_depth")
+                .and_then(toml::Value::as_integer)
+                .map_or(5, |v| usize::try_from(v).unwrap_or(5));
+            let client = reqwest::Client::new();
+            let adapter = SitemapAdapter::new(client, max_depth);
+            let input = ServiceInput {
+                url: url.to_string(),
+                params: json!({}),
+            };
+            Some(
+                adapter
+                    .execute(input)
+                    .await
+                    .map(|out| json!({ "data": out.data, "metadata": out.metadata }))
+                    .map_err(|e| e.to_string()),
+            )
+        }
+        "rss" => {
+            let client = reqwest::Client::new();
+            let adapter = RssFeedAdapter::new(client);
+            let input = ServiceInput {
+                url: url.to_string(),
+                params: json!({}),
+            };
+            Some(
+                adapter
+                    .execute(input)
+                    .await
+                    .map(|out| json!({ "data": out.data, "metadata": out.metadata }))
+                    .map_err(|e| e.to_string()),
+            )
+        }
+        other => {
+            warn!(
+                kind = other,
+                node = node_name,
+                "skipping unsupported service kind in pipeline_run"
+            );
+            None
+        }
+    }
+}
+
 /// Convert a [`toml::Value`] to a [`serde_json::Value`] for adapter params.
 fn toml_to_json(v: &toml::Value) -> Value {
     match v {
         toml::Value::String(s) => Value::String(s.clone()),
         toml::Value::Integer(i) => Value::Number((*i).into()),
-        toml::Value::Float(f) => serde_json::Number::from_f64(*f)
-            .map(Value::Number)
-            .unwrap_or(Value::Null),
+        toml::Value::Float(f) => {
+            serde_json::Number::from_f64(*f).map_or(Value::Null, Value::Number)
+        }
         toml::Value::Boolean(b) => Value::Bool(*b),
         toml::Value::Array(arr) => Value::Array(arr.iter().map(toml_to_json).collect()),
         toml::Value::Table(tbl) => Value::Object(
@@ -1166,32 +1230,32 @@ fn toml_to_json(v: &toml::Value) -> Value {
 ///
 /// Forwards all recognised REST parameters from the node's TOML declaration:
 /// `method`, `auth`, `headers`, `query`, `body`, `pagination`, and `data_path`.
-fn build_rest_params_from_node(node: &crate::application::pipeline_parser::NodeDecl) -> Value {
-    let mut params = json!({});
+fn build_rest_params_from_node(node: &NodeDecl) -> Value {
+    let mut map = serde_json::Map::new();
 
     if let Some(method) = node.params.get("method").and_then(|v| v.as_str()) {
-        params["method"] = json!(method);
+        map.insert("method".to_owned(), json!(method));
     }
     if let Some(auth) = node.params.get("auth") {
-        params["auth"] = toml_to_json(auth);
+        map.insert("auth".to_owned(), toml_to_json(auth));
     }
     if let Some(headers) = node.params.get("headers") {
-        params["headers"] = toml_to_json(headers);
+        map.insert("headers".to_owned(), toml_to_json(headers));
     }
     if let Some(query) = node.params.get("query") {
-        params["query"] = toml_to_json(query);
+        map.insert("query".to_owned(), toml_to_json(query));
     }
     if let Some(body) = node.params.get("body") {
-        params["body"] = toml_to_json(body);
+        map.insert("body".to_owned(), toml_to_json(body));
     }
     if let Some(pagination) = node.params.get("pagination") {
-        params["pagination"] = toml_to_json(pagination);
+        map.insert("pagination".to_owned(), toml_to_json(pagination));
     }
     if let Some(dp) = node.params.get("data_path").and_then(|v| v.as_str()) {
-        params["response"] = json!({ "data_path": dp });
+        map.insert("response".to_owned(), json!({ "data_path": dp }));
     }
 
-    params
+    Value::Object(map)
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -1208,19 +1272,27 @@ mod tests {
 
     #[test]
     fn initialize_response_contains_version() {
-        let server = McpGraphServer::new();
         let id = json!(1);
-        let resp = server.handle_initialize(&id);
-        assert_eq!(resp["result"]["protocolVersion"], "2025-11-25");
+        let resp = McpGraphServer::handle_initialize(&id);
+        assert_eq!(
+            resp.pointer("/result/protocolVersion")
+                .and_then(Value::as_str),
+            Some("2025-11-25")
+        );
     }
 
     #[test]
     fn tools_list_contains_all_tools() {
-        let server = McpGraphServer::new();
         let id = json!(1);
-        let resp = server.handle_tools_list(&id);
-        let tools = resp["result"]["tools"].as_array().unwrap();
-        let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+        let resp = McpGraphServer::handle_tools_list(&id);
+        let tools = resp
+            .pointer("/result/tools")
+            .and_then(Value::as_array)
+            .unwrap();
+        let names: Vec<&str> = tools
+            .iter()
+            .map(|t| t.get("name").and_then(Value::as_str).unwrap())
+            .collect();
         assert!(names.contains(&"scrape"));
         assert!(names.contains(&"scrape_rest"));
         assert!(names.contains(&"scrape_graphql"));
@@ -1232,14 +1304,14 @@ mod tests {
 
     #[test]
     fn pipeline_validate_rejects_bad_toml() {
-        let server = McpGraphServer::new();
         let id = json!(1);
         let args = json!({ "toml": "this is not valid toml [[[[" });
-        let resp = server.tool_pipeline_validate(&id, &args);
+        let resp = McpGraphServer::tool_pipeline_validate(&id, &args);
         assert!(
-            resp["error"].is_object()
-                || resp["result"]["content"][0]["text"]
-                    .as_str()
+            resp.get("error").is_some_and(Value::is_object)
+                || resp
+                    .pointer("/result/content/0/text")
+                    .and_then(Value::as_str)
                     .unwrap_or("")
                     .contains("false")
         );
@@ -1247,7 +1319,6 @@ mod tests {
 
     #[test]
     fn pipeline_validate_accepts_valid_pipeline() {
-        let server = McpGraphServer::new();
         let id = json!(1);
         let toml = r#"
 [[nodes]]
@@ -1262,22 +1333,24 @@ url = "https://example.com/api"
 depends_on = ["fetch"]
 "#;
         let args = json!({ "toml": toml });
-        let resp = server.tool_pipeline_validate(&id, &args);
-        let text = resp["result"]["content"][0]["text"].as_str().unwrap();
+        let resp = McpGraphServer::tool_pipeline_validate(&id, &args);
+        let text = resp
+            .pointer("/result/content/0/text")
+            .and_then(Value::as_str)
+            .unwrap();
         let parsed: Value = serde_json::from_str(text).unwrap();
-        assert_eq!(parsed["valid"], true);
-        assert_eq!(parsed["node_count"], 2);
+        assert_eq!(parsed.get("valid"), Some(&json!(true)));
+        assert_eq!(parsed.get("node_count"), Some(&json!(2)));
     }
 
     #[test]
     fn pipeline_validate_missing_toml_returns_error() {
         // Test is sync — just check param validation path
-        let server = McpGraphServer::new();
         let id = json!(1);
         let args = json!({});
         // We can't await in a non-async test context without a runtime,
         // so just verify the tool_pipeline_validate path for missing param.
-        let resp = server.tool_pipeline_validate(&id, &args);
-        assert!(resp["error"].is_object());
+        let resp = McpGraphServer::tool_pipeline_validate(&id, &args);
+        assert!(resp.get("error").is_some_and(Value::is_object));
     }
 }

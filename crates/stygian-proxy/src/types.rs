@@ -28,6 +28,23 @@ pub enum ProxyType {
     Socks5,
 }
 
+/// TLS-profiled request mode for proxy-side HTTP operations.
+///
+/// Used by `tls-profiled` integrations to decide how strictly browser TLS
+/// profiles should be mapped onto rustls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProfiledRequestMode {
+    /// Broad compatibility: skip unknown entries and use safe fallbacks.
+    Compatible,
+    /// Profile-aware preset selected from the profile name.
+    Preset,
+    /// Strict cipher-suite mapping with compatibility group fallback.
+    Strict,
+    /// Strict cipher-suite + group mapping without fallback.
+    StrictAll,
+}
+
 /// A proxy endpoint with optional authentication credentials.
 ///
 /// `Debug` output masks `password` to prevent accidental credential logging.
@@ -131,6 +148,17 @@ pub struct ProxyMetrics {
 }
 
 impl ProxyMetrics {
+    /// Cast a `u64` counter to `f64` for ratio computation.
+    ///
+    /// `u64` can represent values up to ~1.8 × 10¹⁹; `f64` has 53-bit
+    /// mantissa, so precision loss begins around 9 × 10¹⁵.  For long-running
+    /// proxies that number is never reached in practice, and direct casting
+    /// preserves ratios correctly (unlike saturating to `u32::MAX`).
+    #[allow(clippy::cast_precision_loss)]
+    fn u64_as_f64(value: u64) -> f64 {
+        value as f64
+    }
+
     /// Returns the fraction of requests that succeeded, in `[0.0, 1.0]`.
     ///
     /// Returns `0.0` when no requests have been recorded.
@@ -149,7 +177,7 @@ impl ProxyMetrics {
         if total == 0 {
             return 0.0;
         }
-        self.successes.load(Ordering::Relaxed) as f64 / total as f64
+        Self::u64_as_f64(self.successes.load(Ordering::Relaxed)) / Self::u64_as_f64(total)
     }
 
     /// Returns the average request latency in milliseconds.
@@ -170,7 +198,7 @@ impl ProxyMetrics {
         if total == 0 {
             return 0.0;
         }
-        self.total_latency_ms.load(Ordering::Relaxed) as f64 / total as f64
+        Self::u64_as_f64(self.total_latency_ms.load(Ordering::Relaxed)) / Self::u64_as_f64(total)
     }
 }
 
@@ -201,6 +229,7 @@ mod serde_duration_secs {
 /// assert_eq!(cfg.health_check_timeout, Duration::from_secs(5));
 /// assert_eq!(cfg.circuit_open_threshold, 5);
 /// assert_eq!(cfg.circuit_half_open_after, Duration::from_secs(30));
+/// assert!(cfg.profiled_request_mode.is_none());
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -221,6 +250,14 @@ pub struct ProxyConfig {
     /// Sticky-session policy for domain→proxy binding.
     #[serde(default)]
     pub sticky_policy: crate::session::StickyPolicy,
+    /// Optional default mode for TLS-profiled helper clients.
+    ///
+    /// When set and `tls-profiled` is enabled, `ProxyManager` initializes its
+    /// `HealthChecker` with a Chrome-profiled requester using this mode.
+    ///
+    /// Ignored when `tls-profiled` is disabled.
+    #[serde(default)]
+    pub profiled_request_mode: Option<ProfiledRequestMode>,
 }
 
 impl Default for ProxyConfig {
@@ -232,6 +269,7 @@ impl Default for ProxyConfig {
             circuit_open_threshold: 5,
             circuit_half_open_after: Duration::from_secs(30),
             sticky_policy: crate::session::StickyPolicy::default(),
+            profiled_request_mode: None,
         }
     }
 }

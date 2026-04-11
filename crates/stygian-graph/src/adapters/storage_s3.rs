@@ -44,7 +44,7 @@ pub struct S3StorageConfig {
     pub endpoint: Option<String>,
     /// Key prefix prepended to all object keys (default: `"stygian"`).
     pub prefix: String,
-    /// Path-style access (required by MinIO and some providers).
+    /// Path-style access (required by `MinIO` and some providers).
     pub path_style: bool,
     /// Optional access key (falls back to env `AWS_ACCESS_KEY_ID`).
     pub access_key: Option<String>,
@@ -316,57 +316,54 @@ impl ScrapingService for S3Storage {
             .and_then(|v| v.as_str())
             .unwrap_or("get");
 
-        match action {
-            "list" => {
-                let prefix = input.url;
-                let results = self.bucket.list(prefix.clone(), None).await.map_err(|e| {
-                    StygianError::Service(ServiceError::Unavailable(format!(
-                        "S3 LIST '{prefix}' failed: {e}"
-                    )))
-                })?;
+        if action == "list" {
+            let prefix = input.url;
+            let results = self.bucket.list(prefix.clone(), None).await.map_err(|e| {
+                StygianError::Service(ServiceError::Unavailable(format!(
+                    "S3 LIST '{prefix}' failed: {e}"
+                )))
+            })?;
 
-                let keys: Vec<&str> = results
-                    .iter()
-                    .flat_map(|r| r.contents.iter().map(|o| o.key.as_str()))
-                    .collect();
+            let keys: Vec<&str> = results
+                .iter()
+                .flat_map(|r| r.contents.iter().map(|o| o.key.as_str()))
+                .collect();
 
-                Ok(ServiceOutput {
-                    data: serde_json::to_string(&keys).unwrap_or_default(),
-                    metadata: json!({
-                        "source": "s3",
-                        "action": "list",
-                        "prefix": prefix,
-                        "count": keys.len(),
-                    }),
-                })
+            Ok(ServiceOutput {
+                data: serde_json::to_string(&keys).unwrap_or_default(),
+                metadata: json!({
+                    "source": "s3",
+                    "action": "list",
+                    "prefix": prefix,
+                    "count": keys.len(),
+                }),
+            })
+        } else {
+            // "get" — fetch a single object
+            let key = &input.url;
+            let resp = self.bucket.get_object(key).await.map_err(|e| {
+                StygianError::Service(ServiceError::Unavailable(format!(
+                    "S3 GET '{key}' failed: {e}"
+                )))
+            })?;
+
+            if resp.status_code() != 200 {
+                return Err(StygianError::Service(ServiceError::InvalidResponse(
+                    format!("S3 GET '{key}' returned status {}", resp.status_code()),
+                )));
             }
-            _ => {
-                // "get" — fetch a single object
-                let key = &input.url;
-                let resp = self.bucket.get_object(key).await.map_err(|e| {
-                    StygianError::Service(ServiceError::Unavailable(format!(
-                        "S3 GET '{key}' failed: {e}"
-                    )))
-                })?;
 
-                if resp.status_code() != 200 {
-                    return Err(StygianError::Service(ServiceError::InvalidResponse(
-                        format!("S3 GET '{key}' returned status {}", resp.status_code()),
-                    )));
-                }
+            let data = String::from_utf8_lossy(resp.as_slice()).to_string();
 
-                let data = String::from_utf8_lossy(resp.as_slice()).to_string();
-
-                Ok(ServiceOutput {
-                    data,
-                    metadata: json!({
-                        "source": "s3",
-                        "action": "get",
-                        "key": key,
-                        "size": resp.as_slice().len(),
-                    }),
-                })
-            }
+            Ok(ServiceOutput {
+                data,
+                metadata: json!({
+                    "source": "s3",
+                    "action": "get",
+                    "key": key,
+                    "size": resp.as_slice().len(),
+                }),
+            })
         }
     }
 

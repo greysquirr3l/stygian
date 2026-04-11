@@ -9,7 +9,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.8.5"
+version = "0.9.0"
 edition = "2024"
 rust-version = "1.94.0"
 authors = ["Nick Campbell <s0ma@protonmail.com>"]
@@ -106,7 +106,7 @@ quote       = "1"
 proc-macro2 = "1"
 
 # WASM plugins (optional heavy dep)
-wasmtime = { version = "42", default-features = false, features = ["runtime", "cranelift", "component-model"] }
+wasmtime = { version = "42.0.2", default-features = false, features = ["runtime", "cranelift", "component-model"] }
 
 # Database (optional)
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "json", "migrate"] }

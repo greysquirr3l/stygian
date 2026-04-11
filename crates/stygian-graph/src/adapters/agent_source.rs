@@ -88,7 +88,10 @@ impl AgentSourcePort for AgentSource {
         // generate).
         let schema = if request.parameters.is_null()
             || request.parameters.is_object()
-                && request.parameters.as_object().is_some_and(|m| m.is_empty())
+                && request
+                    .parameters
+                    .as_object()
+                    .is_some_and(serde_json::Map::is_empty)
         {
             json!({"type": "object", "properties": {"response": {"type": "string"}}})
         } else {
@@ -98,11 +101,10 @@ impl AgentSourcePort for AgentSource {
         let result = self.provider.extract(content, schema).await?;
 
         // Extract a textual response from the provider's output
-        let content_text = if let Some(s) = result.get("response").and_then(Value::as_str) {
-            s.to_string()
-        } else {
-            serde_json::to_string(&result).unwrap_or_default()
-        };
+        let content_text = result.get("response").and_then(Value::as_str).map_or_else(
+            || serde_json::to_string(&result).unwrap_or_default(),
+            str::to_owned,
+        );
 
         Ok(AgentResponse {
             content: content_text,
@@ -113,7 +115,7 @@ impl AgentSourcePort for AgentSource {
         })
     }
 
-    fn source_name(&self) -> &str {
+    fn source_name(&self) -> &'static str {
         "agent"
     }
 }
@@ -134,13 +136,23 @@ impl ScrapingService for AgentSource {
     /// The `input.url` field is ignored; the prompt and optional upstream data
     /// are passed via `params`.
     async fn execute(&self, input: ServiceInput) -> Result<ServiceOutput> {
-        let prompt = input.params["prompt"]
-            .as_str()
+        let prompt = input
+            .params
+            .get("prompt")
+            .and_then(Value::as_str)
             .unwrap_or("Process the following data")
             .to_string();
 
-        let context = input.params["context"].as_str().map(String::from);
-        let parameters = input.params.get("parameters").cloned().unwrap_or(json!({}));
+        let context = input
+            .params
+            .get("context")
+            .and_then(Value::as_str)
+            .map(String::from);
+        let parameters = input
+            .params
+            .get("parameters")
+            .cloned()
+            .unwrap_or_else(|| json!({}));
 
         let request = AgentRequest {
             prompt,
@@ -175,34 +187,39 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn invoke_returns_response() {
+    async fn invoke_returns_response() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let agent = make_agent();
         let req = AgentRequest {
             prompt: "Say hello".into(),
             context: None,
             parameters: json!({}),
         };
-        let resp = agent.invoke(req).await.unwrap();
+        let resp = agent.invoke(req).await?;
         // MockAIProvider returns {"mock": true, ...} so content will be the
         // JSON serialisation of the full output (no "response" key).
         assert!(!resp.content.is_empty());
-        assert_eq!(resp.metadata["provider"].as_str(), Some("mock-ai"),);
+        assert_eq!(
+            resp.metadata.get("provider").and_then(Value::as_str),
+            Some("mock-ai")
+        );
+        Ok(())
     }
 
     #[tokio::test]
-    async fn invoke_with_context() {
+    async fn invoke_with_context() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let agent = make_agent();
         let req = AgentRequest {
             prompt: "Summarise".into(),
             context: Some("some article text".into()),
             parameters: json!({}),
         };
-        let resp = agent.invoke(req).await.unwrap();
+        let resp = agent.invoke(req).await?;
         assert!(!resp.content.is_empty());
+        Ok(())
     }
 
     #[tokio::test]
-    async fn scraping_service_execute() {
+    async fn scraping_service_execute() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let agent = make_agent();
         let input = ServiceInput {
             url: String::new(),
@@ -210,9 +227,13 @@ mod tests {
                 "prompt": "Generate a summary",
             }),
         };
-        let output = agent.execute(input).await.unwrap();
+        let output = agent.execute(input).await?;
         assert!(!output.data.is_empty());
-        assert_eq!(output.metadata["provider"].as_str(), Some("mock-ai"));
+        assert_eq!(
+            output.metadata.get("provider").and_then(Value::as_str),
+            Some("mock-ai")
+        );
+        Ok(())
     }
 
     #[test]

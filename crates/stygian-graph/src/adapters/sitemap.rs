@@ -96,7 +96,7 @@ impl SitemapAdapter {
     ///
     /// let adapter = SitemapAdapter::new(reqwest::Client::new(), 5);
     /// ```
-    pub fn new(client: reqwest::Client, max_depth: usize) -> Self {
+    pub const fn new(client: reqwest::Client, max_depth: usize) -> Self {
         Self { client, max_depth }
     }
 
@@ -125,7 +125,7 @@ impl SitemapAdapter {
         })?;
 
         // Attempt gzip decompression if URL ends in .gz or content looks gzipped
-        if url.ends_with(".gz") || (bytes.len() >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b) {
+        if url.to_ascii_lowercase().ends_with(".gz") || bytes.starts_with(&[0x1f, 0x8b]) {
             let mut decoder = GzDecoder::new(&bytes[..]);
             let mut xml = String::new();
             decoder.read_to_string(&mut xml).map_err(|e| {
@@ -205,7 +205,11 @@ impl ScrapingService for SitemapAdapter {
         let mut entries = self.resolve(&input.url, 0).await?;
 
         // Apply optional filters
-        if let Some(min_pri) = input.params.get("min_priority").and_then(|v| v.as_f64()) {
+        if let Some(min_pri) = input
+            .params
+            .get("min_priority")
+            .and_then(serde_json::Value::as_f64)
+        {
             entries.retain(|e| e.priority.unwrap_or(0.0) >= min_pri);
         }
         if let Some(after) = input.params.get("lastmod_after").and_then(|v| v.as_str()) {
@@ -252,7 +256,7 @@ fn detect_root_element(xml: &str) -> Result<RootElement> {
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
+            Ok(Event::Start(ref e) | Event::Empty(ref e)) => {
                 let local = e.local_name();
                 let name = std::str::from_utf8(local.as_ref()).unwrap_or("");
                 return match name {
@@ -465,79 +469,103 @@ mod tests {
 </sitemapindex>"#;
 
     #[test]
-    fn parse_urlset_with_3_urls() {
-        let entries = parse_urlset(URLSET_XML).expect("parse");
+    fn parse_urlset_with_3_urls() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let entries = parse_urlset(URLSET_XML)?;
         assert_eq!(entries.len(), 3);
 
-        assert_eq!(entries[0].loc, "https://example.com/page1");
-        assert_eq!(entries[0].lastmod.as_deref(), Some("2026-03-01"));
-        assert_eq!(entries[0].changefreq.as_deref(), Some("daily"));
-        assert_eq!(entries[0].priority, Some(0.8));
+        let first = entries.first().ok_or("missing first entry")?;
+        assert_eq!(first.loc, "https://example.com/page1");
+        assert_eq!(first.lastmod.as_deref(), Some("2026-03-01"));
+        assert_eq!(first.changefreq.as_deref(), Some("daily"));
+        assert_eq!(first.priority, Some(0.8));
 
-        assert_eq!(entries[1].loc, "https://example.com/page2");
-        assert_eq!(entries[1].priority, Some(0.5));
-        assert!(entries[1].changefreq.is_none());
+        let second = entries.get(1).ok_or("missing second entry")?;
+        assert_eq!(second.loc, "https://example.com/page2");
+        assert_eq!(second.priority, Some(0.5));
+        assert!(second.changefreq.is_none());
 
-        assert_eq!(entries[2].loc, "https://example.com/page3");
-        assert!(entries[2].lastmod.is_none());
-        assert!(entries[2].priority.is_none());
+        let third = entries.get(2).ok_or("missing third entry")?;
+        assert_eq!(third.loc, "https://example.com/page3");
+        assert!(third.lastmod.is_none());
+        assert!(third.priority.is_none());
+
+        Ok(())
     }
 
     #[test]
-    fn parse_sitemapindex_extracts_nested_urls() {
-        let urls = parse_sitemapindex(SITEMAPINDEX_XML).expect("parse");
+    fn parse_sitemapindex_extracts_nested_urls()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let urls = parse_sitemapindex(SITEMAPINDEX_XML)?;
         assert_eq!(urls.len(), 2);
-        assert_eq!(urls[0], "https://example.com/sitemap1.xml");
-        assert_eq!(urls[1], "https://example.com/sitemap2.xml.gz");
+        assert_eq!(
+            urls.first().map(String::as_str),
+            Some("https://example.com/sitemap1.xml")
+        );
+        assert_eq!(
+            urls.get(1).map(String::as_str),
+            Some("https://example.com/sitemap2.xml.gz")
+        );
+        Ok(())
     }
 
     #[test]
-    fn detect_root_urlset() {
-        let root = detect_root_element(URLSET_XML).expect("detect");
+    fn detect_root_urlset() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let root = detect_root_element(URLSET_XML)?;
         assert_eq!(root, RootElement::UrlSet);
+        Ok(())
     }
 
     #[test]
-    fn detect_root_sitemapindex() {
-        let root = detect_root_element(SITEMAPINDEX_XML).expect("detect");
+    fn detect_root_sitemapindex() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let root = detect_root_element(SITEMAPINDEX_XML)?;
         assert_eq!(root, RootElement::SitemapIndex);
+        Ok(())
     }
 
     #[test]
-    fn filter_by_lastmod_range() {
-        let mut entries = parse_urlset(URLSET_XML).expect("parse");
+    fn filter_by_lastmod_range() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let mut entries = parse_urlset(URLSET_XML)?;
         // Only entries on or after 2026-03-01
         entries.retain(|e| e.lastmod.as_deref().is_some_and(|lm| lm >= "2026-03-01"));
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].loc, "https://example.com/page1");
+        assert_eq!(
+            entries.first().map(|entry| entry.loc.as_str()),
+            Some("https://example.com/page1")
+        );
+        Ok(())
     }
 
     #[test]
-    fn filter_by_priority_threshold() {
-        let mut entries = parse_urlset(URLSET_XML).expect("parse");
+    fn filter_by_priority_threshold() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let mut entries = parse_urlset(URLSET_XML)?;
         entries.retain(|e| e.priority.unwrap_or(0.0) >= 0.6);
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].loc, "https://example.com/page1");
+        assert_eq!(
+            entries.first().map(|entry| entry.loc.as_str()),
+            Some("https://example.com/page1")
+        );
+        Ok(())
     }
 
     #[test]
-    fn gzip_decompression() {
+    fn gzip_decompression() -> std::result::Result<(), Box<dyn std::error::Error>> {
         use flate2::Compression;
         use flate2::write::GzEncoder;
         use std::io::Write;
 
         let xml = URLSET_XML;
         let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(xml.as_bytes()).expect("gz write");
-        let compressed = encoder.finish().expect("gz finish");
+        encoder.write_all(xml.as_bytes())?;
+        let compressed = encoder.finish()?;
 
         // Decompress and parse
         let mut decoder = GzDecoder::new(&compressed[..]);
         let mut decompressed = String::new();
-        decoder.read_to_string(&mut decompressed).expect("gz read");
+        decoder.read_to_string(&mut decompressed)?;
 
-        let entries = parse_urlset(&decompressed).expect("parse");
+        let entries = parse_urlset(&decompressed)?;
         assert_eq!(entries.len(), 3);
+        Ok(())
     }
 
     #[test]
@@ -561,14 +589,15 @@ mod tests {
     }
 
     #[test]
-    fn urlset_with_no_urls_returns_empty() {
+    fn urlset_with_no_urls_returns_empty() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let xml = r#"<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>"#;
-        let entries = parse_urlset(xml).expect("parse");
+        let entries = parse_urlset(xml)?;
         assert!(entries.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn url_without_loc_is_skipped() {
+    fn url_without_loc_is_skipped() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let xml = r#"<?xml version="1.0"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
@@ -578,8 +607,12 @@ mod tests {
     <loc>https://example.com/valid</loc>
   </url>
 </urlset>"#;
-        let entries = parse_urlset(xml).expect("parse");
+        let entries = parse_urlset(xml)?;
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].loc, "https://example.com/valid");
+        assert_eq!(
+            entries.first().map(|entry| entry.loc.as_str()),
+            Some("https://example.com/valid")
+        );
+        Ok(())
     }
 }

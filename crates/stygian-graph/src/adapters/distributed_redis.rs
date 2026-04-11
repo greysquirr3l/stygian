@@ -195,12 +195,18 @@ impl RedisWorkQueue {
             if entry.len() < 3 {
                 continue;
             }
-            let msg_id = match &entry[0] {
-                redis::Value::BulkString(b) => String::from_utf8_lossy(b).to_string(),
-                _ => continue,
+            let Some(raw_msg_id) = entry.first() else {
+                continue;
             };
-            let idle_ms: usize = match &entry[2] {
-                redis::Value::Int(n) => *n as usize,
+            let redis::Value::BulkString(b) = raw_msg_id else {
+                continue;
+            };
+            let msg_id = String::from_utf8_lossy(b.as_slice()).to_string();
+            let idle_ms: usize = match entry.get(2) {
+                Some(redis::Value::Int(n)) => match usize::try_from(*n) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                },
                 _ => continue,
             };
 
@@ -234,25 +240,23 @@ impl RedisWorkQueue {
     /// Parse a Redis Stream message value into a [`WorkTask`].
     fn parse_stream_message(msg: &redis::Value) -> Option<WorkTask> {
         // Stream message: [message_id, [field, value, field, value, ...]]
-        let arr = match msg {
-            redis::Value::Array(a) => a,
-            _ => return None,
+        let redis::Value::Array(arr) = msg else {
+            return None;
         };
         if arr.len() < 2 {
             return None;
         }
-        let fields = match &arr[1] {
-            redis::Value::Array(a) => a,
-            _ => return None,
+        let Some(redis::Value::Array(fields)) = arr.get(1) else {
+            return None;
         };
 
         // Look for the "payload" field
         let mut payload: Option<&[u8]> = None;
         let mut i = 0;
         while i + 1 < fields.len() {
-            if let redis::Value::BulkString(key) = &fields[i]
+            if let Some(redis::Value::BulkString(key)) = fields.get(i)
                 && key == b"payload"
-                && let redis::Value::BulkString(val) = &fields[i + 1]
+                && let Some(redis::Value::BulkString(val)) = fields.get(i + 1)
             {
                 payload = Some(val);
             }
@@ -347,21 +351,22 @@ impl WorkQueuePort for RedisWorkQueue {
         // Response: [[stream_name, [[message_id, [field, value, ...]]]]]
         let streams = match &value {
             redis::Value::Array(s) if !s.is_empty() => s,
-            redis::Value::Nil => return Ok(None),
             _ => return Ok(None),
         };
 
-        let stream_data = match &streams[0] {
-            redis::Value::Array(s) if s.len() >= 2 => s,
+        let stream_data = match streams.first() {
+            Some(redis::Value::Array(s)) if s.len() >= 2 => s,
             _ => return Ok(None),
         };
 
-        let messages = match &stream_data[1] {
-            redis::Value::Array(m) if !m.is_empty() => m,
+        let messages = match stream_data.get(1) {
+            Some(redis::Value::Array(m)) if !m.is_empty() => m,
             _ => return Ok(None),
         };
 
-        if let Some(task) = Self::parse_stream_message(&messages[0]) {
+        if let Some(first_message) = messages.first()
+            && let Some(task) = Self::parse_stream_message(first_message)
+        {
             // Update status to InProgress
             let meta_key = self.task_meta_key(&task.id);
             let meta = serde_json::json!({
@@ -400,7 +405,9 @@ impl WorkQueuePort for RedisWorkQueue {
         if let Some(raw) = meta_raw
             && let Ok(mut meta) = serde_json::from_str::<serde_json::Value>(&raw)
         {
-            meta["status"] = serde_json::json!("completed");
+            if let Some(obj) = meta.as_object_mut() {
+                obj.insert("status".to_string(), serde_json::json!("completed"));
+            }
             let _ = conn.set::<_, _, ()>(&meta_key, meta.to_string()).await;
         }
 
@@ -420,8 +427,9 @@ impl WorkQueuePort for RedisWorkQueue {
         let attempt = meta_raw
             .as_ref()
             .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
-            .and_then(|m| m["attempt"].as_u64())
-            .unwrap_or(0) as u32;
+            .and_then(|m| m.get("attempt").and_then(serde_json::Value::as_u64))
+            .and_then(|n| u32::try_from(n).ok())
+            .unwrap_or(0);
 
         if attempt >= self.config.max_retries {
             // Dead-letter: XADD to DLQ stream
@@ -481,12 +489,18 @@ impl WorkQueuePort for RedisWorkQueue {
             )))
         })?;
 
-        let status_str = meta["status"].as_str().unwrap_or("pending");
+        let status_str = meta
+            .get("status")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("pending");
 
         let status = match status_str {
-            "pending" => TaskStatus::Pending,
             "in_progress" => TaskStatus::InProgress {
-                worker_id: meta["worker_id"].as_str().unwrap_or("unknown").to_string(),
+                worker_id: meta
+                    .get("worker_id")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("unknown")
+                    .to_string(),
             },
             "completed" => {
                 // Fetch the actual output from the results key
@@ -498,11 +512,23 @@ impl WorkQueuePort for RedisWorkQueue {
                 TaskStatus::Completed { output }
             }
             "failed" => TaskStatus::Failed {
-                error: meta["error"].as_str().unwrap_or("").to_string(),
-                attempt: meta["attempt"].as_u64().unwrap_or(0) as u32,
+                error: meta
+                    .get("error")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+                attempt: meta
+                    .get("attempt")
+                    .and_then(serde_json::Value::as_u64)
+                    .and_then(|n| u32::try_from(n).ok())
+                    .unwrap_or(0),
             },
             "dead_letter" => TaskStatus::DeadLetter {
-                error: meta["error"].as_str().unwrap_or("").to_string(),
+                error: meta
+                    .get("error")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
             },
             _ => TaskStatus::Pending,
         };
@@ -535,14 +561,18 @@ impl WorkQueuePort for RedisWorkQueue {
             };
 
             // Filter by pipeline_id and completed status
-            if meta["pipeline_id"].as_str() != Some(pipeline_id) {
+            if meta.get("pipeline_id").and_then(serde_json::Value::as_str) != Some(pipeline_id) {
                 continue;
             }
-            if meta["status"].as_str() != Some("completed") {
+            if meta.get("status").and_then(serde_json::Value::as_str) != Some("completed") {
                 continue;
             }
 
-            let node_name = meta["node_name"].as_str().unwrap_or("").to_string();
+            let node_name = meta
+                .get("node_name")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+                .to_string();
 
             // Extract task_id from key: "{stream}:tasks:{task_id}"
             let task_id = key.rsplit(':').next().unwrap_or("");
@@ -584,7 +614,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn test_task_serialisation_roundtrip() {
+    fn test_task_serialisation_roundtrip() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let task = WorkTask {
             id: "t-1".to_string(),
             pipeline_id: "p-1".to_string(),
@@ -595,8 +625,8 @@ mod tests {
             idempotency_key: "ik-1".to_string(),
         };
 
-        let serialised = serde_json::to_string(&task).unwrap();
-        let deserialised: WorkTask = serde_json::from_str(&serialised).unwrap();
+        let serialised = serde_json::to_string(&task)?;
+        let deserialised: WorkTask = serde_json::from_str(&serialised)?;
 
         assert_eq!(deserialised.id, task.id);
         assert_eq!(deserialised.pipeline_id, task.pipeline_id);
@@ -605,6 +635,7 @@ mod tests {
         assert_eq!(deserialised.wave, task.wave);
         assert_eq!(deserialised.attempt, task.attempt);
         assert_eq!(deserialised.idempotency_key, task.idempotency_key);
+        Ok(())
     }
 
     #[test]
@@ -641,7 +672,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_stream_message_valid() {
+    fn test_parse_stream_message_valid() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let task = WorkTask {
             id: "t-1".to_string(),
             pipeline_id: "p-1".to_string(),
@@ -651,7 +682,7 @@ mod tests {
             attempt: 0,
             idempotency_key: "ik-1".to_string(),
         };
-        let payload = serde_json::to_vec(&task).unwrap();
+        let payload = serde_json::to_vec(&task)?;
 
         let msg = redis::Value::Array(vec![
             redis::Value::BulkString(b"1234-0".to_vec()),
@@ -661,9 +692,11 @@ mod tests {
             ]),
         ]);
 
-        let parsed = RedisWorkQueue::parse_stream_message(&msg).unwrap();
+        let parsed = RedisWorkQueue::parse_stream_message(&msg)
+            .ok_or_else(|| std::io::Error::other("expected parse_stream_message to return task"))?;
         assert_eq!(parsed.id, "t-1");
         assert_eq!(parsed.node_name, "fetch");
+        Ok(())
     }
 
     #[test]

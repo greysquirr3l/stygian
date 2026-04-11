@@ -239,7 +239,9 @@ async fn forum_page_html_body_is_non_empty() {
     );
     // The metadata should record page_count=1 (single-shot, no pagination params).
     assert_eq!(
-        out.metadata["page_count"].as_u64(),
+        out.metadata
+            .get("page_count")
+            .and_then(serde_json::Value::as_u64),
         Some(1),
         "single request should record page_count=1"
     );

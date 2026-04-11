@@ -114,3 +114,6 @@ pub mod webhook;
 /// Default tiered escalation policy with challenge detection (feature = "escalation")
 #[cfg(feature = "escalation")]
 pub mod escalation;
+
+#[cfg(feature = "scrape-exchange")]
+pub mod scrape_exchange;

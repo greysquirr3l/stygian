@@ -379,7 +379,10 @@ async fn query_selector_all_returns_nodes() -> Result<(), Box<dyn std::error::Er
         "expected at least one <a href> on example.com"
     );
 
-    let href = nodes[0].attr("href").await?;
+    let first = nodes
+        .first()
+        .ok_or_else(|| std::io::Error::other("expected first <a href> node"))?;
+    let href = first.attr("href").await?;
     assert!(
         href.is_some(),
         "first <a href> should have an href attribute"
@@ -408,7 +411,10 @@ async fn attr_map_is_exhaustive() -> Result<(), Box<dyn std::error::Error>> {
     let nodes = page.query_selector_all("a[href]").await?;
     assert!(!nodes.is_empty(), "expected <a href> on example.com");
 
-    let map = nodes[0].attr_map().await?;
+    let first = nodes
+        .first()
+        .ok_or_else(|| std::io::Error::other("expected first <a href> node"))?;
+    let map = first.attr_map().await?;
     assert!(
         map.contains_key("href"),
         "attr_map should include 'href'; got keys: {:?}",
@@ -440,7 +446,10 @@ async fn ancestors_returns_parent_chain() -> Result<(), Box<dyn std::error::Erro
         "expected at least one <p> on example.com"
     );
 
-    let chain = nodes[0].ancestors().await?;
+    let first = nodes
+        .first()
+        .ok_or_else(|| std::io::Error::other("expected first <p> node"))?;
+    let chain = first.ancestors().await?;
     assert!(
         chain.last().map(String::as_str) == Some("html"),
         "ancestor chain should end at 'html'; got: {chain:?}"
@@ -472,7 +481,10 @@ async fn children_matching_returns_nested_nodes() -> Result<(), Box<dyn std::err
         "expected at least one <div> on example.com"
     );
 
-    let children = divs[0].children_matching("p").await?;
+    let first_div = divs
+        .first()
+        .ok_or_else(|| std::io::Error::other("expected first <div> node"))?;
+    let children = first_div.children_matching("p").await?;
     assert!(
         !children.is_empty(),
         "expected at least one <p> inside the first <div> on example.com"
@@ -520,7 +532,11 @@ mod extract_tests {
             "expected at least one <p> on example.com"
         );
         // Suppress unused-field warnings by referencing the field.
-        let _ = items.iter().map(|l| l.href.as_deref()).count();
+        let href_count = items.iter().filter(|l| l.href.is_some()).count();
+        assert!(
+            href_count <= items.len(),
+            "sanity check for extracted href count"
+        );
 
         page.close().await?;
         instance.shutdown().await?;
@@ -621,7 +637,7 @@ fn data_url(html: &str) -> String {
 /// `parent()` returns the containing element.
 ///
 /// DOM: `<ul><li id="first">A</li><li>B</li></ul>`
-/// Select `#first`, call `.parent()`, assert outer_html contains `<ul`.
+/// Select `#first`, call `.parent()`, assert `outer_html` contains `<ul`.
 #[tokio::test]
 #[ignore = "requires Chrome"]
 async fn parent_returns_node() -> Result<(), Box<dyn std::error::Error>> {
@@ -639,10 +655,14 @@ async fn parent_returns_node() -> Result<(), Box<dyn std::error::Error>> {
     let nodes = page.query_selector_all("#first").await?;
     assert!(!nodes.is_empty(), "expected #first element");
 
-    let parent = nodes[0].parent().await?;
+    let first = nodes
+        .first()
+        .ok_or_else(|| std::io::Error::other("expected #first node"))?;
+    let parent = first.parent().await?;
     assert!(parent.is_some(), "parent() of <li> should be Some");
 
-    let outer = parent.unwrap().outer_html().await?;
+    let parent_node = parent.ok_or_else(|| std::io::Error::other("expected parent node"))?;
+    let outer = parent_node.outer_html().await?;
     assert!(
         outer.contains("<ul") || outer.contains("<UL"),
         "parent of <li> should be <ul>; got: {outer}"
@@ -674,13 +694,17 @@ async fn next_sibling_advances() -> Result<(), Box<dyn std::error::Error>> {
     let nodes = page.query_selector_all("#a").await?;
     assert!(!nodes.is_empty(), "expected #a element");
 
-    let next = nodes[0].next_sibling().await?;
+    let first = nodes
+        .first()
+        .ok_or_else(|| std::io::Error::other("expected #a node"))?;
+    let next = first.next_sibling().await?;
     assert!(
         next.is_some(),
         "next_sibling() of first <li> should be Some"
     );
 
-    let text = next.unwrap().text_content().await?;
+    let next_node = next.ok_or_else(|| std::io::Error::other("expected next sibling"))?;
+    let text = next_node.text_content().await?;
     assert_eq!(text.trim(), "B", "next sibling should have text 'B'");
 
     page.close().await?;
@@ -706,7 +730,10 @@ async fn previous_sibling_of_first_is_none() -> Result<(), Box<dyn std::error::E
     let nodes = page.query_selector_all("#first").await?;
     assert!(!nodes.is_empty(), "expected #first element");
 
-    let prev = nodes[0].previous_sibling().await?;
+    let first = nodes
+        .first()
+        .ok_or_else(|| std::io::Error::other("expected #first node"))?;
+    let prev = first.previous_sibling().await?;
     assert!(
         prev.is_none(),
         "previous_sibling() of first child should be None"
@@ -734,7 +761,10 @@ async fn parent_of_root_is_none() -> Result<(), Box<dyn std::error::Error>> {
     let nodes = page.query_selector_all("html").await?;
     assert!(!nodes.is_empty(), "expected <html> element");
 
-    let parent = nodes[0].parent().await?;
+    let first = nodes
+        .first()
+        .ok_or_else(|| std::io::Error::other("expected <html> node"))?;
+    let parent = first.parent().await?;
     assert!(
         parent.is_none(),
         "parent() of <html> should be None (no parentElement)"
@@ -773,13 +803,18 @@ async fn sibling_chain_lateral_extraction() -> Result<(), Box<dyn std::error::Er
     let nodes = page.query_selector_all("#label").await?;
     assert!(!nodes.is_empty(), "expected #label <td>");
 
-    let value_cell = nodes[0].next_sibling().await?;
+    let first = nodes
+        .first()
+        .ok_or_else(|| std::io::Error::other("expected #label node"))?;
+    let value_cell = first.next_sibling().await?;
     assert!(
         value_cell.is_some(),
         "next sibling of label cell should be Some"
     );
 
-    let price = value_cell.unwrap().text_content().await?;
+    let value_node =
+        value_cell.ok_or_else(|| std::io::Error::other("expected value sibling cell"))?;
+    let price = value_node.text_content().await?;
     assert_eq!(
         price.trim(),
         "$9.99",
@@ -820,7 +855,8 @@ mod similarity_tests {
         // With threshold 0.0 every element is a match — result must be non-empty.
         let result = page
             .find_similar(
-                &refs[0],
+                refs.first()
+                    .ok_or_else(|| std::io::Error::other("expected reference <p> node"))?,
                 SimilarityConfig {
                     threshold: 0.0,
                     max_results: 50,
@@ -859,7 +895,8 @@ mod similarity_tests {
         // Threshold 1.1 exceeds the maximum possible score — must yield nothing.
         let result = page
             .find_similar(
-                &refs[0],
+                refs.first()
+                    .ok_or_else(|| std::io::Error::other("expected reference <p> node"))?,
                 SimilarityConfig {
                     threshold: 1.1,
                     max_results: 10,
@@ -900,7 +937,8 @@ mod similarity_tests {
         // Threshold 0.5 is low enough to find structurally similar <p> elements.
         let result = page
             .find_similar(
-                &refs[0],
+                refs.first()
+                    .ok_or_else(|| std::io::Error::other("expected reference <p> node"))?,
                 SimilarityConfig {
                     threshold: 0.5,
                     max_results: 20,
@@ -915,11 +953,14 @@ mod similarity_tests {
 
         // Results should be ordered score-descending.
         for window in result.windows(2) {
+            let [left, right] = window else {
+                continue;
+            };
             assert!(
-                window[0].score >= window[1].score,
+                left.score >= right.score,
                 "results must be ordered by score descending; got {:.3} then {:.3}",
-                window[0].score,
-                window[1].score
+                left.score,
+                right.score
             );
         }
 
@@ -949,7 +990,10 @@ mod similarity_tests {
             "expected at least one <p> on example.com"
         );
 
-        let fp = nodes[0].fingerprint().await?;
+        let first = nodes
+            .first()
+            .ok_or_else(|| std::io::Error::other("expected first <p> node"))?;
+        let fp = first.fingerprint().await?;
         assert_eq!(fp.tag, "p", "fingerprint tag should be 'p'");
 
         // Classes and attr_names must be sorted (they may be empty on example.com).

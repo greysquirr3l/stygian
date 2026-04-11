@@ -71,7 +71,7 @@ pub struct QueryParams {
 
 /// Port: query a database and return rows as JSON values.
 ///
-/// Implementations connect to PostgreSQL, MySQL, SQLite, MongoDB, or any
+/// Implementations connect to `PostgreSQL`, `MySQL`, `SQLite`, `MongoDB`, or any
 /// other datastore and return results as `Vec<Value>`.
 ///
 /// # Example
