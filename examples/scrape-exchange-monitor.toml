@@ -1,0 +1,68 @@
+# scrape-exchange-monitor.toml
+#
+# Subscribe to the Scrape Exchange WebSocket feed, log incoming upload events,
+# and optionally filter by platform and entity type.
+#
+# Demonstrates the ScrapeExchangeFeed (StreamSourcePort) adapter for
+# real-time monitoring of new uploads from any publisher.
+#
+# Run:
+#   SCRAPE_EXCHANGE_KEY_ID=<id> \
+#   SCRAPE_EXCHANGE_KEY_SECRET=<secret> \
+#   stygian run examples/scrape-exchange-monitor.toml
+#
+# Prerequisites:
+#   - Scrape Exchange account (credentials for authenticated feed access)
+
+# ── Service declarations ──────────────────────────────────────────────────────
+
+[[services]]
+name = "scrape-exchange-feed"
+kind = "scrape-exchange-feed"
+
+# Filter to a specific platform and entity type.
+# Remove or leave empty to receive all uploads.
+[services.filter]
+platform = "web"
+entity   = "products"
+
+# Reconnection: retry up to 8 times with 500 ms initial backoff (doubles each time).
+[services.reconnect]
+max_attempts     = 8
+initial_backoff_ms = 500
+
+[[services]]
+name = "logger"
+kind = "http"            # Use an HTTP service to forward events to a webhook
+
+[services.rate_limit]
+requests_per_second = 10
+
+# ── Step 1: Subscribe to the live upload feed ─────────────────────────────────
+#
+# Collects up to 200 events from the WebSocket before yielding, or returns
+# on stream close (whichever comes first).
+
+[[nodes]]
+name    = "watch-feed"
+service = "scrape-exchange-feed"
+url     = "wss://scrape.exchange/api/messages/v1"
+
+[nodes.params]
+max_events   = 200
+message_type = "full"          # "full" | "upload_metadata" | "platform_metadata"
+
+# ── Step 2: Forward events to a webhook for processing ───────────────────────
+#
+# Each StreamEvent.data is a JSON object representing a new upload.
+# Here we POST it to an internal webhook for downstream processing.
+
+[[nodes]]
+name       = "forward-to-webhook"
+service    = "logger"
+depends_on = ["watch-feed"]
+url        = "https://hooks.example.com/ingest/scrape-exchange"
+
+[nodes.params]
+method  = "POST"
+headers = { "Content-Type" = "application/json", "X-Source" = "stygian-monitor" }

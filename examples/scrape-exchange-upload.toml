@@ -1,0 +1,90 @@
+# scrape-exchange-upload.toml
+#
+# Scrape YouTube video metadata and publish each result to Scrape Exchange.
+#
+# Demonstrates the pipeline pattern:
+#   HTTP scraper → Claude extraction → ScrapeExchangeAdapter (DataSinkPort)
+#
+# Run:
+#   SCRAPE_EXCHANGE_KEY_ID=<id> \
+#   SCRAPE_EXCHANGE_KEY_SECRET=<secret> \
+#   ANTHROPIC_API_KEY=sk-... \
+#   stygian run examples/scrape-exchange-upload.toml
+#
+# Prerequisites:
+#   - Scrape Exchange account with "yt-video-v1" schema registered
+#   - Anthropic API key for structured extraction
+
+# ── Service declarations ──────────────────────────────────────────────────────
+
+[[services]]
+name = "http"
+kind = "http"
+
+[services.rate_limit]
+requests_per_second = 1
+burst               = 3
+
+[[services]]
+name  = "claude"
+kind  = "claude"
+model = "claude-haiku-4-5"
+
+[[services]]
+name       = "scrape-exchange-sink"
+kind       = "scrape-exchange"
+schema_id  = "yt-video-v1"
+
+# Credentials are read from environment variables:
+#   SCRAPE_EXCHANGE_KEY_ID
+#   SCRAPE_EXCHANGE_KEY_SECRET
+#   SCRAPE_EXCHANGE_BASE_URL  (optional, defaults to https://scrape.exchange/api/)
+
+# ── Step 1: Fetch YouTube video page ─────────────────────────────────────────
+
+[[nodes]]
+name    = "fetch-video-page"
+service = "http"
+url     = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+[nodes.params]
+headers = { "Accept-Language" = "en-US,en;q=0.9" }
+
+# ── Step 2: Extract structured metadata via Claude ───────────────────────────
+
+[[nodes]]
+name       = "extract-metadata"
+service    = "claude"
+depends_on = ["fetch-video-page"]
+
+[nodes.params]
+system_prompt = """
+Extract structured metadata from the YouTube page HTML.
+Return valid JSON matching this schema:
+{
+  "video_id":    "string",
+  "title":       "string",
+  "channel":     "string",
+  "views":       "number",
+  "likes":       "number",
+  "description": "string",
+  "published":   "ISO 8601 date string",
+  "tags":        ["string"]
+}
+Return only the JSON object, no extra text.
+"""
+
+# ── Step 3: Publish to Scrape Exchange ───────────────────────────────────────
+#
+# The DataSinkPort adapter validates the record against "yt-video-v1" schema
+# (local sanity checks) then uploads via the REST API.
+
+[[nodes]]
+name       = "publish-to-scrape-exchange"
+service    = "scrape-exchange-sink"
+depends_on = ["extract-metadata"]
+
+[nodes.params]
+# source_url is automatically set to the input node's URL
+# metadata tags are passed to the sink for provenance
+metadata = { "pipeline" = "yt-video-upload", "env" = "production" }
