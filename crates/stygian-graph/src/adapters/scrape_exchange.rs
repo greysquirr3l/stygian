@@ -265,8 +265,7 @@ impl ScrapeExchangeClient {
             status => {
                 let body = response.text().await.unwrap_or_default();
                 Err(ScrapeExchangeError::TokenRefreshFailed(format!(
-                    "{}: {}",
-                    status, body
+                    "{status}: {body}"
                 )))
             }
         }
@@ -442,7 +441,7 @@ impl ScrapeExchangeClient {
             }
             StatusCode::NOT_FOUND => Err(ScrapeExchangeError::ApiError {
                 status: 404,
-                message: format!("Item not found: {}", item_id),
+                message: format!("Item not found: {item_id}"),
             }),
             status => {
                 let body = response.text().await.unwrap_or_default();
@@ -469,8 +468,7 @@ impl ScrapeExchangeClient {
             status => {
                 let body = response.text().await.unwrap_or_default();
                 Err(ScrapeExchangeError::HealthCheckFailed(format!(
-                    "{}: {}",
-                    status, body
+                    "{status}: {body}"
                 )))
             }
         }
@@ -810,7 +808,7 @@ impl ScrapeExchangeFeed {
     /// let feed = ScrapeExchangeFeed::new(FeedConfig::default());
     /// ```
     #[must_use]
-    pub fn new(config: FeedConfig) -> Self {
+    pub const fn new(config: FeedConfig) -> Self {
         Self {
             config,
             bearer_token: None,
@@ -978,12 +976,13 @@ impl StreamSourcePort for ScrapeExchangeFeed {
         }
     }
 
-    fn source_name(&self) -> &str {
+    fn source_name(&self) -> &'static str {
         "scrape-exchange-feed"
     }
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 

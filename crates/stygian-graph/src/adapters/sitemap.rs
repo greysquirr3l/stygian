@@ -96,7 +96,7 @@ impl SitemapAdapter {
     ///
     /// let adapter = SitemapAdapter::new(reqwest::Client::new(), 5);
     /// ```
-    pub fn new(client: reqwest::Client, max_depth: usize) -> Self {
+    pub const fn new(client: reqwest::Client, max_depth: usize) -> Self {
         Self { client, max_depth }
     }
 
@@ -125,7 +125,7 @@ impl SitemapAdapter {
         })?;
 
         // Attempt gzip decompression if URL ends in .gz or content looks gzipped
-        if url.ends_with(".gz") || (bytes.len() >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b) {
+        if url.to_ascii_lowercase().ends_with(".gz") || bytes.starts_with(&[0x1f, 0x8b]) {
             let mut decoder = GzDecoder::new(&bytes[..]);
             let mut xml = String::new();
             decoder.read_to_string(&mut xml).map_err(|e| {
@@ -205,7 +205,7 @@ impl ScrapingService for SitemapAdapter {
         let mut entries = self.resolve(&input.url, 0).await?;
 
         // Apply optional filters
-        if let Some(min_pri) = input.params.get("min_priority").and_then(|v| v.as_f64()) {
+        if let Some(min_pri) = input.params.get("min_priority").and_then(serde_json::Value::as_f64) {
             entries.retain(|e| e.priority.unwrap_or(0.0) >= min_pri);
         }
         if let Some(after) = input.params.get("lastmod_after").and_then(|v| v.as_str()) {
@@ -252,7 +252,7 @@ fn detect_root_element(xml: &str) -> Result<RootElement> {
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
+            Ok(Event::Start(ref e) | Event::Empty(ref e)) => {
                 let local = e.local_name();
                 let name = std::str::from_utf8(local.as_ref()).unwrap_or("");
                 return match name {
@@ -432,6 +432,7 @@ impl SitemapEntryBuilder {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::indexing_slicing, clippy::unwrap_used)]
 mod tests {
     use super::*;
 
