@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -12,20 +13,43 @@ permissions:
   contents: read
 
 jobs:
+  resolve:
+    name: Resolve release ref
+    runs-on: ubuntu-latest
+    outputs:
+      release_ref: ${{ steps.tag.outputs.release_ref }}
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive tag from Cargo.toml
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            REF="${{ github.ref }}"
+          else
+            VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+            REF="refs/tags/v$VERSION"
+          fi
+          VERSION="${REF#refs/tags/v}"
+          echo "release_ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION"  >> "$GITHUB_OUTPUT"
+
   validate:
     name: Validate tag vs Cargo versions
     runs-on: ubuntu-latest
+    needs: resolve
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ needs.resolve.outputs.release_ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: Verify workspace versions match tag
         run: |
-          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          TAG_VERSION="${{ needs.resolve.outputs.version }}"
           for crate in stygian-browser stygian-proxy stygian-graph stygian-mcp; do
             CARGO_VERSION=$(cargo metadata --no-deps --format-version 1 \
               | jq -r --arg name "$crate" '.packages[] | select(.name == $name) | .version')
@@ -39,11 +63,11 @@ jobs:
   publish:
     name: Publish crates to crates.io
     runs-on: ubuntu-latest
-    needs: validate
+    needs: [resolve, validate]
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ needs.resolve.outputs.release_ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -133,18 +157,18 @@ jobs:
   github-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: publish
+    needs: [resolve, publish]
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ needs.resolve.outputs.release_ref }}
 
       - name: Extract changelog for this version
         id: changelog
         run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
+          VERSION="${{ needs.resolve.outputs.version }}"
           if [ -f CHANGELOG.md ]; then
             NOTES=$(awk "/^## \[?$VERSION\]?/{flag=1; next} /^## /{flag=0} flag" CHANGELOG.md)
           else
@@ -157,6 +181,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.resolve.outputs.release_ref }}
           body: ${{ steps.changelog.outputs.notes }}
           draft: false
-          prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}
+          prerelease: ${{ contains(needs.resolve.outputs.version, '-alpha') || contains(needs.resolve.outputs.version, '-beta') || contains(needs.resolve.outputs.version, '-rc') }}
