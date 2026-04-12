@@ -184,12 +184,13 @@ println!("coverage: {:.1}%", report.coverage_pct());
 
 | Method / field | Description |
 | --- | --- |
-| `checks: Vec<CheckResult>` | Results for all 10 checks, in definition order |
+| `checks: Vec<CheckResult>` | Results for all 18 checks, in definition order |
 | `passed_count: usize` | Number of checks that passed |
 | `failed_count: usize` | Number of checks that failed |
 | `is_clean() -> bool` | `true` when all checks passed |
 | `coverage_pct() -> f64` | `passed_count / checks.len() × 100.0` |
 | `failures() -> Vec<&CheckResult>` | Filtered slice of failed results |
+| `transport: Option<TransportDiagnostic>` | Transport fingerprint diagnostics (v0.9.1+) |
 
 ### Detection checks
 
@@ -205,6 +206,14 @@ println!("coverage: {:.1}%", report.coverage_pct());
 | `OuterWindowSize` | `window.outerWidth > 0` (some headless configs return 0) |
 | `HeadlessUserAgent` | `navigator.userAgent` does not contain `"HeadlessChrome"` |
 | `NotificationPermission` | `Notification.permission !== "denied"` (instantly denied in headless) |
+| `MatchMediaPresent` | `window.matchMedia` is a function (PX env-bitmask bit 0) |
+| `ElementFromPointPresent` | `document.elementFromPoint` is a function (PX env-bitmask bit 1) |
+| `RequestAnimationFramePresent` | `window.requestAnimationFrame` is a function (PX env-bitmask bit 2) |
+| `GetComputedStylePresent` | `window.getComputedStyle` is a function (PX env-bitmask bit 3) |
+| `CssSupportsPresent` | `CSS.supports` exists and is callable (PX env-bitmask bit 4) |
+| `SendBeaconPresent` | `navigator.sendBeacon` is a function (PX env-bitmask bit 5) |
+| `ExecCommandPresent` | `document.execCommand` is a function (PX env-bitmask bit 6) |
+| `NodeJsAbsent` | `process.versions.node` is absent — not a Node.js runtime (PX env-bitmask bit 7) |
 
 ### Check granularity
 
@@ -229,8 +238,58 @@ with `"script error: "` — no panic, no error propagation.
 
 ```rust,no_run
 let json = serde_json::to_string_pretty(&report)?;
-// {"checks": [{...},...], "passed_count":10, "failed_count":0}
+// {"checks": [{...},...], "passed_count":18, "failed_count":0}
 ```
+
+---
+
+## Transport diagnostics (v0.9.1+)
+
+`PageHandle::verify_stealth_with_transport()` extends the standard diagnostic with
+transport-layer fingerprint verification. Pass observed JA3/JA4/HTTP3 values and
+the report will compare them against expectations derived from the page's User-Agent:
+
+```rust,no_run
+use stygian_browser::diagnostic::TransportObservations;
+
+let observations = TransportObservations {
+    ja3_hash: Some("abc123...".to_string()),
+    ja4: Some("t13d1715h2_...".to_string()),
+    http3_perk_text: None,
+    http3_perk_hash: None,
+};
+
+let report = page.verify_stealth_with_transport(Some(observations)).await?;
+
+if let Some(transport) = &report.transport {
+    println!("Expected profile: {:?}", transport.expected_profile);
+    println!("Transport match:  {:?}", transport.transport_match);
+    for mismatch in &transport.mismatches {
+        println!("  mismatch: {mismatch}");
+    }
+}
+```
+
+### TransportDiagnostic fields
+
+| Field | Description |
+| --- | --- |
+| `user_agent` | User-Agent sampled from the live page |
+| `expected_profile` | Built-in TLS profile name inferred from UA (e.g. `"Chrome 131"`) |
+| `expected_ja3_hash` | Expected JA3 MD5 hash from the inferred profile |
+| `expected_ja4` | Expected JA4 fingerprint from the inferred profile |
+| `expected_http3_perk_text` | Expected HTTP/3 perk text (settings + pseudo-headers) |
+| `expected_http3_perk_hash` | Expected HTTP/3 perk MD5 hash |
+| `observed` | Caller-supplied `TransportObservations` |
+| `transport_match` | `Some(true)` if all observations match; `Some(false)` on mismatch; `None` if no observations |
+| `mismatches` | Human-readable mismatch reasons |
+
+### Unknown User-Agent handling
+
+If the page's User-Agent cannot be mapped to a known browser profile, no expected
+fingerprints are derived. When observations are provided but expectations are
+missing, `transport_match` resolves to `Some(false)` with explicit mismatch entries
+explaining that no comparison was possible.
 
 ---
 
@@ -244,9 +303,11 @@ documented in [Stealth & Anti-Detection](./stealth.md):
 | `navigator.webdriver` | Browser stealth scripts |
 | Canvas / WebGL fingerprint | Browser stealth scripts (Advanced) |
 | TLS fingerprint (JA3/JA4) | `build_profiled_client` / `to_rustls_config` |
+| HTTP/3 fingerprint (perk) | `Http3Perk` / `expected_http3_perk_from_user_agent` |
 | `User-Agent` / TLS mismatch | `default_user_agent` alignment |
+| PX env-bitmask (bits 0–7) | Browser stealth scripts (v0.9.1+) |
 | CDP protocol leaks | CDP fix mode (`AddBinding` / `IsolatedWorld`) |
 | Headless `User-Agent` string | `HeadlessMode::New` + stealth UA patching |
 | IP session consistency | Sticky-session proxy rotation |
 | Anti-bot challenge pages | Tiered escalation pipeline |
-| Passive self-verification | `verify_stealth()` diagnostic report |
+| Passive self-verification | `verify_stealth()` / `verify_stealth_with_transport()` |

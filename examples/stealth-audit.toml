@@ -3,20 +3,28 @@
 # Stealth self-diagnostic: verify your browser session passes all detection checks.
 #
 # This pipeline launches a browser with Advanced stealth, navigates to a neutral
-# page, runs the full 10-check detection suite via verify_stealth(), and emits
+# page, runs the full 18-check detection suite via verify_stealth(), and emits
 # the DiagnosticReport as structured JSON output.
 #
-# The 10 checks cover:
-#   webdriver_flag       — navigator.webdriver is undefined
-#   chrome_object        — window.chrome has expected structure
-#   plugin_count         — navigator.plugins.length > 0
-#   languages_present    — navigator.languages is non-empty
-#   canvas_consistency   — canvas toDataURL() works and is non-empty
-#   web_gl_vendor        — WebGL renderer string is non-empty
-#   automation_globals   — no __webdriver_evaluate / _phantom / callPhantom globals
-#   outer_window_size    — window.outerWidth > 0
-#   headless_user_agent  — userAgent does not contain "HeadlessChrome"
-#   notification_permission — Notification.permission is not "denied"
+# The 18 checks cover:
+#   webdriver_flag              — navigator.webdriver is undefined
+#   chrome_object               — window.chrome has expected structure
+#   plugin_count                — navigator.plugins.length > 0
+#   languages_present           — navigator.languages is non-empty
+#   canvas_consistency          — canvas toDataURL() works and is non-empty
+#   web_gl_vendor               — WebGL renderer string is non-empty
+#   automation_globals          — no __webdriver_evaluate / _phantom / callPhantom globals
+#   outer_window_size           — window.outerWidth > 0
+#   headless_user_agent         — userAgent does not contain "HeadlessChrome"
+#   notification_permission     — Notification.permission is not "denied"
+#   match_media_present         — window.matchMedia is a function (PX bit 0)
+#   element_from_point_present  — document.elementFromPoint is a function (PX bit 1)
+#   request_animation_frame_present — window.requestAnimationFrame is a function (PX bit 2)
+#   get_computed_style_present  — window.getComputedStyle is a function (PX bit 3)
+#   css_supports_present        — CSS.supports exists and is callable (PX bit 4)
+#   send_beacon_present         — navigator.sendBeacon is a function (PX bit 5)
+#   exec_command_present        — document.execCommand is a function (PX bit 6)
+#   nodejs_absent               — process.versions.node is absent (PX bit 7)
 #
 # Use this pipeline to:
 #   - Verify your stealth configuration before a production run.

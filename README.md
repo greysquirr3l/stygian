@@ -17,7 +17,7 @@
 
 Stygian is a **monorepo** containing four complementary Rust crates for building robust, scalable web scraping systems:
 
-### 📊 [stygian-graph](crates/stygian-graph)
+### [stygian-graph](crates/stygian-graph)
 
 Graph-based scraping engine treating pipelines as DAGs with pluggable service modules:
 
@@ -30,7 +30,7 @@ Graph-based scraping engine treating pipelines as DAGs with pluggable service mo
 - **Idempotency** — safe retries with deduplication keys
 - **Graph introspection** — runtime inspection, impact analysis, execution waves
 
-### 🌐 [stygian-browser](crates/stygian-browser)
+### [stygian-browser](crates/stygian-browser)
 
 Anti-detection browser automation library for bypassing modern bot protection:
 
@@ -41,7 +41,7 @@ Anti-detection browser automation library for bypassing modern bot protection:
 - **TLS fingerprinting** — profile-matched JA3/JA4 signatures
 - **Cloudflare/DataDome/PerimeterX** — bypass detection layers
 
-### 🔀 [stygian-proxy](crates/stygian-proxy)
+### [stygian-proxy](crates/stygian-proxy)
 
 Proxy pool management with intelligent rotation:
 
@@ -50,7 +50,7 @@ Proxy pool management with intelligent rotation:
 - **Sticky sessions** — domain-bound proxy affinity
 - **Weighted selection** — prioritize faster/more reliable proxies
 
-### 🔌 [stygian-mcp](crates/stygian-mcp)
+### [stygian-mcp](crates/stygian-mcp)
 
 MCP (Model Context Protocol) aggregator for LLM tool integration:
 

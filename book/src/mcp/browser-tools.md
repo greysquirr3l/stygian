@@ -266,13 +266,29 @@ fingerprint, etc.).
 
 ```json
 {
-  "webdriver_present":    false,
-  "cdp_runtime_enabled":  false,
-  "navigator_webdriver":  false,
-  "webrtc_leak":          false,
-  "tls_fingerprint":      "chrome_120",
-  "canvas_noise_active":  true,
-  "requested_stealth_level": "advanced"
+  "checks": [
+    { "id": "WebDriverFlag", "passed": true, "details": "undefined" },
+    { "id": "ChromeObject", "passed": true, "details": "present" },
+    { "id": "PluginCount", "passed": true, "details": "5" },
+    { "id": "LanguagesPresent", "passed": true, "details": "en-US,en" },
+    { "id": "CanvasConsistency", "passed": true, "details": "data:image/png;..." },
+    { "id": "WebGlVendor", "passed": true, "details": "Intel Inc. -- ANGLE" },
+    { "id": "AutomationGlobals", "passed": true, "details": "none" },
+    { "id": "OuterWindowSize", "passed": true, "details": "1920x1080" },
+    { "id": "HeadlessUserAgent", "passed": true, "details": "Mozilla/5.0..." },
+    { "id": "NotificationPermission", "passed": true, "details": "default" },
+    { "id": "MatchMediaPresent", "passed": true, "details": "function" },
+    { "id": "ElementFromPointPresent", "passed": true, "details": "function" },
+    { "id": "RequestAnimationFramePresent", "passed": true, "details": "function" },
+    { "id": "GetComputedStylePresent", "passed": true, "details": "function" },
+    { "id": "CssSupportsPresent", "passed": true, "details": "function" },
+    { "id": "SendBeaconPresent", "passed": true, "details": "function" },
+    { "id": "ExecCommandPresent", "passed": true, "details": "function" },
+    { "id": "NodeJsAbsent", "passed": true, "details": "absent" }
+  ],
+  "passed_count": 18,
+  "failed_count": 0,
+  "transport": null
 }
 ```
 
