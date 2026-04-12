@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-04-11
+
+### Added
+
+- `stygian-browser`: PX VM environment-bitmask stealth checks (bits 0–7) — tests browser
+  API presence: `matchMedia`, `elementFromPoint`, `requestAnimationFrame`, `getComputedStyle`,
+  `CSS.supports`, `sendBeacon`, `execCommand`, and Node.js absence; `DiagnosticReport`
+  stores the result of each check individually
+- `stygian-browser`: `Http3Perk` type models HTTP/3 SETTINGS fingerprints (settings
+  identifiers, pseudo-header ordering, GREASE presence); `TlsProfile::http3_perk()` returns
+  the expected perk for Chrome, Edge, and Firefox profiles; Safari returns `None`
+- `stygian-browser`: `expected_http3_perk_from_user_agent()`, `expected_tls_profile_from_user_agent()`,
+  `expected_ja3_from_user_agent()`, and `expected_ja4_from_user_agent()` resolve fingerprint
+  expectations from a UA string for early mismatch detection
+- `stygian-browser`: `TransportObservations` and `TransportDiagnostic` types expose
+  expected vs. observed JA3/JA4/HTTP3 transport fingerprints in `DiagnosticReport.transport`
+- `stygian-browser`: `PageHandle::verify_stealth_with_transport()` accepts optional observed
+  transport values and returns a full `DiagnosticReport` including the new transport field
+- `stygian-browser`: MCP `browser_verify_stealth` tool now accepts four optional observed
+  transport fields (`observed_ja3_hash`, `observed_ja4`, `observed_http3_perk_text`,
+  `observed_http3_perk_hash`) and includes `TransportDiagnostic` in the response
+- `stygian-browser/examples/stealth_probe`: `--ja3-hash`, `--ja4`, `--http3-perk-text`,
+  and `--http3-perk-hash` CLI flags pass observed transport values into the canary probe;
+  transport section emitted directly from `DiagnosticReport`
+
+### Fixed
+
+- `stygian-browser`: `TlsProfile::http3_perk()` no longer falls through to a Chrome UA
+  for Safari profiles — Safari now correctly returns `None`
+- `stygian-browser`: `transport_match: Some(true)` false-positive suppressed — when the
+  observed UA is unknown and no expected values can be derived, explicit mismatch entries
+  are pushed so `transport_match` resolves to `Some(false)`
+- `stygian-browser`: `SCRIPT_NODEJS_ABSENT` hardened against `process.versions === null`
+  (e.g. in Deno) — property access was guarded with `||process.versions==null` to avoid
+  a potential thrown exception before the `node` field could be read
+- `stygian-browser/examples/stealth_probe`: `--threshold` now validates the supplied value
+  is within `0.0..=1.0`; previously the error message claimed a range that was not enforced
+- `stygian-browser`: diagnostic test renamed from `all_checks_returns_ten_entries` to
+  `all_checks_returns_eighteen_entries` to match the actual assertion count
+
 ## [0.9.0] - 2026-04-11
 
 ### Changed
@@ -721,7 +761,9 @@ Both crates are functional and well-tested, but APIs may evolve based on communi
 
 ---
 
-[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.1.9...HEAD
+[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/greysquirr3l/stygian/compare/v0.9.0...v0.9.1
+[0.9.0]: https://github.com/greysquirr3l/stygian/compare/v0.1.9...v0.9.0
 [0.1.9]: https://github.com/greysquirr3l/stygian/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/greysquirr3l/stygian/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/greysquirr3l/stygian/compare/v0.1.6...v0.1.7

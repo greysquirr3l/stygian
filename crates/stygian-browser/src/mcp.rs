@@ -350,13 +350,17 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
     #[cfg(feature = "stealth")]
     tools.push(json!({
         "name": "browser_verify_stealth",
-        "description": "Navigate to a URL and run all built-in stealth detection checks (requires stealth feature). Returns a DiagnosticReport with per-check pass/fail results and a coverage percentage.",
+        "description": "Navigate to a URL and run built-in stealth checks with optional transport diagnostics (JA3/JA4/HTTP3). Returns a DiagnosticReport with pass/fail results, coverage percentage, and transport mismatch details when observation fields are provided.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "session_id": { "type": "string" },
                 "url": { "type": "string", "description": "URL to navigate to before running checks." },
-                "timeout_secs": { "type": "integer", "default": 15, "description": "Navigation timeout in seconds." }
+                "timeout_secs": { "type": "integer", "default": 15, "description": "Navigation timeout in seconds." },
+                "observed_ja3_hash": { "type": "string", "description": "Optional observed JA3 hash to compare against expected profile." },
+                "observed_ja4": { "type": "string", "description": "Optional observed JA4 fingerprint to compare against expected profile." },
+                "observed_http3_perk_text": { "type": "string", "description": "Optional observed HTTP/3 perk text (SETTINGS|PSEUDO_HEADERS)." },
+                "observed_http3_perk_hash": { "type": "string", "description": "Optional observed HTTP/3 perk hash." }
             },
             "required": ["session_id", "url"]
         }
@@ -542,7 +546,12 @@ impl McpBrowserServer {
             "browser_eval" => self.tool_browser_eval(&args).await,
             "browser_screenshot" => self.tool_browser_screenshot(&args).await,
             "browser_content" => self.tool_browser_content(&args).await,
+            #[cfg(feature = "stealth")]
             "browser_verify_stealth" => self.tool_browser_verify_stealth(&args).await,
+            #[cfg(not(feature = "stealth"))]
+            "browser_verify_stealth" => Err(BrowserError::ConfigError(
+                "browser_verify_stealth requires the 'stealth' feature".to_string(),
+            )),
             "browser_release" => self.tool_browser_release(&args).await,
             "pool_stats" => Ok(self.tool_pool_stats()),
             "browser_query" => self.tool_browser_query(&args).await,
@@ -622,6 +631,7 @@ impl McpBrowserServer {
         }))
     }
 
+    #[cfg(feature = "stealth")]
     async fn tool_browser_verify_stealth(&self, args: &Value) -> Result<Value> {
         let session_id = Self::require_str(args, "session_id")?;
         let url = Self::require_str(args, "url")?;
@@ -629,6 +639,24 @@ impl McpBrowserServer {
             .get("timeout_secs")
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(15);
+        let observed = crate::diagnostic::TransportObservations {
+            ja3_hash: args
+                .get("observed_ja3_hash")
+                .and_then(serde_json::Value::as_str)
+                .map(ToString::to_string),
+            ja4: args
+                .get("observed_ja4")
+                .and_then(serde_json::Value::as_str)
+                .map(ToString::to_string),
+            http3_perk_text: args
+                .get("observed_http3_perk_text")
+                .and_then(serde_json::Value::as_str)
+                .map(ToString::to_string),
+            http3_perk_hash: args
+                .get("observed_http3_perk_hash")
+                .and_then(serde_json::Value::as_str)
+                .map(ToString::to_string),
+        };
 
         let (session_arc, requested_stealth) = self.session_handle_and_stealth(&session_id).await?;
 
@@ -659,7 +687,7 @@ impl McpBrowserServer {
             return Err(e);
         }
 
-        let mut result = Self::run_stealth_diagnostic(&page).await;
+        let mut result = Self::run_stealth_diagnostic(&page, observed).await;
         page.close().await?;
         // Annotate with the session's requested stealth level.
         if let Ok(ref mut v) = result
@@ -674,17 +702,13 @@ impl McpBrowserServer {
     }
 
     #[cfg(feature = "stealth")]
-    async fn run_stealth_diagnostic(page: &crate::page::PageHandle) -> Result<Value> {
-        let report = page.verify_stealth().await?;
+    async fn run_stealth_diagnostic(
+        page: &crate::page::PageHandle,
+        observed: crate::diagnostic::TransportObservations,
+    ) -> Result<Value> {
+        let report = page.verify_stealth_with_transport(Some(observed)).await?;
         serde_json::to_value(&report)
             .map_err(|e| BrowserError::ConfigError(format!("failed to serialize report: {e}")))
-    }
-
-    #[cfg(not(feature = "stealth"))]
-    async fn run_stealth_diagnostic(_page: &crate::page::PageHandle) -> Result<Value> {
-        Err(BrowserError::ConfigError(
-            "browser_verify_stealth requires the 'stealth' feature to be enabled".to_string(),
-        ))
     }
 
     async fn tool_browser_navigate(&self, args: &Value) -> Result<Value> {
@@ -1248,6 +1272,7 @@ impl McpBrowserServer {
             .clone())
     }
 
+    #[cfg(feature = "stealth")]
     async fn session_handle_and_stealth(
         &self,
         session_id: &str,

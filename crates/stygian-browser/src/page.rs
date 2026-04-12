@@ -1455,6 +1455,32 @@ impl PageHandle {
 
         Ok(DiagnosticReport::new(results))
     }
+
+    /// Run stealth checks and attach transport diagnostics (JA3/JA4/HTTP3).
+    ///
+    /// Transport expectations are inferred from `navigator.userAgent` and can
+    /// optionally be compared to caller-supplied observed transport values.
+    pub async fn verify_stealth_with_transport(
+        &self,
+        observed: Option<crate::diagnostic::TransportObservations>,
+    ) -> Result<crate::diagnostic::DiagnosticReport> {
+        let report = self.verify_stealth().await?;
+
+        let user_agent = match self.eval::<String>("navigator.userAgent").await {
+            Ok(ua) => ua,
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to read navigator.userAgent for transport diagnostics");
+                String::new()
+            }
+        };
+
+        let transport = crate::diagnostic::TransportDiagnostic::from_user_agent_and_observations(
+            &user_agent,
+            observed.as_ref(),
+        );
+
+        Ok(report.with_transport(transport))
+    }
 }
 
 // ─── extract feature ─────────────────────────────────────────────────────────

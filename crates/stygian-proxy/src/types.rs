@@ -155,7 +155,7 @@ impl ProxyMetrics {
     /// proxies that number is never reached in practice, and direct casting
     /// preserves ratios correctly (unlike saturating to `u32::MAX`).
     #[allow(clippy::cast_precision_loss)]
-    fn u64_as_f64(value: u64) -> f64 {
+    const fn u64_as_f64(value: u64) -> f64 {
         value as f64
     }
 
