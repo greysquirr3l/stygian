@@ -546,7 +546,12 @@ impl McpBrowserServer {
             "browser_eval" => self.tool_browser_eval(&args).await,
             "browser_screenshot" => self.tool_browser_screenshot(&args).await,
             "browser_content" => self.tool_browser_content(&args).await,
+            #[cfg(feature = "stealth")]
             "browser_verify_stealth" => self.tool_browser_verify_stealth(&args).await,
+            #[cfg(not(feature = "stealth"))]
+            "browser_verify_stealth" => Err(BrowserError::ConfigError(
+                "browser_verify_stealth requires the 'stealth' feature".to_string(),
+            )),
             "browser_release" => self.tool_browser_release(&args).await,
             "pool_stats" => Ok(self.tool_pool_stats()),
             "browser_query" => self.tool_browser_query(&args).await,
@@ -626,6 +631,7 @@ impl McpBrowserServer {
         }))
     }
 
+    #[cfg(feature = "stealth")]
     async fn tool_browser_verify_stealth(&self, args: &Value) -> Result<Value> {
         let session_id = Self::require_str(args, "session_id")?;
         let url = Self::require_str(args, "url")?;
@@ -703,16 +709,6 @@ impl McpBrowserServer {
         let report = page.verify_stealth_with_transport(Some(observed)).await?;
         serde_json::to_value(&report)
             .map_err(|e| BrowserError::ConfigError(format!("failed to serialize report: {e}")))
-    }
-
-    #[cfg(not(feature = "stealth"))]
-    async fn run_stealth_diagnostic(
-        _page: &crate::page::PageHandle,
-        _observed: crate::diagnostic::TransportObservations,
-    ) -> Result<Value> {
-        Err(BrowserError::ConfigError(
-            "browser_verify_stealth requires the 'stealth' feature to be enabled".to_string(),
-        ))
     }
 
     async fn tool_browser_navigate(&self, args: &Value) -> Result<Value> {
@@ -1276,6 +1272,7 @@ impl McpBrowserServer {
             .clone())
     }
 
+    #[cfg(feature = "stealth")]
     async fn session_handle_and_stealth(
         &self,
         session_id: &str,

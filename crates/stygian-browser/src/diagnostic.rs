@@ -142,10 +142,11 @@ impl TransportDiagnostic {
     ) -> Self {
         let observed = observed.cloned().unwrap_or_default();
 
+        // Resolve profile once; derive all fingerprints from it to avoid repeated UA parsing.
         let expected_profile = crate::tls::expected_tls_profile_from_user_agent(user_agent);
-        let expected_ja3 = crate::tls::expected_ja3_from_user_agent(user_agent);
-        let expected_ja4 = crate::tls::expected_ja4_from_user_agent(user_agent);
-        let expected_http3 = crate::tls::expected_http3_perk_from_user_agent(user_agent);
+        let expected_ja3 = expected_profile.map(crate::tls::TlsProfile::ja3);
+        let expected_ja4 = expected_profile.map(crate::tls::TlsProfile::ja4);
+        let expected_http3 = expected_profile.and_then(crate::tls::TlsProfile::http3_perk);
 
         let mut mismatches = Vec::new();
 
@@ -734,5 +735,90 @@ mod tests {
         let restored: DiagnosticReport = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.passed_count, report.passed_count);
         assert!(restored.is_clean());
+    }
+
+    #[test]
+    fn transport_diagnostic_reports_match_for_matching_observations() {
+        let user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+        let expected = TransportDiagnostic::from_user_agent_and_observations(user_agent, None);
+
+        // Ensure test UA resolves at least one expected fingerprint.
+        assert!(
+            expected.expected_profile.is_some()
+                || expected.expected_ja3_hash.is_some()
+                || expected.expected_ja4.is_some()
+                || expected.expected_http3_perk_text.is_some()
+        );
+
+        let observed = TransportObservations {
+            ja3_hash: expected.expected_ja3_hash.clone(),
+            ja4: expected.expected_ja4.clone(),
+            http3_perk_text: expected.expected_http3_perk_text.clone(),
+            http3_perk_hash: expected.expected_http3_perk_hash,
+        };
+        let diagnostic =
+            TransportDiagnostic::from_user_agent_and_observations(user_agent, Some(&observed));
+
+        assert_eq!(diagnostic.transport_match, Some(true));
+        assert!(diagnostic.mismatches.is_empty());
+    }
+
+    #[test]
+    fn transport_diagnostic_reports_mismatch_for_mismatching_observations() {
+        let user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+        let expected = TransportDiagnostic::from_user_agent_and_observations(user_agent, None);
+
+        assert!(expected.expected_ja3_hash.is_some());
+
+        let observed = TransportObservations {
+            ja3_hash: Some("definitely-not-the-expected-ja3".to_string()),
+            ja4: expected.expected_ja4.clone(),
+            http3_perk_text: expected.expected_http3_perk_text.clone(),
+            http3_perk_hash: expected.expected_http3_perk_hash,
+        };
+        let diagnostic =
+            TransportDiagnostic::from_user_agent_and_observations(user_agent, Some(&observed));
+
+        assert_eq!(diagnostic.transport_match, Some(false));
+        assert!(!diagnostic.mismatches.is_empty());
+        assert!(
+            diagnostic
+                .mismatches
+                .iter()
+                .any(|m| m.contains("ja3_hash mismatch"))
+        );
+    }
+
+    #[test]
+    fn transport_diagnostic_flags_observations_when_no_expectations_derivable() {
+        let user_agent = "UnknownBrowser/0.0";
+        let diagnostic_without_observed =
+            TransportDiagnostic::from_user_agent_and_observations(user_agent, None);
+
+        // Unknown UA should not resolve any expectations.
+        assert_eq!(diagnostic_without_observed.expected_profile, None);
+        assert_eq!(diagnostic_without_observed.expected_ja3_hash, None);
+        assert_eq!(diagnostic_without_observed.expected_ja4, None);
+        assert_eq!(diagnostic_without_observed.expected_http3_perk_text, None);
+
+        let observed = TransportObservations {
+            ja3_hash: Some("some-observed-ja3".to_string()),
+            ja4: Some("some-observed-ja4".to_string()),
+            http3_perk_text: Some("some-observed-http3-perk-text".to_string()),
+            http3_perk_hash: Some("some-observed-http3-perk-hash".to_string()),
+        };
+
+        let diagnostic =
+            TransportDiagnostic::from_user_agent_and_observations(user_agent, Some(&observed));
+
+        // With observations but no expectations, mismatches should be flagged.
+        assert_eq!(diagnostic.transport_match, Some(false));
+        assert!(!diagnostic.mismatches.is_empty());
+        assert!(
+            diagnostic
+                .mismatches
+                .iter()
+                .any(|m| m.contains("no expected JA3 could be derived"))
+        );
     }
 }

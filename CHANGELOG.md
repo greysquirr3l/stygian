@@ -11,11 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `stygian-browser`: PX VM environment-bitmask stealth checks (bits 0–7) — detects VM
-  indicators exposed via JavaScript: `navigator.hardwareConcurrency`, `screen` dimensions,
-  `devicePixelRatio`, `navigator.platform`, timezone offset, memory constraints, WebGL
-  renderer/vendor strings, and battery API absence; results encoded as a bitmask in
-  `DiagnosticReport`
+- `stygian-browser`: PX VM environment-bitmask stealth checks (bits 0–7) — tests browser
+  API presence: `matchMedia`, `elementFromPoint`, `requestAnimationFrame`, `getComputedStyle`,
+  `CSS.supports`, `sendBeacon`, `execCommand`, and Node.js absence; `DiagnosticReport`
+  stores the result of each check individually
 - `stygian-browser`: `Http3Perk` type models HTTP/3 SETTINGS fingerprints (settings
   identifiers, pseudo-header ordering, GREASE presence); `TlsProfile::http3_perk()` returns
   the expected perk for Chrome, Edge, and Firefox profiles; Safari returns `None`

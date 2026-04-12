@@ -688,26 +688,7 @@ impl Http3Perk {
 /// Returns `None` when the browser family is unknown or unsupported.
 #[must_use]
 pub fn expected_http3_perk_from_user_agent(user_agent: &str) -> Option<Http3Perk> {
-    let ua = user_agent.to_ascii_lowercase();
-
-    // Chromium family: Chrome/Edge share the same high-level HTTP/3 pattern.
-    if ua.contains("edg/") || ua.contains("chrome/") {
-        return Some(Http3Perk {
-            settings: vec![(1, 65_536), (6, 262_144), (7, 100), (51, 1)],
-            pseudo_headers: "masp".to_string(),
-            has_grease: true,
-        });
-    }
-
-    if ua.contains("firefox/") {
-        return Some(Http3Perk {
-            settings: vec![(1, 65_536), (7, 20), (727_725_890, 0)],
-            pseudo_headers: "mpas".to_string(),
-            has_grease: false,
-        });
-    }
-
-    None
+    expected_tls_profile_from_user_agent(user_agent).and_then(TlsProfile::http3_perk)
 }
 
 /// Resolve the expected built-in TLS profile for a given User-Agent.
