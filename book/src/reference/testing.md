@@ -83,7 +83,7 @@ cargo tarpaulin -p stygian-browser --lib --ignore-tests --out Lcov
 
 | Scope | Line coverage | Notes |
 | --- | --- | --- |
-| **Workspace** | **65.74 %** | 2 882 / 4 384 lines · 209 tests |
+| **Workspace** | **65.74 %** | 2 882 / 4 384 lines · 1639 tests |
 | `stygian-graph` | ~72 % | All unit and integration logic covered |
 | `stygian-browser` | structurally bounded | Chrome-gated tests excluded from CI |
 

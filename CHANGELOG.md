@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.9.1] - 2026-04-11
+## [0.9.1] - 2026-04-12
 
 ### Added
 
@@ -46,6 +46,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is within `0.0..=1.0`; previously the error message claimed a range that was not enforced
 - `stygian-browser`: diagnostic test renamed from `all_checks_returns_ten_entries` to
   `all_checks_returns_eighteen_entries` to match the actual assertion count
+
+### Documentation
+
+- `book/browser/stealth-v2.md`: updated `DiagnosticReport` table (10→18 checks), added 8
+  PX env-bitmask checks to Detection checks table, added new Transport diagnostics section
+  documenting `verify_stealth_with_transport()` and `TransportDiagnostic` fields
+- `book/mcp/browser-tools.md`: fixed `browser_verify_stealth` JSON example to show actual
+  `DiagnosticReport` structure with all 18 check IDs
+- `examples/stealth-audit.toml`: updated check count (10→18) and added PX bit descriptions
+- `crates/stygian-graph/README.md`: updated test count badge (209→1639)
+- `book/reference/testing.md`: updated workspace test count (209→1639)
 
 ## [0.9.0] - 2026-04-11
 
