@@ -463,7 +463,7 @@ const SCRIPT_GET_COMPUTED_STYLE: &str = concat!(
 const SCRIPT_CSS_SUPPORTS: &str = concat!(
     "JSON.stringify({",
     "passed:typeof CSS!=='undefined'&&typeof CSS.supports==='function',",
-    "details:typeof CSS",
+    "details:typeof CSS!=='undefined'?typeof CSS.supports:'undefined'",
     "})"
 );
 

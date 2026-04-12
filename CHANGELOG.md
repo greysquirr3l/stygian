@@ -761,7 +761,9 @@ Both crates are functional and well-tested, but APIs may evolve based on communi
 
 ---
 
-[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.1.9...HEAD
+[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/greysquirr3l/stygian/compare/v0.9.0...v0.9.1
+[0.9.0]: https://github.com/greysquirr3l/stygian/compare/v0.1.9...v0.9.0
 [0.1.9]: https://github.com/greysquirr3l/stygian/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/greysquirr3l/stygian/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/greysquirr3l/stygian/compare/v0.1.6...v0.1.7

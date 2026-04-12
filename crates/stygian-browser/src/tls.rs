@@ -926,12 +926,7 @@ impl TlsProfile {
     #[must_use]
     pub fn http3_perk(&self) -> Option<Http3Perk> {
         match self.name.as_str() {
-            name if name.starts_with("Chrome ") => Some(Http3Perk {
-                settings: vec![(1, 65_536), (6, 262_144), (7, 100), (51, 1)],
-                pseudo_headers: "masp".to_string(),
-                has_grease: true,
-            }),
-            name if name.starts_with("Edge ") => Some(Http3Perk {
+            name if name.starts_with("Chrome ") || name.starts_with("Edge ") => Some(Http3Perk {
                 settings: vec![(1, 65_536), (6, 262_144), (7, 100), (51, 1)],
                 pseudo_headers: "masp".to_string(),
                 has_grease: true,
