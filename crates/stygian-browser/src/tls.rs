@@ -309,8 +309,9 @@ impl fmt::Display for SignatureAlgorithm {
 ///
 /// # Example
 ///
-/// ```
-///
+/// ```rust
+/// use stygian_browser::tls::AlpnProtocol;
+/// assert_eq!(AlpnProtocol::H2.as_str(), "h2");
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -322,11 +323,13 @@ pub enum AlpnProtocol {
 }
 
 impl AlpnProtocol {
+    /// Returns the wire string for this protocol.
     ///
     /// # Example
     ///
-    /// ```
-    ///
+    /// ```rust
+    /// use stygian_browser::tls::AlpnProtocol;
+    /// assert_eq!(AlpnProtocol::Http11.as_str(), "http/1.1");
     /// ```
     pub const fn as_str(self) -> &'static str {
         match self {
