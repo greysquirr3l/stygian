@@ -404,8 +404,6 @@ impl fmt::Display for Ja3Hash {
 }
 
 /// Compute MD5 of `data` and return a 32-char lowercase hex string.
-///
-#[expect(clippy::pedantic)]
 #[allow(
     clippy::many_single_char_names,
     clippy::too_many_lines,
@@ -665,7 +663,7 @@ pub fn expected_http3_perk_from_user_agent(user_agent: &str) -> Option<Http3Perk
     expected_tls_profile_from_user_agent(user_agent).and_then(TlsProfile::http3_perk)
 }
 
-///
+/// Returns the `TlsProfile` for the given user-agent string, if known.
 #[must_use]
 pub fn expected_tls_profile_from_user_agent(user_agent: &str) -> Option<&'static TlsProfile> {
     let ua = user_agent.to_ascii_lowercase();
@@ -701,7 +699,7 @@ pub fn expected_ja4_from_user_agent(user_agent: &str) -> Option<Ja4> {
 
 // ── profile methods ──────────────────────────────────────────────────────────
 
-///
+/// Truncates a hex string `s` to at most `n` characters.
 fn truncate_hex(s: &str, n: usize) -> &str {
     let end = s.len().min(n);
     &s[..end]
@@ -874,7 +872,7 @@ impl TlsProfile {
         }
     }
 
-    ///
+    /// Returns HTTP/3 QUIC settings for browsers that support it, if applicable.
     #[must_use]
     pub fn http3_perk(&self) -> Option<Http3Perk> {
         match self.name.as_str() {
@@ -1456,7 +1454,8 @@ mod rustls_config {
         /// ```
         /// use stygian_browser::tls::{CHROME_131, TlsControl};
         ///
-        /// assert!(cfg.is_ok());
+        /// let result = CHROME_131.to_rustls_config_with_control(TlsControl::default());
+        /// assert!(result.is_ok());
         /// ```
         pub fn to_rustls_config_with_control(
             &self,

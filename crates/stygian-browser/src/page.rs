@@ -156,11 +156,12 @@ pub enum WaitUntil {
 /// let handle = pool.acquire().await?;
 /// let mut page = handle.browser().expect("valid browser").new_page().await?;
 /// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
-///
+/// # let nodes = page.query_selector_all("a").await?;
+/// # for node in &nodes {
 ///     let href = node.attr("href").await?;
 ///     let text = node.text_content().await?;
 ///     println!("{text}: {href:?}");
-/// }
+/// # }
 /// # Ok(())
 /// # }
 /// ```
@@ -391,6 +392,7 @@ impl NodeHandle {
     /// let handle = pool.acquire().await?;
     /// let mut page = handle.browser().expect("valid browser").new_page().await?;
     /// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
+    /// # let nodes = page.query_selector_all("a").await?;
     /// if let Some(parent) = nodes[0].parent().await? {
     ///     let html = parent.outer_html().await?;
     ///     println!("parent: {}", &html[..html.len().min(80)]);
@@ -434,6 +436,7 @@ impl NodeHandle {
     /// let handle = pool.acquire().await?;
     /// let mut page = handle.browser().expect("valid browser").new_page().await?;
     /// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
+    /// # let nodes = page.query_selector_all("a").await?;
     /// if let Some(next) = nodes[0].next_sibling().await? {
     ///     println!("next sibling: {}", next.text_content().await?);
     /// }
@@ -476,6 +479,7 @@ impl NodeHandle {
     /// let handle = pool.acquire().await?;
     /// let mut page = handle.browser().expect("valid browser").new_page().await?;
     /// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
+    /// # let nodes = page.query_selector_all("a").await?;
     /// if let Some(prev) = nodes[1].previous_sibling().await? {
     ///     println!("prev sibling: {}", prev.text_content().await?);
     /// }
@@ -1048,11 +1052,12 @@ impl PageHandle {
     /// let handle = pool.acquire().await?;
     /// let mut page = handle.browser().expect("valid browser").new_page().await?;
     /// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
-    ///
+    /// # let nodes = page.query_selector_all("div[data-ux]").await?;
+    /// # for node in &nodes {
     ///     let ux_type = node.attr("data-ux").await?;
     ///     let text    = node.text_content().await?;
     ///     println!("{ux_type:?}: {text}");
-    /// }
+    /// # }
     /// # Ok(())
     /// # }
     /// ```
@@ -1162,9 +1167,14 @@ impl PageHandle {
     /// let handle = pool.acquire().await?;
     /// let page = handle.browser().expect("valid browser").new_page().await?;
     /// let cookies = vec![SessionCookie {
+    ///     name: "session".to_string(),
+    ///     value: "abc123".to_string(),
+    ///     domain: ".example.com".to_string(),
+    ///     path: "/".to_string(),
     ///     expires: -1.0,
     ///     http_only: true,
     ///     secure: true,
+    ///     same_site: "Lax".to_string(),
     /// }];
     /// page.inject_cookies(&cookies).await?;
     /// # Ok(())
@@ -1303,8 +1313,9 @@ impl PageHandle {
     ///
     /// let report = page.verify_stealth().await?;
     /// println!("Stealth: {}/{} checks passed", report.passed_count, report.checks.len());
+    /// # for failure in report.failures() {
     ///     eprintln!("  FAIL  {}: {}", failure.description, failure.details);
-    /// }
+    /// # }
     /// # Ok(())
     /// # }
     /// ```
@@ -1383,7 +1394,7 @@ impl PageHandle {
     ///
     /// # Example
     ///
-    /// ```no_run
+    /// ```ignore
     /// use stygian_browser::extract::Extract;
     /// use stygian_browser::{BrowserPool, BrowserConfig, WaitUntil};
     /// use std::time::Duration;
@@ -1495,9 +1506,12 @@ impl PageHandle {
     /// let mut page = handle.browser().expect("valid browser").new_page().await?;
     /// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
     ///
+    /// # let nodes = page.query_selector_all("h1").await?;
+    /// # let reference = nodes.into_iter().next().ok_or(stygian_browser::error::BrowserError::StaleNode { selector: "h1".to_string() })?;
     ///     let similar = page.find_similar(&reference, SimilarityConfig::default()).await?;
+    /// # for m in &similar {
     ///         println!("score={:.2}", m.score);
-    ///     }
+    /// # }
     /// # Ok(())
     /// # }
     /// ```

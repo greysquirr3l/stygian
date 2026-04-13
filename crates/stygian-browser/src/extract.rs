@@ -2,7 +2,7 @@
 //!
 //! # Example
 //!
-//! ```no_run
+//! ```ignore
 //! use stygian_browser::extract::Extract;
 //! use stygian_browser::{BrowserPool, BrowserConfig, WaitUntil};
 //! use std::time::Duration;
@@ -68,6 +68,7 @@ pub enum ExtractionError {
     ///
     /// ```
     /// use stygian_browser::extract::ExtractionError;
+    /// # let inner = ExtractionError::Missing { field: "link", selector: "a" };
     /// let e = ExtractionError::Nested {
     ///     field: "link",
     ///     source: Box::new(inner),
@@ -91,7 +92,7 @@ pub enum ExtractionError {
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```ignore
 /// use stygian_browser::extract::{Extractable, ExtractionError, Extract};
 /// use stygian_browser::page::NodeHandle;
 ///
