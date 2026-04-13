@@ -176,7 +176,7 @@ impl MouseSimulator {
     /// points to produce natural curved paths.  Each waypoint receives
     /// sub-pixel jitter (±0.8 px) for micro-tremor realism.
     ///
-    /// Pure (no I/O) and exposed for testing.
+    /// This method is pure, performs no I/O, and is exposed for testing.
     ///
     /// # Example
     ///

@@ -9,7 +9,9 @@
 //!
 //! #[derive(Extract)]
 //! struct Headline {
+//!     #[selector("h2.headline")]
 //!     title: String,
+//!     #[selector("a.link")]
 //!     link: Option<String>,
 //! }
 //!
@@ -34,7 +36,8 @@ pub use stygian_extract_derive::Extract;
 /// An error produced during `#[derive(Extract)]`-driven extraction.
 ///
 /// The [`CdpFailed`][Self::CdpFailed] variant boxes its [`crate::error::BrowserError`]
-/// `BrowserError::ExtractionFailed` and this enum.
+/// to avoid an infinitely sized recursive type, since
+/// `BrowserError::ExtractionFailed` can contain this enum.
 #[derive(Debug, thiserror::Error)]
 pub enum ExtractionError {
     ///
@@ -109,7 +112,8 @@ pub trait Extractable: Sized {
     ///
     /// # Errors
     ///
-    /// element, when a CDP call fails, or when nested extraction fails.
+    /// Returns an error when a required selector matches no element, when a
+    /// CDP call fails, or when nested extraction fails.
     fn extract_from(
         node: &crate::page::NodeHandle,
     ) -> impl std::future::Future<Output = Result<Self, ExtractionError>> + Send;

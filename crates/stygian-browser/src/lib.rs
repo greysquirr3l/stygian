@@ -4,13 +4,14 @@
 #![allow(clippy::multiple_crate_versions)]
 #![deny(unsafe_code)] // All unsafe usage is confined to #[cfg(test)] modules with explicit #[allow]
 //!
-//! Cloudflare, `DataDome`, `PerimeterX`, and Akamai Bot Manager.
+//! Browser automation and stealth tooling for sites protected by Cloudflare,
+//! `DataDome`, `PerimeterX`, and Akamai Bot Manager.
 //!
 //! ## Features
 //!
 //! - **Browser pooling** — warm pool with min/max sizing, LRU eviction, and backpressure;
 //!   sub-100 ms acquire from the warm queue
-//!   User-Agent patching, and plugin population
+//! - **Anti-detection** — User-Agent patching and plugin population
 //! - **Human behaviour** — Bézier-curve mouse paths, human-paced typing with typos,
 //!   random scroll and micro-interactions
 //! - **Fingerprint generation** — statistically-weighted device profiles matching

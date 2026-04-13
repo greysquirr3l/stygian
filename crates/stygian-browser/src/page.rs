@@ -127,9 +127,11 @@ impl ResourceFilter {
 /// ```
 /// use stygian_browser::page::WaitUntil;
 /// ```
+/// Specifies what condition to wait for after a page navigation.
 #[derive(Debug, Clone)]
 pub enum WaitUntil {
-    /// such as images and stylesheets finish loading.
+    /// Fires when the initial HTML is fully parsed, without waiting for
+    /// subresources such as images and stylesheets to finish loading.
     DomContentLoaded,
     NetworkIdle,
     Selector(String),
@@ -376,10 +378,11 @@ impl NodeHandle {
     ///
     /// Issues a single `Runtime.callFunctionOn` CDP call that temporarily tags
     /// the parent element with a unique attribute, then resolves it via a
+    /// CSS attribute selector.
     ///
     /// # Errors
     ///
-    /// invalidated.
+    /// Returns an error if the CDP call fails or the page handle is invalidated.
     ///
     /// # Example
     ///
@@ -506,6 +509,8 @@ impl NodeHandle {
     /// and [`previous_sibling`].
     ///
     /// The caller provides a JS function that:
+    /// 1. Computes the traversal target (for example, the parent, next
+    ///    sibling, or previous sibling) and stores it in a local variable.
     /// 2. If the target is non-null, sets a unique attribute (`attr_name`)
     ///    on it and returns `true`.
     /// 3. Returns `false` when the target is null (no such neighbour).

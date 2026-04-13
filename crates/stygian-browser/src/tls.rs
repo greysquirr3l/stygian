@@ -720,10 +720,10 @@ fn is_grease(v: u16) -> bool {
 }
 
 impl TlsProfile {
-    ///
+    /// Computes the JA3 fingerprint string for this profile.
     ///
     /// - GREASE values are stripped from all fields.
-    ///   specified in the profile.
+    /// - Fields are ordered as specified in the profile.
     ///
     /// # Example
     ///
