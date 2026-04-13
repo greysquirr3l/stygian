@@ -183,7 +183,7 @@ pub struct ConnectivityMetrics {
 
 /// Complete snapshot of graph structure and analysis
 ///
-/// Provides a comprehensive view of the graph state for introspection.
+/// Reports the graph state for introspection.
 ///
 /// # Example
 ///

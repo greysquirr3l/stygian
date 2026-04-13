@@ -1728,7 +1728,6 @@ mod tests {
         Ok(())
     }
 
-
     /// `"div::parent"`) must surface that suffix in its `Display` output so
     /// callers can locate the failed traversal in logs.
     #[test]

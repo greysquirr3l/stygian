@@ -22,7 +22,7 @@
 //! use stygian_browser::{BrowserPool, BrowserConfig, WaitUntil};
 //! use std::time::Duration;
 //!
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Default config: headless, Advanced stealth, pool of 2–10 browsers
 //!     let config = BrowserConfig::default();
 //!     let pool = BrowserPool::new(config).await?;
@@ -34,6 +34,7 @@
 //!     let mut page = handle.browser().expect("valid browser").new_page().await?;
 //!     page.navigate(
 //!         "https://example.com",
+//!         WaitUntil::DomContentLoaded,
 //!         Duration::from_secs(30),
 //!     ).await?;
 //!
@@ -41,7 +42,7 @@
 //!
 //!     handle.release().await;
 //!     Ok(())
-//! }
+//! # }
 //! ```
 //!
 //! ## Stealth Levels
