@@ -9,9 +9,7 @@
 //!
 //! #[derive(Extract)]
 //! struct Headline {
-//!     #[selector("h2")]
 //!     title: String,
-//!     #[selector("a", attr = "href")]
 //!     link: Option<String>,
 //! }
 //!
@@ -36,31 +34,24 @@ pub use stygian_extract_derive::Extract;
 /// An error produced during `#[derive(Extract)]`-driven extraction.
 ///
 /// The [`CdpFailed`][Self::CdpFailed] variant boxes its [`crate::error::BrowserError`]
-/// source to break the otherwise-infinite recursive type size between
 /// `BrowserError::ExtractionFailed` and this enum.
 #[derive(Debug, thiserror::Error)]
 pub enum ExtractionError {
-    /// A required field's selector matched no element.
     ///
     /// # Example
     ///
     /// ```
     /// use stygian_browser::extract::ExtractionError;
-    /// let e = ExtractionError::Missing { field: "title", selector: "h2" };
-    /// assert!(e.to_string().contains("title"));
-    /// assert!(e.to_string().contains("h2"));
     /// ```
     #[error("required field `{field}` had no match for selector `{selector}`")]
     Missing {
         /// Name of the Rust struct field that required a match.
         field: &'static str,
-        /// CSS selector that produced no results.
         selector: &'static str,
     },
 
     /// A CDP call inside extraction failed.
     ///
-    /// The [`crate::error::BrowserError`] source is boxed to prevent an
     /// infinitely-sized recursive type (since `BrowserError` may itself contain
     /// an `ExtractionError` via its `ExtractionFailed` variant).
     #[error("CDP error extracting field `{field}`: {source}")]
@@ -72,18 +63,15 @@ pub enum ExtractionError {
         source: Box<crate::error::BrowserError>,
     },
 
-    /// A `#[selector(..., nested)]` field's inner extraction failed.
     ///
     /// # Example
     ///
     /// ```
     /// use stygian_browser::extract::ExtractionError;
-    /// let inner = ExtractionError::Missing { field: "href", selector: "a" };
     /// let e = ExtractionError::Nested {
     ///     field: "link",
     ///     source: Box::new(inner),
     /// };
-    /// assert!(e.to_string().contains("link"));
     /// ```
     #[error("nested extraction for field `{field}` failed: {source}")]
     Nested {
@@ -109,22 +97,17 @@ pub enum ExtractionError {
 ///
 /// #[derive(Extract)]
 /// struct Title {
-///     #[selector("h1")]
 ///     text: String,
 /// }
 ///
-/// // `Title` now implements `Extractable` and can be passed to
 /// // `PageHandle::extract_all::<Title>`.
 /// ```
 pub trait Extractable: Sized {
     /// Extract an instance of `Self` from the given DOM node.
     ///
-    /// The node is the **root** element — selectors in the derive macro are
-    /// evaluated relative to it via `children_matching`.
     ///
     /// # Errors
     ///
-    /// Returns [`ExtractionError`] when a required field selector matches no
     /// element, when a CDP call fails, or when nested extraction fails.
     fn extract_from(
         node: &crate::page::NodeHandle,

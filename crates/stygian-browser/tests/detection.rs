@@ -363,7 +363,7 @@ async fn browserleaks_no_automation_signals() -> Result<(), Box<dyn std::error::
 
 /// Navigate to `CreepJS` and confirm the page loads without a bot-crash.
 ///
-/// `CreepJS` runs comprehensive fingerprinting; a blocked/error page would be
+/// `CreepJS` runs thorough fingerprinting; a blocked/error page would be
 /// shorter than a few hundred bytes.  We also check the baseline properties.
 #[tokio::test]
 #[ignore = "requires real Chrome binary and external network access"]

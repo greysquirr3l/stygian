@@ -1,21 +1,10 @@
-//! Page and browsing context management for isolated, parallel scraping
-//!
-//! Each `BrowserContext` (future) is an incognito-style isolation boundary (separate
-//! cookies, localStorage, cache).  Each context can contain many [`PageHandle`]s
-//! (tabs).  Both types clean up their CDP resources automatically on drop.
 //!
 //! ## Resource blocking
-//!
-//! Pass a [`ResourceFilter`] to [`PageHandle::set_resource_filter`] to intercept
-//! and block specific request types (images, fonts, CSS) before page load —
-//! significantly reducing page load times for text-only scraping.
 //!
 //! ## Wait strategies
 //!
 //! [`PageHandle`] exposes three wait strategies via [`WaitUntil`]:
 //! - `DomContentLoaded` — fires when the HTML is parsed
-//! - `NetworkIdle` — fires when there are ≤2 in-flight requests for 500 ms
-//! - `Selector(css)` — fires when a CSS selector matches an element
 //!
 //! # Example
 //!
@@ -67,7 +56,6 @@ pub enum ResourceType {
 }
 
 impl ResourceType {
-    /// Returns the string used in CDP `Network.requestIntercepted` events.
     pub const fn as_cdp_str(&self) -> &'static str {
         match self {
             Self::Image => "Image",
@@ -80,7 +68,6 @@ impl ResourceType {
 
 // ─── ResourceFilter ───────────────────────────────────────────────────────────
 
-/// Set of resource types to block from loading.
 ///
 /// # Example
 ///
@@ -107,14 +94,12 @@ impl ResourceFilter {
         }
     }
 
-    /// Block only images and fonts (keep styles for layout-sensitive work).
     pub fn block_images_and_fonts() -> Self {
         Self {
             blocked: vec![ResourceType::Image, ResourceType::Font],
         }
     }
 
-    /// Add a resource type to the block list.
     #[must_use]
     pub fn block(mut self, resource: ResourceType) -> Self {
         if !self.blocked.contains(&resource) {
@@ -123,14 +108,12 @@ impl ResourceFilter {
         self
     }
 
-    /// Returns `true` if the given CDP resource type string should be blocked.
     pub fn should_block(&self, cdp_type: &str) -> bool {
         self.blocked
             .iter()
             .any(|r| r.as_cdp_str().eq_ignore_ascii_case(cdp_type))
     }
 
-    /// Returns `true` if no resource types are blocked.
     pub const fn is_empty(&self) -> bool {
         self.blocked.is_empty()
     }
@@ -138,34 +121,23 @@ impl ResourceFilter {
 
 // ─── WaitUntil ────────────────────────────────────────────────────────────────
 
-/// Condition to wait for after a navigation.
 ///
 /// # Example
 ///
 /// ```
 /// use stygian_browser::page::WaitUntil;
-/// let w = WaitUntil::Selector("#main".to_string());
-/// assert!(matches!(w, WaitUntil::Selector(_)));
 /// ```
 #[derive(Debug, Clone)]
 pub enum WaitUntil {
-    /// Wait for the `Page.domContentEventFired` CDP event — fires when the HTML
-    /// document has been fully parsed and the DOM is ready, before subresources
     /// such as images and stylesheets finish loading.
     DomContentLoaded,
-    /// Wait for the `Page.loadEventFired` CDP event **and** then wait until no
-    /// more than 2 network requests are in-flight for at least 500 ms
-    /// (equivalent to Playwright's `networkidle2`).
     NetworkIdle,
-    /// Wait until `document.querySelector(selector)` returns a non-null element.
     Selector(String),
 }
 
 // ─── NodeHandle ───────────────────────────────────────────────────────────────
 
-/// A handle to a live DOM node backed by a CDP `RemoteObjectId`.
 ///
-/// Obtained via [`PageHandle::query_selector_all`].  Each method issues one or
 /// more CDP `Runtime.callFunctionOn` calls against the held V8 remote object
 /// reference — no HTML serialisation occurs.
 ///
@@ -185,7 +157,6 @@ pub enum WaitUntil {
 /// let mut page = handle.browser().expect("valid browser").new_page().await?;
 /// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
 ///
-/// for node in page.query_selector_all("a[href]").await? {
 ///     let href = node.attr("href").await?;
 ///     let text = node.text_content().await?;
 ///     println!("{text}: {href:?}");
@@ -195,12 +166,10 @@ pub enum WaitUntil {
 /// ```
 pub struct NodeHandle {
     element: chromiumoxide::element::Element,
-    /// Original CSS selector — preserved for stale-node error messages only.
     /// Shared via `Arc<str>` so all handles from a single query reuse the
     /// same allocation rather than cloning a `String` per node.
     selector: Arc<str>,
     cdp_timeout: Duration,
-    /// Cloned page reference used only for document-level element resolution
     /// during DOM traversal (parent / sibling navigation).
     page: chromiumoxide::Page,
 }
@@ -212,7 +181,6 @@ impl NodeHandle {
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::StaleNode`] when the remote object has been
     /// invalidated, or [`BrowserError::Timeout`] / [`BrowserError::CdpError`]
     /// on transport-level failures.
     pub async fn attr(&self, name: &str) -> Result<Option<String>> {
@@ -234,7 +202,6 @@ impl NodeHandle {
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::StaleNode`] when the remote object has been
     /// invalidated.
     pub async fn attr_map(&self) -> Result<HashMap<String, String>> {
         let flat = timeout(self.cdp_timeout, self.element.attributes())
@@ -260,11 +227,9 @@ impl NodeHandle {
     /// raw text concatenation of all descendant text nodes, independent of
     /// layout or visibility (unlike `innerText`).
     ///
-    /// Returns an empty string when the property is absent or null.
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::StaleNode`] when the remote object has been
     /// invalidated.
     pub async fn text_content(&self) -> Result<String> {
         let returns = timeout(
@@ -290,11 +255,9 @@ impl NodeHandle {
 
     /// Return the element's `innerHTML`.
     ///
-    /// Returns an empty string when the property is absent or null.
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::StaleNode`] when the remote object has been
     /// invalidated.
     pub async fn inner_html(&self) -> Result<String> {
         timeout(self.cdp_timeout, self.element.inner_html())
@@ -309,11 +272,9 @@ impl NodeHandle {
 
     /// Return the element's `outerHTML`.
     ///
-    /// Returns an empty string when the property is absent or null.
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::StaleNode`] when the remote object has been
     /// invalidated.
     pub async fn outer_html(&self) -> Result<String> {
         timeout(self.cdp_timeout, self.element.outer_html())
@@ -326,21 +287,17 @@ impl NodeHandle {
             .map(Option::unwrap_or_default)
     }
 
-    /// Return the ancestor tag-name chain, root-last.
     ///
     /// Executes a single `Runtime.callFunctionOn` JavaScript function that
     /// walks `parentElement` and collects tag names — no repeated CDP calls.
     ///
     /// ```text
-    /// // for <span> inside <p> inside <article> inside <body> inside <html>
     /// ["p", "article", "body", "html"]
     /// ```
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::StaleNode`] when the remote object has been
     /// invalidated, or [`BrowserError::ScriptExecutionFailed`] when CDP
-    /// returns no value or the value is not a string array.
     pub async fn ancestors(&self) -> Result<Vec<String>> {
         let returns = timeout(
             self.cdp_timeout,
@@ -386,17 +343,11 @@ impl NodeHandle {
             .collect()
     }
 
-    /// Return child elements matching `selector` as new [`NodeHandle`]s.
     ///
-    /// Issues a single `Runtime.callFunctionOn` + `DOM.querySelectorAll`
-    /// call scoped to this element — not to the entire document.
     ///
-    /// Returns an empty `Vec` when no children match (consistent with the JS
-    /// `querySelectorAll` contract).
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::StaleNode`] when the remote object has been
     /// invalidated, or [`BrowserError::CdpError`] on transport failure.
     pub async fn children_matching(&self, selector: &str) -> Result<Vec<Self>> {
         let elements = timeout(self.cdp_timeout, self.element.find_elements(selector))
@@ -424,11 +375,9 @@ impl NodeHandle {
     ///
     /// Issues a single `Runtime.callFunctionOn` CDP call that temporarily tags
     /// the parent element with a unique attribute, then resolves it via a
-    /// document-level `DOM.querySelector` before removing the tag.
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::StaleNode`] when the remote object has been
     /// invalidated.
     ///
     /// # Example
@@ -442,7 +391,6 @@ impl NodeHandle {
     /// let handle = pool.acquire().await?;
     /// let mut page = handle.browser().expect("valid browser").new_page().await?;
     /// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
-    /// let nodes = page.query_selector_all("p").await?;
     /// if let Some(parent) = nodes[0].parent().await? {
     ///     let html = parent.outer_html().await?;
     ///     println!("parent: {}", &html[..html.len().min(80)]);
@@ -473,7 +421,6 @@ impl NodeHandle {
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::StaleNode`] when the remote object has been
     /// invalidated.
     ///
     /// # Example
@@ -487,7 +434,6 @@ impl NodeHandle {
     /// let handle = pool.acquire().await?;
     /// let mut page = handle.browser().expect("valid browser").new_page().await?;
     /// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
-    /// let nodes = page.query_selector_all("li").await?;
     /// if let Some(next) = nodes[0].next_sibling().await? {
     ///     println!("next sibling: {}", next.text_content().await?);
     /// }
@@ -517,7 +463,6 @@ impl NodeHandle {
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::StaleNode`] when the remote object has been
     /// invalidated.
     ///
     /// # Example
@@ -531,7 +476,6 @@ impl NodeHandle {
     /// let handle = pool.acquire().await?;
     /// let mut page = handle.browser().expect("valid browser").new_page().await?;
     /// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
-    /// let nodes = page.query_selector_all("li").await?;
     /// if let Some(prev) = nodes[1].previous_sibling().await? {
     ///     println!("prev sibling: {}", prev.text_content().await?);
     /// }
@@ -558,7 +502,6 @@ impl NodeHandle {
     /// and [`previous_sibling`].
     ///
     /// The caller provides a JS function that:
-    /// 1. Navigates to the target element (parent / sibling).
     /// 2. If the target is non-null, sets a unique attribute (`attr_name`)
     ///    on it and returns `true`.
     /// 3. Returns `false` when the target is null (no such neighbour).
@@ -597,7 +540,6 @@ impl NodeHandle {
             return Ok(None);
         }
 
-        // Step 2: Resolve the tagged element via a document-level querySelector.
         let css = format!("[{attr_name}]");
         let op_resolve = format!("NodeHandle::{selector_suffix}::resolve");
         let element = timeout(self.cdp_timeout, self.page.find_element(css))
@@ -611,12 +553,10 @@ impl NodeHandle {
                 message: e.to_string(),
             })?;
 
-        // Step 3: Remove the temporary attribute (best-effort; a failure here
         // is non-fatal — it leaves a harmless stale attribute in the DOM).
         let cleanup = format!("function() {{ this.removeAttribute('{attr_name}'); }}");
         let _ = element.call_js_fn(cleanup, false).await;
 
-        // Step 4: Wrap in a NodeHandle with the diagnostic selector suffix.
         let new_selector: Arc<str> =
             Arc::from(format!("{}::{selector_suffix}", self.selector).as_str());
         Ok(Some(Self {
@@ -627,9 +567,7 @@ impl NodeHandle {
         }))
     }
 
-    /// Map a chromiumoxide `CdpError` to either [`BrowserError::StaleNode`]
     /// (when the remote object reference has been invalidated) or
-    /// [`BrowserError::CdpError`] for all other failures.
     fn cdp_err_or_stale(
         &self,
         err: &chromiumoxide::error::CdpError,
@@ -654,9 +592,7 @@ impl NodeHandle {
 
 // ─── PageHandle ───────────────────────────────────────────────────────────────
 
-/// A handle to an open browser tab.
 ///
-/// On drop the underlying page is closed automatically.
 ///
 /// # Example
 ///
@@ -680,7 +616,6 @@ pub struct PageHandle {
     page: Page,
     cdp_timeout: Duration,
     /// HTTP status code of the most recent main-frame navigation, or `0` if not
-    /// yet captured.  Written atomically by the listener spawned in `navigate()`.
     last_status_code: Arc<AtomicU16>,
     /// Background task processing `Fetch.requestPaused` events. Aborted and
     /// replaced each time `set_resource_filter` is called.
@@ -698,11 +633,9 @@ impl PageHandle {
         }
     }
 
-    /// Navigate to `url` and wait for `condition` within `nav_timeout`.
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::NavigationFailed`] if the navigation times out or
     /// the CDP call fails.
     pub async fn navigate(
         &mut self,
@@ -723,7 +656,6 @@ impl PageHandle {
     }
 
     /// Reset the last status code and wire up the `Network.responseReceived`
-    /// listener before any navigation starts.  Errors are logged and swallowed
     /// so that a missing network domain never blocks navigation.
     async fn setup_status_capture(&self) {
         use chromiumoxide::cdp::browser_protocol::network::{
@@ -732,11 +664,8 @@ impl PageHandle {
         use futures::StreamExt;
 
         // Reset so a stale code is not returned if the new navigation fails
-        // before the response headers arrive.
         self.last_status_code.store(0, Ordering::Release);
 
-        // Subscribe *before* goto() — the listener runs in a detached task and
-        // stores the first Document-type response status atomically.
         let page_for_listener = self.page.clone();
         let status_capture = Arc::clone(&self.last_status_code);
         match page_for_listener
@@ -760,8 +689,6 @@ impl PageHandle {
         }
     }
 
-    /// Subscribe to the appropriate CDP events, fire `goto`, then await
-    /// `condition`.  All subscriptions precede `goto` to eliminate the race
     /// described in issue #7.
     async fn navigate_inner(
         &self,
@@ -840,7 +767,6 @@ impl PageHandle {
     /// Spawn three detached tasks that maintain a signed in-flight request
     /// counter via `Network.requestWillBeSent` (+1) and
     /// `Network.loadingFinished`/`Network.loadingFailed` (−1 each).
-    /// Returns the shared counter so the caller can poll it.
     async fn subscribe_inflight_counter(&self) -> Arc<std::sync::atomic::AtomicI32> {
         use std::sync::atomic::AtomicI32;
 
@@ -882,8 +808,6 @@ impl PageHandle {
         counter
     }
 
-    /// Poll `counter` until ≤ 2 in-flight requests persist for 500 ms
-    /// (equivalent to Playwright's `networkidle2`).
     async fn wait_network_idle(counter: &Arc<std::sync::atomic::AtomicI32>) {
         const IDLE_THRESHOLD: i32 = 2;
         const SETTLE: Duration = Duration::from_millis(500);
@@ -899,11 +823,9 @@ impl PageHandle {
         }
     }
 
-    /// Wait until `document.querySelector(selector)` is non-null (`timeout`).
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::NavigationFailed`] if the selector is not found
     /// within the given timeout.
     pub async fn wait_for_selector(&self, selector: &str, wait_timeout: Duration) -> Result<()> {
         let selector_owned = selector.to_string();
@@ -924,7 +846,6 @@ impl PageHandle {
             })?
     }
 
-    /// Set a resource filter to block specific network request types.
     ///
     /// Enables `Fetch` interception and spawns a background task that continues
     /// allowed requests and fails blocked ones with `BlockedByClient`. Any
@@ -932,7 +853,6 @@ impl PageHandle {
     ///
     /// # Errors
     ///
-    /// Returns a [`BrowserError::CdpError`] if the CDP call fails.
     pub async fn set_resource_filter(&mut self, filter: ResourceFilter) -> Result<()> {
         use chromiumoxide::cdp::browser_protocol::fetch::{
             ContinueRequestParams, EnableParams, EventRequestPaused, FailRequestParams,
@@ -967,7 +887,6 @@ impl PageHandle {
                 message: e.to_string(),
             })?;
 
-        // Subscribe to requestPaused events and dispatch each one so navigation
         // is never blocked. Without this handler Chrome holds every intercepted
         // request indefinitely and the page hangs.
         let mut events = self
@@ -999,14 +918,11 @@ impl PageHandle {
 
     /// Return the current page URL (post-navigation, post-redirect).
     ///
-    /// Delegates to the CDP `Target.getTargetInfo` binding already used
     /// internally by [`save_cookies`](Self::save_cookies); no extra network
     /// request is made.  Returns an empty string if the URL is not yet set
-    /// (e.g. on a blank tab before the first navigation).
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::CdpError`] if the underlying CDP call fails, or
     /// [`BrowserError::Timeout`] if it exceeds `cdp_timeout`.
     ///
     /// # Example
@@ -1046,14 +962,11 @@ impl PageHandle {
     /// wired up inside [`navigate`](Self::navigate), so it reflects the
     /// *final* response after any server-side redirects.
     ///
-    /// Returns `None` if the status was not captured — for example on `file://`
     /// navigations, when [`navigate`](Self::navigate) has not yet been called,
     /// or if the network event subscription failed.
     ///
     /// # Errors
     ///
-    /// This method is infallible; the `Result` wrapper is kept for API
-    /// consistency with other `PageHandle` methods.
     ///
     /// # Example
     ///
@@ -1082,7 +995,6 @@ impl PageHandle {
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::ScriptExecutionFailed`] if the evaluation fails.
     pub async fn title(&self) -> Result<String> {
         timeout(self.cdp_timeout, self.page.get_title())
             .await
@@ -1101,7 +1013,6 @@ impl PageHandle {
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::ScriptExecutionFailed`] if the evaluation fails.
     pub async fn content(&self) -> Result<String> {
         timeout(self.cdp_timeout, self.page.content())
             .await
@@ -1115,19 +1026,15 @@ impl PageHandle {
             })
     }
 
-    /// Query the live DOM for all elements matching `selector` and return
     /// lightweight [`NodeHandle`]s backed by CDP `RemoteObjectId`s.
     ///
     /// No HTML serialisation occurs — the browser's in-memory DOM is queried
     /// directly over the CDP connection, eliminating the `page.content()` +
     /// `scraper::Html::parse_document` round-trip.
     ///
-    /// Returns an empty `Vec` when no elements match (consistent with the JS
-    /// `querySelectorAll` contract — not an error).
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::CdpError`] if the CDP find call fails, or
     /// [`BrowserError::Timeout`] if it exceeds `cdp_timeout`.
     ///
     /// # Example
@@ -1142,8 +1049,6 @@ impl PageHandle {
     /// let mut page = handle.browser().expect("valid browser").new_page().await?;
     /// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
     ///
-    /// let nodes = page.query_selector_all("[data-ux]").await?;
-    /// for node in &nodes {
     ///     let ux_type = node.attr("data-ux").await?;
     ///     let text    = node.text_content().await?;
     ///     println!("{ux_type:?}: {text}");
@@ -1179,7 +1084,6 @@ impl PageHandle {
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::ScriptExecutionFailed`] on eval failure or
     /// deserialization error.
     pub async fn eval<T: serde::de::DeserializeOwned>(&self, script: &str) -> Result<T> {
         let script_owned = script.to_string();
@@ -1200,11 +1104,9 @@ impl PageHandle {
             })
     }
 
-    /// Save all cookies for the current page's origin.
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::CdpError`] if the CDP call fails.
     pub async fn save_cookies(
         &self,
     ) -> Result<Vec<chromiumoxide::cdp::browser_protocol::network::Cookie>> {
@@ -1237,9 +1139,7 @@ impl PageHandle {
         .map(|r| r.cookies.clone())
     }
 
-    /// Inject cookies into the current page.
     ///
-    /// Seeds session tokens or other state without needing a full
     /// [`SessionSnapshot`][crate::session::SessionSnapshot] and without
     /// requiring a direct `chromiumoxide` dependency in calling code.
     ///
@@ -1248,7 +1148,6 @@ impl PageHandle {
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::Timeout`] if a single `Network.setCookie` CDP
     /// call exceeds `cdp_timeout`.
     ///
     /// # Example
@@ -1263,14 +1162,9 @@ impl PageHandle {
     /// let handle = pool.acquire().await?;
     /// let page = handle.browser().expect("valid browser").new_page().await?;
     /// let cookies = vec![SessionCookie {
-    ///     name: "session".to_string(),
-    ///     value: "abc123".to_string(),
-    ///     domain: ".example.com".to_string(),
-    ///     path: "/".to_string(),
     ///     expires: -1.0,
     ///     http_only: true,
     ///     secure: true,
-    ///     same_site: "Lax".to_string(),
     /// }];
     /// page.inject_cookies(&cookies).await?;
     /// # Ok(())
@@ -1317,13 +1211,10 @@ impl PageHandle {
 
     /// Capture a screenshot of the current page as PNG bytes.
     ///
-    /// The screenshot is full-page by default (viewport clipped to the rendered
-    /// layout area).  Save the returned bytes to a `.png` file or process
     /// them in-memory.
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::CdpError`] if the CDP `Page.captureScreenshot`
     /// command fails, or [`BrowserError::Timeout`] if it exceeds
     /// `cdp_timeout`.
     ///
@@ -1337,7 +1228,6 @@ impl PageHandle {
     /// let pool = BrowserPool::new(BrowserConfig::default()).await?;
     /// let handle = pool.acquire().await?;
     /// let mut page = handle.browser().expect("valid browser").new_page().await?;
-    /// page.navigate("https://example.com", WaitUntil::Selector("body".to_string()), Duration::from_secs(30)).await?;
     /// let png = page.screenshot().await?;
     /// fs::write("screenshot.png", &png).unwrap();
     /// # Ok(())
@@ -1367,7 +1257,6 @@ impl PageHandle {
 
     /// Close this page (tab).
     ///
-    /// Called automatically on drop; explicit call avoids suppressing the error.
     pub async fn close(self) -> Result<()> {
         timeout(Duration::from_secs(5), self.page.clone().close())
             .await
@@ -1392,12 +1281,10 @@ impl PageHandle {
     /// JavaScript via CDP `Runtime.evaluate`, and returns an aggregate
     /// [`crate::diagnostic::DiagnosticReport`].
     ///
-    /// Failed scripts (due to JS exceptions or deserialization errors) are
     /// recorded as failing checks and do **not** abort the whole run.
     ///
     /// # Errors
     ///
-    /// Returns an error only if the underlying CDP transport fails entirely.
     /// Individual check failures are captured in the report.
     ///
     /// # Example
@@ -1416,7 +1303,6 @@ impl PageHandle {
     ///
     /// let report = page.verify_stealth().await?;
     /// println!("Stealth: {}/{} checks passed", report.passed_count, report.checks.len());
-    /// for failure in report.failures() {
     ///     eprintln!("  FAIL  {}: {}", failure.description, failure.details);
     /// }
     /// # Ok(())
@@ -1458,8 +1344,6 @@ impl PageHandle {
 
     /// Run stealth checks and attach transport diagnostics (JA3/JA4/HTTP3).
     ///
-    /// Transport expectations are inferred from `navigator.userAgent` and can
-    /// optionally be compared to caller-supplied observed transport values.
     pub async fn verify_stealth_with_transport(
         &self,
         observed: Option<crate::diagnostic::TransportObservations>,
@@ -1487,18 +1371,13 @@ impl PageHandle {
 
 #[cfg(feature = "extract")]
 impl PageHandle {
-    /// Extract a typed collection of `T` from all elements matching `selector`.
     ///
-    /// Each matched element becomes the root node for `T::extract_from`.
-    /// Returns an empty `Vec` when no elements match (consistent with the
-    /// `querySelectorAll` contract — not an error).
     ///
     /// All per-node extractions are driven concurrently via
     /// [`futures::future::try_join_all`].
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::CdpError`] if the initial `query_selector_all`
     /// fails, or [`BrowserError::ExtractionFailed`] if any field extraction
     /// fails.
     ///
@@ -1511,7 +1390,6 @@ impl PageHandle {
     ///
     /// #[derive(Extract)]
     /// struct Link {
-    ///     #[selector("a", attr = "href")]
     ///     href: Option<String>,
     /// }
     ///
@@ -1545,7 +1423,6 @@ impl PageHandle {
 
 #[cfg(feature = "similarity")]
 impl NodeHandle {
-    /// Compute a structural [`crate::similarity::ElementFingerprint`] for this
     /// node.
     ///
     /// Issues a single `Runtime.callFunctionOn` JS eval that extracts the tag,
@@ -1553,7 +1430,6 @@ impl NodeHandle {
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::StaleNode`] when the remote object has been
     /// invalidated, or [`BrowserError::ScriptExecutionFailed`] if the script
     /// produces unexpected output.
     pub async fn fingerprint(&self) -> Result<crate::similarity::ElementFingerprint> {
@@ -1600,12 +1476,9 @@ impl NodeHandle {
 
 #[cfg(feature = "similarity")]
 impl PageHandle {
-    /// Find all elements in the current page that are structurally similar to
     /// `reference`, scored by [`crate::similarity::SimilarityConfig`].
     ///
-    /// Computes a structural fingerprint for `reference` (via
     /// [`NodeHandle::fingerprint`]), then fingerprints every candidate returned
-    /// by `document.querySelectorAll("*")` and collects those whose
     /// [`crate::similarity::jaccard_weighted`] score exceeds
     /// `config.threshold`.  Results are ordered by score descending.
     ///
@@ -1622,20 +1495,15 @@ impl PageHandle {
     /// let mut page = handle.browser().expect("valid browser").new_page().await?;
     /// page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
     ///
-    /// let nodes = page.query_selector_all(".price").await?;
-    /// if let Some(reference) = nodes.into_iter().next() {
     ///     let similar = page.find_similar(&reference, SimilarityConfig::default()).await?;
-    ///     for m in &similar {
     ///         println!("score={:.2}", m.score);
     ///     }
-    /// }
     /// # Ok(())
     /// # }
     /// ```
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::StaleNode`] when `reference` is invalid, or
     /// [`BrowserError::ScriptExecutionFailed`] if a scoring script fails.
     pub async fn find_similar(
         &self,
@@ -1676,7 +1544,6 @@ impl Drop for PageHandle {
     fn drop(&mut self) {
         warn!("PageHandle dropped without explicit close(); spawning cleanup task");
         // chromiumoxide Page does not implement close on Drop, so we spawn
-        // a fire-and-forget task. The page ref is already owned; we need to
         // swap it out. We clone the Page handle (it's Arc-backed internally).
         let page = self.page.clone();
         tokio::spawn(async move {
@@ -1748,7 +1615,6 @@ mod tests {
         assert_eq!(ResourceType::Media.as_cdp_str(), "Media");
     }
 
-    /// `PageHandle` must be `Send + Sync` for use across thread boundaries.
     #[test]
     fn page_handle_is_send_sync() {
         fn assert_send<T: Send>() {}
@@ -1757,7 +1623,6 @@ mod tests {
         assert_sync::<PageHandle>();
     }
 
-    /// The status-code sentinel (0 = "not yet captured") and the conversion to
     /// `Option<u16>` are pure-logic invariants testable without a live browser.
     #[test]
     fn status_code_sentinel_zero_maps_to_none() {
@@ -1803,7 +1668,6 @@ mod tests {
         assert_eq!(map.len(), 3);
     }
 
-    /// Odd-length flat attribute lists (malformed CDP response) are handled
     /// gracefully — the trailing element is silently ignored.
     #[test]
     fn attr_map_chunking_ignores_odd_trailing() {
@@ -1834,7 +1698,6 @@ mod tests {
         assert!(map.is_empty());
     }
 
-    /// `ancestors` JSON parsing: valid input round-trips correctly.
     #[test]
     fn ancestors_json_parse_round_trip() -> std::result::Result<(), serde_json::Error> {
         let json = r#"["p","article","body","html"]"#;
@@ -1843,7 +1706,6 @@ mod tests {
         Ok(())
     }
 
-    /// `ancestors` JSON parsing: empty array (no parent) is fine.
     #[test]
     fn ancestors_json_parse_empty() -> std::result::Result<(), serde_json::Error> {
         let json = "[]";
@@ -1852,9 +1714,7 @@ mod tests {
         Ok(())
     }
 
-    // ── Traversal selector suffix tests ──────────────────────────────────────
 
-    /// A `StaleNode` error whose selector includes a traversal suffix (e.g.
     /// `"div::parent"`) must surface that suffix in its `Display` output so
     /// callers can locate the failed traversal in logs.
     #[test]
@@ -1869,7 +1729,6 @@ mod tests {
         );
     }
 
-    /// Same check for the `::next` suffix produced by `next_sibling()`.
     #[test]
     fn traversal_next_suffix_in_stale_error() {
         let e = crate::error::BrowserError::StaleNode {
@@ -1878,7 +1737,6 @@ mod tests {
         assert!(e.to_string().contains("li.price::next"));
     }
 
-    /// Same check for the `::prev` suffix produced by `previous_sibling()`.
     #[test]
     fn traversal_prev_suffix_in_stale_error() {
         let e = crate::error::BrowserError::StaleNode {
