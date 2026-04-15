@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-04-15
+
+### Changed
+
+- `workspace`: papertowel cleanup pass reduced AI-fingerprint noise in comments/docs and
+  refreshed `.papertowelignore` suppressions for known false-positive areas (for example,
+  JA3/JA4 MD5 usage in TLS fingerprinting and placeholder credential strings in docs)
+
+### Fixed
+
+- `workspace`: doctest reliability under `--all-features` improved across browser/docs
+  examples — async `main` snippets marked appropriately, browser extraction/navigation
+  examples corrected, and empty/incomplete rustdoc fragments repaired to satisfy
+  `RUSTDOCFLAGS=-Dwarnings`
+- `workspace`: `rustls-webpki` updated to `0.103.12` in lockfile to resolve
+  `RUSTSEC-2026-0098` and `RUSTSEC-2026-0099` reported by scheduled `cargo deny` checks
+- `ci(stealth-canary)`: added `models: read` workflow permission so the automated
+  GitHub Models autofix step can authenticate instead of failing with HTTP 4xx/exit 22
+
+### Documentation
+
+- `stygian-browser`: doc examples and API docs in `lib.rs`, `page.rs`, `extract.rs`,
+  `tls.rs`, `behavior.rs`, and `tests/ui.rs` were completed/reworded to remove truncated
+  sentences and empty Rust code blocks flagged during Copilot review and docs CI
+
 ## [0.9.1] - 2026-04-12
 
 ### Added
@@ -772,7 +797,8 @@ Both crates are functional and well-tested, but APIs may evolve based on communi
 
 ---
 
-[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.9.2...HEAD
+[0.9.2]: https://github.com/greysquirr3l/stygian/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/greysquirr3l/stygian/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/greysquirr3l/stygian/compare/v0.1.9...v0.9.0
 [0.1.9]: https://github.com/greysquirr3l/stygian/compare/v0.1.8...v0.1.9
