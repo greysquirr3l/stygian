@@ -100,11 +100,11 @@ pub enum VizFormat {
 pub async fn run_cli() -> anyhow::Result<()> {
     // Initialise tracing with RUST_LOG defaulting to "info"
     let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
-    tracing_subscriber::fmt()
+    let _ = tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_target(false)
         .compact()
-        .init();
+        .try_init();
 
     let cli = Cli::parse();
 
