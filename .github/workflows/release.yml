@@ -89,7 +89,18 @@ jobs:
           if cargo search stygian-extract-derive --limit 1 2>/dev/null | grep -q "^stygian-extract-derive = \"$VERSION\""; then
             echo "stygian-extract-derive@$VERSION already published, skipping"
           else
-            cargo publish -p stygian-extract-derive
+            set +e
+            OUTPUT=$(cargo publish -p stygian-extract-derive 2>&1)
+            STATUS=$?
+            set -e
+            if [ $STATUS -eq 0 ]; then
+              echo "$OUTPUT"
+            elif echo "$OUTPUT" | grep -q "already exists on crates.io index"; then
+              echo "stygian-extract-derive@$VERSION already exists on crates.io, skipping"
+            else
+              echo "$OUTPUT"
+              exit $STATUS
+            fi
           fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -104,7 +115,18 @@ jobs:
           if cargo search stygian-browser --limit 1 2>/dev/null | grep -q "^stygian-browser = \"$VERSION\""; then
             echo "stygian-browser@$VERSION already published, skipping"
           else
-            cargo publish -p stygian-browser
+            set +e
+            OUTPUT=$(cargo publish -p stygian-browser 2>&1)
+            STATUS=$?
+            set -e
+            if [ $STATUS -eq 0 ]; then
+              echo "$OUTPUT"
+            elif echo "$OUTPUT" | grep -q "already exists on crates.io index"; then
+              echo "stygian-browser@$VERSION already exists on crates.io, skipping"
+            else
+              echo "$OUTPUT"
+              exit $STATUS
+            fi
           fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -119,7 +141,18 @@ jobs:
           if cargo search stygian-proxy --limit 1 2>/dev/null | grep -q "^stygian-proxy = \"$VERSION\""; then
             echo "stygian-proxy@$VERSION already published, skipping"
           else
-            cargo publish -p stygian-proxy
+            set +e
+            OUTPUT=$(cargo publish -p stygian-proxy 2>&1)
+            STATUS=$?
+            set -e
+            if [ $STATUS -eq 0 ]; then
+              echo "$OUTPUT"
+            elif echo "$OUTPUT" | grep -q "already exists on crates.io index"; then
+              echo "stygian-proxy@$VERSION already exists on crates.io, skipping"
+            else
+              echo "$OUTPUT"
+              exit $STATUS
+            fi
           fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -134,7 +167,18 @@ jobs:
           if cargo search stygian-graph --limit 1 2>/dev/null | grep -q "^stygian-graph = \"$VERSION\""; then
             echo "stygian-graph@$VERSION already published, skipping"
           else
-            cargo publish -p stygian-graph --all-features
+            set +e
+            OUTPUT=$(cargo publish -p stygian-graph --all-features 2>&1)
+            STATUS=$?
+            set -e
+            if [ $STATUS -eq 0 ]; then
+              echo "$OUTPUT"
+            elif echo "$OUTPUT" | grep -q "already exists on crates.io index"; then
+              echo "stygian-graph@$VERSION already exists on crates.io, skipping"
+            else
+              echo "$OUTPUT"
+              exit $STATUS
+            fi
           fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -149,7 +193,18 @@ jobs:
           if cargo search stygian-mcp --limit 1 2>/dev/null | grep -q "^stygian-mcp = \"$VERSION\""; then
             echo "stygian-mcp@$VERSION already published, skipping"
           else
-            cargo publish -p stygian-mcp
+            set +e
+            OUTPUT=$(cargo publish -p stygian-mcp 2>&1)
+            STATUS=$?
+            set -e
+            if [ $STATUS -eq 0 ]; then
+              echo "$OUTPUT"
+            elif echo "$OUTPUT" | grep -q "already exists on crates.io index"; then
+              echo "stygian-mcp@$VERSION already exists on crates.io, skipping"
+            else
+              echo "$OUTPUT"
+              exit $STATUS
+            fi
           fi
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
