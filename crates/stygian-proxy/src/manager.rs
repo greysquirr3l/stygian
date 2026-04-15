@@ -768,7 +768,7 @@ mod tests {
         // With round-robin and two proxies the second domain gets the other one.
         assert_ne!(
             url_a, url_b,
-            "different domains should differ in this scenario"
+            "different domains should get different proxies"
         );
     }
 

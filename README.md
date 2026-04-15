@@ -65,8 +65,7 @@ MCP (Model Context Protocol) aggregator for LLM tool integration:
 
 ### Graph Scraping Pipeline
 
-```rust
-use stygian_graph::{PipelineBuilder, adapters::HttpAdapter};
+```rust,ignore
 use serde_json::json;
 
 #[tokio::main]
@@ -88,8 +87,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ### Browser Automation
 
-```rust
-use stygian_browser::{BrowserConfig, BrowserPool};
+```rust,ignore
 use std::time::Duration;
 
 #[tokio::main]

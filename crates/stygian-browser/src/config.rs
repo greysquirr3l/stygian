@@ -26,7 +26,7 @@ use crate::webrtc::WebRtcConfig;
 ///
 /// The *new* headless mode (`--headless=new`, available since Chromium 112)
 /// shares the same rendering pipeline as a headed Chrome window and is
-/// significantly harder to fingerprint-detect. It is the default.
+/// harder to fingerprint-detect. It is the default.
 ///
 /// Fall back to [`Legacy`][HeadlessMode::Legacy] only when targeting very old
 /// Chromium builds that do not support `--headless=new`.

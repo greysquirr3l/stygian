@@ -1,15 +1,13 @@
 //! trybuild UI tests — verify that the `#[derive(Extract)]` proc-macro emits
-//! the correct `compile_error!` diagnostics for invalid inputs.
+//! the expected compiler diagnostics.
 //!
 //! These tests require the `extract` feature and are compiled against the
 //! `stygian-browser` library with that feature enabled.
 //!
-//! Run with `TRYBUILD=overwrite` on first execution (or after changing error
-//! messages) to regenerate the `.stderr` snapshot files.
+//! Run with `TRYBUILD=overwrite` on first execution (or after changing expected
+//! error messages) to regenerate the reference snapshots.
 
-/// Verify that applying `#[derive(Extract)]` to an enum and applying it to a
-/// struct with a field missing `#[selector(...)]` both produce the expected
-/// compiler diagnostics.
+/// Runs trybuild UI tests to verify the proc-macro emits expected compiler diagnostics.
 #[test]
 fn ui_tests() {
     let t = trybuild::TestCases::new();

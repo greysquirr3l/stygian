@@ -1468,7 +1468,7 @@ mod tests {
             required.iter().any(|v| v == "schema"),
             "schema must be required in browser_extract"
         );
-        // Additionally confirm the schema property type is "object"
+        // Also confirm the schema property type is "object"
         let schema_type = def
             .get("inputSchema")
             .and_then(|s| s.get("properties"))

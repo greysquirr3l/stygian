@@ -772,7 +772,7 @@ impl FingerprintProfile {
 /// Return a JavaScript injection script for `fingerprint`.
 ///
 /// Equivalent to calling [`Fingerprint::injection_script`] directly; provided
-/// as a standalone function for ergonomic use without importing the type.
+/// as a standalone function for convenient use without importing the type.
 ///
 /// The script should be passed to `Page.addScriptToEvaluateOnNewDocument`.
 ///

@@ -90,3 +90,4 @@ crates/stygian-proxy/docs
 .obliviate.toml
 PROGRESS-*.md
 docs/spider-gap-analysis.md
+.papertowelignore

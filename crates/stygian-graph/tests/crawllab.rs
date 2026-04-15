@@ -1,6 +1,6 @@
 //! Live integration tests against <https://crawllab.dev>.
 //!
-//! crawllab.dev is a free, open-source scraper testing harness that provides
+//! crawllab.dev is a free, open-source scraper testing tool that provides
 //! predictable endpoints for every HTTP status code, redirect variants,
 //! content types, JS-rendered pages, and more.
 //!

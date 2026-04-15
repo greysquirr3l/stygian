@@ -1,7 +1,5 @@
 //! TLS fingerprint profile types with JA3/JA4 representation.
 //!
-//! Provides domain types for modelling real browser TLS fingerprints so that
-//! automated sessions present cipher-suite orderings, extension lists, and
 //! ALPN preferences that match genuine browsers.
 //!
 //! # Built-in profiles
@@ -103,7 +101,6 @@ impl fmt::Display for CipherSuiteId {
     }
 }
 
-/// TLS protocol version.
 ///
 /// # Example
 ///
@@ -123,7 +120,6 @@ pub enum TlsVersion {
 }
 
 impl TlsVersion {
-    /// Return the two-byte IANA protocol version number.
     ///
     /// # Example
     ///
@@ -178,9 +174,7 @@ impl TlsExtensionId {
     pub const KEY_SHARE: Self = Self(51);
     /// `supported_groups` (a.k.a. `elliptic_curves`).
     pub const SUPPORTED_GROUPS: Self = Self(10);
-    /// `ec_point_formats`.
     pub const EC_POINT_FORMATS: Self = Self(11);
-    /// `application_layer_protocol_negotiation`.
     pub const ALPN: Self = Self(16);
     /// `status_request` (OCSP stapling).
     pub const STATUS_REQUEST: Self = Self(5);
@@ -312,13 +306,11 @@ impl fmt::Display for SignatureAlgorithm {
     }
 }
 
-/// ALPN protocol identifier negotiated during the TLS handshake.
 ///
 /// # Example
 ///
-/// ```
+/// ```rust
 /// use stygian_browser::tls::AlpnProtocol;
-///
 /// assert_eq!(AlpnProtocol::H2.as_str(), "h2");
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -331,13 +323,12 @@ pub enum AlpnProtocol {
 }
 
 impl AlpnProtocol {
-    /// Return the ALPN wire-format string.
+    /// Returns the wire string for this protocol.
     ///
     /// # Example
     ///
-    /// ```
+    /// ```rust
     /// use stygian_browser::tls::AlpnProtocol;
-    ///
     /// assert_eq!(AlpnProtocol::Http11.as_str(), "http/1.1");
     /// ```
     pub const fn as_str(self) -> &'static str {
@@ -377,7 +368,6 @@ pub struct TlsProfile {
     pub name: String,
     /// Ordered cipher-suite list from the `ClientHello`.
     pub cipher_suites: Vec<CipherSuiteId>,
-    /// Supported TLS protocol versions.
     pub tls_versions: Vec<TlsVersion>,
     /// Ordered extension list from the `ClientHello`.
     pub extensions: Vec<TlsExtensionId>,
@@ -385,16 +375,12 @@ pub struct TlsProfile {
     pub supported_groups: Vec<SupportedGroup>,
     /// Supported signature algorithms.
     pub signature_algorithms: Vec<SignatureAlgorithm>,
-    /// ALPN protocol list.
     pub alpn_protocols: Vec<AlpnProtocol>,
 }
 
 // ── JA3 ──────────────────────────────────────────────────────────────────────
 
-/// JA3 TLS fingerprint — raw descriptor string and its MD5 hash.
 ///
-/// The JA3 format is:
-/// `TLSVersion,Ciphers,Extensions,EllipticCurves,EcPointFormats`
 ///
 /// Fields within each section are dash-separated.
 ///
@@ -409,7 +395,6 @@ pub struct TlsProfile {
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Ja3Hash {
-    /// Comma-separated JA3 descriptor string.
     pub raw: String,
     /// MD5 hex digest of [`raw`](Ja3Hash::raw).
     pub hash: String,
@@ -422,9 +407,6 @@ impl fmt::Display for Ja3Hash {
 }
 
 /// Compute MD5 of `data` and return a 32-char lowercase hex string.
-///
-/// This is a minimal, self-contained MD5 implementation used only for JA3 hash
-/// computation. It avoids pulling in an external crate for a single use-site.
 #[allow(
     clippy::many_single_char_names,
     clippy::too_many_lines,
@@ -524,7 +506,6 @@ fn md5_hex(data: &[u8]) -> String {
         let mut m = [0u32; 16];
         for (word, quad) in m.iter_mut().zip(chunk.chunks_exact(4)) {
             // chunks_exact(4) on a 64-byte slice always yields exactly 16
-            // four-byte slices, so try_into never fails here.
             if let Ok(bytes) = <[u8; 4]>::try_from(quad) {
                 *word = u32::from_le_bytes(bytes);
             }
@@ -570,9 +551,7 @@ fn md5_hex(data: &[u8]) -> String {
 
 // ── JA4 ──────────────────────────────────────────────────────────────────────
 
-/// JA4 TLS fingerprint — the modern successor to JA3.
 ///
-/// Format: `{proto}{version}{sni}{cipher_count}{ext_count}_{sorted_ciphers_hash}_{sorted_exts_hash}`
 ///
 /// # Example
 ///
@@ -596,15 +575,12 @@ impl fmt::Display for Ja4 {
 
 // ── HTTP/3 Perk ─────────────────────────────────────────────────────────────
 
-/// HTTP/3 fingerprint representation inspired by the "perk" format:
 /// `SETTINGS|PSEUDO_HEADERS`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Http3Perk {
     /// Ordered HTTP/3 settings as `(id, value)` tuples.
     pub settings: Vec<(u64, u64)>,
-    /// Pseudo-header order compact token (for example: `"masp"`, `"mpas"`).
     pub pseudo_headers: String,
-    /// Whether a GREASE setting should be represented in the text form.
     pub has_grease: bool,
 }
 
@@ -685,15 +661,12 @@ impl Http3Perk {
 
 /// Build an expected HTTP/3 perk fingerprint from a User-Agent string.
 ///
-/// Returns `None` when the browser family is unknown or unsupported.
 #[must_use]
 pub fn expected_http3_perk_from_user_agent(user_agent: &str) -> Option<Http3Perk> {
     expected_tls_profile_from_user_agent(user_agent).and_then(TlsProfile::http3_perk)
 }
 
-/// Resolve the expected built-in TLS profile for a given User-Agent.
-///
-/// Returns `None` when no supported browser family can be inferred.
+/// Returns the `TlsProfile` for the given user-agent string, if known.
 #[must_use]
 pub fn expected_tls_profile_from_user_agent(user_agent: &str) -> Option<&'static TlsProfile> {
     let ua = user_agent.to_ascii_lowercase();
@@ -706,7 +679,6 @@ pub fn expected_tls_profile_from_user_agent(user_agent: &str) -> Option<&'static
         return Some(&FIREFOX_133);
     }
 
-    // Safari check excludes Chromium UAs that include the Safari token.
     if ua.contains("safari/") && !ua.contains("chrome/") && !ua.contains("edg/") {
         return Some(&SAFARI_18);
     }
@@ -718,13 +690,11 @@ pub fn expected_tls_profile_from_user_agent(user_agent: &str) -> Option<&'static
     None
 }
 
-/// Return expected JA3 hash for a User-Agent if a built-in profile matches.
 #[must_use]
 pub fn expected_ja3_from_user_agent(user_agent: &str) -> Option<Ja3Hash> {
     expected_tls_profile_from_user_agent(user_agent).map(TlsProfile::ja3)
 }
 
-/// Return expected JA4 fingerprint for a User-Agent if a built-in profile matches.
 #[must_use]
 pub fn expected_ja4_from_user_agent(user_agent: &str) -> Option<Ja4> {
     expected_tls_profile_from_user_agent(user_agent).map(TlsProfile::ja4)
@@ -732,12 +702,8 @@ pub fn expected_ja4_from_user_agent(user_agent: &str) -> Option<Ja4> {
 
 // ── profile methods ──────────────────────────────────────────────────────────
 
-/// Truncate a hex string to at most `n` characters on a char boundary.
-///
-/// Returns the full string when it is shorter than `n`.
+/// Truncates a hex string `s` to at most `n` characters.
 fn truncate_hex(s: &str, n: usize) -> &str {
-    // Hex strings are ASCII so floor_char_boundary is equivalent to min(n, len),
-    // but this is safe for any UTF-8 string.
     let end = s.len().min(n);
     &s[..end]
 }
@@ -754,13 +720,10 @@ fn is_grease(v: u16) -> bool {
 }
 
 impl TlsProfile {
-    /// Compute the JA3 fingerprint for this profile.
-    ///
-    /// JA3 format: `TLSVersion,Ciphers,Extensions,EllipticCurves,EcPointFormats`
+    /// Computes the JA3 fingerprint string for this profile.
     ///
     /// - GREASE values are stripped from all fields.
-    /// - EC point formats default to `0` (uncompressed) when not otherwise
-    ///   specified in the profile.
+    /// - Fields are ordered as specified in the profile.
     ///
     /// # Example
     ///
@@ -804,7 +767,6 @@ impl TlsProfile {
             .map(|g| g.iana_value().to_string())
             .collect();
 
-        // EC point formats — default to uncompressed (0).
         let ec_point_formats = "0";
 
         let raw = format!(
@@ -818,9 +780,7 @@ impl TlsProfile {
         Ja3Hash { raw, hash }
     }
 
-    /// Compute the JA4 fingerprint for this profile.
     ///
-    /// JA4 format (`JA4_a` section):
     /// `{q}{version}{sni}{cipher_count:02}{ext_count:02}_{alpn}_{sorted_cipher_hash}_{sorted_ext_hash}`
     ///
     /// This implements the `JA4_a` (raw fingerprint) portion. Sorted cipher and
@@ -838,10 +798,8 @@ impl TlsProfile {
     /// assert!(ja4.fingerprint.starts_with("t13"));
     /// ```
     pub fn ja4(&self) -> Ja4 {
-        // Protocol: 't' for TCP TLS.
         let proto = 't';
 
-        // TLS version: highest advertised, mapped to two-char code.
         let version = if self.tls_versions.contains(&TlsVersion::Tls13) {
             "13"
         } else {
@@ -849,7 +807,6 @@ impl TlsProfile {
         };
 
         // SNI: 'd' = domain (SNI present), 'i' = IP (no SNI). We assume SNI
-        // is present for browser profiles.
         let sni = 'd';
 
         // Counts (GREASE stripped), capped at 99.
@@ -866,7 +823,6 @@ impl TlsProfile {
             .count()
             .min(99);
 
-        // ALPN: first protocol letter ('h' for h2, 'h' for http/1.1 — JA4
         // uses first+last chars). '00' when empty.
         let alpn_tag = match self.alpn_protocols.first() {
             Some(AlpnProtocol::H2) => "h2",
@@ -874,7 +830,6 @@ impl TlsProfile {
             None => "00",
         };
 
-        // Section a (the short fingerprint before hashes).
         let section_a = format!("{proto}{version}{sni}{cipher_count:02}{ext_count:02}_{alpn_tag}",);
 
         // Section b: sorted cipher suites (GREASE stripped), comma-separated,
@@ -920,9 +875,7 @@ impl TlsProfile {
         }
     }
 
-    /// Return an expected HTTP/3 perk fingerprint for this profile.
-    ///
-    /// Returns `None` for profiles where no stable reference shape is encoded.
+    /// Returns HTTP/3 QUIC settings for browsers that support it, if applicable.
     #[must_use]
     pub fn http3_perk(&self) -> Option<Http3Perk> {
         match self.name.as_str() {
@@ -1060,7 +1013,7 @@ pub static CHROME_131: LazyLock<TlsProfile> = LazyLock::new(|| TlsProfile {
 /// Mozilla Firefox 133 TLS fingerprint profile.
 ///
 /// Firefox uses a different cipher-suite and extension order than Chromium
-/// browsers, notably preferring `ChaCha20` and including `delegated_credentials`
+/// browsers, preferring `ChaCha20` and including `delegated_credentials`
 /// and `record_size_limit`.
 ///
 /// # Example
@@ -1135,7 +1088,7 @@ pub static FIREFOX_133: LazyLock<TlsProfile> = LazyLock::new(|| TlsProfile {
 /// Apple Safari 18 TLS fingerprint profile.
 ///
 /// Safari's TLS stack differs from Chromium in extension order and supported
-/// groups. Notably Safari does not advertise post-quantum key exchange.
+/// groups. Safari does not advertise post-quantum key exchange.
 ///
 /// # Example
 ///
@@ -1198,7 +1151,6 @@ pub static SAFARI_18: LazyLock<TlsProfile> = LazyLock::new(|| TlsProfile {
 
 /// Microsoft Edge 131 TLS fingerprint profile.
 ///
-/// Edge is Chromium-based so its TLS stack is nearly identical to Chrome.
 /// Differences are minor (e.g. extension ordering around `application_settings`).
 ///
 /// # Example
@@ -1266,8 +1218,6 @@ pub static EDGE_131: LazyLock<TlsProfile> = LazyLock::new(|| TlsProfile {
 
 // ── Chrome launch flags ──────────────────────────────────────────────────────
 
-/// Return Chrome launch flags that constrain TLS behaviour to approximate this
-/// profile's protocol-version range.
 ///
 /// # What flags control
 ///
@@ -1284,10 +1234,7 @@ pub static EDGE_131: LazyLock<TlsProfile> = LazyLock::new(|| TlsProfile {
 /// - **Extension ordering** — emitted in a fixed order by `BoringSSL`.
 /// - **Supported-group ordering** — set at build time.
 ///
-/// For precise JA3/JA4 matching, a patched Chromium build or an external TLS
-/// proxy (see [`to_rustls_config`](TlsProfile::to_rustls_config)) is required.
 ///
-/// # When to use each approach
 ///
 /// | Detection layer | Handled by |
 /// |---|---|
@@ -1301,7 +1248,6 @@ pub fn chrome_tls_args(profile: &TlsProfile) -> Vec<String> {
     let mut args = Vec::new();
 
     match (has_12, has_13) {
-        // TLS 1.2 only — cap to prevent Chrome advertising 1.3.
         (true, false) => {
             args.push("--ssl-version-max=tls1.2".to_string());
         }
@@ -1319,7 +1265,6 @@ pub fn chrome_tls_args(profile: &TlsProfile) -> Vec<String> {
 // ── rustls integration ───────────────────────────────────────────────────────
 //
 // Feature-gated behind `tls-config`. Builds a rustls `ClientConfig` from a
-// `TlsProfile` to produce network connections whose TLS `ClientHello` matches
 // the profile's cipher-suite, key-exchange-group, ALPN, and version ordering.
 
 #[cfg(feature = "tls-config")]
@@ -1328,15 +1273,10 @@ mod rustls_config {
     use super::*;
     use std::sync::Arc;
 
-    /// Controls how strictly a [`TlsProfile`] must map onto rustls features.
     ///
     /// This struct lets callers choose between broad compatibility and strict
-    /// profile enforcement:
     ///
     /// - **Compatible mode** (default) skips unsupported profile entries with
-    ///   warnings and falls back to provider defaults where needed.
-    /// - **Strict mode** returns an error for unsupported cipher suites.
-    /// - **Strict-all mode** returns an error for unsupported cipher suites
     ///   and unsupported groups.
     ///
     /// # Example
@@ -1366,7 +1306,6 @@ mod rustls_config {
     }
 
     impl TlsControl {
-        /// Compatible mode: skip unknown entries and fall back to defaults.
         #[must_use]
         pub const fn compatible() -> Self {
             Self {
@@ -1399,11 +1338,8 @@ mod rustls_config {
             }
         }
 
-        /// Return a recommended control preset for a given profile.
         ///
         /// Browser profiles use strict cipher-suite checking while allowing
-        /// legacy JA3-only suites to be skipped when rustls has no equivalent.
-        /// Unknown/custom profiles default to compatible mode.
         #[must_use]
         pub fn for_profile(profile: &TlsProfile) -> Self {
             let name = profile.name.to_ascii_lowercase();
@@ -1429,7 +1365,6 @@ mod rustls_config {
     #[non_exhaustive]
     pub enum TlsConfigError {
         /// None of the profile's cipher suites are supported by the rustls
-        /// crypto backend.
         #[error("no supported cipher suites in profile '{0}'")]
         NoCipherSuites(String),
 
@@ -1459,16 +1394,13 @@ mod rustls_config {
         #[error("no supported key-exchange groups in profile '{0}'")]
         NoSupportedGroups(String),
 
-        /// rustls rejected the protocol version or configuration.
         #[error("rustls configuration: {0}")]
         Rustls(#[from] rustls::Error),
     }
 
     /// Wrapper around `Arc<rustls::ClientConfig>` built from a [`TlsProfile`].
     ///
-    /// Pass the inner config to
     /// `reqwest::ClientBuilder::use_preconfigured_tls` (T14) or use it
-    /// directly with `tokio-rustls`.
     #[derive(Debug, Clone)]
     pub struct TlsClientConfig(Arc<rustls::ClientConfig>);
 
@@ -1478,7 +1410,6 @@ mod rustls_config {
             &self.0
         }
 
-        /// Unwrap into the shared `Arc<ClientConfig>`.
         pub fn into_inner(self) -> Arc<rustls::ClientConfig> {
             self.0
         }
@@ -1493,27 +1424,16 @@ mod rustls_config {
     impl TlsProfile {
         /// Build a rustls `ClientConfig` matching this profile.
         ///
-        /// Cipher suites and key-exchange groups are reordered to match the
-        /// profile. Entries not supported by the `aws-lc-rs` crypto backend
-        /// are silently skipped (a `tracing::warn` is emitted for each).
         ///
         /// # Errors
         ///
-        /// Returns [`TlsConfigError::NoCipherSuites`] when *none* of the
         /// profile's cipher suites are available in the backend.
         ///
         /// # rustls extension control
         ///
-        /// rustls emits most TLS extensions automatically:
         ///
         /// - `supported_versions`, `key_share`, `signature_algorithms`,
         ///   `supported_groups`, `server_name`, `psk_key_exchange_modes`, and
-        ///   `ec_point_formats` are managed internally.
-        /// - **ALPN** — set from [`alpn_protocols`](TlsProfile::alpn_protocols)
-        ///   (order-sensitive for fingerprinting).
-        /// - **Cipher suite order** — set via custom `CryptoProvider`.
-        /// - **Key-exchange group order** — set via custom `CryptoProvider`.
-        /// - **TLS version** — constrained to the profile's `tls_versions`.
         ///
         /// Extensions like `compress_certificate`, `application_settings`,
         /// `delegated_credentials`, and `signed_certificate_timestamp` are
@@ -1525,23 +1445,20 @@ mod rustls_config {
 
         /// Build a rustls `ClientConfig` using explicit control settings.
         ///
-        /// This allows callers to opt into strict profile enforcement without
         /// introducing native TLS dependencies.
         ///
         /// # Limitations
         ///
-        /// rustls does not expose APIs to force exact `ClientHello` extension
         /// ordering or GREASE emission. This method provides strict control
         /// over the fields rustls does expose (cipher suites, groups, ALPN,
-        /// protocol versions).
         ///
         /// # Example
         ///
         /// ```
         /// use stygian_browser::tls::{CHROME_131, TlsControl};
         ///
-        /// let cfg = CHROME_131.to_rustls_config_with_control(TlsControl::strict());
-        /// assert!(cfg.is_ok());
+        /// let result = CHROME_131.to_rustls_config_with_control(TlsControl::default());
+        /// assert!(result.is_ok());
         /// ```
         pub fn to_rustls_config_with_control(
             &self,
@@ -1612,7 +1529,6 @@ mod rustls_config {
                 }
             }
 
-            // Fall back to provider defaults when no profile groups matched.
             let kx_groups = if ordered_groups.is_empty() && control.fallback_to_provider_groups {
                 default.kx_groups.clone()
             } else if ordered_groups.is_empty() {
@@ -1621,7 +1537,6 @@ mod rustls_config {
                 ordered_groups
             };
 
-            // ── custom CryptoProvider ──
             let provider = rustls::crypto::CryptoProvider {
                 cipher_suites: ordered_suites,
                 kx_groups,
@@ -1638,7 +1553,6 @@ mod rustls_config {
                 })
                 .collect();
 
-            // ── root certificate store ──
             let mut root_store = rustls::RootCertStore::empty();
             root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
 
@@ -1682,7 +1596,6 @@ mod reqwest_client {
     #[derive(Debug, thiserror::Error)]
     #[non_exhaustive]
     pub enum TlsClientError {
-        /// Failed to build the underlying rustls `ClientConfig`.
         #[error(transparent)]
         TlsConfig(#[from] super::rustls_config::TlsConfigError),
 
@@ -1725,9 +1638,6 @@ mod reqwest_client {
     ///
     /// | Device | Selected Profile |
     /// |---|---|
-    /// | `DesktopWindows` | [`CHROME_131`] |
-    /// | `DesktopMac` | [`SAFARI_18`] |
-    /// | `DesktopLinux` | [`FIREFOX_133`] |
     /// | `MobileAndroid` | [`CHROME_131`] |
     /// | `MobileIOS` | [`SAFARI_18`] |
     pub fn profile_for_device(device: &crate::fingerprint::DeviceProfile) -> &'static TlsProfile {
@@ -1746,7 +1656,6 @@ mod reqwest_client {
     /// against the TLS fingerprint. Mismatches between the TLS profile and
     /// the HTTP headers are a strong detection signal.
     ///
-    /// Returns a `HeaderMap` pre-populated with the headers a real browser
     /// of this type would send on a standard navigation request.
     ///
     /// # Example
@@ -1828,19 +1737,13 @@ mod reqwest_client {
     /// `profile`.
     ///
     /// The returned client:
-    /// - Uses [`TlsProfile::to_rustls_config`] for cipher-suite ordering,
-    ///   key-exchange groups, ALPN, and protocol versions.
-    /// - Sets the `User-Agent` header to match the profile's browser
     ///   (via [`default_user_agent`]).
     /// - Sets browser-matched HTTP headers via [`browser_headers`]
     ///   (`Accept`, `Accept-Encoding`, `Sec-CH-UA`, etc.).
-    /// - Enables cookie storage, gzip, and brotli decompression.
     /// - Routes through `proxy_url` when provided.
     ///
     /// # Errors
     ///
-    /// Returns [`TlsClientError`] if the TLS profile cannot be converted
-    /// to a rustls config or if reqwest rejects the builder configuration.
     ///
     /// # Example
     ///
@@ -1858,7 +1761,6 @@ mod reqwest_client {
 
     /// Build a [`reqwest::Client`] using profile-specific control presets.
     ///
-    /// This is a convenience wrapper for callers who want stronger defaults
     /// without manually selecting [`TlsControl`] fields.
     ///
     /// # Example
@@ -1878,7 +1780,6 @@ mod reqwest_client {
 
     /// Build a [`reqwest::Client`] with explicit TLS profile control settings.
     ///
-    /// This is the pure-Rust path for users who want stronger control without
     /// introducing native build dependencies.
     ///
     /// # Example
@@ -1900,7 +1801,6 @@ mod reqwest_client {
     ) -> Result<reqwest::Client, TlsClientError> {
         let tls_config = profile.to_rustls_config_with_control(control)?;
 
-        // Unwrap the Arc — we're the sole owner after `to_rustls_config`.
         let rustls_cfg =
             Arc::try_unwrap(tls_config.into_inner()).unwrap_or_else(|arc| (*arc).clone());
 
@@ -1956,7 +1856,6 @@ mod tests {
 
     #[test]
     fn md5_known_vectors() {
-        // RFC 1321 test vectors.
         assert_eq!(md5_hex(b""), "d41d8cd98f00b204e9800998ecf8427e");
         assert_eq!(md5_hex(b"a"), "0cc175b9c0f1b6a831c399e269772661");
         assert_eq!(md5_hex(b"abc"), "900150983cd24fb0d6963f7d28e17f72");
@@ -2001,7 +1900,6 @@ mod tests {
 
     #[test]
     fn edge_131_ja3_differs_from_chrome() {
-        // Edge omits `APPLICATION_SETTINGS` extension compared to Chrome.
         let chrome_ja3 = CHROME_131.ja3();
         let edge_ja3 = EDGE_131.ja3();
         assert_ne!(chrome_ja3.hash, edge_ja3.hash);
@@ -2020,7 +1918,7 @@ mod tests {
         assert_eq!(
             ja4.fingerprint.matches('_').count(),
             3,
-            "JA4 should have three underscores: {}",
+            "JA4 should have three separators: {}",
             ja4.fingerprint
         );
     }
