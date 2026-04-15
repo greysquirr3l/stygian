@@ -139,6 +139,8 @@ cloudflare-crawl = []
 escalation = []
 # MCP (Model Context Protocol) server — exposes scraping & pipeline tools over stdin/stdout JSON-RPC 2.0
 mcp = []
+# Structured data extraction via derive macros (requires browser)
+extract = ["browser", "stygian-browser/extract"]
 
 [[bin]]
 name = "stygian"
