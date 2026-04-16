@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-04-16
+
+### Added
+
+- `stygian-browser`: `ProxySource` and `ProxyLease` traits defined in the browser crate
+  (domain-side) so the hexagonal boundary is respected — adapters depend inward on ports
+- `stygian-browser`: `BrowserConfigBuilder::proxy_source()` wires a `ProxySource`
+  implementation into `BrowserPool`; proxy leases are acquired and released across the full
+  page lifecycle
+- `ci`: expanded cross-platform matrix to cover Windows (`windows-latest`) in addition to
+  macOS — build, test, clippy, and MSRV checks now run on both targets
+- `ci`: Dependabot auto-merge workflow for patch and minor dependency updates
+
+### Changed
+
+- `stygian-proxy`: implements the `ProxySource` port trait from `stygian-browser` rather
+  than defining its own, completing the port-inversion for proxy infrastructure
+- `stygian-browser/README.md`: feature flag names, integration examples, and dependency
+  snippets corrected; `stygian_proxy` integration example marked `rust,ignore` to prevent
+  doctest compile failures when the crate is not a direct dependency
+
+### Fixed
+
+- `stygian-mcp`: MCP serialization error path now extracts the JSON-RPC `id` before
+  the failed serialization and emits a proper `-32603` error response with
+  `tracing::error!` instead of silently discarding the message
+- `stygian-graph (cli)`: `cmd_check` replaced `std::process::exit(1)` with
+  `anyhow::bail!` propagation; `#[allow(clippy::unnecessary_wraps)]` and
+  `#[allow(clippy::expect_used)]` suppressions removed, return types corrected
+- `stygian-browser (config)`: `PoisonError` recovery in `RwLock` guards now emits
+  `tracing::warn!` before recovering instead of recovering silently
+- `workspace`: `core-foundation` duplicate version (0.9.x and 0.10.x, both transitive
+  via `chromiumoxide`/`reqwest`) added to `deny.toml` skip list to unblock `cargo deny`
+  CI — no direct upgrade path available upstream
+
 ## [0.9.2] - 2026-04-15
 
 ### Changed
