@@ -332,19 +332,20 @@ impl PipelineDefinition {
     /// ```
     /// use stygian_graph::application::pipeline_parser::PipelineParser;
     ///
-    /// // Use HOME which is always available on Unix
-    /// let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    /// let toml = format!(r#"
+    /// // Set a known env var so the test is deterministic on all platforms.
+    /// // SAFETY: single-threaded doctest — no other threads reading the env.
+    /// unsafe { std::env::set_var("STYGIAN_TEST_URL", "https://example.com"); }
+    /// let toml = r#"
     /// [[nodes]]
     /// name = "fetch"
     /// service = "http"
-    /// url = "${{env:HOME}}"
-    /// "#);
+    /// url = "${env:STYGIAN_TEST_URL}"
+    /// "#;
     ///
-    /// let mut def = PipelineParser::from_str(&toml).unwrap();
+    /// let mut def = PipelineParser::from_str(toml).unwrap();
     /// def.expand_templates();
     ///
-    /// assert_eq!(def.nodes[0].url.as_deref(), Some(home.as_str()));
+    /// assert_eq!(def.nodes[0].url.as_deref(), Some("https://example.com"));
     /// ```
     pub fn expand_templates(&mut self) {
         for node in &mut self.nodes {

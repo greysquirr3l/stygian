@@ -35,6 +35,9 @@ skip = [
     # core-foundation: 0.9.x via system-configuration and 0.10.x via rustls-platform-verifier;
     # both are transitive via chromiumoxide/reqwest — no direct upgrade path.
     { name = "core-foundation" },
+    # foldhash: 0.1.x via petgraph→hashbrown 0.15 and 0.2.x via indexmap→hashbrown 0.16;
+    # both are transitive — no direct upgrade path.
+    { name = "foldhash" },
 ]
 
 [advisories]
