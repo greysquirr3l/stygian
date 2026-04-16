@@ -115,8 +115,8 @@ pub async fn run_cli() -> anyhow::Result<()> {
             watch_interval,
         } => cmd_run(&file, watch, watch_interval).await,
         Commands::Check { file } => cmd_check(&file),
-        Commands::ListServices => cmd_list_services(),
-        Commands::ListProviders => cmd_list_providers(),
+        Commands::ListServices => { cmd_list_services(); Ok(()) },
+        Commands::ListProviders => { cmd_list_providers(); Ok(()) },
         Commands::GraphViz { file, format } => cmd_graph_viz(&file, format),
     }
 }
@@ -154,7 +154,6 @@ async fn cmd_run(file: &str, watch: bool, watch_interval: u64) -> anyhow::Result
     Ok(())
 }
 
-#[allow(clippy::expect_used)]
 async fn run_pipeline_once(file: &str) -> anyhow::Result<()> {
     info!(file, "Loading pipeline");
 
@@ -189,7 +188,7 @@ async fn run_pipeline_once(file: &str) -> anyhow::Result<()> {
             .nodes
             .iter()
             .find(|n| &n.name == node_name)
-            .expect("node from topological_order must exist in nodes list");
+            .ok_or_else(|| anyhow::anyhow!("BUG: node '{node_name}' from topological_order not found in nodes"))?;
 
         let bar = mp.add(ProgressBar::new(3));
         bar.set_style(ProgressStyle::with_template("  {spinner:.green} {msg}")?);
@@ -223,13 +222,8 @@ async fn run_pipeline_once(file: &str) -> anyhow::Result<()> {
 fn cmd_check(file: &str) -> anyhow::Result<()> {
     println!("Checking pipeline: {file}");
 
-    let def = match PipelineParser::from_figment_file(file) {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("  ✗ Parse error: {e}");
-            std::process::exit(1);
-        }
-    };
+let def = PipelineParser::from_figment_file(file)
+        .map_err(|e| anyhow::anyhow!("Parse error: {e}"))?;
 
     println!(
         "  {} nodes, {} services declared",
@@ -237,34 +231,27 @@ fn cmd_check(file: &str) -> anyhow::Result<()> {
         def.services.len()
     );
 
-    match def.validate() {
-        Ok(()) => {
-            let order = def
-                .topological_order()
-                .map_err(|e| anyhow::anyhow!("Topological sort failed: {e}"))?;
-            println!("  ✓ Validation passed");
-            println!("  Execution order: {}", order.join(" → "));
-        }
-        Err(e) => {
-            eprintln!("  ✗ Validation failed: {e}");
-            std::process::exit(1);
-        }
-    }
+    def.validate()
+        .map_err(|e| anyhow::anyhow!("Validation failed: {e}"))?;
+    let order = def
+        .topological_order()
+        .map_err(|e| anyhow::anyhow!("Topological sort failed: {e}"))?;
+    println!("  ✓ Validation passed");
+    println!("  Execution order: {}", order.join(" → "));
 
     Ok(())
 }
 
 // ─── list-services ────────────────────────────────────────────────────────────
 
-#[allow(clippy::unnecessary_wraps)]
-fn cmd_list_services() -> anyhow::Result<()> {
+fn cmd_list_services() {
     let registry = global_registry();
     let names = registry.names();
 
     if names.is_empty() {
         println!("No services registered.");
         println!("Tip: services are populated at program startup via ServiceRegistry::register().");
-        return Ok(());
+        return;
     }
 
     println!("{:<24} STATUS", "SERVICE");
@@ -286,8 +273,6 @@ fn cmd_list_services() -> anyhow::Result<()> {
         };
         println!("{name:<24} {status_str}");
     }
-
-    Ok(())
 }
 
 // ─── list-providers ───────────────────────────────────────────────────────────
@@ -302,8 +287,7 @@ struct ProviderInfo {
     json_mode: bool,
 }
 
-#[allow(clippy::unnecessary_wraps)]
-fn cmd_list_providers() -> anyhow::Result<()> {
+fn cmd_list_providers() {
     const fn flag(b: bool) -> &'static str {
         if b { "✓" } else { "✗" }
     }
@@ -371,7 +355,6 @@ fn cmd_list_providers() -> anyhow::Result<()> {
 
     println!();
     println!("Configure via TOML [[services]] blocks or STYGIAN_* environment variables.");
-    Ok(())
 }
 
 // ─── graph-viz ────────────────────────────────────────────────────────────────
@@ -466,13 +449,13 @@ mod tests {
 
     #[test]
     fn cmd_list_providers_succeeds() {
-        cmd_list_providers().unwrap();
+        cmd_list_providers();
     }
 
     #[test]
     fn cmd_list_services_succeeds_empty_registry() {
         // global registry is empty in tests — should succeed with a "no services" message
-        cmd_list_services().unwrap();
+        cmd_list_services();
     }
 
     /// Helper: write a minimal valid pipeline TOML to a `NamedTempFile`

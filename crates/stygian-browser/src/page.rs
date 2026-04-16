@@ -270,7 +270,7 @@ impl NodeHandle {
                 duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
             })?
             .map_err(|e| self.cdp_err_or_stale(&e, "inner_html"))
-            .map(Option::unwrap_or_default)
+            .map(|opt| opt.unwrap_or_default())
     }
 
     /// Return the element's `outerHTML`.
@@ -287,7 +287,7 @@ impl NodeHandle {
                 duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
             })?
             .map_err(|e| self.cdp_err_or_stale(&e, "outer_html"))
-            .map(Option::unwrap_or_default)
+            .map(|opt| opt.unwrap_or_default())
     }
 
     ///
@@ -962,7 +962,7 @@ impl PageHandle {
                 operation: "page.url".to_string(),
                 message: e.to_string(),
             })
-            .map(Option::unwrap_or_default)
+            .map(|opt| opt.unwrap_or_default())
     }
 
     /// Return the HTTP status code of the most recent main-frame navigation.
@@ -1015,7 +1015,7 @@ impl PageHandle {
                 script: "document.title".to_string(),
                 reason: e.to_string(),
             })
-            .map(Option::unwrap_or_default)
+            .map(|opt| opt.unwrap_or_default())
     }
 
     /// Return the page's full outer HTML.

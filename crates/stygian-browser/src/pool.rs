@@ -142,23 +142,22 @@ impl BrowserPool {
         // Warmup: pre-launch min_size instances
         info!("Warming browser pool: min_size={min_size}, max_size={max_size}");
         for i in 0..min_size {
-            let (launch_config, proxy_lease) =
-                if let Some(source) = &pool.config.proxy_source {
-                    match source.bind_proxy().await {
-                        Ok((url, lease)) => {
-                            let mut cfg = (*pool.config).clone();
-                            cfg.proxy = Some(url);
-                            cfg.proxy_source = None;
-                            (cfg, Some(lease))
-                        }
-                        Err(e) => {
-                            warn!("Warmup browser {i} failed to acquire proxy (non-fatal): {e}");
-                            continue;
-                        }
+            let (launch_config, proxy_lease) = if let Some(source) = &pool.config.proxy_source {
+                match source.bind_proxy().await {
+                    Ok((url, lease)) => {
+                        let mut cfg = (*pool.config).clone();
+                        cfg.proxy = Some(url);
+                        cfg.proxy_source = None;
+                        (cfg, Some(lease))
                     }
-                } else {
-                    ((*pool.config).clone(), None)
-                };
+                    Err(e) => {
+                        warn!("Warmup browser {i} failed to acquire proxy (non-fatal): {e}");
+                        continue;
+                    }
+                }
+            } else {
+                ((*pool.config).clone(), None)
+            };
 
             match BrowserInstance::launch(launch_config).await {
                 Ok(instance) => {
@@ -373,10 +372,8 @@ impl BrowserPool {
             };
             let mut healthy: Option<(BrowserInstance, Option<Box<dyn crate::proxy::ProxyLease>>)> =
                 None;
-            let mut unhealthy: Vec<(
-                BrowserInstance,
-                Option<Box<dyn crate::proxy::ProxyLease>>,
-            )> = Vec::new();
+            let mut unhealthy: Vec<(BrowserInstance, Option<Box<dyn crate::proxy::ProxyLease>>)> =
+                Vec::new();
             if let Some(queue) = queue {
                 while let Some(entry) = queue.pop_front() {
                     if healthy.is_none() && entry.instance.is_healthy_cached() {
@@ -411,7 +408,12 @@ impl BrowserPool {
                 "Reusing idle browser (uptime={:?})",
                 instance.uptime()
             );
-            return Ok(BrowserHandle::new(instance, Arc::clone(self), ctx_owned, proxy_lease));
+            return Ok(BrowserHandle::new(
+                instance,
+                Arc::clone(self),
+                ctx_owned,
+                proxy_lease,
+            ));
         }
 
         // Slow path: launch new or wait
@@ -425,24 +427,23 @@ impl BrowserPool {
                 .forget(); // We track capacity manually via active_count
             self.active_count.fetch_add(1, Ordering::Relaxed);
 
-            let (launch_config, proxy_lease) =
-                if let Some(source) = &self.config.proxy_source {
-                    match source.bind_proxy().await {
-                        Ok((url, lease)) => {
-                            let mut cfg = (*self.config).clone();
-                            cfg.proxy = Some(url);
-                            cfg.proxy_source = None;
-                            (cfg, Some(lease))
-                        }
-                        Err(e) => {
-                            self.active_count.fetch_sub(1, Ordering::Relaxed);
-                            self.semaphore.add_permits(1);
-                            return Err(e);
-                        }
+            let (launch_config, proxy_lease) = if let Some(source) = &self.config.proxy_source {
+                match source.bind_proxy().await {
+                    Ok((url, lease)) => {
+                        let mut cfg = (*self.config).clone();
+                        cfg.proxy = Some(url);
+                        cfg.proxy_source = None;
+                        (cfg, Some(lease))
                     }
-                } else {
-                    ((*self.config).clone(), None)
-                };
+                    Err(e) => {
+                        self.active_count.fetch_sub(1, Ordering::Relaxed);
+                        self.semaphore.add_permits(1);
+                        return Err(e);
+                    }
+                }
+            } else {
+                ((*self.config).clone(), None)
+            };
 
             let instance = match BrowserInstance::launch(launch_config).await {
                 Ok(i) => i,
@@ -459,7 +460,12 @@ impl BrowserPool {
                 "Launched fresh browser (pool active={})",
                 self.active_count.load(Ordering::Relaxed)
             );
-            return Ok(BrowserHandle::new(instance, Arc::clone(self), ctx_owned, proxy_lease));
+            return Ok(BrowserHandle::new(
+                instance,
+                Arc::clone(self),
+                ctx_owned,
+                proxy_lease,
+            ));
         }
 
         // Pool full — wait for a release
@@ -477,8 +483,7 @@ impl BrowserPool {
                 {
                     drop(guard);
                     if entry.instance.is_healthy_cached() {
-                        let (instance, proxy_lease) =
-                            (entry.instance, entry.proxy_lease);
+                        let (instance, proxy_lease) = (entry.instance, entry.proxy_lease);
                         return Ok(BrowserHandle::new(
                             instance,
                             Arc::clone(self),
@@ -710,7 +715,11 @@ impl BrowserHandle {
     pub async fn release(mut self) {
         if let Some(instance) = self.instance.take() {
             self.pool
-                .release(instance, self.context_id.as_deref(), self.proxy_lease.take())
+                .release(
+                    instance,
+                    self.context_id.as_deref(),
+                    self.proxy_lease.take(),
+                )
                 .await;
         }
     }
@@ -723,7 +732,8 @@ impl Drop for BrowserHandle {
             let context_id = self.context_id.clone();
             let proxy_lease = self.proxy_lease.take();
             tokio::spawn(async move {
-                pool.release(instance, context_id.as_deref(), proxy_lease).await;
+                pool.release(instance, context_id.as_deref(), proxy_lease)
+                    .await;
             });
         }
     }

@@ -277,6 +277,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 When a browser is released after use, the proxy's circuit breaker is updated:
+
 - **Clean return to idle queue**: proxy marked as success ✓
 - **Browser unhealthy**: proxy marked as failure ✗  
 - **Browser crashed**: proxy marked as failure ✗

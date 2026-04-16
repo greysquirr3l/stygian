@@ -231,6 +231,7 @@ let config = BrowserConfig::builder()
 ```
 
 Under the hood:
+
 - `ProxyManagerBridge` implements `ProxySource` (browser's port trait)
 - Each acquired proxy is wrapped in `ProxyLeaseAdapter`
 - When `mark_success()` is called on the lease, it updates the proxy's circuit breaker

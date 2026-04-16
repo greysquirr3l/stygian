@@ -129,10 +129,7 @@ impl stygian_browser::proxy::ProxyLease for ProxyLeaseAdapter {
 impl stygian_browser::proxy::ProxySource for ProxyManagerBridge {
     async fn bind_proxy(
         &self,
-    ) -> stygian_browser::error::Result<(
-        String,
-        Box<dyn stygian_browser::proxy::ProxyLease>,
-    )> {
+    ) -> stygian_browser::error::Result<(String, Box<dyn stygian_browser::proxy::ProxyLease>)> {
         let handle = self.manager.acquire_proxy().await.map_err(|e| {
             stygian_browser::error::BrowserError::ProxyUnavailable {
                 reason: e.to_string(),
