@@ -30,6 +30,13 @@ multiple-versions = "warn"
 wildcards = "deny"
 highlight = "all"
 
+# Permitted duplicate crate versions that cannot be resolved upstream.
+skip = [
+    # core-foundation: 0.9.x via system-configuration and 0.10.x via rustls-platform-verifier;
+    # both are transitive via chromiumoxide/reqwest — no direct upgrade path.
+    { name = "core-foundation" },
+]
+
 [advisories]
 # Deny crates with known security vulnerabilities.
 # The entries below are acknowledged transitive issues with no fix available in
