@@ -139,10 +139,10 @@ tokio = { version = "1", features = ["full"] }
 For MCP integration, install the `stygian-mcp` binary with the `extract` feature for full tool coverage:
 
 ```bash
-# From crates.io (once published)
+# From crates.io
 cargo install stygian-mcp --features extract
 
-# Or from source (local / development)
+# Or from source
 cargo install --path crates/stygian-mcp --features extract --locked
 ```
 
