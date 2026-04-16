@@ -897,7 +897,7 @@ impl ScrapeExchangeFeed {
 
         let (_, mut read) = ws_stream.split();
         let mut events = Vec::new();
-        let deadline = Duration::from_secs(120);
+        let deadline = Duration::from_mins(2);
 
         loop {
             let cap = max_events.unwrap_or(usize::MAX);
@@ -1159,7 +1159,7 @@ mod tests {
         assert_eq!(feed.backoff_duration(1), Duration::from_millis(200));
         assert_eq!(feed.backoff_duration(2), Duration::from_millis(400));
         // cap at 30s
-        assert_eq!(feed.backoff_duration(20), Duration::from_millis(30_000));
+        assert_eq!(feed.backoff_duration(20), Duration::from_secs(30));
     }
 
     #[test]

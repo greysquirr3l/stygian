@@ -69,7 +69,7 @@ impl Default for EscalationConfig {
         Self {
             max_tier: EscalationTier::BrowserAdvanced,
             base_tier: EscalationTier::HttpPlain,
-            cache_ttl: Duration::from_secs(3_600),
+            cache_ttl: Duration::from_hours(1),
         }
     }
 }
