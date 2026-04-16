@@ -70,12 +70,76 @@ impl ProxyManagerBridge {
     }
 }
 
+impl std::fmt::Debug for ProxyManagerBridge {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProxyManagerBridge").finish_non_exhaustive()
+    }
+}
+
 #[async_trait]
 impl BrowserProxySource for ProxyManagerBridge {
     async fn bind_proxy(&self) -> ProxyResult<(String, ProxyHandle)> {
         let handle = self.manager.acquire_proxy().await?;
         let url = handle.proxy_url.clone();
         Ok((url, handle))
+    }
+}
+
+// ─── stygian_browser::ProxySource impl ───────────────────────────────────────
+
+/// Wraps a [`ProxyHandle`] as a [`stygian_browser::proxy::ProxyLease`].
+///
+/// Calling [`mark_success`](stygian_browser::proxy::ProxyLease::mark_success)
+/// delegates to [`ProxyHandle::mark_success`], signalling a successful session
+/// to the circuit breaker.  Dropping without calling it records a failure.
+struct ProxyLeaseAdapter(ProxyHandle);
+
+impl stygian_browser::proxy::ProxyLease for ProxyLeaseAdapter {
+    fn mark_success(&self) {
+        self.0.mark_success();
+    }
+}
+
+/// Implements [`stygian_browser::proxy::ProxySource`] for [`ProxyManagerBridge`].
+///
+/// This is the primary integration point: pass `Arc::new(ProxyManagerBridge::new(manager))`
+/// to [`stygian_browser::BrowserConfig::builder().proxy_source(...)`](stygian_browser::config::BrowserConfigBuilder::proxy_source).
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use std::sync::Arc;
+/// use stygian_browser::BrowserConfig;
+/// use stygian_proxy::{ProxyConfig, ProxyManager};
+/// use stygian_proxy::storage::MemoryProxyStore;
+/// use stygian_proxy::browser::ProxyManagerBridge;
+///
+/// # async fn run() -> stygian_proxy::ProxyResult<()> {
+/// let storage = Arc::new(MemoryProxyStore::default());
+/// let manager = Arc::new(ProxyManager::with_round_robin(storage, ProxyConfig::default())?);
+/// let bridge = Arc::new(ProxyManagerBridge::new(manager));
+///
+/// let config = BrowserConfig::builder()
+///     .proxy_source(bridge)
+///     .build();
+/// # Ok(())
+/// # }
+/// ```
+#[async_trait]
+impl stygian_browser::proxy::ProxySource for ProxyManagerBridge {
+    async fn bind_proxy(
+        &self,
+    ) -> stygian_browser::error::Result<(
+        String,
+        Box<dyn stygian_browser::proxy::ProxyLease>,
+    )> {
+        let handle = self.manager.acquire_proxy().await.map_err(|e| {
+            stygian_browser::error::BrowserError::ProxyUnavailable {
+                reason: e.to_string(),
+            }
+        })?;
+        let url = handle.proxy_url.clone();
+        Ok((url, Box::new(ProxyLeaseAdapter(handle))))
     }
 }
 

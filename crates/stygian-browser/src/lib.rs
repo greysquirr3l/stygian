@@ -72,6 +72,7 @@ pub mod config;
 pub mod error;
 pub mod page;
 pub mod pool;
+pub mod proxy;
 
 #[cfg(feature = "extract")]
 pub mod extract;
@@ -118,6 +119,7 @@ pub use config::{BrowserConfig, HeadlessMode, StealthLevel};
 pub use error::{BrowserError, Result};
 pub use page::{NodeHandle, PageHandle, ResourceFilter, WaitUntil};
 pub use pool::{BrowserHandle, BrowserPool, PoolStats};
+pub use proxy::{DirectLease, ProxyLease, ProxySource};
 
 #[cfg(feature = "stealth")]
 pub use stealth::{NavigatorProfile, StealthConfig, StealthProfile};

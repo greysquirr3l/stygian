@@ -68,6 +68,10 @@ use crate::{
 struct PoolEntry {
     instance: BrowserInstance,
     last_used: Instant,
+    /// RAII proxy lease — held for the entire Chrome process lifetime.
+    /// `mark_success()` is called on clean disposal; simply dropping it
+    /// records a circuit-breaker failure in the proxy pool (if any).
+    proxy_lease: Option<Box<dyn crate::proxy::ProxyLease>>,
 }
 
 // ─── PoolInner ────────────────────────────────────────────────────────────────
@@ -138,17 +142,37 @@ impl BrowserPool {
         // Warmup: pre-launch min_size instances
         info!("Warming browser pool: min_size={min_size}, max_size={max_size}");
         for i in 0..min_size {
-            match BrowserInstance::launch((*pool.config).clone()).await {
+            let (launch_config, proxy_lease) =
+                if let Some(source) = &pool.config.proxy_source {
+                    match source.bind_proxy().await {
+                        Ok((url, lease)) => {
+                            let mut cfg = (*pool.config).clone();
+                            cfg.proxy = Some(url);
+                            cfg.proxy_source = None;
+                            (cfg, Some(lease))
+                        }
+                        Err(e) => {
+                            warn!("Warmup browser {i} failed to acquire proxy (non-fatal): {e}");
+                            continue;
+                        }
+                    }
+                } else {
+                    ((*pool.config).clone(), None)
+                };
+
+            match BrowserInstance::launch(launch_config).await {
                 Ok(instance) => {
                     pool.active_count.fetch_add(1, Ordering::Relaxed);
                     pool.inner.lock().await.shared.push_back(PoolEntry {
                         instance,
                         last_used: Instant::now(),
+                        proxy_lease,
                     });
                     debug!("Warmed browser {}/{min_size}", i + 1);
                 }
                 Err(e) => {
                     warn!("Warmup browser {i} failed (non-fatal): {e}");
+                    // proxy_lease drops here = circuit-breaker failure signal
                 }
             }
         }
@@ -187,8 +211,13 @@ impl BrowserPool {
                 while let Some(entry) = guard.shared.pop_front() {
                     if evicted < evict_count && now.duration_since(entry.last_used) >= idle_timeout
                     {
+                        // Clean eviction: proxy was fine, just expired.
+                        if let Some(lease) = &entry.proxy_lease {
+                            lease.mark_success();
+                        }
+                        let instance = entry.instance;
                         tokio::spawn(async move {
-                            let _ = entry.instance.shutdown().await;
+                            let _ = instance.shutdown().await;
                         });
                         eviction_active.fetch_sub(1, Ordering::Relaxed);
                         evicted += 1;
@@ -208,8 +237,12 @@ impl BrowserPool {
                             if evicted < evict_count
                                 && now.duration_since(entry.last_used) >= idle_timeout
                             {
+                                if let Some(lease) = &entry.proxy_lease {
+                                    lease.mark_success();
+                                }
+                                let instance = entry.instance;
                                 tokio::spawn(async move {
-                                    let _ = entry.instance.shutdown().await;
+                                    let _ = instance.shutdown().await;
                                 });
                                 eviction_active.fetch_sub(1, Ordering::Relaxed);
                                 evicted += 1;
@@ -338,14 +371,18 @@ impl BrowserPool {
                 Some(id) => guard.scoped.get_mut(id),
                 None => Some(&mut guard.shared),
             };
-            let mut healthy: Option<BrowserInstance> = None;
-            let mut unhealthy: Vec<BrowserInstance> = Vec::new();
+            let mut healthy: Option<(BrowserInstance, Option<Box<dyn crate::proxy::ProxyLease>>)> =
+                None;
+            let mut unhealthy: Vec<(
+                BrowserInstance,
+                Option<Box<dyn crate::proxy::ProxyLease>>,
+            )> = Vec::new();
             if let Some(queue) = queue {
                 while let Some(entry) = queue.pop_front() {
                     if healthy.is_none() && entry.instance.is_healthy_cached() {
-                        healthy = Some(entry.instance);
+                        healthy = Some((entry.instance, entry.proxy_lease));
                     } else if !entry.instance.is_healthy_cached() {
-                        unhealthy.push(entry.instance);
+                        unhealthy.push((entry.instance, entry.proxy_lease));
                     } else {
                         // Healthy but we already found one — push back.
                         queue.push_front(entry);
@@ -357,7 +394,8 @@ impl BrowserPool {
         };
 
         // Dispose unhealthy entries outside the lock
-        for instance in fast_result.1 {
+        for (instance, _lease) in fast_result.1 {
+            // _lease drops here = circuit-breaker failure signal
             #[cfg(feature = "metrics")]
             crate::metrics::METRICS.record_crash();
             let active_count = self.active_count.clone();
@@ -367,13 +405,13 @@ impl BrowserPool {
             });
         }
 
-        if let Some(instance) = fast_result.0 {
+        if let Some((instance, proxy_lease)) = fast_result.0 {
             debug!(
                 context = context_id.unwrap_or("shared"),
                 "Reusing idle browser (uptime={:?})",
                 instance.uptime()
             );
-            return Ok(BrowserHandle::new(instance, Arc::clone(self), ctx_owned));
+            return Ok(BrowserHandle::new(instance, Arc::clone(self), ctx_owned, proxy_lease));
         }
 
         // Slow path: launch new or wait
@@ -387,9 +425,29 @@ impl BrowserPool {
                 .forget(); // We track capacity manually via active_count
             self.active_count.fetch_add(1, Ordering::Relaxed);
 
-            let instance = match BrowserInstance::launch((*self.config).clone()).await {
+            let (launch_config, proxy_lease) =
+                if let Some(source) = &self.config.proxy_source {
+                    match source.bind_proxy().await {
+                        Ok((url, lease)) => {
+                            let mut cfg = (*self.config).clone();
+                            cfg.proxy = Some(url);
+                            cfg.proxy_source = None;
+                            (cfg, Some(lease))
+                        }
+                        Err(e) => {
+                            self.active_count.fetch_sub(1, Ordering::Relaxed);
+                            self.semaphore.add_permits(1);
+                            return Err(e);
+                        }
+                    }
+                } else {
+                    ((*self.config).clone(), None)
+                };
+
+            let instance = match BrowserInstance::launch(launch_config).await {
                 Ok(i) => i,
                 Err(e) => {
+                    // proxy_lease drops here = circuit-breaker failure signal
                     self.active_count.fetch_sub(1, Ordering::Relaxed);
                     self.semaphore.add_permits(1);
                     return Err(e);
@@ -401,7 +459,7 @@ impl BrowserPool {
                 "Launched fresh browser (pool active={})",
                 self.active_count.load(Ordering::Relaxed)
             );
-            return Ok(BrowserHandle::new(instance, Arc::clone(self), ctx_owned));
+            return Ok(BrowserHandle::new(instance, Arc::clone(self), ctx_owned, proxy_lease));
         }
 
         // Pool full — wait for a release
@@ -419,17 +477,22 @@ impl BrowserPool {
                 {
                     drop(guard);
                     if entry.instance.is_healthy_cached() {
+                        let (instance, proxy_lease) =
+                            (entry.instance, entry.proxy_lease);
                         return Ok(BrowserHandle::new(
-                            entry.instance,
+                            instance,
                             Arc::clone(self),
                             ctx_for_poll.clone(),
+                            proxy_lease,
                         ));
                     }
                     #[cfg(feature = "metrics")]
                     crate::metrics::METRICS.record_crash();
+                    // _lease drops = circuit-breaker failure signal
+                    let instance = entry.instance;
                     let active_count = self.active_count.clone();
                     tokio::spawn(async move {
-                        let _ = entry.instance.shutdown().await;
+                        let _ = instance.shutdown().await;
                         active_count.fetch_sub(1, Ordering::Relaxed);
                     });
                 }
@@ -442,7 +505,12 @@ impl BrowserPool {
     // ─── Release ──────────────────────────────────────────────────────────────
 
     /// Return a browser instance to the pool (called by [`BrowserHandle::release`]).
-    async fn release(&self, instance: BrowserInstance, context_id: Option<&str>) {
+    async fn release(
+        &self,
+        instance: BrowserInstance,
+        context_id: Option<&str>,
+        mut proxy_lease: Option<Box<dyn crate::proxy::ProxyLease>>,
+    ) {
         // Health-check before returning to idle queue
         if instance.is_healthy_cached() {
             let mut guard = self.inner.lock().await;
@@ -460,6 +528,7 @@ impl BrowserPool {
                 queue.push_back(PoolEntry {
                     instance,
                     last_used: Instant::now(),
+                    proxy_lease: proxy_lease.take(), // lease travels with the pooled entry
                 });
                 debug!(
                     context = context_id.unwrap_or("shared"),
@@ -468,7 +537,14 @@ impl BrowserPool {
                 return;
             }
             drop(guard);
+            // Healthy but pool full: mark success before clean disposal
+            if let Some(lease) = &proxy_lease {
+                lease.mark_success();
+            }
         }
+        // proxy_lease drops here:
+        //   - healthy + pool full → mark_success was called above, drop is a no-op
+        //   - unhealthy → mark_success NOT called, drop records circuit-breaker failure
 
         // Unhealthy or pool full — dispose
         #[cfg(feature = "metrics")]
@@ -512,9 +588,14 @@ impl BrowserPool {
 
         let count = entries.len();
         for entry in entries {
+            // Clean deprovisioning: mark the proxy as successful
+            if let Some(lease) = &entry.proxy_lease {
+                lease.mark_success();
+            }
+            let instance = entry.instance;
             let active_count = self.active_count.clone();
             tokio::spawn(async move {
-                let _ = entry.instance.shutdown().await;
+                let _ = instance.shutdown().await;
                 active_count.fetch_sub(1, Ordering::Relaxed);
             });
             self.semaphore.add_permits(1);
@@ -584,18 +665,21 @@ pub struct BrowserHandle {
     instance: Option<BrowserInstance>,
     pool: Arc<BrowserPool>,
     context_id: Option<String>,
+    proxy_lease: Option<Box<dyn crate::proxy::ProxyLease>>,
 }
 
 impl BrowserHandle {
-    const fn new(
+    fn new(
         instance: BrowserInstance,
         pool: Arc<BrowserPool>,
         context_id: Option<String>,
+        proxy_lease: Option<Box<dyn crate::proxy::ProxyLease>>,
     ) -> Self {
         Self {
             instance: Some(instance),
             pool,
             context_id,
+            proxy_lease,
         }
     }
 
@@ -626,7 +710,7 @@ impl BrowserHandle {
     pub async fn release(mut self) {
         if let Some(instance) = self.instance.take() {
             self.pool
-                .release(instance, self.context_id.as_deref())
+                .release(instance, self.context_id.as_deref(), self.proxy_lease.take())
                 .await;
         }
     }
@@ -637,8 +721,9 @@ impl Drop for BrowserHandle {
         if let Some(instance) = self.instance.take() {
             let pool = Arc::clone(&self.pool);
             let context_id = self.context_id.clone();
+            let proxy_lease = self.proxy_lease.take();
             tokio::spawn(async move {
-                pool.release(instance, context_id.as_deref()).await;
+                pool.release(instance, context_id.as_deref(), proxy_lease).await;
             });
         }
     }

@@ -4106,6 +4106,7 @@ name = "stygian-browser"
 version = "0.9.2"
 dependencies = [
  "anyhow",
+ "async-trait",
  "base64",
  "chromiumoxide",
  "futures",

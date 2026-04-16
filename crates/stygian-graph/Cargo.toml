@@ -120,7 +120,7 @@ default = ["browser"]
 # Include browser automation support
 browser = ["dep:stygian-browser"]
 # Full feature set
-full = ["browser", "api", "wasm-plugins", "postgres", "cloudflare-crawl", "redis", "object-storage", "scrape-exchange"]
+full = ["browser", "extract", "api", "wasm-plugins", "postgres", "cloudflare-crawl", "redis", "object-storage", "scrape-exchange", "escalation"]
 # Scrape Exchange REST API client and adapters
 scrape-exchange = []
 # Redis / Valkey cache adapter
