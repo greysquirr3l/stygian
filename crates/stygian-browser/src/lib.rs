@@ -105,6 +105,9 @@ pub mod webrtc;
 pub mod noise;
 
 #[cfg(feature = "stealth")]
+pub mod canvas_noise;
+
+#[cfg(feature = "stealth")]
 pub mod diagnostic;
 
 #[cfg(feature = "mcp")]

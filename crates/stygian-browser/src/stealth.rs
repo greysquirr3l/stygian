@@ -578,6 +578,17 @@ pub async fn apply_stealth_to_page(
             )
             .await?;
         }
+
+        if config.noise.canvas_enabled {
+            let engine = config.noise.build_engine();
+            let canvas_script = crate::canvas_noise::canvas_noise_script(&engine);
+            inject_one(
+                page,
+                "AddScriptToEvaluateOnNewDocument(canvas-noise)",
+                canvas_script,
+            )
+            .await?;
+        }
     }
 
     Ok(())
