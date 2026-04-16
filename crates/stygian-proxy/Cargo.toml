@@ -39,7 +39,7 @@ reqwest = { workspace = true }
 futures = { workspace = true }
 
 # Random strategy
-rand = "0.9"
+rand = "0.9.3"
 
 # Browser integration (optional)
 stygian-browser = { path = "../stygian-browser", version = "0.9.3", optional = true }
