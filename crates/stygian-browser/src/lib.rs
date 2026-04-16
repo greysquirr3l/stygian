@@ -108,6 +108,15 @@ pub mod noise;
 pub mod canvas_noise;
 
 #[cfg(feature = "stealth")]
+pub mod webgl_noise;
+
+#[cfg(feature = "stealth")]
+pub mod audio_noise;
+
+#[cfg(feature = "stealth")]
+pub mod rects_noise;
+
+#[cfg(feature = "stealth")]
 pub mod diagnostic;
 
 #[cfg(feature = "mcp")]

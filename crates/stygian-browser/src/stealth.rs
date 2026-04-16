@@ -589,6 +589,43 @@ pub async fn apply_stealth_to_page(
             )
             .await?;
         }
+
+        // WebGL, audio, and rects noise (T39, T40, T41)
+        if config.noise.webgl_enabled {
+            let engine = config.noise.build_engine();
+            let webgl_script = crate::webgl_noise::webgl_noise_script(
+                &crate::webgl_noise::WebGlProfile::nvidia_rtx_3060(),
+                &engine,
+            );
+            inject_one(
+                page,
+                "AddScriptToEvaluateOnNewDocument(webgl-noise)",
+                webgl_script,
+            )
+            .await?;
+        }
+
+        if config.noise.audio_enabled {
+            let engine = config.noise.build_engine();
+            let audio_script = crate::audio_noise::audio_noise_script(&engine);
+            inject_one(
+                page,
+                "AddScriptToEvaluateOnNewDocument(audio-noise)",
+                audio_script,
+            )
+            .await?;
+        }
+
+        if config.noise.rects_enabled {
+            let engine = config.noise.build_engine();
+            let rects_script = crate::rects_noise::rects_noise_script(&engine);
+            inject_one(
+                page,
+                "AddScriptToEvaluateOnNewDocument(rects-noise)",
+                rects_script,
+            )
+            .await?;
+        }
     }
 
     Ok(())
