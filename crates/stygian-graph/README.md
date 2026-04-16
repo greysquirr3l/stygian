@@ -38,12 +38,29 @@ serde_json = "1"
 Enable optional features:
 
 ```toml
-stygian-graph = { version = "*", features = ["browser", "ai-claude", "distributed"] }
+stygian-graph = { version = "*", features = ["browser", "redis", "extract"] }
 ```
+
+### Feature Reference
+
+| Feature | Dependency | Purpose |
+| --------- | ----------- | ------- |
+| `browser` | stygian-browser | Browser automation adapter |
+| `extract` | stygian-extract-derive | Structured data extraction via `#[derive(Extract)]` |
+| `api` | — | REST API server (Axum routes) |
+| `redis` | redis + deadpool-redis | Redis/Valkey cache & work queue |
+| `postgres` | sqlx | PostgreSQL storage adapter |
+| `object-storage` | rust-s3 | S3-compatible object storage adapter |
+| `scrape-exchange` | — | Scrape Exchange crawler/sink integrations |
+| `cloudflare-crawl` | — | Cloudflare Browser Rendering adapter |
+| `wasm-plugins` | wasmtime | WASM plugin system |
+| `escalation` | — | Tiered escalation policy adapter |
+| `mcp` | — | MCP (Model Context Protocol) tools |
+| `full` | *all of above* | All features enabled |
 
 ---
 
-## Quick Start
+## Installation
 
 ### Basic Scraping Pipeline
 

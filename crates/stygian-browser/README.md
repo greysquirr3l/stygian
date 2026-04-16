@@ -13,16 +13,19 @@ for bypassing modern anti-bot systems: Cloudflare, `DataDome`, `PerimeterX`, Aka
 
 ## Features
 
-| Feature | Description |
-| --------- | ------------- |
-| **Browser pooling** | Warm pool with configurable min/max, LRU eviction, backpressure |
-| **Anti-detection** | Navigator spoofing, canvas noise, WebGL randomisation, UA patching |
-| **Human behavior** | Bézier-curve mouse paths, realistic keystroke timing, random interactions |
-| **CDP leak protection** | Hides `Runtime.enable` artifacts that expose automation |
-| **WebRTC control** | Block, proxy-route, or allow WebRTC — prevent IP leaks |
-| **Fingerprint generation** | Statistically-weighted device profiles (Windows, Mac, Linux, Android, iOS) |
-| **Stealth levels** | `None` / `Basic` / `Advanced` — tune evasion vs. performance |
-| **Structured extraction** | `#[derive(Extract)]` maps CSS selectors onto Rust structs (opt-in: `features = ["extract"]`) |
+| Feature | Description | Default |
+| --------- | ------------- | --------- |
+| `stealth` | Navigation spoofing, canvas noise, WebGL randomization, CDP protection | ✓ |
+| `tls-config` | TLS fingerprint profiling via rustls (requires `stealth`) | — |
+| `mcp` | MCP (Model Context Protocol) tools | — |
+| `metrics` | Prometheus metrics exporter | — |
+| `extract` | Structured data extraction via `#[derive(Extract)]` | — |
+| `similarity` | Similarity scoring for duplicate detection | — |
+| `full` | All features enabled | — |
+
+---
+
+## Features
 
 ---
 
@@ -233,7 +236,52 @@ available via `CdpFixMode`:
 
 ---
 
-## Page Operations
+## Integration with `stygian-proxy`
+
+To use proxies from a `stygian-proxy` pool dynamically (at browser launch time):
+
+```rust,no_run
+use stygian_browser::BrowserConfig;
+use stygian_proxy::{ProxyManager, MemoryProxyStore, browser::ProxyManagerBridge};
+use stygian_proxy::types::ProxyConfig;
+use std::sync::Arc;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Create proxy pool
+    let manager = Arc::new(
+        ProxyManager::with_round_robin(
+            Arc::new(MemoryProxyStore::default()),
+            ProxyConfig::default()
+        )?
+    );
+
+    // Create bridge that implements ProxySource
+    let bridge = Arc::new(ProxyManagerBridge::new(manager));
+
+    // Pass to browser config
+    let config = BrowserConfig::builder()
+        .proxy_source(bridge)
+        .build();
+
+    // Each browser context will acquire its own proxy via the bridge
+    let pool = BrowserPool::new(config).await?;
+    let handle = pool.acquire().await?;
+
+    // This browser is now routed through a proxy from the pool
+    // On release: proxy success/failure is automatically recorded
+    
+    handle.release().await;
+    Ok(())
+}
+```
+
+When a browser is released after use, the proxy's circuit breaker is updated:
+- **Clean return to idle queue**: proxy marked as success ✓
+- **Browser unhealthy**: proxy marked as failure ✗  
+- **Browser crashed**: proxy marked as failure ✗
+
+---
 
 ```rust,no_run
 use stygian_browser::{BrowserConfig, BrowserPool, WaitUntil};

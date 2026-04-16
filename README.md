@@ -118,13 +118,32 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-stygian-graph = "*"
-stygian-browser = "*"  # optional, for JavaScript rendering
-stygian-proxy = "*"    # optional, for proxy pool management
+stygian-graph = { version = "*", features = ["browser"] }
+stygian-browser = "*"     # optional, for JavaScript rendering
+stygian-proxy = "*"       # optional, for proxy pool management
 tokio = { version = "1", features = ["full"] }
 ```
 
-For MCP integration, use the `stygian-mcp` binary directly.
+For MCP integration, use the `stygian-mcp` binary directly:
+
+```bash
+cargo install stygian-mcp
+stygian-mcp  # Starts JSON-RPC 2.0 server on stdin/stdout
+```
+
+### Common Feature Combinations
+
+```toml
+# Minimal: HTTP scraping only
+stygian-graph = "*"
+
+# Full-featured: browser, AI extraction, distributed queue
+stygian-graph = { version = "*", features = ["full"] }
+
+# Browser + Proxy integration
+stygian-browser = { version = "*", features = ["stealth", "tls-config"] }
+stygian-proxy = { version = "*", features = ["browser", "socks"] }
+```
 
 ---
 
