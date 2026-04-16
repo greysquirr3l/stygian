@@ -66,10 +66,10 @@ base64 = { workspace = true, optional = true }
 prometheus-client = { workspace = true, optional = true }
 
 # Extract feature: proc-macro for #[derive(Extract)]
-stygian-extract-derive = { path = "../stygian-extract-derive", version = "0.9.2", optional = true }
+stygian-extract-derive = { path = "../stygian-extract-derive", version = "0.9.3", optional = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
 tracing-subscriber = { workspace = true }
 trybuild = "1"
-stygian-extract-derive = { path = "../stygian-extract-derive", version = "0.9.2" }
+stygian-extract-derive = { path = "../stygian-extract-derive", version = "0.9.3" }
