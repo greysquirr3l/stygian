@@ -119,6 +119,8 @@ pub mod rects_noise;
 #[cfg(feature = "stealth")]
 pub mod cdp_hardening;
 
+pub mod tls_validation;
+
 #[cfg(feature = "stealth")]
 pub mod profile;
 
