@@ -117,6 +117,9 @@ pub mod audio_noise;
 pub mod rects_noise;
 
 #[cfg(feature = "stealth")]
+pub mod cdp_hardening;
+
+#[cfg(feature = "stealth")]
 pub mod profile;
 
 #[cfg(feature = "stealth")]

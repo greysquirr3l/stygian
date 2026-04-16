@@ -533,6 +533,21 @@ pub async fn apply_stealth_to_page(
         return Ok(());
     }
 
+    // ── CDP hardening — runs FIRST to clean up binding remnants ───────────────
+    #[cfg(feature = "stealth")]
+    {
+        let hardening_script =
+            crate::cdp_hardening::cdp_hardening_script(&config.cdp_hardening);
+        if !hardening_script.is_empty() {
+            inject_one(
+                page,
+                "AddScriptToEvaluateOnNewDocument(cdp-hardening)",
+                hardening_script,
+            )
+            .await?;
+        }
+    }
+
     // ── Basic and above ────────────────────────────────────────────────────────
     let cdp_script =
         CdpProtection::new(config.cdp_fix_mode, config.source_url.clone()).build_injection_script();
