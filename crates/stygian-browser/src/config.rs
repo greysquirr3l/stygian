@@ -1161,12 +1161,12 @@ mod temp_env {
         V: AsRef<OsStr>,
         F: FnOnce(),
     {
-        let _guard = ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| {
-                tracing::warn!("ENV_LOCK poisoned in with_var: recovering with data from poisoned guard");
-                e.into_inner()
-            });
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| {
+            tracing::warn!(
+                "ENV_LOCK poisoned in with_var: recovering with data from poisoned guard"
+            );
+            e.into_inner()
+        });
         let key = key.as_ref();
         let prev = env::var_os(key);
         match value {
@@ -1187,12 +1187,12 @@ mod temp_env {
         V: AsRef<OsStr>,
         F: FnOnce(),
     {
-        let _guard = ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| {
-                tracing::warn!("ENV_LOCK poisoned in with_vars: recovering with data from poisoned guard");
-                e.into_inner()
-            });
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| {
+            tracing::warn!(
+                "ENV_LOCK poisoned in with_vars: recovering with data from poisoned guard"
+            );
+            e.into_inner()
+        });
         let pairs: Vec<_> = pairs
             .into_iter()
             .map(|(k, v)| {

@@ -115,8 +115,14 @@ pub async fn run_cli() -> anyhow::Result<()> {
             watch_interval,
         } => cmd_run(&file, watch, watch_interval).await,
         Commands::Check { file } => cmd_check(&file),
-        Commands::ListServices => { cmd_list_services(); Ok(()) },
-        Commands::ListProviders => { cmd_list_providers(); Ok(()) },
+        Commands::ListServices => {
+            cmd_list_services();
+            Ok(())
+        }
+        Commands::ListProviders => {
+            cmd_list_providers();
+            Ok(())
+        }
         Commands::GraphViz { file, format } => cmd_graph_viz(&file, format),
     }
 }
@@ -188,7 +194,9 @@ async fn run_pipeline_once(file: &str) -> anyhow::Result<()> {
             .nodes
             .iter()
             .find(|n| &n.name == node_name)
-            .ok_or_else(|| anyhow::anyhow!("BUG: node '{node_name}' from topological_order not found in nodes"))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!("BUG: node '{node_name}' from topological_order not found in nodes")
+            })?;
 
         let bar = mp.add(ProgressBar::new(3));
         bar.set_style(ProgressStyle::with_template("  {spinner:.green} {msg}")?);
@@ -222,8 +230,8 @@ async fn run_pipeline_once(file: &str) -> anyhow::Result<()> {
 fn cmd_check(file: &str) -> anyhow::Result<()> {
     println!("Checking pipeline: {file}");
 
-let def = PipelineParser::from_figment_file(file)
-        .map_err(|e| anyhow::anyhow!("Parse error: {e}"))?;
+    let def =
+        PipelineParser::from_figment_file(file).map_err(|e| anyhow::anyhow!("Parse error: {e}"))?;
 
     println!(
         "  {} nodes, {} services declared",
