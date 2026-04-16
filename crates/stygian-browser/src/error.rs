@@ -79,6 +79,13 @@ pub enum BrowserError {
     #[error("Configuration error: {0}")]
     ConfigError(String),
 
+    /// Proxy acquisition failed — no proxy is available or the circuit breaker is open.
+    #[error("Proxy unavailable: {reason}")]
+    ProxyUnavailable {
+        /// Reason the proxy could not be acquired.
+        reason: String,
+    },
+
     /// Underlying I/O error.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),

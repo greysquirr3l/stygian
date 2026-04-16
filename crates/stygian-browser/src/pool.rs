@@ -68,6 +68,10 @@ use crate::{
 struct PoolEntry {
     instance: BrowserInstance,
     last_used: Instant,
+    /// RAII proxy lease — held for the entire Chrome process lifetime.
+    /// `mark_success()` is called on clean disposal; simply dropping it
+    /// records a circuit-breaker failure in the proxy pool (if any).
+    proxy_lease: Option<Box<dyn crate::proxy::ProxyLease>>,
 }
 
 // ─── PoolInner ────────────────────────────────────────────────────────────────
@@ -135,105 +139,160 @@ impl BrowserPool {
             max_size,
         };
 
-        // Warmup: pre-launch min_size instances
-        info!("Warming browser pool: min_size={min_size}, max_size={max_size}");
+        Self::warmup_pool(&pool, min_size).await;
+
+        // Spawn idle-eviction task
+        tokio::spawn(Self::eviction_loop(
+            pool.inner.clone(),
+            pool.active_count.clone(),
+            pool.config.pool.idle_timeout,
+            min_size,
+        ));
+
+        Ok(Arc::new(pool))
+    }
+
+    // ─── Warmup ───────────────────────────────────────────────────────────────
+
+    /// Pre-warm `min_size` browser instances into the shared queue.
+    async fn warmup_pool(pool: &Self, min_size: usize) {
+        info!(
+            "Warming browser pool: min_size={min_size}, max_size={}",
+            pool.max_size
+        );
         for i in 0..min_size {
-            match BrowserInstance::launch((*pool.config).clone()).await {
+            let (launch_config, proxy_lease) = if let Some(source) = &pool.config.proxy_source {
+                match source.bind_proxy().await {
+                    Ok((url, lease)) => {
+                        let mut cfg = (*pool.config).clone();
+                        cfg.proxy = Some(url);
+                        cfg.proxy_source = None;
+                        (cfg, Some(lease))
+                    }
+                    Err(e) => {
+                        warn!("Warmup browser {i} failed to acquire proxy (non-fatal): {e}");
+                        continue;
+                    }
+                }
+            } else {
+                ((*pool.config).clone(), None)
+            };
+
+            // Acquire a semaphore permit so that `active_count` and the
+            // semaphore always agree on capacity.
+            let Ok(permit) = pool.semaphore.try_acquire() else {
+                warn!("Warmup browser {i}: semaphore full, stopping warmup early");
+                break;
+            };
+            permit.forget(); // immediately — track capacity via active_count
+            pool.active_count.fetch_add(1, Ordering::Relaxed);
+
+            match BrowserInstance::launch(launch_config).await {
                 Ok(instance) => {
-                    pool.active_count.fetch_add(1, Ordering::Relaxed);
                     pool.inner.lock().await.shared.push_back(PoolEntry {
                         instance,
                         last_used: Instant::now(),
+                        proxy_lease,
                     });
                     debug!("Warmed browser {}/{min_size}", i + 1);
                 }
                 Err(e) => {
                     warn!("Warmup browser {i} failed (non-fatal): {e}");
+                    pool.active_count.fetch_sub(1, Ordering::Relaxed);
+                    pool.semaphore.add_permits(1);
+                    // proxy_lease drops here = circuit-breaker failure signal
                 }
             }
         }
+    }
 
-        // Spawn idle-eviction task
-        let eviction_inner = pool.inner.clone();
-        let eviction_active = pool.active_count.clone();
-        let idle_timeout = pool.config.pool.idle_timeout;
-        let eviction_min = min_size;
+    // ─── Eviction ─────────────────────────────────────────────────────────────
 
-        tokio::spawn(async move {
-            loop {
-                sleep(idle_timeout / 2).await;
+    /// Background loop that evicts browsers idle longer than `idle_timeout`.
+    async fn eviction_loop(
+        inner: Arc<Mutex<PoolInner>>,
+        active_count: Arc<AtomicUsize>,
+        idle_timeout: std::time::Duration,
+        min_size: usize,
+    ) {
+        loop {
+            sleep(idle_timeout / 2).await;
 
-                let mut guard = eviction_inner.lock().await;
-                let now = Instant::now();
-                let active = eviction_active.load(Ordering::Relaxed);
+            let mut guard = inner.lock().await;
+            let now = Instant::now();
+            let active = active_count.load(Ordering::Relaxed);
 
-                let total_idle: usize = guard.shared.len()
-                    + guard
-                        .scoped
-                        .values()
-                        .map(std::collections::VecDeque::len)
-                        .sum::<usize>();
-                let evict_count = if active > eviction_min {
-                    (active - eviction_min).min(total_idle)
+            let total_idle: usize = guard.shared.len()
+                + guard
+                    .scoped
+                    .values()
+                    .map(std::collections::VecDeque::len)
+                    .sum::<usize>();
+            let evict_count = if active > min_size {
+                (active - min_size).min(total_idle)
+            } else {
+                0
+            };
+
+            let mut evicted = 0usize;
+
+            // Evict from shared queue
+            let mut kept: std::collections::VecDeque<PoolEntry> = std::collections::VecDeque::new();
+            while let Some(entry) = guard.shared.pop_front() {
+                if evicted < evict_count && now.duration_since(entry.last_used) >= idle_timeout {
+                    // Clean eviction: proxy was fine, just expired.
+                    if let Some(lease) = &entry.proxy_lease {
+                        lease.mark_success();
+                    }
+                    let instance = entry.instance;
+                    tokio::spawn(async move {
+                        let _ = instance.shutdown().await;
+                    });
+                    active_count.fetch_sub(1, Ordering::Relaxed);
+                    evicted += 1;
                 } else {
-                    0
-                };
-
-                let mut evicted = 0usize;
-
-                // Evict from shared queue
-                let mut kept: std::collections::VecDeque<PoolEntry> =
-                    std::collections::VecDeque::new();
-                while let Some(entry) = guard.shared.pop_front() {
-                    if evicted < evict_count && now.duration_since(entry.last_used) >= idle_timeout
-                    {
-                        tokio::spawn(async move {
-                            let _ = entry.instance.shutdown().await;
-                        });
-                        eviction_active.fetch_sub(1, Ordering::Relaxed);
-                        evicted += 1;
-                    } else {
-                        kept.push_back(entry);
-                    }
-                }
-                guard.shared = kept;
-
-                // Evict from scoped queues
-                let context_ids: Vec<String> = guard.scoped.keys().cloned().collect();
-                for cid in &context_ids {
-                    if let Some(queue) = guard.scoped.get_mut(cid) {
-                        let mut kept: std::collections::VecDeque<PoolEntry> =
-                            std::collections::VecDeque::new();
-                        while let Some(entry) = queue.pop_front() {
-                            if evicted < evict_count
-                                && now.duration_since(entry.last_used) >= idle_timeout
-                            {
-                                tokio::spawn(async move {
-                                    let _ = entry.instance.shutdown().await;
-                                });
-                                eviction_active.fetch_sub(1, Ordering::Relaxed);
-                                evicted += 1;
-                            } else {
-                                kept.push_back(entry);
-                            }
-                        }
-                        *queue = kept;
-                    }
-                }
-
-                // Remove empty scoped queues
-                guard.scoped.retain(|_, q| !q.is_empty());
-
-                // Explicitly drop the guard as soon as possible to avoid holding the lock longer than needed
-                drop(guard);
-
-                if evicted > 0 {
-                    info!("Evicted {evicted} idle browsers (idle_timeout={idle_timeout:?})");
+                    kept.push_back(entry);
                 }
             }
-        });
+            guard.shared = kept;
 
-        Ok(Arc::new(pool))
+            // Evict from scoped queues
+            let context_ids: Vec<String> = guard.scoped.keys().cloned().collect();
+            for cid in &context_ids {
+                if let Some(queue) = guard.scoped.get_mut(cid) {
+                    let mut kept: std::collections::VecDeque<PoolEntry> =
+                        std::collections::VecDeque::new();
+                    while let Some(entry) = queue.pop_front() {
+                        if evicted < evict_count
+                            && now.duration_since(entry.last_used) >= idle_timeout
+                        {
+                            if let Some(lease) = &entry.proxy_lease {
+                                lease.mark_success();
+                            }
+                            let instance = entry.instance;
+                            tokio::spawn(async move {
+                                let _ = instance.shutdown().await;
+                            });
+                            active_count.fetch_sub(1, Ordering::Relaxed);
+                            evicted += 1;
+                        } else {
+                            kept.push_back(entry);
+                        }
+                    }
+                    *queue = kept;
+                }
+            }
+
+            // Remove empty scoped queues
+            guard.scoped.retain(|_, q| !q.is_empty());
+
+            // Drop the guard promptly to avoid holding the lock longer than needed
+            drop(guard);
+
+            if evicted > 0 {
+                info!("Evicted {evicted} idle browsers (idle_timeout={idle_timeout:?})");
+            }
+        }
     }
 
     // ─── Acquire ──────────────────────────────────────────────────────────────
@@ -338,14 +397,16 @@ impl BrowserPool {
                 Some(id) => guard.scoped.get_mut(id),
                 None => Some(&mut guard.shared),
             };
-            let mut healthy: Option<BrowserInstance> = None;
-            let mut unhealthy: Vec<BrowserInstance> = Vec::new();
+            let mut healthy: Option<(BrowserInstance, Option<Box<dyn crate::proxy::ProxyLease>>)> =
+                None;
+            let mut unhealthy: Vec<(BrowserInstance, Option<Box<dyn crate::proxy::ProxyLease>>)> =
+                Vec::new();
             if let Some(queue) = queue {
                 while let Some(entry) = queue.pop_front() {
                     if healthy.is_none() && entry.instance.is_healthy_cached() {
-                        healthy = Some(entry.instance);
+                        healthy = Some((entry.instance, entry.proxy_lease));
                     } else if !entry.instance.is_healthy_cached() {
-                        unhealthy.push(entry.instance);
+                        unhealthy.push((entry.instance, entry.proxy_lease));
                     } else {
                         // Healthy but we already found one — push back.
                         queue.push_front(entry);
@@ -357,7 +418,8 @@ impl BrowserPool {
         };
 
         // Dispose unhealthy entries outside the lock
-        for instance in fast_result.1 {
+        for (instance, _lease) in fast_result.1 {
+            // _lease drops here = circuit-breaker failure signal
             #[cfg(feature = "metrics")]
             crate::metrics::METRICS.record_crash();
             let active_count = self.active_count.clone();
@@ -367,13 +429,18 @@ impl BrowserPool {
             });
         }
 
-        if let Some(instance) = fast_result.0 {
+        if let Some((instance, proxy_lease)) = fast_result.0 {
             debug!(
                 context = context_id.unwrap_or("shared"),
                 "Reusing idle browser (uptime={:?})",
                 instance.uptime()
             );
-            return Ok(BrowserHandle::new(instance, Arc::clone(self), ctx_owned));
+            return Ok(BrowserHandle::new(
+                instance,
+                Arc::clone(self),
+                ctx_owned,
+                proxy_lease,
+            ));
         }
 
         // Slow path: launch new or wait
@@ -387,9 +454,28 @@ impl BrowserPool {
                 .forget(); // We track capacity manually via active_count
             self.active_count.fetch_add(1, Ordering::Relaxed);
 
-            let instance = match BrowserInstance::launch((*self.config).clone()).await {
+            let (launch_config, proxy_lease) = if let Some(source) = &self.config.proxy_source {
+                match source.bind_proxy().await {
+                    Ok((url, lease)) => {
+                        let mut cfg = (*self.config).clone();
+                        cfg.proxy = Some(url);
+                        cfg.proxy_source = None;
+                        (cfg, Some(lease))
+                    }
+                    Err(e) => {
+                        self.active_count.fetch_sub(1, Ordering::Relaxed);
+                        self.semaphore.add_permits(1);
+                        return Err(e);
+                    }
+                }
+            } else {
+                ((*self.config).clone(), None)
+            };
+
+            let instance = match BrowserInstance::launch(launch_config).await {
                 Ok(i) => i,
                 Err(e) => {
+                    // proxy_lease drops here = circuit-breaker failure signal
                     self.active_count.fetch_sub(1, Ordering::Relaxed);
                     self.semaphore.add_permits(1);
                     return Err(e);
@@ -401,11 +487,30 @@ impl BrowserPool {
                 "Launched fresh browser (pool active={})",
                 self.active_count.load(Ordering::Relaxed)
             );
-            return Ok(BrowserHandle::new(instance, Arc::clone(self), ctx_owned));
+            return Ok(BrowserHandle::new(
+                instance,
+                Arc::clone(self),
+                ctx_owned,
+                proxy_lease,
+            ));
         }
 
         // Pool full — wait for a release
         let ctx_for_poll = context_id.map(String::from);
+        self.poll_for_release(ctx_for_poll, acquire_timeout, active, max)
+            .await
+    }
+
+    // ─── Poll for release ─────────────────────────────────────────────────────
+
+    /// Wait until an idle browser is returned to the pool or the timeout fires.
+    async fn poll_for_release(
+        self: &Arc<Self>,
+        ctx_for_poll: Option<String>,
+        acquire_timeout: std::time::Duration,
+        active: usize,
+        max: usize,
+    ) -> Result<BrowserHandle> {
         timeout(acquire_timeout, async {
             loop {
                 sleep(std::time::Duration::from_millis(50)).await;
@@ -419,17 +524,21 @@ impl BrowserPool {
                 {
                     drop(guard);
                     if entry.instance.is_healthy_cached() {
+                        let (instance, proxy_lease) = (entry.instance, entry.proxy_lease);
                         return Ok(BrowserHandle::new(
-                            entry.instance,
+                            instance,
                             Arc::clone(self),
                             ctx_for_poll.clone(),
+                            proxy_lease,
                         ));
                     }
                     #[cfg(feature = "metrics")]
                     crate::metrics::METRICS.record_crash();
+                    // _lease drops = circuit-breaker failure signal
+                    let instance = entry.instance;
                     let active_count = self.active_count.clone();
                     tokio::spawn(async move {
-                        let _ = entry.instance.shutdown().await;
+                        let _ = instance.shutdown().await;
                         active_count.fetch_sub(1, Ordering::Relaxed);
                     });
                 }
@@ -442,7 +551,12 @@ impl BrowserPool {
     // ─── Release ──────────────────────────────────────────────────────────────
 
     /// Return a browser instance to the pool (called by [`BrowserHandle::release`]).
-    async fn release(&self, instance: BrowserInstance, context_id: Option<&str>) {
+    async fn release(
+        &self,
+        instance: BrowserInstance,
+        context_id: Option<&str>,
+        mut proxy_lease: Option<Box<dyn crate::proxy::ProxyLease>>,
+    ) {
         // Health-check before returning to idle queue
         if instance.is_healthy_cached() {
             let mut guard = self.inner.lock().await;
@@ -460,6 +574,7 @@ impl BrowserPool {
                 queue.push_back(PoolEntry {
                     instance,
                     last_used: Instant::now(),
+                    proxy_lease: proxy_lease.take(), // lease travels with the pooled entry
                 });
                 debug!(
                     context = context_id.unwrap_or("shared"),
@@ -468,7 +583,14 @@ impl BrowserPool {
                 return;
             }
             drop(guard);
+            // Healthy but pool full: mark success before clean disposal
+            if let Some(lease) = &proxy_lease {
+                lease.mark_success();
+            }
         }
+        // proxy_lease drops here:
+        //   - healthy + pool full → mark_success was called above, drop is a no-op
+        //   - unhealthy → mark_success NOT called, drop records circuit-breaker failure
 
         // Unhealthy or pool full — dispose
         #[cfg(feature = "metrics")]
@@ -512,9 +634,14 @@ impl BrowserPool {
 
         let count = entries.len();
         for entry in entries {
+            // Clean deprovisioning: mark the proxy as successful
+            if let Some(lease) = &entry.proxy_lease {
+                lease.mark_success();
+            }
+            let instance = entry.instance;
             let active_count = self.active_count.clone();
             tokio::spawn(async move {
-                let _ = entry.instance.shutdown().await;
+                let _ = instance.shutdown().await;
                 active_count.fetch_sub(1, Ordering::Relaxed);
             });
             self.semaphore.add_permits(1);
@@ -584,18 +711,21 @@ pub struct BrowserHandle {
     instance: Option<BrowserInstance>,
     pool: Arc<BrowserPool>,
     context_id: Option<String>,
+    proxy_lease: Option<Box<dyn crate::proxy::ProxyLease>>,
 }
 
 impl BrowserHandle {
-    const fn new(
+    fn new(
         instance: BrowserInstance,
         pool: Arc<BrowserPool>,
         context_id: Option<String>,
+        proxy_lease: Option<Box<dyn crate::proxy::ProxyLease>>,
     ) -> Self {
         Self {
             instance: Some(instance),
             pool,
             context_id,
+            proxy_lease,
         }
     }
 
@@ -626,7 +756,11 @@ impl BrowserHandle {
     pub async fn release(mut self) {
         if let Some(instance) = self.instance.take() {
             self.pool
-                .release(instance, self.context_id.as_deref())
+                .release(
+                    instance,
+                    self.context_id.as_deref(),
+                    self.proxy_lease.take(),
+                )
                 .await;
         }
     }
@@ -637,8 +771,10 @@ impl Drop for BrowserHandle {
         if let Some(instance) = self.instance.take() {
             let pool = Arc::clone(&self.pool);
             let context_id = self.context_id.clone();
+            let proxy_lease = self.proxy_lease.take();
             tokio::spawn(async move {
-                pool.release(instance, context_id.as_deref()).await;
+                pool.release(instance, context_id.as_deref(), proxy_lease)
+                    .await;
             });
         }
     }

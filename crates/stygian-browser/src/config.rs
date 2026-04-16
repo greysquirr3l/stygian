@@ -13,6 +13,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use crate::cdp_protection::CdpFixMode;
@@ -269,6 +270,18 @@ pub struct BrowserConfig {
     /// Env: `STYGIAN_CDP_TIMEOUT_SECS` (default: `30`)
     #[serde(with = "duration_secs")]
     pub cdp_timeout: Duration,
+
+    /// Optional proxy source for dynamic per-context proxy rotation.
+    ///
+    /// When set, each newly launched browser instance acquires its proxy URL
+    /// from this source via [`crate::proxy::ProxySource::bind_proxy`], enabling
+    /// circuit-breaker-backed rotation.  Takes precedence over the static
+    /// [`proxy`](BrowserConfig::proxy) field for any instance launched while
+    /// this is set.
+    ///
+    /// Not serialized — set programmatically via the builder.
+    #[serde(skip)]
+    pub proxy_source: Option<Arc<dyn crate::proxy::ProxySource>>,
 }
 
 impl Default for BrowserConfig {
@@ -292,6 +305,7 @@ impl Default for BrowserConfig {
             pool: PoolConfig::default(),
             launch_timeout: Duration::from_secs(env_u64("STYGIAN_LAUNCH_TIMEOUT_SECS", 10)),
             cdp_timeout: Duration::from_secs(env_u64("STYGIAN_CDP_TIMEOUT_SECS", 30)),
+            proxy_source: None,
         }
     }
 }
@@ -688,6 +702,30 @@ impl BrowserConfigBuilder {
     #[must_use]
     pub const fn pool(mut self, pool: PoolConfig) -> Self {
         self.config.pool = pool;
+        self
+    }
+
+    /// Set a dynamic proxy source for per-instance proxy rotation.
+    ///
+    /// Each new browser launched by the pool calls
+    /// [`ProxySource::bind_proxy`](crate::proxy::ProxySource::bind_proxy) to
+    /// acquire a URL and hold a circuit-breaker lease for the browser's
+    /// lifetime.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use std::sync::Arc;
+    /// use stygian_browser::BrowserConfig;
+    ///
+    /// // With stygian_proxy (compile stygian-proxy with `browser` feature):
+    /// // let cfg = BrowserConfig::builder()
+    /// //     .proxy_source(Arc::new(ProxyManagerBridge::new(manager)))
+    /// //     .build();
+    /// ```
+    #[must_use]
+    pub fn proxy_source(mut self, source: Arc<dyn crate::proxy::ProxySource>) -> Self {
+        self.config.proxy_source = Some(source);
         self
     }
 
@@ -1123,9 +1161,12 @@ mod temp_env {
         V: AsRef<OsStr>,
         F: FnOnce(),
     {
-        let _guard = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| {
+            tracing::warn!(
+                "ENV_LOCK poisoned in with_var: recovering with data from poisoned guard"
+            );
+            e.into_inner()
+        });
         let key = key.as_ref();
         let prev = env::var_os(key);
         match value {
@@ -1146,9 +1187,12 @@ mod temp_env {
         V: AsRef<OsStr>,
         F: FnOnce(),
     {
-        let _guard = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| {
+            tracing::warn!(
+                "ENV_LOCK poisoned in with_vars: recovering with data from poisoned guard"
+            );
+            e.into_inner()
+        });
         let pairs: Vec<_> = pairs
             .into_iter()
             .map(|(k, v)| {

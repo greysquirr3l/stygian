@@ -56,6 +56,9 @@ webpki-roots = { workspace = true, optional = true }
 # HTTP client: build TLS-profiled reqwest clients
 reqwest = { workspace = true, optional = true }
 
+# Async trait support for ProxySource
+async-trait = { workspace = true }
+
 # MCP feature: base64 encoding for screenshot data
 base64 = { workspace = true, optional = true }
 

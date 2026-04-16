@@ -120,7 +120,7 @@ default = ["browser"]
 # Include browser automation support
 browser = ["dep:stygian-browser"]
 # Full feature set
-full = ["browser", "api", "wasm-plugins", "postgres", "cloudflare-crawl", "redis", "object-storage", "scrape-exchange"]
+full = ["browser", "extract", "api", "wasm-plugins", "postgres", "cloudflare-crawl", "redis", "object-storage", "scrape-exchange", "escalation"]
 # Scrape Exchange REST API client and adapters
 scrape-exchange = []
 # Redis / Valkey cache adapter
@@ -139,6 +139,8 @@ cloudflare-crawl = []
 escalation = []
 # MCP (Model Context Protocol) server — exposes scraping & pipeline tools over stdin/stdout JSON-RPC 2.0
 mcp = []
+# Structured data extraction via derive macros (requires browser)
+extract = ["browser", "stygian-browser/extract"]
 
 [[bin]]
 name = "stygian"

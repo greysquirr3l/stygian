@@ -9,16 +9,21 @@ High-performance, resilient proxy rotation for the Stygian scraping ecosystem.
 
 ## Features
 
-| Feature | Description |
-| --------- | ------------- |
-| **Rotation strategies** | Round-robin, random, weighted, least-used — all pluggable via trait |
-| **Circuit breakers** | Per-proxy Closed → Open → HalfOpen state machine; unhealthy proxies are skipped automatically |
-| **Health checking** | Background async health checker with configurable interval and per-proxy scoring |
-| **RAII proxy handles** | `ProxyHandle` records success/failure on drop; no manual bookkeeping |
-| **SOCKS support** | SOCKS4/5 via reqwest (`socks` feature flag) |
-| **Graph integration** | `ProxyManagerPort` trait wires into stygian-graph HTTP adapters (`graph` feature) |
-| **Browser integration** | `BrowserProxySource` binds pool proxies into stygian-browser contexts (`browser` feature) |
-| **Zero external deps** | In-memory storage only — no database required |
+| Feature | Description | Default |
+| --------- | ------------- | --------- |
+| Rotation strategies | Round-robin, random, weighted, least-used | ✓ |
+| Circuit breakers | Per-proxy failure tracking & recovery | ✓ |
+| Health checking | Background async health prober | ✓ |
+| RAII proxy handles | Automatic success/failure recording on drop | ✓ |
+| `socks` | SOCKS4/5 proxy support via reqwest | — |
+| `graph` | Integration with stygian-graph HTTP adapters | — |
+| `browser` | Integration with stygian-browser pool (`ProxyManagerBridge` + `ProxyLeaseAdapter`) | — |
+| `tls-profiled` | TLS fingerprint profiling for proxy connections (requires `browser` feature) | — |
+| `mcp` | MCP (Model Context Protocol) tools | — |
+
+---
+
+## Features (Core Capabilities)
 
 ---
 
@@ -196,7 +201,8 @@ let manager = ProxyManager::with_round_robin(Arc::new(MemoryProxyStore::default(
 
 ## stygian-browser Integration
 
-With the `browser` feature, `BrowserProxySource` feeds live pool proxies into stygian-browser contexts:
+With the `browser` feature, `ProxyManagerBridge` implements [`stygian_browser::proxy::ProxySource`] so
+stygian-browser contexts can acquire live pool proxies at launch time:
 
 ```toml
 stygian-proxy = { version = "*", features = ["browser"] }
@@ -209,10 +215,27 @@ use stygian_proxy::types::ProxyConfig;
 use stygian_browser::BrowserConfig;
 use std::sync::Arc;
 
-let manager = Arc::new(ProxyManager::with_round_robin(Arc::new(MemoryProxyStore::default()), ProxyConfig::default())?);
-let bridge = ProxyManagerBridge::new(manager);
-// bridge.next_proxy_url().await? → inject into BrowserConfig::proxy
+let manager = Arc::new(
+    ProxyManager::with_round_robin(Arc::new(MemoryProxyStore::default()), ProxyConfig::default())?
+);
+
+let bridge = Arc::new(ProxyManagerBridge::new(manager));
+
+// Pass the bridge to browser config
+let config = BrowserConfig::builder()
+    .proxy_source(bridge)
+    .build();
+
+// Each browser context acquires its own proxy from the pool
+// On release: proxy success/failure automatically recorded to circuit breaker
 ```
+
+Under the hood:
+
+- `ProxyManagerBridge` implements `ProxySource` (browser's port trait)
+- Each acquired proxy is wrapped in `ProxyLeaseAdapter`
+- When `mark_success()` is called on the lease, it updates the proxy's circuit breaker
+- On drop without marked success, the proxy is recorded as failed
 
 ---
 
