@@ -240,9 +240,7 @@ available via `CdpFixMode`:
 
 To use proxies from a `stygian-proxy` pool dynamically (at browser launch time):
 
-```rust,no_run
-use stygian_browser::BrowserConfig;
-use stygian_proxy::{ProxyManager, MemoryProxyStore, browser::ProxyManagerBridge};
+```rust,ignore
 use stygian_proxy::types::ProxyConfig;
 use std::sync::Arc;
 

@@ -4,7 +4,7 @@
 //! decouple `stygian-browser` from any concrete proxy implementation.  The
 //! browser crate owns the trait definitions; `stygian-proxy` implements them.
 //!
-//! Wire in a real proxy pool by setting [`BrowserConfig::proxy_source`] to an
+//! Wire in a real proxy pool by setting [`BrowserConfigBuilder::proxy_source`](crate::config::BrowserConfigBuilder::proxy_source) to an
 //! `Arc<dyn ProxySource>`.  `stygian-proxy` provides a ready-made
 //! implementation via `ProxyManagerBridge` when compiled with its `browser`
 //! feature.
