@@ -136,12 +136,46 @@ stygian-proxy = "*"       # optional, for proxy pool management
 tokio = { version = "1", features = ["full"] }
 ```
 
-For MCP integration, use the `stygian-mcp` binary directly:
+For MCP integration, install the `stygian-mcp` binary with the `extract` feature for full tool coverage:
 
 ```bash
-cargo install stygian-mcp
-stygian-mcp  # Starts JSON-RPC 2.0 server on stdin/stdout
+# From crates.io (once published)
+cargo install stygian-mcp --features extract
+
+# Or from source (local / development)
+cargo install --path crates/stygian-mcp --features extract --locked
 ```
+
+Then wire it into your MCP client. **VS Code** (`.vscode/mcp.json` or `settings.json`):
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "stygian": {
+        "command": "stygian-mcp",
+        "args": [],
+        "type": "stdio"
+      }
+    }
+  }
+}
+```
+
+**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "stygian": {
+      "command": "stygian-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+> **Note:** Browser tools require Chrome/Chromium. On macOS: `brew install --cask google-chrome`
 
 ### Common Feature Combinations
 
