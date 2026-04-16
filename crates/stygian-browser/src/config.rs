@@ -19,6 +19,8 @@ use std::time::Duration;
 use crate::cdp_protection::CdpFixMode;
 
 #[cfg(feature = "stealth")]
+use crate::noise::NoiseConfig;
+#[cfg(feature = "stealth")]
 use crate::webrtc::WebRtcConfig;
 
 // ─── HeadlessMode ───────────────────────────────────────────────────────────────
@@ -227,6 +229,12 @@ pub struct BrowserConfig {
     #[cfg(feature = "stealth")]
     pub webrtc: WebRtcConfig,
 
+    /// Deterministic noise configuration for fingerprint perturbation.
+    ///
+    /// Only active when the `stealth` feature is enabled.
+    #[cfg(feature = "stealth")]
+    pub noise: NoiseConfig,
+
     /// Anti-detection intensity level.
     pub stealth_level: StealthLevel,
 
@@ -298,6 +306,8 @@ impl Default for BrowserConfig {
             proxy_bypass_list: std::env::var("STYGIAN_PROXY_BYPASS").ok(),
             #[cfg(feature = "stealth")]
             webrtc: WebRtcConfig::default(),
+            #[cfg(feature = "stealth")]
+            noise: NoiseConfig::default(),
             disable_sandbox: env_bool("STYGIAN_DISABLE_SANDBOX", is_containerized()),
             stealth_level: StealthLevel::from_env(),
             cdp_fix_mode: CdpFixMode::from_env(),
@@ -597,6 +607,24 @@ impl BrowserConfigBuilder {
     #[must_use]
     pub fn webrtc(mut self, webrtc: WebRtcConfig) -> Self {
         self.config.webrtc = webrtc;
+        self
+    }
+
+    /// Set the fingerprint noise configuration.
+    ///
+    /// # Example
+    /// ```
+    /// use stygian_browser::BrowserConfig;
+    /// use stygian_browser::noise::{NoiseConfig, NoiseSeed};
+    /// let cfg = BrowserConfig::builder()
+    ///     .noise(NoiseConfig { seed: Some(NoiseSeed::from(42_u64)), ..Default::default() })
+    ///     .build();
+    /// assert_eq!(cfg.noise.seed.unwrap().as_u64(), 42);
+    /// ```
+    #[cfg(feature = "stealth")]
+    #[must_use]
+    pub fn noise(mut self, config: NoiseConfig) -> Self {
+        self.config.noise = config;
         self
     }
 

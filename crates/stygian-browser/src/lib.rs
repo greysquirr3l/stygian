@@ -102,6 +102,9 @@ pub mod tls;
 pub mod webrtc;
 
 #[cfg(feature = "stealth")]
+pub mod noise;
+
+#[cfg(feature = "stealth")]
 pub mod diagnostic;
 
 #[cfg(feature = "mcp")]
