@@ -668,6 +668,27 @@ pub async fn apply_stealth_to_page(
             )
             .await?;
         }
+
+        // Peripheral stealth (T47)
+        {
+            let peripheral_cfg =
+                crate::peripheral_stealth::PeripheralStealthConfig::default_with_seed(
+                    config.noise.build_engine().seed(),
+                );
+            let peripheral_script =
+                crate::peripheral_stealth::peripheral_stealth_script_with_profile(
+                    &peripheral_cfg,
+                    config.fingerprint_profile.as_ref(),
+                );
+            if !peripheral_script.is_empty() {
+                inject_one(
+                    page,
+                    "AddScriptToEvaluateOnNewDocument(peripheral-stealth)",
+                    peripheral_script,
+                )
+                .await?;
+            }
+        }
     }
 
     Ok(())
