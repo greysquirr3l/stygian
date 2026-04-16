@@ -159,8 +159,19 @@ impl BrowserPool {
                 ((*pool.config).clone(), None)
             };
 
+            // Acquire a semaphore permit for each warmed instance so that
+            // `active_count` and the semaphore always agree on capacity.
+            let permit = match pool.semaphore.try_acquire() {
+                Ok(p) => p,
+                Err(_) => {
+                    warn!("Warmup browser {i}: semaphore full, stopping warmup early");
+                    break;
+                }
+            };
+
             match BrowserInstance::launch(launch_config).await {
                 Ok(instance) => {
+                    permit.forget(); // capacity is tracked manually via active_count
                     pool.active_count.fetch_add(1, Ordering::Relaxed);
                     pool.inner.lock().await.shared.push_back(PoolEntry {
                         instance,
@@ -171,6 +182,7 @@ impl BrowserPool {
                 }
                 Err(e) => {
                     warn!("Warmup browser {i} failed (non-fatal): {e}");
+                    // permit drops here = slot returned to semaphore
                     // proxy_lease drops here = circuit-breaker failure signal
                 }
             }

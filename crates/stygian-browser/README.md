@@ -248,6 +248,9 @@ use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    use stygian_browser::BrowserPool;
+    use stygian_proxy::ProxyManager;
+
     // Create proxy pool
     let manager = Arc::new(
         ProxyManager::with_round_robin(

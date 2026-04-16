@@ -106,10 +106,11 @@ impl McpAggregator {
 
             // JSON-RPC notifications must not produce responses.
             if let Some(response) = response {
+                let id = response.get("id").cloned().unwrap_or(Value::Null);
                 let mut out = serde_json::to_string(&response).unwrap_or_else(|e| {
                     tracing::error!("BUG: failed to serialize MCP response: {e}");
                     serde_json::to_string(&error_response(
-                        &Value::Null,
+                        &id,
                         -32603,
                         "Internal serialization error",
                     ))
