@@ -15,7 +15,7 @@
 
 ## What is stygian?
 
-Stygian is a **monorepo** containing four complementary Rust crates for building robust, scalable web scraping systems:
+Stygian is a **monorepo** containing five complementary Rust crates for building robust, scalable web scraping systems:
 
 ### [stygian-graph](crates/stygian-graph)
 
@@ -58,6 +58,18 @@ MCP (Model Context Protocol) aggregator for LLM tool integration:
 - **Tool namespacing** — `graph_*`, `browser_*`, `proxy_*` prefixes
 - **Cross-crate tools** — `scrape_proxied`, `browser_proxied`
 - **VS Code/Claude** — direct integration with MCP-compatible clients
+
+### [stygian-extract-derive](crates/stygian-extract-derive)
+
+Proc-macro backend that powers `#[derive(Extract)]` in `stygian-browser`:
+
+- **Declarative extraction** — annotate structs with CSS selectors and attribute targets
+- **Internal crate** — do not add directly; enable via `stygian-browser`'s `extract` feature
+- **Zero boilerplate** — generates typed DOM-to-struct deserialization at compile time
+
+```toml
+stygian-browser = { version = "*", features = ["extract"] }
+```
 
 ---
 
@@ -176,10 +188,11 @@ Adapters (HTTP, browser, AI providers, storage)
 ```
 stygian/
 ├── crates/
-│   ├── stygian-graph/      # Scraping engine
-│   ├── stygian-browser/    # Browser automation
-│   ├── stygian-proxy/      # Proxy pool management
-│   └── stygian-mcp/        # MCP aggregator server
+│   ├── stygian-graph/          # Scraping engine
+│   ├── stygian-browser/        # Browser automation
+│   ├── stygian-proxy/          # Proxy pool management
+│   ├── stygian-mcp/            # MCP aggregator server
+│   └── stygian-extract-derive/ # Proc-macro for #[derive(Extract)]
 ├── examples/                # Example pipelines
 ├── book/                    # mdBook documentation
 ├── docs/                    # Architecture docs
