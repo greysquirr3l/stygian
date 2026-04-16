@@ -139,8 +139,27 @@ impl BrowserPool {
             max_size,
         };
 
-        // Warmup: pre-launch min_size instances
-        info!("Warming browser pool: min_size={min_size}, max_size={max_size}");
+        Self::warmup_pool(&pool, min_size).await;
+
+        // Spawn idle-eviction task
+        tokio::spawn(Self::eviction_loop(
+            pool.inner.clone(),
+            pool.active_count.clone(),
+            pool.config.pool.idle_timeout,
+            min_size,
+        ));
+
+        Ok(Arc::new(pool))
+    }
+
+    // ─── Warmup ───────────────────────────────────────────────────────────────
+
+    /// Pre-warm `min_size` browser instances into the shared queue.
+    async fn warmup_pool(pool: &Self, min_size: usize) {
+        info!(
+            "Warming browser pool: min_size={min_size}, max_size={}",
+            pool.max_size
+        );
         for i in 0..min_size {
             let (launch_config, proxy_lease) = if let Some(source) = &pool.config.proxy_source {
                 match source.bind_proxy().await {
@@ -159,20 +178,17 @@ impl BrowserPool {
                 ((*pool.config).clone(), None)
             };
 
-            // Acquire a semaphore permit for each warmed instance so that
-            // `active_count` and the semaphore always agree on capacity.
-            let permit = match pool.semaphore.try_acquire() {
-                Ok(p) => p,
-                Err(_) => {
-                    warn!("Warmup browser {i}: semaphore full, stopping warmup early");
-                    break;
-                }
+            // Acquire a semaphore permit so that `active_count` and the
+            // semaphore always agree on capacity.
+            let Ok(permit) = pool.semaphore.try_acquire() else {
+                warn!("Warmup browser {i}: semaphore full, stopping warmup early");
+                break;
             };
+            permit.forget(); // immediately — track capacity via active_count
+            pool.active_count.fetch_add(1, Ordering::Relaxed);
 
             match BrowserInstance::launch(launch_config).await {
                 Ok(instance) => {
-                    permit.forget(); // capacity is tracked manually via active_count
-                    pool.active_count.fetch_add(1, Ordering::Relaxed);
                     pool.inner.lock().await.shared.push_back(PoolEntry {
                         instance,
                         last_used: Instant::now(),
@@ -182,102 +198,101 @@ impl BrowserPool {
                 }
                 Err(e) => {
                     warn!("Warmup browser {i} failed (non-fatal): {e}");
-                    // permit drops here = slot returned to semaphore
+                    pool.active_count.fetch_sub(1, Ordering::Relaxed);
+                    pool.semaphore.add_permits(1);
                     // proxy_lease drops here = circuit-breaker failure signal
                 }
             }
         }
+    }
 
-        // Spawn idle-eviction task
-        let eviction_inner = pool.inner.clone();
-        let eviction_active = pool.active_count.clone();
-        let idle_timeout = pool.config.pool.idle_timeout;
-        let eviction_min = min_size;
+    // ─── Eviction ─────────────────────────────────────────────────────────────
 
-        tokio::spawn(async move {
-            loop {
-                sleep(idle_timeout / 2).await;
+    /// Background loop that evicts browsers idle longer than `idle_timeout`.
+    async fn eviction_loop(
+        inner: Arc<Mutex<PoolInner>>,
+        active_count: Arc<AtomicUsize>,
+        idle_timeout: std::time::Duration,
+        min_size: usize,
+    ) {
+        loop {
+            sleep(idle_timeout / 2).await;
 
-                let mut guard = eviction_inner.lock().await;
-                let now = Instant::now();
-                let active = eviction_active.load(Ordering::Relaxed);
+            let mut guard = inner.lock().await;
+            let now = Instant::now();
+            let active = active_count.load(Ordering::Relaxed);
 
-                let total_idle: usize = guard.shared.len()
-                    + guard
-                        .scoped
-                        .values()
-                        .map(std::collections::VecDeque::len)
-                        .sum::<usize>();
-                let evict_count = if active > eviction_min {
-                    (active - eviction_min).min(total_idle)
+            let total_idle: usize = guard.shared.len()
+                + guard
+                    .scoped
+                    .values()
+                    .map(std::collections::VecDeque::len)
+                    .sum::<usize>();
+            let evict_count = if active > min_size {
+                (active - min_size).min(total_idle)
+            } else {
+                0
+            };
+
+            let mut evicted = 0usize;
+
+            // Evict from shared queue
+            let mut kept: std::collections::VecDeque<PoolEntry> = std::collections::VecDeque::new();
+            while let Some(entry) = guard.shared.pop_front() {
+                if evicted < evict_count && now.duration_since(entry.last_used) >= idle_timeout {
+                    // Clean eviction: proxy was fine, just expired.
+                    if let Some(lease) = &entry.proxy_lease {
+                        lease.mark_success();
+                    }
+                    let instance = entry.instance;
+                    tokio::spawn(async move {
+                        let _ = instance.shutdown().await;
+                    });
+                    active_count.fetch_sub(1, Ordering::Relaxed);
+                    evicted += 1;
                 } else {
-                    0
-                };
-
-                let mut evicted = 0usize;
-
-                // Evict from shared queue
-                let mut kept: std::collections::VecDeque<PoolEntry> =
-                    std::collections::VecDeque::new();
-                while let Some(entry) = guard.shared.pop_front() {
-                    if evicted < evict_count && now.duration_since(entry.last_used) >= idle_timeout
-                    {
-                        // Clean eviction: proxy was fine, just expired.
-                        if let Some(lease) = &entry.proxy_lease {
-                            lease.mark_success();
-                        }
-                        let instance = entry.instance;
-                        tokio::spawn(async move {
-                            let _ = instance.shutdown().await;
-                        });
-                        eviction_active.fetch_sub(1, Ordering::Relaxed);
-                        evicted += 1;
-                    } else {
-                        kept.push_back(entry);
-                    }
-                }
-                guard.shared = kept;
-
-                // Evict from scoped queues
-                let context_ids: Vec<String> = guard.scoped.keys().cloned().collect();
-                for cid in &context_ids {
-                    if let Some(queue) = guard.scoped.get_mut(cid) {
-                        let mut kept: std::collections::VecDeque<PoolEntry> =
-                            std::collections::VecDeque::new();
-                        while let Some(entry) = queue.pop_front() {
-                            if evicted < evict_count
-                                && now.duration_since(entry.last_used) >= idle_timeout
-                            {
-                                if let Some(lease) = &entry.proxy_lease {
-                                    lease.mark_success();
-                                }
-                                let instance = entry.instance;
-                                tokio::spawn(async move {
-                                    let _ = instance.shutdown().await;
-                                });
-                                eviction_active.fetch_sub(1, Ordering::Relaxed);
-                                evicted += 1;
-                            } else {
-                                kept.push_back(entry);
-                            }
-                        }
-                        *queue = kept;
-                    }
-                }
-
-                // Remove empty scoped queues
-                guard.scoped.retain(|_, q| !q.is_empty());
-
-                // Explicitly drop the guard as soon as possible to avoid holding the lock longer than needed
-                drop(guard);
-
-                if evicted > 0 {
-                    info!("Evicted {evicted} idle browsers (idle_timeout={idle_timeout:?})");
+                    kept.push_back(entry);
                 }
             }
-        });
+            guard.shared = kept;
 
-        Ok(Arc::new(pool))
+            // Evict from scoped queues
+            let context_ids: Vec<String> = guard.scoped.keys().cloned().collect();
+            for cid in &context_ids {
+                if let Some(queue) = guard.scoped.get_mut(cid) {
+                    let mut kept: std::collections::VecDeque<PoolEntry> =
+                        std::collections::VecDeque::new();
+                    while let Some(entry) = queue.pop_front() {
+                        if evicted < evict_count
+                            && now.duration_since(entry.last_used) >= idle_timeout
+                        {
+                            if let Some(lease) = &entry.proxy_lease {
+                                lease.mark_success();
+                            }
+                            let instance = entry.instance;
+                            tokio::spawn(async move {
+                                let _ = instance.shutdown().await;
+                            });
+                            active_count.fetch_sub(1, Ordering::Relaxed);
+                            evicted += 1;
+                        } else {
+                            kept.push_back(entry);
+                        }
+                    }
+                    *queue = kept;
+                }
+            }
+
+            // Remove empty scoped queues
+            guard.scoped.retain(|_, q| !q.is_empty());
+
+            // Drop the guard promptly to avoid holding the lock longer than needed
+            drop(guard);
+
+            if evicted > 0 {
+                info!("Evicted {evicted} idle browsers (idle_timeout={idle_timeout:?})");
+            }
+        }
     }
 
     // ─── Acquire ──────────────────────────────────────────────────────────────
@@ -482,6 +497,20 @@ impl BrowserPool {
 
         // Pool full — wait for a release
         let ctx_for_poll = context_id.map(String::from);
+        self.poll_for_release(ctx_for_poll, acquire_timeout, active, max)
+            .await
+    }
+
+    // ─── Poll for release ─────────────────────────────────────────────────────
+
+    /// Wait until an idle browser is returned to the pool or the timeout fires.
+    async fn poll_for_release(
+        self: &Arc<Self>,
+        ctx_for_poll: Option<String>,
+        acquire_timeout: std::time::Duration,
+        active: usize,
+        max: usize,
+    ) -> Result<BrowserHandle> {
         timeout(acquire_timeout, async {
             loop {
                 sleep(std::time::Duration::from_millis(50)).await;

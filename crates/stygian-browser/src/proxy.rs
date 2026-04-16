@@ -56,7 +56,7 @@ use crate::error::Result;
 /// let lease: Box<dyn ProxyLease> = Box::new(DirectLease);
 /// lease.mark_success(); // no-op for DirectLease
 /// ```
-pub trait ProxyLease: Send + 'static {
+pub trait ProxyLease: Send + Sync + 'static {
     /// Record that the browser session using this proxy completed successfully.
     fn mark_success(&self);
 }
