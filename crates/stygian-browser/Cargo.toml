@@ -70,6 +70,7 @@ stygian-extract-derive = { path = "../stygian-extract-derive", version = "0.9.3"
 
 [dev-dependencies]
 proptest = { workspace = true }
+toml = "0.8"
 tracing-subscriber = { workspace = true }
 trybuild = "1"
 stygian-extract-derive = { path = "../stygian-extract-derive", version = "0.9.3" }

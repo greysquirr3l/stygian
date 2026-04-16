@@ -626,6 +626,33 @@ pub async fn apply_stealth_to_page(
             )
             .await?;
         }
+
+        // Navigator coherence (T43) — inject only when a fingerprint profile is configured
+        if let Some(ref fp) = config.fingerprint_profile {
+            let nav_script = crate::navigator_coherence::navigator_coherence_script(fp);
+            inject_one(
+                page,
+                "AddScriptToEvaluateOnNewDocument(navigator-coherence)",
+                nav_script,
+            )
+            .await?;
+        }
+
+        // Timing noise (T44)
+        {
+            let timing_cfg = crate::timing_noise::TimingNoiseConfig {
+                enabled: true,
+                jitter_ms: 0.3,
+                seed: config.noise.build_engine().seed(),
+            };
+            let timing_script = crate::timing_noise::timing_noise_script(&timing_cfg);
+            inject_one(
+                page,
+                "AddScriptToEvaluateOnNewDocument(timing-noise)",
+                timing_script,
+            )
+            .await?;
+        }
     }
 
     Ok(())

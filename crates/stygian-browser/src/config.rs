@@ -235,6 +235,14 @@ pub struct BrowserConfig {
     #[cfg(feature = "stealth")]
     pub noise: NoiseConfig,
 
+    /// Unified fingerprint profile for coherent identity injection.
+    ///
+    /// When set, navigator properties and other identity signals are overridden
+    /// to form a self-consistent browser/device identity. Only active when the
+    /// `stealth` feature is enabled.
+    #[cfg(feature = "stealth")]
+    pub fingerprint_profile: Option<crate::profile::FingerprintProfile>,
+
     /// Anti-detection intensity level.
     pub stealth_level: StealthLevel,
 
@@ -308,6 +316,8 @@ impl Default for BrowserConfig {
             webrtc: WebRtcConfig::default(),
             #[cfg(feature = "stealth")]
             noise: NoiseConfig::default(),
+            #[cfg(feature = "stealth")]
+            fingerprint_profile: None,
             disable_sandbox: env_bool("STYGIAN_DISABLE_SANDBOX", is_containerized()),
             stealth_level: StealthLevel::from_env(),
             cdp_fix_mode: CdpFixMode::from_env(),
@@ -625,6 +635,24 @@ impl BrowserConfigBuilder {
     #[must_use]
     pub fn noise(mut self, config: NoiseConfig) -> Self {
         self.config.noise = config;
+        self
+    }
+
+    /// Set the unified fingerprint profile for coherent identity injection.
+    ///
+    /// # Example
+    /// ```
+    /// use stygian_browser::BrowserConfig;
+    /// use stygian_browser::profile::FingerprintProfile;
+    /// let cfg = BrowserConfig::builder()
+    ///     .fingerprint_profile(FingerprintProfile::windows_chrome_136_rtx3060())
+    ///     .build();
+    /// assert!(cfg.fingerprint_profile.is_some());
+    /// ```
+    #[cfg(feature = "stealth")]
+    #[must_use]
+    pub fn fingerprint_profile(mut self, profile: crate::profile::FingerprintProfile) -> Self {
+        self.config.fingerprint_profile = Some(profile);
         self
     }
 

@@ -117,6 +117,15 @@ pub mod audio_noise;
 pub mod rects_noise;
 
 #[cfg(feature = "stealth")]
+pub mod profile;
+
+#[cfg(feature = "stealth")]
+pub mod navigator_coherence;
+
+#[cfg(feature = "stealth")]
+pub mod timing_noise;
+
+#[cfg(feature = "stealth")]
 pub mod diagnostic;
 
 #[cfg(feature = "mcp")]
