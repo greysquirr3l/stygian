@@ -160,6 +160,7 @@ mod tests {
             password: None,
             weight: 1,
             tags: vec![],
+            capabilities: crate::types::ProxyCapabilities::default(),
         }
     }
 

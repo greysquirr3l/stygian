@@ -1237,7 +1237,11 @@ impl McpBrowserServer {
 
         let session_id = Self::require_str(args, "session_id")?;
         let url = Self::require_str(args, "url")?;
-        let wait = match args.get("wait").and_then(|v| v.as_str()).unwrap_or("dom_content_loaded") {
+        let wait = match args
+            .get("wait")
+            .and_then(|v| v.as_str())
+            .unwrap_or("dom_content_loaded")
+        {
             "network_idle" => WarmupWait::NetworkIdle,
             _ => WarmupWait::DomContentLoaded,
         };
@@ -1266,7 +1270,12 @@ impl McpBrowserServer {
             .await?;
 
         let report = page
-            .warmup(WarmupOptions { url, wait, timeout_ms, stabilize_ms })
+            .warmup(WarmupOptions {
+                url,
+                wait,
+                timeout_ms,
+                stabilize_ms,
+            })
             .await?;
         page.close().await?;
 
@@ -1284,7 +1293,11 @@ impl McpBrowserServer {
         use crate::page::{RefreshOptions, WarmupWait};
 
         let session_id = Self::require_str(args, "session_id")?;
-        let wait = match args.get("wait").and_then(|v| v.as_str()).unwrap_or("dom_content_loaded") {
+        let wait = match args
+            .get("wait")
+            .and_then(|v| v.as_str())
+            .unwrap_or("dom_content_loaded")
+        {
             "network_idle" => WarmupWait::NetworkIdle,
             _ => WarmupWait::DomContentLoaded,
         };
@@ -1313,7 +1326,11 @@ impl McpBrowserServer {
             .await?;
 
         let report = page
-            .refresh(RefreshOptions { wait, timeout_ms, reset_connection })
+            .refresh(RefreshOptions {
+                wait,
+                timeout_ms,
+                reset_connection,
+            })
             .await?;
         page.close().await?;
 
@@ -1755,8 +1772,7 @@ mod tests {
     }
 
     #[test]
-    fn browser_warmup_in_tool_definitions()
-    -> std::result::Result<(), Box<dyn std::error::Error>> {
+    fn browser_warmup_in_tool_definitions() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let defs = &*TOOL_DEFINITIONS;
         let def = defs
             .iter()
@@ -1779,8 +1795,8 @@ mod tests {
     }
 
     #[test]
-    fn browser_refresh_in_tool_definitions()
-    -> std::result::Result<(), Box<dyn std::error::Error>> {
+    fn browser_refresh_in_tool_definitions() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
         let defs = &*TOOL_DEFINITIONS;
         let def = defs
             .iter()

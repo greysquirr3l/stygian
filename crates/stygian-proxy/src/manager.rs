@@ -20,9 +20,9 @@ use crate::session::{SessionMap, StickyPolicy};
 use crate::storage::ProxyStoragePort;
 use crate::strategy::{
     BoxedRotationStrategy, LeastUsedStrategy, ProxyCandidate, RandomStrategy, RoundRobinStrategy,
-    WeightedStrategy,
+    WeightedStrategy, capable_healthy_candidates,
 };
-use crate::types::{Proxy, ProxyConfig};
+use crate::types::{CapabilityRequirement, Proxy, ProxyConfig};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PoolStats
@@ -318,6 +318,7 @@ impl ProxyManager {
                         weight: record.proxy.weight,
                         metrics: Arc::clone(metrics),
                         healthy: healthy && available,
+                        capabilities: record.proxy.capabilities.clone(),
                     }
                 })
                 .collect();
@@ -352,6 +353,85 @@ impl ProxyManager {
     /// Delegates selection to the configured [`crate::strategy::RotationStrategy`].
     pub async fn acquire_proxy(&self) -> ProxyResult<ProxyHandle> {
         let (url, cb, _id) = self.select_proxy_inner().await?;
+        Ok(ProxyHandle::new(url, cb))
+    }
+
+    /// Acquire a proxy that satisfies `req` from the pool.
+    ///
+    /// Filters the candidate list to healthy proxies whose
+    /// [`ProxyCapabilities`](crate::types::ProxyCapabilities) satisfy every
+    /// flag in `req`, then delegates to the configured rotation strategy.
+    ///
+    /// Returns [`ProxyError::NoCompatibleProxy`] when no healthy proxy meets
+    /// the capability requirements.
+    ///
+    /// # Example
+    /// ```rust,no_run
+    /// use stygian_proxy::{ProxyManager, ProxyManagerBuilder, CapabilityRequirement};
+    ///
+    /// async fn example(manager: &ProxyManager) {
+    ///     let req = CapabilityRequirement { require_https_connect: true, ..Default::default() };
+    ///     let handle = manager.acquire_with_capabilities(&req).await.unwrap();
+    ///     println!("url: {}", handle.url());
+    /// }
+    /// ```
+    pub async fn acquire_with_capabilities(
+        &self,
+        req: &CapabilityRequirement,
+    ) -> ProxyResult<ProxyHandle> {
+        let with_metrics = self.storage.list_with_metrics().await?;
+
+        if with_metrics.is_empty() {
+            return Err(ProxyError::PoolExhausted);
+        }
+
+        let candidates = {
+            let health_map_ref = Arc::clone(self.health_checker.health_map());
+            let health_map = health_map_ref.read().await;
+            let cb_map_ref = Arc::clone(&self.circuit_breakers);
+            let cb_map = cb_map_ref.read().await;
+            let candidates: Vec<ProxyCandidate> = with_metrics
+                .iter()
+                .map(|(record, metrics)| {
+                    let healthy = health_map.get(&record.id).copied().unwrap_or(true);
+                    let available = cb_map.get(&record.id).is_none_or(|cb| cb.is_available());
+                    ProxyCandidate {
+                        id: record.id,
+                        weight: record.proxy.weight,
+                        metrics: Arc::clone(metrics),
+                        healthy: healthy && available,
+                        capabilities: record.proxy.capabilities.clone(),
+                    }
+                })
+                .collect();
+            candidates
+        };
+
+        // Filter to only those that satisfy the capability requirement.
+        let compatible: Vec<ProxyCandidate> = capable_healthy_candidates(&candidates, req)
+            .into_iter()
+            .cloned()
+            .collect();
+        if compatible.is_empty() {
+            return Err(ProxyError::NoCompatibleProxy);
+        }
+
+        let selected = self.strategy.select(&compatible).await?;
+        let id = selected.id;
+
+        let cb = self
+            .circuit_breakers
+            .read()
+            .await
+            .get(&id)
+            .cloned()
+            .ok_or(ProxyError::PoolExhausted)?;
+        let url = with_metrics
+            .iter()
+            .find(|(r, _)| r.id == id)
+            .map(|(r, _)| r.proxy.url.clone())
+            .unwrap_or_default();
+
         Ok(ProxyHandle::new(url, cb))
     }
 
@@ -539,6 +619,7 @@ mod tests {
             password: None,
             weight: 1,
             tags: vec![],
+            capabilities: crate::types::ProxyCapabilities::default(),
         }
     }
 

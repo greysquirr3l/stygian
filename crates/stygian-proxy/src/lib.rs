@@ -43,6 +43,8 @@ pub mod browser;
 #[cfg(feature = "tls-profiled")]
 pub mod http_client;
 
+pub mod routing;
+
 /// MCP (Model Context Protocol) server — exposes proxy pool tools
 #[cfg(feature = "mcp")]
 pub mod mcp;
@@ -57,9 +59,12 @@ pub use session::{SessionMap, StickyPolicy};
 pub use storage::MemoryProxyStore;
 pub use strategy::{
     BoxedRotationStrategy, LeastUsedStrategy, ProxyCandidate, RandomStrategy, RotationStrategy,
-    RoundRobinStrategy, WeightedStrategy,
+    RoundRobinStrategy, WeightedStrategy, capable_healthy_candidates,
 };
-pub use types::{ProfiledRequestMode, Proxy, ProxyConfig, ProxyMetrics, ProxyRecord, ProxyType};
+pub use types::{
+    CapabilityRequirement, ProfiledRequestMode, Proxy, ProxyCapabilities, ProxyConfig,
+    ProxyMetrics, ProxyRecord, ProxyType, RoutingPath,
+};
 
 #[cfg(feature = "graph")]
 pub use graph::{BoxedProxyManager, NoopProxyManager, ProxyManagerPort};

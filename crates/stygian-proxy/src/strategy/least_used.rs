@@ -28,8 +28,8 @@ use crate::strategy::{ProxyCandidate, RotationStrategy, healthy_candidates};
 /// busy.requests_total.store(100, Ordering::Relaxed);
 /// let idle = Arc::new(ProxyMetrics::default());
 /// let candidates = vec![
-///     ProxyCandidate { id: Uuid::from_u128(1), weight: 1, metrics: busy,   healthy: true },
-///     ProxyCandidate { id: Uuid::from_u128(2), weight: 1, metrics: idle,   healthy: true },
+///     ProxyCandidate { id: Uuid::from_u128(1), weight: 1, metrics: busy,   healthy: true, capabilities: Default::default() },
+///     ProxyCandidate { id: Uuid::from_u128(2), weight: 1, metrics: idle,   healthy: true, capabilities: Default::default() },
 /// ];
 /// let chosen = strategy.select(&candidates).await.unwrap();
 /// assert_eq!(chosen.id, Uuid::from_u128(2), "should pick the idle proxy");

@@ -362,6 +362,7 @@ impl FreeListFetcher {
                     password: None,
                     weight: 1,
                     tags: self.tags.clone(),
+                    capabilities: crate::types::ProxyCapabilities::default(),
                 })
             })
             .collect();
@@ -523,6 +524,7 @@ mod tests {
                     password: None,
                     weight: 1,
                     tags: fetcher.tags.clone(),
+                    capabilities: crate::types::ProxyCapabilities::default(),
                 })
             })
             .collect();

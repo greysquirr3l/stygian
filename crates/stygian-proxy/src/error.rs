@@ -64,6 +64,10 @@ pub enum ProxyError {
         /// Human-readable description of the failure.
         message: String,
     },
+
+    /// No proxy in the pool satisfies the requested capability set.
+    #[error("no proxy satisfies the requested capabilities")]
+    NoCompatibleProxy,
 }
 
 /// Convenience result alias for all stygian-proxy operations.

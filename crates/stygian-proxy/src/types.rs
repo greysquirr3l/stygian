@@ -45,13 +45,127 @@ pub enum ProfiledRequestMode {
     StrictAll,
 }
 
+/// Protocol-level capabilities advertised by a proxy endpoint.
+///
+/// These flags are set when the proxy is registered and consulted during
+/// capability-aware selection (see [`crate::manager::ProxyManager::acquire_with_capabilities`]).
+///
+/// # Example
+/// ```
+/// use stygian_proxy::types::ProxyCapabilities;
+/// let caps = ProxyCapabilities::default();
+/// assert!(!caps.supports_https_connect);
+/// assert!(!caps.supports_socks5_udp);
+/// assert!(!caps.supports_http3_tunnel);
+/// ```
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ProxyCapabilities {
+    /// Proxy supports the `CONNECT` method for HTTPS tunnelling.
+    #[serde(default)]
+    pub supports_https_connect: bool,
+    /// Proxy supports SOCKS5 with UDP relay (for UDP-based transports).
+    #[serde(default)]
+    pub supports_socks5_udp: bool,
+    /// Proxy supports HTTP/3 (QUIC) tunnelling — future-compatible flag.
+    #[serde(default)]
+    pub supports_http3_tunnel: bool,
+    /// Optional ISO-3166-1 alpha-2 country code for the proxy egress location.
+    #[serde(default)]
+    pub geo_country: Option<String>,
+    /// Confidence score `[0.0, 1.0]` for the geo-location data.
+    ///
+    /// `None` means the provider did not supply confidence metadata.
+    #[serde(default)]
+    pub geo_confidence: Option<f32>,
+}
+
+impl ProxyCapabilities {
+    /// Returns `true` if every required flag in `req` is satisfied by `self`.
+    ///
+    /// # Example
+    /// ```
+    /// use stygian_proxy::types::{ProxyCapabilities, CapabilityRequirement};
+    /// let caps = ProxyCapabilities { supports_https_connect: true, ..Default::default() };
+    /// let req = CapabilityRequirement { require_https_connect: true, ..Default::default() };
+    /// assert!(caps.satisfies(&req));
+    /// let req2 = CapabilityRequirement { require_socks5_udp: true, ..Default::default() };
+    /// assert!(!caps.satisfies(&req2));
+    /// ```
+    pub fn satisfies(&self, req: &CapabilityRequirement) -> bool {
+        if req.require_https_connect && !self.supports_https_connect {
+            return false;
+        }
+        if req.require_socks5_udp && !self.supports_socks5_udp {
+            return false;
+        }
+        if req.require_http3_tunnel && !self.supports_http3_tunnel {
+            return false;
+        }
+        if let Some(ref required_country) = req.require_geo_country
+            && self.geo_country.as_deref() != Some(required_country.as_str())
+        {
+            return false;
+        }
+        true
+    }
+}
+
+/// Required capability set used as a filter when acquiring a proxy.
+///
+/// All fields default to `false`/`None` — an empty requirement matches any proxy.
+///
+/// # Example
+/// ```
+/// use stygian_proxy::types::CapabilityRequirement;
+/// let req = CapabilityRequirement::default();
+/// // empty requirement — any proxy qualifies
+/// assert!(!req.require_https_connect);
+/// ```
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct CapabilityRequirement {
+    /// Require `supports_https_connect`.
+    #[serde(default)]
+    pub require_https_connect: bool,
+    /// Require `supports_socks5_udp`.
+    #[serde(default)]
+    pub require_socks5_udp: bool,
+    /// Require `supports_http3_tunnel`.
+    #[serde(default)]
+    pub require_http3_tunnel: bool,
+    /// Require a specific egress country (ISO-3166-1 alpha-2).
+    #[serde(default)]
+    pub require_geo_country: Option<String>,
+}
+
+/// The protocol routing path resolved for an outbound request.
+///
+/// Returned by [`crate::routing::resolve_routing_path`] to indicate how the
+/// proxy should forward the connection.
+///
+/// # Example
+/// ```
+/// use stygian_proxy::types::RoutingPath;
+/// let path = RoutingPath::H1H2OverTcp;
+/// assert_eq!(format!("{path:?}"), "H1H2OverTcp");
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RoutingPath {
+    /// HTTP/1.1 or HTTP/2 multiplexed over a TCP CONNECT tunnel.
+    H1H2OverTcp,
+    /// HTTP/3 (QUIC) over a UDP relay — requires `supports_http3_tunnel`.
+    H3OverUdp,
+}
+
 /// A proxy endpoint with optional authentication credentials.
 ///
 /// `Debug` output masks `password` to prevent accidental credential logging.
 ///
 /// # Example
 /// ```
-/// use stygian_proxy::types::{Proxy, ProxyType};
+/// use stygian_proxy::types::{Proxy, ProxyType, ProxyCapabilities};
 /// let p = Proxy {
 ///     url: "http://proxy.example.com:8080".into(),
 ///     proxy_type: ProxyType::Http,
@@ -59,6 +173,7 @@ pub enum ProfiledRequestMode {
 ///     password: Some("secret".into()),
 ///     weight: 1,
 ///     tags: vec!["prod".into()],
+///     capabilities: ProxyCapabilities::default(),
 /// };
 /// let debug = format!("{p:?}");
 /// assert!(debug.contains("***"), "password must be masked in Debug output");
@@ -75,6 +190,9 @@ pub struct Proxy {
     pub weight: u32,
     /// User-defined tags for filtering and grouping.
     pub tags: Vec<String>,
+    /// Protocol-level capabilities advertised by this proxy.
+    #[serde(default)]
+    pub capabilities: ProxyCapabilities,
 }
 
 impl std::fmt::Debug for Proxy {
@@ -86,6 +204,7 @@ impl std::fmt::Debug for Proxy {
             .field("password", &self.password.as_deref().map(|_| "***"))
             .field("weight", &self.weight)
             .field("tags", &self.tags)
+            .field("capabilities", &self.capabilities)
             .finish()
     }
 }
@@ -102,6 +221,7 @@ impl std::fmt::Debug for Proxy {
 ///     password: None,
 ///     weight: 1,
 ///     tags: vec![],
+///     capabilities: Default::default(),
 /// };
 /// let record = ProxyRecord::new(proxy);
 /// assert!(!record.id.is_nil());

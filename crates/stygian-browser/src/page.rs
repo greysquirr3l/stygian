@@ -1595,7 +1595,7 @@ pub enum WarmupWait {
 impl WarmupWait {
     /// Convert into the lower-level [`WaitUntil`] enum.
     #[must_use]
-    pub fn into_wait_until(self) -> WaitUntil {
+    pub const fn into_wait_until(self) -> WaitUntil {
         match self {
             Self::DomContentLoaded => WaitUntil::DomContentLoaded,
             Self::NetworkIdle => WaitUntil::NetworkIdle,
@@ -1796,8 +1796,12 @@ impl PageHandle {
     pub async fn warmup(&mut self, options: WarmupOptions) -> Result<WarmupReport> {
         let start = std::time::Instant::now();
         let nav_timeout = Duration::from_millis(options.timeout_ms);
-        self.navigate(&options.url, options.wait.clone().into_wait_until(), nav_timeout)
-            .await?;
+        self.navigate(
+            &options.url,
+            options.wait.clone().into_wait_until(),
+            nav_timeout,
+        )
+        .await?;
         let status_code = self.status_code()?;
         let title = self.title().await.unwrap_or_default();
         let stabilized = options.stabilize_ms > 0;
@@ -2082,8 +2086,8 @@ mod tests {
     }
 
     #[test]
-    fn warmup_options_serialize_round_trip()
-    -> std::result::Result<(), Box<dyn std::error::Error>> {
+    fn warmup_options_serialize_round_trip() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
         let opts = WarmupOptions {
             url: "https://example.com".to_string(),
             wait: WarmupWait::NetworkIdle,
@@ -2125,8 +2129,8 @@ mod tests {
     }
 
     #[test]
-    fn refresh_options_serialize_round_trip()
-    -> std::result::Result<(), Box<dyn std::error::Error>> {
+    fn refresh_options_serialize_round_trip() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
         let opts = RefreshOptions {
             wait: WarmupWait::NetworkIdle,
             timeout_ms: 10_000,
@@ -2141,8 +2145,7 @@ mod tests {
     }
 
     #[test]
-    fn warmup_report_serialize_round_trip()
-    -> std::result::Result<(), Box<dyn std::error::Error>> {
+    fn warmup_report_serialize_round_trip() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let report = WarmupReport {
             url: "https://example.com".to_string(),
             elapsed_ms: 320,
@@ -2161,8 +2164,8 @@ mod tests {
     }
 
     #[test]
-    fn refresh_report_serialize_round_trip()
-    -> std::result::Result<(), Box<dyn std::error::Error>> {
+    fn refresh_report_serialize_round_trip() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
         let report = RefreshReport {
             url: "https://example.com/".to_string(),
             elapsed_ms: 180,
@@ -2192,6 +2195,7 @@ mod tests {
     /// Warm up a page then immediately extract content from the same origin.
     #[test]
     #[ignore = "requires live Chrome"]
+    #[allow(clippy::expect_used)]
     fn integration_warmup_then_extraction() {
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
         rt.block_on(async {
@@ -2236,6 +2240,7 @@ mod tests {
     /// still navigable).
     #[test]
     #[ignore = "requires live Chrome"]
+    #[allow(clippy::expect_used)]
     fn integration_refresh_keeps_session_state() {
         let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
         rt.block_on(async {
@@ -2259,7 +2264,10 @@ mod tests {
             .await
             .expect("initial navigate");
 
-            let report = page.refresh(RefreshOptions::default()).await.expect("refresh");
+            let report = page
+                .refresh(RefreshOptions::default())
+                .await
+                .expect("refresh");
 
             assert!(
                 report.url.contains("example.com"),

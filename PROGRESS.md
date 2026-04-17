@@ -109,7 +109,7 @@
 | T49 — Stealth Benchmark Harness | `[x]` | benchmark harness + `stealth_benchmark` example + deterministic JSON/Markdown reporting |
 | T50 — Transport Profile Packs and Cadence | `[x]` | |
 | T51 — Session Warmup and Refresh Primitives | `[x]` | `warmup()`/`refresh()` on PageHandle; `browser_warmup`/`browser_refresh` MCP tools; 12 unit tests |
-| T52 — Proxy Capability Model and Protocol-Aware Routing | `[ ]` | |
+| T52 — Proxy Capability Model and Protocol-Aware Routing | `[x]` | `ProxyCapabilities` + `CapabilityRequirement`; protocol routing resolver; capability-aware manager acquisition path; tests/clippy clean |
 | T53 — FreeAPIProxies Source Adapter (Optional) | `[ ]` | |
 | T54 — Adaptive Selector Recovery for Extraction | `[ ]` | |
 
@@ -123,10 +123,9 @@
 > The orchestrator reads this section at the start of every iteration
 > to avoid repeating past mistakes.
 
-_No learnings yet._
-
 - T01: `deadpool-redis` `PoolConfig::from_url` returns an owned config — no `mut` needed. Doc comment list-item continuation lines trigger `doc_overindented_list_items` if aligned with visually padded columns. Pre-existing `collapsible_if` lints in stream.rs, document.rs, and database.rs needed fixing (Rust 2024 let-chains).
 - T30: `BrowserError::StaleNode` unit test belongs in `src/error.rs` `#[cfg(test)]` block alongside the other display tests. Integration tests using `#[ignore]` must call methods directly on the returned `Vec<NodeHandle>` without importing `NodeHandle` by name — the type is inferred. `example.com` is a reliable fixture for DOM query tests since its structure is stable.
 - T31: Mutual recursion between `BrowserError::ExtractionFailed(ExtractionError)` and `ExtractionError::CdpFailed { source: BrowserError }` requires boxing one side — box the `BrowserError` in `CdpFailed` to break infinite type size. `#[cfg(feature = "...")]` on enum variants works cleanly with thiserror. `trybuild` auto-generates `.stderr` files into `wip/` on first run — copy to `tests/ui/` to accept them. The `extract` feature must be added to `full` to keep `--all-features` working. Place integration tests for a feature in a `#[cfg(feature = "...")]` `mod` inside `integration.rs` to silence dead-code lints from struct fields used only in ignored tests.
 - T33: `#[serde(rename = "attrNames")]` is required on `attr_names` to match the camelCase key emitted by JS. Use old-style `Array.prototype.slice.call` / `var` / `function()` in the fingerprint JS rather than arrow functions or spread syntax for broadest compatibility. When both sorted slices are empty, Jaccard should return `1.0` (not `NaN` from 0/0). The `similarity` feature needs no extra crate deps — `serde`/`serde_json` are already in the workspace. Adding a `#[cfg(feature = "similarity")] impl NodeHandle` block alongside a `#[cfg(feature = "similarity")] impl PageHandle` block keeps dead-code lints silent when the feature is off.
 - T51: `page.rs` did not import serde — add `use serde::{Deserialize, Serialize};` before implementing any serializable types there. Use a local `WarmupWait` enum (serializable, maps to `WaitUntil`) rather than trying to derive serde on `WaitUntil` which has a non-trivial `Selector(String)` variant. `#[serde(default = "fn_name")]` with a `const fn` returning a numeric literal requires the function to return the same type as the field — no coercion across integer widths. MCP tool handlers that open a new page should always call `page.close().await?` before returning, even on the happy path.
+- T52: `ProxyCapabilities` cannot derive `Eq` when it includes `Option<f32>` (use `PartialEq` only). Capability filtering should reuse the same candidate construction path as normal proxy selection (`storage.list_with_metrics()` + health/circuit maps) to avoid stale or non-existent manager fields. Strict clippy (`-D warnings`) requires explicit `ProxyCapabilities::default()` in proxy literals and panic-safe assertions (`first()` over indexing) in tests.
