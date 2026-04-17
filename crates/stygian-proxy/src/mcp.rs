@@ -409,11 +409,12 @@ impl McpProxyServer {
             "proxy_acquire" => self.tool_proxy_acquire(id).await,
             "proxy_acquire_for_domain" => self.tool_proxy_acquire_for_domain(id, args).await,
             "proxy_release" => self.tool_proxy_release(id, args).await,
-            "proxy_acquire_with_capabilities" => self.tool_proxy_acquire_with_capabilities(id, args).await,
+            "proxy_acquire_with_capabilities" => {
+                self.tool_proxy_acquire_with_capabilities(id, args).await
+            }
             "proxy_fetch_freelist" => self.tool_proxy_fetch_freelist(id, args).await,
             "proxy_fetch_freeapiproxies" => self.tool_proxy_fetch_freeapiproxies(id, args).await,
             _ => error_response(id, -32602, &format!("Unknown tool: {name}")),
-
         }
     }
 
@@ -741,7 +742,11 @@ impl McpProxyServer {
                     }),
                 )
             }
-            Err(e) => error_response(id, -32603, &format!("Acquire with capabilities failed: {e}")),
+            Err(e) => error_response(
+                id,
+                -32603,
+                &format!("Acquire with capabilities failed: {e}"),
+            ),
         }
     }
 
@@ -772,7 +777,9 @@ impl McpProxyServer {
                     return error_response(
                         id,
                         -32602,
-                        &format!("Unknown source: {other}. Valid values: the_speedx_http, the_speedx_socks4, the_speedx_socks5, clarketm_http, open_proxy_list_http"),
+                        &format!(
+                            "Unknown source: {other}. Valid values: the_speedx_http, the_speedx_socks4, the_speedx_socks5, clarketm_http, open_proxy_list_http"
+                        ),
                     );
                 }
             }
@@ -974,9 +981,7 @@ mod tests {
     -> std::result::Result<(), Box<dyn std::error::Error>> {
         let server = McpProxyServer::new()?;
         let id = json!(1);
-        let resp = server
-            .tool_proxy_fetch_freelist(&id, &json!({}))
-            .await;
+        let resp = server.tool_proxy_fetch_freelist(&id, &json!({})).await;
         assert!(
             resp.get("error").is_some_and(Value::is_object),
             "missing sources should return error"
@@ -1005,10 +1010,7 @@ mod tests {
         let server = McpProxyServer::new()?;
         let id = json!(1);
         let resp = server
-            .tool_proxy_fetch_freelist(
-                &id,
-                &json!({ "sources": ["not_a_real_source"] }),
-            )
+            .tool_proxy_fetch_freelist(&id, &json!({ "sources": ["not_a_real_source"] }))
             .await;
         assert!(
             resp.get("error").is_some_and(Value::is_object),

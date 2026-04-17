@@ -1595,10 +1595,6 @@ impl McpBrowserServer {
             .ok_or_else(|| BrowserError::ConfigError(format!("Unknown session: {session_id}")))
     }
 
-    /// Extract a single record from `root` using the given `schema`.
-    ///
-    /// Returns `None` if any required field is absent; otherwise returns a
-    /// JSON object with one entry per field.
     // ── browser_extract_with_fallback ─────────────────────────────────────────
 
     /// Extract using the first `root_selectors` entry that yields results.
