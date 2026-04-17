@@ -30,6 +30,7 @@
 //! # }
 //! ```
 
+pub mod benchmark;
 pub mod validators;
 
 use std::collections::HashMap;

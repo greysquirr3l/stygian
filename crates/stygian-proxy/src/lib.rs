@@ -43,6 +43,8 @@ pub mod browser;
 #[cfg(feature = "tls-profiled")]
 pub mod http_client;
 
+pub mod routing;
+
 /// MCP (Model Context Protocol) server — exposes proxy pool tools
 #[cfg(feature = "mcp")]
 pub mod mcp;
@@ -50,16 +52,21 @@ pub mod mcp;
 // Top-level re-exports
 pub use circuit_breaker::{CircuitBreaker, STATE_CLOSED, STATE_HALF_OPEN, STATE_OPEN};
 pub use error::{ProxyError, ProxyResult};
-pub use fetcher::{FreeListFetcher, FreeListSource, ProxyFetcher, load_from_fetcher};
+pub use fetcher::{
+    FreeApiProxiesFetcher, FreeListFetcher, FreeListSource, ProxyFetcher, load_from_fetcher,
+};
 pub use health::{HealthChecker, HealthMap};
 pub use manager::{PoolStats, ProxyHandle, ProxyManager, ProxyManagerBuilder};
 pub use session::{SessionMap, StickyPolicy};
 pub use storage::MemoryProxyStore;
 pub use strategy::{
     BoxedRotationStrategy, LeastUsedStrategy, ProxyCandidate, RandomStrategy, RotationStrategy,
-    RoundRobinStrategy, WeightedStrategy,
+    RoundRobinStrategy, WeightedStrategy, capable_healthy_candidates,
 };
-pub use types::{ProfiledRequestMode, Proxy, ProxyConfig, ProxyMetrics, ProxyRecord, ProxyType};
+pub use types::{
+    CapabilityRequirement, ProfiledRequestMode, Proxy, ProxyCapabilities, ProxyConfig,
+    ProxyMetrics, ProxyRecord, ProxyType, RoutingPath,
+};
 
 #[cfg(feature = "graph")]
 pub use graph::{BoxedProxyManager, NoopProxyManager, ProxyManagerPort};

@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::error::ProxyResult;
-use crate::types::ProxyMetrics;
+use crate::types::{CapabilityRequirement, ProxyCapabilities, ProxyMetrics};
 
 mod least_used;
 mod random;
@@ -37,6 +37,8 @@ pub struct ProxyCandidate {
     pub metrics: Arc<ProxyMetrics>,
     /// Whether the proxy currently passes health checks.
     pub healthy: bool,
+    /// Protocol-level capabilities this proxy exposes.
+    pub capabilities: ProxyCapabilities,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -84,6 +86,40 @@ pub fn healthy_candidates(all: &[ProxyCandidate]) -> Vec<&ProxyCandidate> {
     all.iter().filter(|c| c.healthy).collect()
 }
 
+/// Filter `all` to candidates that are healthy **and** satisfy `req`.
+///
+/// An empty [`CapabilityRequirement`] (all flags `false`, no geo filter)
+/// behaves identically to [`healthy_candidates`].
+///
+/// # Example
+/// ```
+/// use std::sync::Arc;
+/// use stygian_proxy::strategy::{ProxyCandidate, capable_healthy_candidates};
+/// use stygian_proxy::types::{CapabilityRequirement, ProxyCapabilities, ProxyMetrics};
+/// use uuid::Uuid;
+///
+/// let caps = ProxyCapabilities { supports_https_connect: true, ..Default::default() };
+/// let candidate = ProxyCandidate {
+///     id: Uuid::new_v4(),
+///     weight: 1,
+///     metrics: Arc::new(ProxyMetrics::default()),
+///     healthy: true,
+///     capabilities: caps,
+/// };
+/// let req = CapabilityRequirement { require_https_connect: true, ..Default::default() };
+/// let candidates = [candidate];
+/// let result = capable_healthy_candidates(&candidates, &req);
+/// assert_eq!(result.len(), 1);
+/// ```
+pub fn capable_healthy_candidates<'a>(
+    all: &'a [ProxyCandidate],
+    req: &CapabilityRequirement,
+) -> Vec<&'a ProxyCandidate> {
+    all.iter()
+        .filter(|c| c.healthy && c.capabilities.satisfies(req))
+        .collect()
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Tests
 // ─────────────────────────────────────────────────────────────────────────────
@@ -92,6 +128,7 @@ pub fn healthy_candidates(all: &[ProxyCandidate]) -> Vec<&ProxyCandidate> {
 pub(crate) mod tests {
     use super::*;
     use crate::error::ProxyError;
+    use crate::types::{CapabilityRequirement, ProxyCapabilities};
     use std::sync::atomic::Ordering;
 
     /// Build a `ProxyCandidate` with sensible test defaults.
@@ -103,6 +140,24 @@ pub(crate) mod tests {
             weight,
             metrics,
             healthy,
+            capabilities: ProxyCapabilities::default(),
+        }
+    }
+
+    /// Build a `ProxyCandidate` with explicit capabilities.
+    pub fn candidate_with_caps(
+        id: u128,
+        healthy: bool,
+        weight: u32,
+        caps: ProxyCapabilities,
+    ) -> ProxyCandidate {
+        let metrics = Arc::new(ProxyMetrics::default());
+        ProxyCandidate {
+            id: Uuid::from_u128(id),
+            weight,
+            metrics,
+            healthy,
+            capabilities: caps,
         }
     }
 
@@ -125,5 +180,91 @@ pub(crate) mod tests {
             RoundRobinStrategy::default().select(&c).await,
             Err(ProxyError::AllProxiesUnhealthy)
         ));
+    }
+
+    #[test]
+    fn capable_healthy_candidates_filters_by_capability() {
+        let c = vec![
+            candidate_with_caps(
+                1,
+                true,
+                1,
+                ProxyCapabilities {
+                    supports_https_connect: true,
+                    ..Default::default()
+                },
+            ),
+            candidate_with_caps(2, true, 1, ProxyCapabilities::default()),
+            candidate_with_caps(
+                3,
+                false,
+                1,
+                ProxyCapabilities {
+                    supports_https_connect: true,
+                    ..Default::default()
+                },
+            ),
+        ];
+        let req = CapabilityRequirement {
+            require_https_connect: true,
+            ..Default::default()
+        };
+        let result = capable_healthy_candidates(&c, &req);
+        // Only candidate 1: healthy AND supports_https_connect
+        assert_eq!(result.len(), 1);
+        assert_eq!(
+            result.first().map(|candidate| candidate.id),
+            Some(Uuid::from_u128(1))
+        );
+    }
+
+    #[test]
+    fn capable_healthy_candidates_empty_req_behaves_like_healthy() {
+        let c = vec![
+            candidate(1, true, 1, 0),
+            candidate(2, false, 1, 0),
+            candidate(3, true, 1, 0),
+        ];
+        let req = CapabilityRequirement::default();
+        let result = capable_healthy_candidates(&c, &req);
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn capable_healthy_candidates_returns_empty_when_none_match() {
+        let c = vec![candidate(1, true, 1, 0), candidate(2, true, 1, 0)];
+        let req = CapabilityRequirement {
+            require_socks5_udp: true,
+            ..Default::default()
+        };
+        let result = capable_healthy_candidates(&c, &req);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn geo_country_filter_matches_exact_country() {
+        let gb_proxy_caps = ProxyCapabilities {
+            geo_country: Some("GB".into()),
+            ..Default::default()
+        };
+        let us_proxy_caps = ProxyCapabilities {
+            geo_country: Some("US".into()),
+            ..Default::default()
+        };
+        let c = vec![
+            candidate_with_caps(1, true, 1, gb_proxy_caps),
+            candidate_with_caps(2, true, 1, us_proxy_caps),
+            candidate_with_caps(3, true, 1, ProxyCapabilities::default()),
+        ];
+        let req = CapabilityRequirement {
+            require_geo_country: Some("GB".into()),
+            ..Default::default()
+        };
+        let result = capable_healthy_candidates(&c, &req);
+        assert_eq!(result.len(), 1);
+        assert_eq!(
+            result.first().map(|candidate| candidate.id),
+            Some(Uuid::from_u128(1))
+        );
     }
 }

@@ -20,7 +20,7 @@ use crate::strategy::{ProxyCandidate, RotationStrategy, healthy_candidates};
 ///
 /// let strategy = RandomStrategy;
 /// let candidates = vec![
-///     ProxyCandidate { id: Uuid::new_v4(), weight: 1, metrics: Arc::new(ProxyMetrics::default()), healthy: true },
+///     ProxyCandidate { id: Uuid::new_v4(), weight: 1, metrics: Arc::new(ProxyMetrics::default()), healthy: true, capabilities: Default::default() },
 /// ];
 /// strategy.select(&candidates).await.unwrap();
 /// # })

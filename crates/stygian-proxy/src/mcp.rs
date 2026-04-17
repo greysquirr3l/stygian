@@ -498,6 +498,7 @@ impl McpProxyServer {
             password,
             weight,
             tags,
+            capabilities: crate::types::ProxyCapabilities::default(),
         };
 
         match self.manager.add_proxy(proxy).await {

@@ -14,7 +14,7 @@ use crate::types::{Proxy, ProxyRecord};
 /// # Example
 /// ```rust,no_run
 /// use stygian_proxy::storage::ProxyStoragePort;
-/// use stygian_proxy::types::{Proxy, ProxyType};
+/// use stygian_proxy::types::{Proxy, ProxyCapabilities, ProxyType};
 /// use uuid::Uuid;
 ///
 /// async fn demo(store: &dyn ProxyStoragePort) {
@@ -25,6 +25,7 @@ use crate::types::{Proxy, ProxyRecord};
 ///         password: None,
 ///         weight: 1,
 ///         tags: vec![],
+///         capabilities: ProxyCapabilities::default(),
 ///     };
 ///     let record = store.add(proxy).await.unwrap();
 ///     let _ = store.get(record.id).await.unwrap();
@@ -152,11 +153,12 @@ type StoreMap = HashMap<Uuid, (ProxyRecord, Arc<ProxyMetrics>)>;
 /// ```
 /// # tokio_test::block_on(async {
 /// use stygian_proxy::storage::{MemoryProxyStore, ProxyStoragePort};
-/// use stygian_proxy::types::{Proxy, ProxyType};
+/// use stygian_proxy::types::{Proxy, ProxyCapabilities, ProxyType};
 ///
 /// let store = MemoryProxyStore::default();
 /// let proxy = Proxy { url: "http://proxy.example.com:8080".into(), proxy_type: ProxyType::Http,
-///                     username: None, password: None, weight: 1, tags: vec![] };
+///                     username: None, password: None, weight: 1, tags: vec![],
+///                     capabilities: ProxyCapabilities::default() };
 /// let record = store.add(proxy).await.unwrap();
 /// assert_eq!(store.list().await.unwrap().len(), 1);
 /// store.remove(record.id).await.unwrap();
@@ -277,6 +279,7 @@ mod tests {
             password: None,
             weight: 1,
             tags: vec![],
+            capabilities: crate::types::ProxyCapabilities::default(),
         }
     }
 

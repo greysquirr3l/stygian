@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - "v*"
+  workflow_run:
+    workflows:
+      - "Auto-tag on release merge"
+    types:
+      - completed
   workflow_dispatch:
 
 env:
@@ -16,17 +21,29 @@ jobs:
   resolve:
     name: Resolve release ref
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     outputs:
       release_ref: ${{ steps.tag.outputs.release_ref }}
       version: ${{ steps.tag.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Derive tag from Cargo.toml
+      - name: Resolve release tag and version
         id: tag
         run: |
           if [[ "${{ github.event_name }}" == "push" ]]; then
             REF="${{ github.ref }}"
+          elif [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            SHA="${{ github.event.workflow_run.head_sha }}"
+            git fetch --tags origin
+            TAG=$(git tag --points-at "$SHA" | sort -V | tail -n 1)
+            if [[ -z "$TAG" ]]; then
+              echo "No tag found for workflow_run SHA $SHA"
+              exit 1
+            fi
+            REF="refs/tags/$TAG"
           else
             VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
             REF="refs/tags/v$VERSION"
@@ -60,10 +77,62 @@ jobs:
           done
           echo "All crate versions match tag v$TAG_VERSION ✓"
 
+  verify-ci:
+    name: Verify CI is green
+    runs-on: ubuntu-latest
+    needs: resolve
+    if: ${{ needs.resolve.outputs.release_ref != '' }}
+    steps:
+      - name: Wait for CI workflow result on tagged commit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          sha="${RELEASE_SHA}"
+          repo="${GITHUB_REPOSITORY}"
+          api="https://api.github.com/repos/${repo}/actions/runs?head_sha=${sha}&event=push&per_page=50"
+
+          echo "Checking CI status for ${repo}@${sha}"
+
+          for attempt in {1..30}; do
+            json=$(curl -fsSL \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "${api}")
+
+            ci_status=$(echo "${json}" | jq -r '.workflow_runs[] | select(.name == "CI") | .status' | head -n1)
+            ci_conclusion=$(echo "${json}" | jq -r '.workflow_runs[] | select(.name == "CI") | .conclusion' | head -n1)
+
+            if [[ -z "${ci_status}" ]]; then
+              echo "Attempt ${attempt}/30: CI workflow run not found yet; waiting..."
+              sleep 20
+              continue
+            fi
+
+            if [[ "${ci_status}" != "completed" ]]; then
+              echo "Attempt ${attempt}/30: CI is ${ci_status}; waiting..."
+              sleep 20
+              continue
+            fi
+
+            if [[ "${ci_conclusion}" == "success" ]]; then
+              echo "CI completed successfully for ${sha}"
+              exit 0
+            fi
+
+            echo "CI did not pass for ${sha}: conclusion=${ci_conclusion}"
+            exit 1
+          done
+
+          echo "Timed out waiting for CI completion on ${sha}"
+          exit 1
+
   publish:
     name: Publish crates to crates.io
     runs-on: ubuntu-latest
-    needs: [resolve, validate]
+    needs: [resolve, validate, verify-ci]
     steps:
       - uses: actions/checkout@v4
         with:

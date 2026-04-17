@@ -245,7 +245,6 @@ impl HealthChecker {
     }
 }
 
-#[cfg(feature = "tls-profiled")]
 fn proxy_url_with_auth(proxy_url: &str, username: Option<&str>, password: Option<&str>) -> String {
     let (Some(user), Some(pass)) = (username, password) else {
         return proxy_url.to_string();
@@ -325,10 +324,9 @@ mod tests {
             password: None,
             weight: 1,
             tags: vec![],
+            capabilities: crate::types::ProxyCapabilities::default(),
         }
     }
-
-    #[cfg(feature = "tls-profiled")]
     #[test]
     fn proxy_url_with_auth_injects_credentials() {
         let proxy_url = proxy_url_with_auth(

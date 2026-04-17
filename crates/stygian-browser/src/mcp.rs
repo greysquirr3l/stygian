@@ -46,6 +46,8 @@
 //! | `browser_query` | `session_id, url, selector, fields?, limit?, timeout_secs?` | `results` array of text or field objects |
 //! | `browser_extract` | `session_id, url, root_selector, schema, timeout_secs?` | `results` array of structured objects |
 //! | `browser_find_similar` *(similarity feature)* | `session_id, url, reference_selector, threshold?, max_results?, timeout_secs?` | scored `matches` array |
+//! | `browser_warmup` | `session_id, url, wait?, timeout_ms?, stabilize_ms?` | warmup report |
+//! | `browser_refresh` | `session_id, wait?, timeout_ms?, reset_connection?` | refresh report |
 
 use std::{
     collections::HashMap,
@@ -389,6 +391,46 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
             "required": []
         }
     }));
+    // Session warmup and refresh tools.
+    tools.push(json!({
+        "name": "browser_warmup",
+        "description": "Warm up a browser session by navigating to a URL and optionally waiting for dynamic resources to settle. Warmup is idempotent — calling it again re-warms the same session.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": { "type": "string" },
+                "url": { "type": "string", "description": "URL to navigate to during warmup." },
+                "wait": {
+                    "type": "string",
+                    "enum": ["dom_content_loaded", "network_idle"],
+                    "default": "dom_content_loaded",
+                    "description": "Wait strategy after navigation."
+                },
+                "timeout_ms": { "type": "integer", "default": 30000, "description": "Navigation timeout in milliseconds." },
+                "stabilize_ms": { "type": "integer", "default": 0, "description": "Additional pause after navigation for dynamic resources to settle (0 = skip)." }
+            },
+            "required": ["session_id", "url"]
+        }
+    }));
+    tools.push(json!({
+        "name": "browser_refresh",
+        "description": "Refresh the current page while retaining cookies and session storage. Optionally re-navigates to force a new TCP connection.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": { "type": "string" },
+                "wait": {
+                    "type": "string",
+                    "enum": ["dom_content_loaded", "network_idle"],
+                    "default": "dom_content_loaded",
+                    "description": "Wait strategy after reload."
+                },
+                "timeout_ms": { "type": "integer", "default": 30000, "description": "Reload timeout in milliseconds." },
+                "reset_connection": { "type": "boolean", "default": false, "description": "When true, re-navigates to force a new TCP connection instead of in-place reload." }
+            },
+            "required": ["session_id"]
+        }
+    }));
     tools
 });
 
@@ -588,6 +630,8 @@ impl McpBrowserServer {
             "browser_extract" => self.tool_browser_extract(&args).await,
             #[cfg(feature = "similarity")]
             "browser_find_similar" => self.tool_browser_find_similar(&args).await,
+            "browser_warmup" => self.tool_browser_warmup(&args).await,
+            "browser_refresh" => self.tool_browser_refresh(&args).await,
             other => Err(BrowserError::ConfigError(format!("Unknown tool: {other}"))),
         };
 
@@ -1188,6 +1232,116 @@ impl McpBrowserServer {
         }))
     }
 
+    async fn tool_browser_warmup(&self, args: &Value) -> Result<Value> {
+        use crate::page::{WarmupOptions, WarmupWait};
+
+        let session_id = Self::require_str(args, "session_id")?;
+        let url = Self::require_str(args, "url")?;
+        let wait = match args
+            .get("wait")
+            .and_then(|v| v.as_str())
+            .unwrap_or("dom_content_loaded")
+        {
+            "network_idle" => WarmupWait::NetworkIdle,
+            _ => WarmupWait::DomContentLoaded,
+        };
+        let timeout_ms = args
+            .get("timeout_ms")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(30_000);
+        let stabilize_ms = args
+            .get("stabilize_ms")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
+
+        let session_arc = self.session_handle(&session_id).await?;
+        let mut page = session_arc
+            .lock()
+            .await
+            .as_ref()
+            .ok_or_else(|| {
+                BrowserError::ConfigError(format!("Session already released: {session_id}"))
+            })?
+            .browser()
+            .ok_or_else(|| {
+                BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
+            })?
+            .new_page()
+            .await?;
+
+        let report = page
+            .warmup(WarmupOptions {
+                url,
+                wait,
+                timeout_ms,
+                stabilize_ms,
+            })
+            .await?;
+        page.close().await?;
+
+        Ok(json!({
+            "session_id": session_id,
+            "url": report.url,
+            "elapsed_ms": report.elapsed_ms,
+            "status_code": report.status_code,
+            "title": report.title,
+            "stabilized": report.stabilized
+        }))
+    }
+
+    async fn tool_browser_refresh(&self, args: &Value) -> Result<Value> {
+        use crate::page::{RefreshOptions, WarmupWait};
+
+        let session_id = Self::require_str(args, "session_id")?;
+        let wait = match args
+            .get("wait")
+            .and_then(|v| v.as_str())
+            .unwrap_or("dom_content_loaded")
+        {
+            "network_idle" => WarmupWait::NetworkIdle,
+            _ => WarmupWait::DomContentLoaded,
+        };
+        let timeout_ms = args
+            .get("timeout_ms")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(30_000);
+        let reset_connection = args
+            .get("reset_connection")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+
+        let session_arc = self.session_handle(&session_id).await?;
+        let mut page = session_arc
+            .lock()
+            .await
+            .as_ref()
+            .ok_or_else(|| {
+                BrowserError::ConfigError(format!("Session already released: {session_id}"))
+            })?
+            .browser()
+            .ok_or_else(|| {
+                BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
+            })?
+            .new_page()
+            .await?;
+
+        let report = page
+            .refresh(RefreshOptions {
+                wait,
+                timeout_ms,
+                reset_connection,
+            })
+            .await?;
+        page.close().await?;
+
+        Ok(json!({
+            "session_id": session_id,
+            "url": report.url,
+            "elapsed_ms": report.elapsed_ms,
+            "status_code": report.status_code
+        }))
+    }
+
     async fn tool_browser_release(&self, args: &Value) -> Result<Value> {
         let session_id = Self::require_str(args, "session_id")?;
 
@@ -1615,5 +1769,48 @@ mod tests {
         for val in cases {
             assert!(mcp_enabled_from(val), "expected enabled for {val:?}");
         }
+    }
+
+    #[test]
+    fn browser_warmup_in_tool_definitions() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let defs = &*TOOL_DEFINITIONS;
+        let def = defs
+            .iter()
+            .find(|t| t.get("name").and_then(|n| n.as_str()) == Some("browser_warmup"))
+            .ok_or("browser_warmup must be in TOOL_DEFINITIONS")?;
+        let required = def
+            .get("inputSchema")
+            .and_then(|s| s.get("required"))
+            .and_then(|r| r.as_array())
+            .ok_or("browser_warmup inputSchema missing 'required' array")?;
+        assert!(
+            required.iter().any(|v| v == "session_id"),
+            "session_id must be required in browser_warmup"
+        );
+        assert!(
+            required.iter().any(|v| v == "url"),
+            "url must be required in browser_warmup"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn browser_refresh_in_tool_definitions() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
+        let defs = &*TOOL_DEFINITIONS;
+        let def = defs
+            .iter()
+            .find(|t| t.get("name").and_then(|n| n.as_str()) == Some("browser_refresh"))
+            .ok_or("browser_refresh must be in TOOL_DEFINITIONS")?;
+        let required = def
+            .get("inputSchema")
+            .and_then(|s| s.get("required"))
+            .and_then(|r| r.as_array())
+            .ok_or("browser_refresh inputSchema missing 'required' array")?;
+        assert!(
+            required.iter().any(|v| v == "session_id"),
+            "session_id must be required in browser_refresh"
+        );
+        Ok(())
     }
 }
