@@ -144,39 +144,6 @@ pub struct WebGlProfile {
 }
 
 impl WebGlProfile {
-    /// NVIDIA `GeForce` RTX 3060 profile (Windows, Chrome 131, ANGLE D3D11).
-    pub const NVIDIA_RTX_3060: Self = Self {
-        vendor: String::new(),   // Populated via `Self::nvidia_rtx_3060()`
-        renderer: String::new(), // — const fields can't hold String; use associated fn
-        max_texture_size: 16384,
-        max_viewport_dims: (32768, 32768),
-        max_renderbuffer_size: 16384,
-        max_vertex_attribs: 16,
-        max_varying_vectors: 15,
-        max_fragment_uniform_vectors: 1024,
-        max_vertex_uniform_vectors: 4096,
-        extensions: vec![],
-        shader_precision: ShaderPrecisionProfile {
-            high_float_range_min: 127,
-            high_float_range_max: 127,
-            high_float_precision: 23,
-            medium_float_precision: 23,
-            low_float_precision: 23,
-            high_int_precision: 31,
-        },
-        context_attributes: ContextAttributes {
-            alpha: true,
-            antialias: true,
-            depth: true,
-            fail_if_major_performance_caveat: false,
-            power_preference: String::new(),
-            premultiplied_alpha: true,
-            preserve_drawing_buffer: false,
-            stencil: false,
-            desynchronized: false,
-        },
-    };
-
     /// Return the NVIDIA RTX 3060 profile with all fields populated.
     ///
     /// # Example

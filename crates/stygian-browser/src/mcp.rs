@@ -369,7 +369,7 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
     #[cfg(feature = "stealth")]
     tools.push(json!({
         "name": "browser_validate_stealth",
-        "description": "Run anti-bot service validators against the pool (Tier 1: CreepJS, BrowserScan). Returns a summary report. Use tier1_only=true to restrict to regression-safe services.",
+        "description": "Run anti-bot service validators against the pool (Tier 1: CreepJS, BrowserScan). Returns a summary report.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -378,6 +378,11 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
                     "items": { "type": "string", "enum": ["creepjs", "browserscan", "fingerprint_js", "kasada", "cloudflare", "akamai", "data_dome", "perimeter_x"] },
                     "description": "List of services to validate. Empty = Tier 1 only. Tier 2+ tests may rate-limit.",
                     "default": ["creepjs", "browserscan"]
+                },
+                "tier1_only": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "If true, force regression-safe Tier 1 targets only (CreepJS + BrowserScan)."
                 },
                 "timeout_secs": { "type": "integer", "default": 30, "description": "Per-target timeout in seconds." }
             },
@@ -1207,10 +1212,19 @@ impl McpBrowserServer {
 
     #[cfg(feature = "stealth")]
     async fn tool_browser_validate_stealth(&self, args: &Value) -> Result<Value> {
-        use crate::validation::{ValidationSuite, ValidationTarget};
+        use crate::validation::{ValidationResult, ValidationSuite, ValidationTarget};
+
+        let tier1_only = args
+            .get("tier1_only")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let timeout_secs = args
+            .get("timeout_secs")
+            .and_then(Value::as_u64)
+            .unwrap_or(30);
 
         // Parse target list, defaulting to Tier 1 (CreepJS, BrowserScan)
-        let targets = args.get("targets").and_then(|v| v.as_array()).map_or_else(
+        let mut targets = args.get("targets").and_then(|v| v.as_array()).map_or_else(
             || ValidationTarget::tier1().to_vec(),
             |arr| {
                 arr.iter()
@@ -1230,8 +1244,26 @@ impl McpBrowserServer {
             },
         );
 
-        // Run validators
-        let results = ValidationSuite::run_all(&self.pool, &targets).await;
+        if tier1_only {
+            targets = ValidationTarget::tier1().to_vec();
+        }
+
+        // Run validators with per-target timeout so MCP responses remain bounded.
+        let mut results = Vec::with_capacity(targets.len());
+        for target in targets {
+            let timed = tokio::time::timeout(
+                Duration::from_secs(timeout_secs),
+                ValidationSuite::run_one(&self.pool, target),
+            )
+            .await;
+            match timed {
+                Ok(result) => results.push(result),
+                Err(_) => results.push(ValidationResult::failed(
+                    target,
+                    &format!("validation timed out after {timeout_secs}s"),
+                )),
+            }
+        }
 
         // Serialize results
         serde_json::to_value(&results)

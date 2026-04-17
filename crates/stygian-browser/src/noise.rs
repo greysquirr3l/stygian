@@ -42,7 +42,7 @@ use serde::{Deserialize, Serialize};
 pub struct NoiseSeed(u64);
 
 impl NoiseSeed {
-    /// Generate a cryptographically random [`NoiseSeed`].
+    /// Generate a process-local pseudo-random [`NoiseSeed`].
     ///
     /// # Example
     ///
@@ -332,7 +332,9 @@ impl NoiseEngine {
 
   globalThis.__stygian_float_noise = function(operation, index) {{
     const h = _mix(_SEED, operation, index >>> 0, 0);
-    return (Number(h) / Number(_MASK) - 0.5) * 2e-5;
+        const upper53 = h >> 11n;
+        const normalized = Number(upper53) / 9007199254740991;
+        return (normalized - 0.5) * 2e-5;
   }};
 
   globalThis.__stygian_rect_noise = function(operation, index) {{

@@ -576,6 +576,9 @@ pub async fn apply_stealth_to_page(
     // ── Advanced only ──────────────────────────────────────────────────────────
     if config.stealth_level == StealthLevel::Advanced {
         let fp = crate::fingerprint::Fingerprint::random();
+        // Build one engine once so all spoofed surfaces share the same per-session seed.
+        let noise_engine = config.noise.build_engine();
+        let noise_seed = noise_engine.seed();
         let fp_script = crate::fingerprint::inject_fingerprint(&fp);
         inject_one(
             page,
@@ -595,8 +598,7 @@ pub async fn apply_stealth_to_page(
         }
 
         if config.noise.canvas_enabled {
-            let engine = config.noise.build_engine();
-            let canvas_script = crate::canvas_noise::canvas_noise_script(&engine);
+            let canvas_script = crate::canvas_noise::canvas_noise_script(&noise_engine);
             inject_one(
                 page,
                 "AddScriptToEvaluateOnNewDocument(canvas-noise)",
@@ -607,10 +609,9 @@ pub async fn apply_stealth_to_page(
 
         // WebGL, audio, and rects noise (T39, T40, T41)
         if config.noise.webgl_enabled {
-            let engine = config.noise.build_engine();
             let webgl_script = crate::webgl_noise::webgl_noise_script(
                 &crate::webgl_noise::WebGlProfile::nvidia_rtx_3060(),
-                &engine,
+                &noise_engine,
             );
             inject_one(
                 page,
@@ -621,8 +622,7 @@ pub async fn apply_stealth_to_page(
         }
 
         if config.noise.audio_enabled {
-            let engine = config.noise.build_engine();
-            let audio_script = crate::audio_noise::audio_noise_script(&engine);
+            let audio_script = crate::audio_noise::audio_noise_script(&noise_engine);
             inject_one(
                 page,
                 "AddScriptToEvaluateOnNewDocument(audio-noise)",
@@ -632,8 +632,7 @@ pub async fn apply_stealth_to_page(
         }
 
         if config.noise.rects_enabled {
-            let engine = config.noise.build_engine();
-            let rects_script = crate::rects_noise::rects_noise_script(&engine);
+            let rects_script = crate::rects_noise::rects_noise_script(&noise_engine);
             inject_one(
                 page,
                 "AddScriptToEvaluateOnNewDocument(rects-noise)",
@@ -658,7 +657,7 @@ pub async fn apply_stealth_to_page(
             let timing_cfg = crate::timing_noise::TimingNoiseConfig {
                 enabled: true,
                 jitter_ms: 0.3,
-                seed: config.noise.build_engine().seed(),
+                seed: noise_seed,
             };
             let timing_script = crate::timing_noise::timing_noise_script(&timing_cfg);
             inject_one(
@@ -672,9 +671,7 @@ pub async fn apply_stealth_to_page(
         // Peripheral stealth (T47)
         {
             let peripheral_cfg =
-                crate::peripheral_stealth::PeripheralStealthConfig::default_with_seed(
-                    config.noise.build_engine().seed(),
-                );
+                crate::peripheral_stealth::PeripheralStealthConfig::default_with_seed(noise_seed);
             let peripheral_script =
                 crate::peripheral_stealth::peripheral_stealth_script_with_profile(
                     &peripheral_cfg,

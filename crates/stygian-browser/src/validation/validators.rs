@@ -37,8 +37,8 @@ fn creepjs_impl(_pool: &Arc<BrowserPool>) -> ValidationResult {
     // 5. Check score > 50%
     // 6. Return with score and details
     //
-    // For now, return a stub result that passes CI but documents the need
-    // for a running browser.
+    // For now, return a stub "not yet implemented" result that keeps CI
+    // deterministic while documenting the need for a live browser environment.
 
     ValidationResult {
         target: ValidationTarget::CreepJs,

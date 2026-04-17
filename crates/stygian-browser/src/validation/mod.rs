@@ -273,7 +273,7 @@ mod duration_secs {
 pub struct ValidationSuite;
 
 impl ValidationSuite {
-    /// Run all specified targets concurrently and collect results.
+    /// Run all specified targets sequentially and collect results.
     ///
     /// Returns immediately with an empty `Vec` if `targets` is empty.
     ///
