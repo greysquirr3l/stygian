@@ -1607,57 +1607,8 @@ impl McpBrowserServer {
             .get("timeout_secs")
             .and_then(serde_json::Value::as_f64)
             .unwrap_or(30.0);
-
-        let selectors: Vec<String> = args
-            .get("root_selectors")
-            .and_then(Value::as_array)
-            .ok_or_else(|| {
-                BrowserError::ConfigError(
-                    "Missing or non-array 'root_selectors' argument".to_string(),
-                )
-            })?
-            .iter()
-            .filter_map(|v| v.as_str().map(str::to_string))
-            .collect();
-
-        if selectors.is_empty() {
-            return Err(BrowserError::ConfigError(
-                "root_selectors must contain at least one entry".to_string(),
-            ));
-        }
-
-        let schema_obj = args
-            .get("schema")
-            .and_then(|v| v.as_object())
-            .ok_or_else(|| {
-                BrowserError::ConfigError("Missing or non-object 'schema' argument".to_string())
-            })?;
-
-        let schema: Vec<(String, ExtractFieldDef)> = schema_obj
-            .iter()
-            .filter_map(|(name, spec)| {
-                let selector = spec
-                    .get("selector")
-                    .and_then(serde_json::Value::as_str)
-                    .map(ToString::to_string)?;
-                let attr = spec
-                    .get("attr")
-                    .and_then(serde_json::Value::as_str)
-                    .map(ToString::to_string);
-                let required = spec
-                    .get("required")
-                    .and_then(serde_json::Value::as_bool)
-                    .unwrap_or(false);
-                Some((
-                    name.clone(),
-                    ExtractFieldDef {
-                        selector,
-                        attr,
-                        required,
-                    },
-                ))
-            })
-            .collect();
+        let selectors = Self::parse_root_selectors(args)?;
+        let schema = Self::parse_extract_schema(args)?;
 
         let session_arc = self.session_handle(&session_id).await?;
         let mut page = session_arc
@@ -1689,13 +1640,20 @@ impl McpBrowserServer {
             if roots.is_empty() {
                 continue;
             }
-            matched_selector = selector.clone();
-            results.reserve(roots.len());
+
+            let mut selector_results: Vec<Value> = Vec::with_capacity(roots.len());
             for root in &roots {
                 if let Some(obj) = Self::extract_record(root, &schema).await {
-                    results.push(Value::Object(obj));
+                    selector_results.push(Value::Object(obj));
                 }
             }
+
+            if selector_results.is_empty() {
+                continue;
+            }
+
+            matched_selector = selector.clone();
+            results = selector_results;
             break;
         }
 
@@ -1722,39 +1680,7 @@ impl McpBrowserServer {
             .get("timeout_secs")
             .and_then(serde_json::Value::as_f64)
             .unwrap_or(30.0);
-
-        let schema_obj = args
-            .get("schema")
-            .and_then(|v| v.as_object())
-            .ok_or_else(|| {
-                BrowserError::ConfigError("Missing or non-object 'schema' argument".to_string())
-            })?;
-
-        let schema: Vec<(String, ExtractFieldDef)> = schema_obj
-            .iter()
-            .filter_map(|(name, spec)| {
-                let selector = spec
-                    .get("selector")
-                    .and_then(serde_json::Value::as_str)
-                    .map(ToString::to_string)?;
-                let attr = spec
-                    .get("attr")
-                    .and_then(serde_json::Value::as_str)
-                    .map(ToString::to_string);
-                let required = spec
-                    .get("required")
-                    .and_then(serde_json::Value::as_bool)
-                    .unwrap_or(false);
-                Some((
-                    name.clone(),
-                    ExtractFieldDef {
-                        selector,
-                        attr,
-                        required,
-                    },
-                ))
-            })
-            .collect();
+        let schema = Self::parse_extract_schema(args)?;
 
         let session_arc = self.session_handle(&session_id).await?;
         let mut page = session_arc
@@ -1841,6 +1767,60 @@ impl McpBrowserServer {
             .and_then(|v| v.as_str())
             .map(ToString::to_string)
             .ok_or_else(|| BrowserError::ConfigError(format!("Missing required argument: {key}")))
+    }
+
+    fn parse_root_selectors(args: &Value) -> Result<Vec<String>> {
+        let selectors: Vec<String> = args
+            .get("root_selectors")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                BrowserError::ConfigError("Missing or non-array 'root_selectors' argument".to_string())
+            })?
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect();
+
+        if selectors.is_empty() {
+            return Err(BrowserError::ConfigError(
+                "root_selectors must contain at least one entry".to_string(),
+            ));
+        }
+        Ok(selectors)
+    }
+
+    fn parse_extract_schema(args: &Value) -> Result<Vec<(String, ExtractFieldDef)>> {
+        let schema_obj = args
+            .get("schema")
+            .and_then(Value::as_object)
+            .ok_or_else(|| {
+                BrowserError::ConfigError("Missing or non-object 'schema' argument".to_string())
+            })?;
+
+        Ok(schema_obj
+            .iter()
+            .filter_map(|(name, spec)| {
+                let selector = spec
+                    .get("selector")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string)?;
+                let attr = spec
+                    .get("attr")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string);
+                let required = spec
+                    .get("required")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                Some((
+                    name.clone(),
+                    ExtractFieldDef {
+                        selector,
+                        attr,
+                        required,
+                    },
+                ))
+            })
+            .collect())
     }
 }
 

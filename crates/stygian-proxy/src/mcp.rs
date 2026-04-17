@@ -396,6 +396,11 @@ impl McpProxyServer {
     }
 
     fn tool_def_proxy_fetch_freelist() -> Value {
+        let description = if cfg!(feature = "socks") {
+            "List of feed names to fetch."
+        } else {
+            "List of feed names to fetch. SOCKS feeds are available only when built with the 'socks' feature."
+        };
         json!({
             "name": "proxy_fetch_freelist",
             "description": "Fetch proxies from one or more well-known free proxy list feeds (plain host:port format) and add them to the pool. Returns the number of proxies loaded.",
@@ -406,9 +411,9 @@ impl McpProxyServer {
                         "type": "array",
                         "items": {
                             "type": "string",
-                            "enum": ["the_speedx_http", "the_speedx_socks4", "the_speedx_socks5", "clarketm_http", "open_proxy_list_http"]
+                            "enum": Self::freelist_source_enum_values()
                         },
-                        "description": "List of feed names to fetch. the_speedx_socks4/socks5 require the 'socks' feature.",
+                        "description": description,
                         "minItems": 1
                     },
                     "tags": { "type": "array", "items": { "type": "string" }, "description": "Extra tags attached to every loaded proxy" }
@@ -416,6 +421,24 @@ impl McpProxyServer {
                 "required": ["sources"]
             }
         })
+    }
+
+    fn freelist_source_enum_values() -> Vec<&'static str> {
+        #[cfg(feature = "socks")]
+        {
+            vec![
+                "the_speedx_http",
+                "the_speedx_socks4",
+                "the_speedx_socks5",
+                "clarketm_http",
+                "open_proxy_list_http",
+            ]
+        }
+
+        #[cfg(not(feature = "socks"))]
+        {
+            vec!["the_speedx_http", "clarketm_http", "open_proxy_list_http"]
+        }
     }
 
     fn tool_def_proxy_fetch_freeapiproxies() -> Value {
