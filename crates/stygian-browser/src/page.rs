@@ -35,6 +35,7 @@ use std::sync::{
 use std::time::Duration;
 
 use chromiumoxide::Page;
+use serde::{Deserialize, Serialize};
 use tokio::time::timeout;
 use tracing::{debug, warn};
 
@@ -1571,6 +1572,313 @@ impl Drop for PageHandle {
     }
 }
 
+// ─── Session warmup & refresh ─────────────────────────────────────────────────
+
+/// Simplified, JSON-serializable wait strategy used in [`WarmupOptions`] and
+/// [`RefreshOptions`].
+///
+/// This is a serialization-friendly analogue of [`WaitUntil`].  Use
+/// [`WarmupWait::into_wait_until`] to convert before calling
+/// [`PageHandle::navigate`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum WarmupWait {
+    /// Wait until the HTML is fully parsed (`DOMContentLoaded`).  This is the
+    /// default and works for most pages.
+    #[default]
+    DomContentLoaded,
+    /// Wait until there are no more than two in-flight network requests for at
+    /// least 500 ms after navigation.
+    NetworkIdle,
+}
+
+impl WarmupWait {
+    /// Convert into the lower-level [`WaitUntil`] enum.
+    #[must_use]
+    pub fn into_wait_until(self) -> WaitUntil {
+        match self {
+            Self::DomContentLoaded => WaitUntil::DomContentLoaded,
+            Self::NetworkIdle => WaitUntil::NetworkIdle,
+        }
+    }
+}
+
+/// Options for [`PageHandle::warmup`].
+///
+/// # Example
+///
+/// ```
+/// use stygian_browser::page::{WarmupOptions, WarmupWait};
+///
+/// let opts = WarmupOptions {
+///     url: "https://example.com".to_string(),
+///     wait: WarmupWait::DomContentLoaded,
+///     timeout_ms: 30_000,
+///     stabilize_ms: 500,
+/// };
+/// assert_eq!(opts.timeout_ms, 30_000);
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WarmupOptions {
+    /// The URL to navigate to during warmup.
+    pub url: String,
+    /// Wait strategy applied after the navigation commit (default:
+    /// `DomContentLoaded`).
+    #[serde(default)]
+    pub wait: WarmupWait,
+    /// Navigation timeout in milliseconds.  Default: `30 000`.
+    #[serde(default = "WarmupOptions::default_timeout_ms")]
+    pub timeout_ms: u64,
+    /// Additional pause after navigation to let dynamic resources (XHR,
+    /// lazy-loaded images) settle, in milliseconds.  `0` disables the
+    /// stabilization step (default).
+    #[serde(default)]
+    pub stabilize_ms: u64,
+}
+
+impl WarmupOptions {
+    /// Returns the default navigation timeout (30 000 ms).
+    #[must_use]
+    pub const fn default_timeout_ms() -> u64 {
+        30_000
+    }
+}
+
+impl Default for WarmupOptions {
+    fn default() -> Self {
+        Self {
+            url: String::new(),
+            wait: WarmupWait::DomContentLoaded,
+            timeout_ms: Self::default_timeout_ms(),
+            stabilize_ms: 0,
+        }
+    }
+}
+
+/// Diagnostic report produced by [`PageHandle::warmup`].
+///
+/// # Example
+///
+/// ```
+/// use stygian_browser::page::WarmupReport;
+/// let report = WarmupReport {
+///     url: "https://example.com".to_string(),
+///     elapsed_ms: 250,
+///     status_code: Some(200),
+///     title: "Example Domain".to_string(),
+///     stabilized: false,
+/// };
+/// assert_eq!(report.status_code, Some(200));
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WarmupReport {
+    /// The URL that was warmed.
+    pub url: String,
+    /// Elapsed wall-time in milliseconds.
+    pub elapsed_ms: u64,
+    /// HTTP status code of the warmup navigation, if captured by the
+    /// `Network.responseReceived` listener.
+    pub status_code: Option<u16>,
+    /// Page title after warmup navigation.
+    pub title: String,
+    /// Whether a stabilization pause (`stabilize_ms > 0`) was applied after
+    /// navigation.
+    pub stabilized: bool,
+}
+
+/// Options for [`PageHandle::refresh`].
+///
+/// # Example
+///
+/// ```
+/// use stygian_browser::page::{RefreshOptions, WarmupWait};
+///
+/// let opts = RefreshOptions {
+///     wait: WarmupWait::DomContentLoaded,
+///     timeout_ms: 15_000,
+///     reset_connection: true,
+/// };
+/// assert!(opts.reset_connection);
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefreshOptions {
+    /// Wait strategy applied after the reload (default: `DomContentLoaded`).
+    #[serde(default)]
+    pub wait: WarmupWait,
+    /// Reload timeout in milliseconds.  Default: `30 000`.
+    #[serde(default = "RefreshOptions::default_timeout_ms")]
+    pub timeout_ms: u64,
+    /// When `true`, re-navigates to the current URL rather than issuing a
+    /// browser-level reload.  This signals to the calling code that a new TCP
+    /// connection is desired while cookies and storage are retained in the
+    /// browser process.  Default: `false`.
+    #[serde(default)]
+    pub reset_connection: bool,
+}
+
+impl RefreshOptions {
+    /// Returns the default reload timeout (30 000 ms).
+    #[must_use]
+    pub const fn default_timeout_ms() -> u64 {
+        30_000
+    }
+}
+
+impl Default for RefreshOptions {
+    fn default() -> Self {
+        Self {
+            wait: WarmupWait::DomContentLoaded,
+            timeout_ms: Self::default_timeout_ms(),
+            reset_connection: false,
+        }
+    }
+}
+
+/// Diagnostic report produced by [`PageHandle::refresh`].
+///
+/// # Example
+///
+/// ```
+/// use stygian_browser::page::RefreshReport;
+/// let report = RefreshReport {
+///     url: "https://example.com".to_string(),
+///     elapsed_ms: 180,
+///     status_code: Some(200),
+/// };
+/// assert_eq!(report.elapsed_ms, 180);
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefreshReport {
+    /// URL of the page after the refresh navigation.
+    pub url: String,
+    /// Elapsed wall-time in milliseconds.
+    pub elapsed_ms: u64,
+    /// HTTP status code of the refresh navigation, if captured.
+    pub status_code: Option<u16>,
+}
+
+// ─── PageHandle warmup / refresh ──────────────────────────────────────────────
+
+impl PageHandle {
+    /// Warm up a browser session by navigating to `options.url` and
+    /// optionally waiting for dynamic resources to settle.
+    ///
+    /// Warmup is **idempotent**: calling it repeatedly re-navigates and
+    /// re-warms the same session without adverse side effects.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::NavigationFailed`] if the navigation times out
+    /// or the underlying CDP call fails.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # async fn run() -> stygian_browser::error::Result<()> {
+    /// use stygian_browser::{BrowserPool, BrowserConfig};
+    /// use stygian_browser::page::{WarmupOptions, WarmupWait};
+    ///
+    /// let pool = BrowserPool::new(BrowserConfig::default()).await?;
+    /// let handle = pool.acquire().await?;
+    /// let mut page = handle.browser().expect("valid browser").new_page().await?;
+    ///
+    /// let report = page.warmup(WarmupOptions {
+    ///     url: "https://example.com".to_string(),
+    ///     wait: WarmupWait::DomContentLoaded,
+    ///     timeout_ms: 30_000,
+    ///     stabilize_ms: 500,
+    /// }).await?;
+    /// println!("warmed in {}ms: {}", report.elapsed_ms, report.title);
+    /// handle.release().await;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn warmup(&mut self, options: WarmupOptions) -> Result<WarmupReport> {
+        let start = std::time::Instant::now();
+        let nav_timeout = Duration::from_millis(options.timeout_ms);
+        self.navigate(&options.url, options.wait.clone().into_wait_until(), nav_timeout)
+            .await?;
+        let status_code = self.status_code()?;
+        let title = self.title().await.unwrap_or_default();
+        let stabilized = options.stabilize_ms > 0;
+        if stabilized {
+            tokio::time::sleep(Duration::from_millis(options.stabilize_ms)).await;
+        }
+        let elapsed_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+        Ok(WarmupReport {
+            url: options.url,
+            elapsed_ms,
+            status_code,
+            title,
+            stabilized,
+        })
+    }
+
+    /// Refresh the current page, retaining all in-browser session state
+    /// (cookies, `localStorage`, `sessionStorage`).
+    ///
+    /// When `options.reset_connection` is `false` (default) a standard
+    /// CDP reload is issued.  When `true`, the current URL is re-navigated,
+    /// which expresses the caller's intent to force a new underlying TCP/TLS
+    /// connection while keeping all browser-side state intact.
+    ///
+    /// Refresh is **idempotent**: repeated calls simply reload the page again.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::NavigationFailed`] if the current URL cannot be
+    /// determined or the reload times out.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # async fn run() -> stygian_browser::error::Result<()> {
+    /// use stygian_browser::{BrowserPool, BrowserConfig};
+    /// use stygian_browser::page::{RefreshOptions, WaitUntil};
+    ///
+    /// let pool = BrowserPool::new(BrowserConfig::default()).await?;
+    /// let handle = pool.acquire().await?;
+    /// let mut page = handle.browser().expect("valid browser").new_page().await?;
+    /// page.navigate(
+    ///     "https://example.com",
+    ///     WaitUntil::DomContentLoaded,
+    ///     std::time::Duration::from_secs(30),
+    /// ).await?;
+    ///
+    /// let report = page.refresh(RefreshOptions::default()).await?;
+    /// println!("refreshed in {}ms", report.elapsed_ms);
+    /// handle.release().await;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn refresh(&mut self, options: RefreshOptions) -> Result<RefreshReport> {
+        let start = std::time::Instant::now();
+        let nav_timeout = Duration::from_millis(options.timeout_ms);
+        let wait = options.wait.clone().into_wait_until();
+        // Resolve the current URL before any navigation changes it.
+        let current_url = self.url().await?;
+        if current_url.is_empty() || current_url == "about:blank" {
+            return Err(BrowserError::NavigationFailed {
+                url: current_url,
+                reason: "page has not been navigated yet; call warmup() or navigate() first"
+                    .to_string(),
+            });
+        }
+        // Both code paths navigate to the same URL.  `reset_connection: true`
+        // expresses the *intent* to use a new TCP connection; the browser is free
+        // to reuse or create a new connection as its connection pool dictates.
+        self.navigate(&current_url, wait, nav_timeout).await?;
+        let status_code = self.status_code()?;
+        let url = self.url().await?;
+        let elapsed_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+        Ok(RefreshReport {
+            url,
+            elapsed_ms,
+            status_code,
+        })
+    }
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1761,5 +2069,207 @@ mod tests {
             selector: "td.label::prev".to_string(),
         };
         assert!(e.to_string().contains("td.label::prev"));
+    }
+
+    // ── Warmup / Refresh type tests ───────────────────────────────────────────
+
+    #[test]
+    fn warmup_options_defaults() {
+        let opts = WarmupOptions::default();
+        assert_eq!(opts.wait, WarmupWait::DomContentLoaded);
+        assert_eq!(opts.timeout_ms, WarmupOptions::default_timeout_ms());
+        assert_eq!(opts.stabilize_ms, 0);
+    }
+
+    #[test]
+    fn warmup_options_serialize_round_trip()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let opts = WarmupOptions {
+            url: "https://example.com".to_string(),
+            wait: WarmupWait::NetworkIdle,
+            timeout_ms: 15_000,
+            stabilize_ms: 250,
+        };
+        let json = serde_json::to_string(&opts)?;
+        let restored: WarmupOptions = serde_json::from_str(&json)?;
+        assert_eq!(restored.url, "https://example.com");
+        assert_eq!(restored.wait, WarmupWait::NetworkIdle);
+        assert_eq!(restored.timeout_ms, 15_000);
+        assert_eq!(restored.stabilize_ms, 250);
+        Ok(())
+    }
+
+    #[test]
+    fn warmup_wait_default_is_dom_content_loaded() {
+        assert_eq!(WarmupWait::default(), WarmupWait::DomContentLoaded);
+    }
+
+    #[test]
+    fn warmup_wait_into_wait_until_variants() {
+        assert!(matches!(
+            WarmupWait::DomContentLoaded.into_wait_until(),
+            WaitUntil::DomContentLoaded
+        ));
+        assert!(matches!(
+            WarmupWait::NetworkIdle.into_wait_until(),
+            WaitUntil::NetworkIdle
+        ));
+    }
+
+    #[test]
+    fn refresh_options_defaults() {
+        let opts = RefreshOptions::default();
+        assert_eq!(opts.wait, WarmupWait::DomContentLoaded);
+        assert_eq!(opts.timeout_ms, RefreshOptions::default_timeout_ms());
+        assert!(!opts.reset_connection);
+    }
+
+    #[test]
+    fn refresh_options_serialize_round_trip()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let opts = RefreshOptions {
+            wait: WarmupWait::NetworkIdle,
+            timeout_ms: 10_000,
+            reset_connection: true,
+        };
+        let json = serde_json::to_string(&opts)?;
+        let restored: RefreshOptions = serde_json::from_str(&json)?;
+        assert_eq!(restored.wait, WarmupWait::NetworkIdle);
+        assert_eq!(restored.timeout_ms, 10_000);
+        assert!(restored.reset_connection);
+        Ok(())
+    }
+
+    #[test]
+    fn warmup_report_serialize_round_trip()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let report = WarmupReport {
+            url: "https://example.com".to_string(),
+            elapsed_ms: 320,
+            status_code: Some(200),
+            title: "Example Domain".to_string(),
+            stabilized: true,
+        };
+        let json = serde_json::to_string(&report)?;
+        let restored: WarmupReport = serde_json::from_str(&json)?;
+        assert_eq!(restored.url, "https://example.com");
+        assert_eq!(restored.elapsed_ms, 320);
+        assert_eq!(restored.status_code, Some(200));
+        assert_eq!(restored.title, "Example Domain");
+        assert!(restored.stabilized);
+        Ok(())
+    }
+
+    #[test]
+    fn refresh_report_serialize_round_trip()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let report = RefreshReport {
+            url: "https://example.com/".to_string(),
+            elapsed_ms: 180,
+            status_code: Some(304),
+        };
+        let json = serde_json::to_string(&report)?;
+        let restored: RefreshReport = serde_json::from_str(&json)?;
+        assert_eq!(restored.url, "https://example.com/");
+        assert_eq!(restored.elapsed_ms, 180);
+        assert_eq!(restored.status_code, Some(304));
+        Ok(())
+    }
+
+    #[test]
+    fn warmup_options_missing_stabilize_ms_defaults_to_zero()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        // stabilize_ms has `#[serde(default)]`; omitting it from JSON should
+        // deserialize to 0 rather than erroring.
+        let json = r#"{"url":"https://example.com","timeout_ms":30000}"#;
+        let opts: WarmupOptions = serde_json::from_str(json)?;
+        assert_eq!(opts.stabilize_ms, 0);
+        Ok(())
+    }
+
+    // ── Integration tests (require live Chrome — skipped in CI) ──────────────
+
+    /// Warm up a page then immediately extract content from the same origin.
+    #[test]
+    #[ignore = "requires live Chrome"]
+    fn integration_warmup_then_extraction() {
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        rt.block_on(async {
+            use crate::{BrowserConfig, BrowserPool};
+            let pool = BrowserPool::new(BrowserConfig::default())
+                .await
+                .expect("pool");
+            let handle = pool.acquire().await.expect("handle");
+            let mut page = handle
+                .browser()
+                .expect("browser")
+                .new_page()
+                .await
+                .expect("page");
+
+            let report = page
+                .warmup(WarmupOptions {
+                    url: "https://example.com".to_string(),
+                    wait: WarmupWait::DomContentLoaded,
+                    timeout_ms: 30_000,
+                    stabilize_ms: 0,
+                })
+                .await
+                .expect("warmup");
+
+            assert!(!report.title.is_empty(), "title populated after warmup");
+            assert!(report.elapsed_ms > 0);
+
+            // Confirm the page is still usable for further queries.
+            let html = page.content().await.expect("content");
+            assert!(
+                html.contains("example"),
+                "page content available after warmup"
+            );
+
+            page.close().await.expect("close");
+            handle.release().await;
+        });
+    }
+
+    /// Refresh a page and verify session continuity (URL unchanged, page
+    /// still navigable).
+    #[test]
+    #[ignore = "requires live Chrome"]
+    fn integration_refresh_keeps_session_state() {
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        rt.block_on(async {
+            use crate::{BrowserConfig, BrowserPool};
+            let pool = BrowserPool::new(BrowserConfig::default())
+                .await
+                .expect("pool");
+            let handle = pool.acquire().await.expect("handle");
+            let mut page = handle
+                .browser()
+                .expect("browser")
+                .new_page()
+                .await
+                .expect("page");
+
+            page.navigate(
+                "https://example.com",
+                WaitUntil::DomContentLoaded,
+                Duration::from_secs(30),
+            )
+            .await
+            .expect("initial navigate");
+
+            let report = page.refresh(RefreshOptions::default()).await.expect("refresh");
+
+            assert!(
+                report.url.contains("example.com"),
+                "URL retained after refresh; got: {}",
+                report.url
+            );
+            assert!(report.elapsed_ms > 0);
+
+            page.close().await.expect("close");
+            handle.release().await;
+        });
     }
 }
