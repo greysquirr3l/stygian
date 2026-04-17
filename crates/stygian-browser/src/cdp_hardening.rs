@@ -81,6 +81,7 @@ impl Default for CdpHardeningConfig {
 /// assert!(js2.contains("__playwright__binding__"));
 /// ```
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn cdp_hardening_script(config: &CdpHardeningConfig) -> String {
     if !config.enabled {
         return String::new();
@@ -99,7 +100,7 @@ pub fn cdp_hardening_script(config: &CdpHardeningConfig) -> String {
     };
 
     format!(
-        r#"(function() {{
+        r"(function() {{
   'use strict';
 
   // ── 1. Delete Playwright / Puppeteer binding remnants ─────────────────
@@ -197,16 +198,14 @@ pub fn cdp_hardening_script(config: &CdpHardeningConfig) -> String {
   }});
 
 }})();
-"#,
-        stack_section = stack_section,
-        console_section = console_section,
+",
     )
 }
 
 // ── Static script sections ────────────────────────────────────────────────
 
 /// Error.prototype.stack sanitization section.
-const ERROR_STACK_SECTION: &str = r#"  // ── 2. Sanitize Error.prototype.stack ───────────────────────────────
+const ERROR_STACK_SECTION: &str = r"  // ── 2. Sanitize Error.prototype.stack ───────────────────────────────
   try {
     var _origStackDesc = Object.getOwnPropertyDescriptor(Error.prototype, 'stack');
     if (_origStackDesc && _origStackDesc.get) {
@@ -230,10 +229,10 @@ const ERROR_STACK_SECTION: &str = r#"  // ── 2. Sanitize Error.prototype.sta
       // Data-descriptor path: wrap with a getter going forward
       // Nothing to patch here at definition time; stack is per-instance
     }
-  } catch(e) {}"#;
+  } catch(e) {}";
 
 /// console.debug protection section.
-const CONSOLE_DEBUG_SECTION: &str = r#"  // ── 3. console.debug getter-trap hardening ────────────────────────────
+const CONSOLE_DEBUG_SECTION: &str = r"  // ── 3. console.debug getter-trap hardening ────────────────────────────
   try {
     var _origDebug = console.debug.bind(console);
     var _safeDebug = function debug() {
@@ -249,7 +248,7 @@ const CONSOLE_DEBUG_SECTION: &str = r#"  // ── 3. console.debug getter-trap 
         value: _safeDebug, writable: true, configurable: true, enumerable: false
       });
     }
-  } catch(e) {}"#;
+  } catch(e) {}";
 
 // ---------------------------------------------------------------------------
 // Tests

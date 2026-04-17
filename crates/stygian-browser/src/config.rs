@@ -643,7 +643,7 @@ impl BrowserConfigBuilder {
     /// ```
     #[cfg(feature = "stealth")]
     #[must_use]
-    pub fn noise(mut self, config: NoiseConfig) -> Self {
+    pub const fn noise(mut self, config: NoiseConfig) -> Self {
         self.config.noise = config;
         self
     }
@@ -679,7 +679,7 @@ impl BrowserConfigBuilder {
     /// ```
     #[cfg(feature = "stealth")]
     #[must_use]
-    pub fn cdp_hardening(mut self, config: crate::cdp_hardening::CdpHardeningConfig) -> Self {
+    pub const fn cdp_hardening(mut self, config: crate::cdp_hardening::CdpHardeningConfig) -> Self {
         self.config.cdp_hardening = config;
         self
     }
@@ -838,9 +838,9 @@ mod duration_secs {
 // ─── Env helpers (private) ────────────────────────────────────────────────────
 
 fn env_bool(key: &str, default: bool) -> bool {
-    std::env::var(key)
-        .map(|v| !matches!(v.to_lowercase().as_str(), "false" | "0" | "no"))
-        .unwrap_or(default)
+    std::env::var(key).map_or(default, |v| {
+        !matches!(v.to_lowercase().as_str(), "false" | "0" | "no")
+    })
 }
 
 /// Heuristic: returns `true` when the process appears to be running inside a

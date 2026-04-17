@@ -23,7 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .pool(PoolConfig {
             min_size: 2,
             max_size: 4,
-            idle_timeout: Duration::from_secs(120),
+            idle_timeout: Duration::from_mins(2),
             acquire_timeout: Duration::from_secs(30),
         })
         .build();

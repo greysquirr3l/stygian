@@ -822,7 +822,7 @@ mod tests {
             .pool(PoolConfig {
                 min_size: 0, // no warmup in unit tests
                 max_size: 5,
-                idle_timeout: Duration::from_secs(300),
+                idle_timeout: Duration::from_mins(5),
                 acquire_timeout: Duration::from_millis(100),
             })
             .build()
@@ -900,7 +900,7 @@ mod tests {
             .pool(PoolConfig {
                 min_size: 0,
                 max_size: 1,
-                idle_timeout: Duration::from_secs(300),
+                idle_timeout: Duration::from_mins(5),
                 acquire_timeout: Duration::from_millis(10),
             })
             .build();
@@ -913,11 +913,11 @@ mod tests {
             .pool(PoolConfig {
                 min_size: 1,
                 max_size: 5,
-                idle_timeout: Duration::from_secs(60),
+                idle_timeout: Duration::from_mins(1),
                 acquire_timeout: Duration::from_secs(5),
             })
             .build();
-        assert_eq!(cfg.pool.idle_timeout, Duration::from_secs(60));
+        assert_eq!(cfg.pool.idle_timeout, Duration::from_mins(1));
     }
 
     #[test]
@@ -947,7 +947,7 @@ mod tests {
         use std::time::Duration;
         let now = std::time::Instant::now();
         let older = now.checked_sub(Duration::from_secs(400)).unwrap_or(now);
-        let idle_timeout = Duration::from_secs(300);
+        let idle_timeout = Duration::from_mins(5);
         // Simulate eviction check: entry older than idle_timeout should be evicted
         assert!(now.duration_since(older) >= idle_timeout);
     }

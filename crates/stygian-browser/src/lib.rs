@@ -122,6 +122,9 @@ pub mod cdp_hardening;
 #[cfg(feature = "stealth")]
 pub mod peripheral_stealth;
 
+#[cfg(feature = "stealth")]
+pub mod validation;
+
 pub mod tls_validation;
 
 #[cfg(feature = "stealth")]

@@ -27,7 +27,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::tls::{TlsProfile, CHROME_131};
+use crate::tls::TlsProfile;
 
 // ---------------------------------------------------------------------------
 // Reference hashes from real browser captures
@@ -54,11 +54,11 @@ pub const CHROME_136_JA4: &str = "t13d1516h2_8daaf6152771_b1ff8ab37d37";
 /// Values captured from a real Chrome 136 session. Order matters for anti-bot
 /// fingerprinting.
 pub const CHROME_136_HTTP2_SETTINGS: &[(u32, u32)] = &[
-    (1, 65536),   // HEADER_TABLE_SIZE
-    (2, 0),       // ENABLE_PUSH (disabled)
-    (3, 1000),    // MAX_CONCURRENT_STREAMS
-    (4, 6291456), // INITIAL_WINDOW_SIZE
-    (6, 262144),  // MAX_HEADER_LIST_SIZE
+    (1, 65_536),    // HEADER_TABLE_SIZE
+    (2, 0),         // ENABLE_PUSH (disabled)
+    (3, 1_000),     // MAX_CONCURRENT_STREAMS
+    (4, 6_291_456), // INITIAL_WINDOW_SIZE
+    (6, 262_144),   // MAX_HEADER_LIST_SIZE
 ];
 
 // ---------------------------------------------------------------------------
@@ -100,7 +100,7 @@ pub struct TlsValidationReport {
 impl TlsValidationReport {
     /// `true` when all checks passed (no issues).
     #[must_use]
-    pub fn is_ok(&self) -> bool {
+    pub const fn is_ok(&self) -> bool {
         self.issues.is_empty()
     }
 }
@@ -264,8 +264,7 @@ pub fn validate_profile_static(
     }
     if !alpn_match {
         issues.push(format!(
-            "ALPN mismatch: expected {:?}, profile has {:?}",
-            expected_alpn_strs, profile_alpn
+            "ALPN mismatch: expected {expected_alpn_strs:?}, profile has {profile_alpn:?}"
         ));
     }
 
@@ -363,18 +362,24 @@ mod tests {
 
     #[test]
     fn http2_settings_missing_key_is_reported() {
-        let observed = &CHROME_136_HTTP2_SETTINGS[..2]; // truncated
-        let (ok, issues) = compare_http2_settings(CHROME_136_HTTP2_SETTINGS, observed);
+        let observed: Vec<(u32, u32)> = CHROME_136_HTTP2_SETTINGS.iter().copied().take(2).collect();
+        let (ok, issues) = compare_http2_settings(CHROME_136_HTTP2_SETTINGS, &observed);
         assert!(!ok);
         assert!(!issues.is_empty());
-        assert!(issues.iter().any(|i| i.contains("count mismatch") || i.contains("missing")));
+        assert!(
+            issues
+                .iter()
+                .any(|i| i.contains("count mismatch") || i.contains("missing"))
+        );
     }
 
     #[test]
     fn http2_settings_wrong_value_is_reported() {
         let mut bad = CHROME_136_HTTP2_SETTINGS.to_vec();
         // Corrupt INITIAL_WINDOW_SIZE
-        bad[3] = (4, 65535);
+        if let Some(slot) = bad.get_mut(3) {
+            *slot = (4, 65535);
+        }
         let (ok, issues) = compare_http2_settings(CHROME_136_HTTP2_SETTINGS, &bad);
         assert!(!ok);
         assert!(issues.iter().any(|i| i.contains("id=4")));
@@ -430,8 +435,19 @@ mod tests {
             alpn_match: true,
             issues: vec!["JA3 mismatch".into()],
         };
-        let json = serde_json::to_string(&report).expect("serialize");
-        let r2: TlsValidationReport = serde_json::from_str(&json).expect("deserialize");
+        let json_result = serde_json::to_string(&report);
+        assert!(json_result.is_ok(), "serialize failed: {json_result:?}");
+        let Ok(json) = json_result else {
+            return;
+        };
+        let report_result: Result<TlsValidationReport, _> = serde_json::from_str(&json);
+        assert!(
+            report_result.is_ok(),
+            "deserialize failed: {report_result:?}"
+        );
+        let Ok(r2) = report_result else {
+            return;
+        };
         assert_eq!(report, r2);
     }
 
@@ -439,6 +455,7 @@ mod tests {
 
     #[test]
     fn static_validation_empty_expected_always_passes() {
+        use crate::tls::CHROME_131;
         let report = validate_profile_static(&CHROME_131, "", "", &[]);
         assert!(
             report.is_ok(),
@@ -449,7 +466,9 @@ mod tests {
 
     #[test]
     fn static_validation_mismatch_populates_issues() {
-        let report = validate_profile_static(&CHROME_131, "0000000000000000000000000000000f", "", &[]);
+        use crate::tls::CHROME_131;
+        let report =
+            validate_profile_static(&CHROME_131, "0000000000000000000000000000000f", "", &[]);
         assert!(!report.is_ok());
         assert!(report.issues.iter().any(|i| i.contains("JA3 mismatch")));
     }

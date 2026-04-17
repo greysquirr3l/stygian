@@ -365,6 +365,25 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
             "required": ["session_id", "url"]
         }
     }));
+    // Advertise browser_validate_stealth only when the stealth feature is compiled in.
+    #[cfg(feature = "stealth")]
+    tools.push(json!({
+        "name": "browser_validate_stealth",
+        "description": "Run anti-bot service validators against the pool (Tier 1: CreepJS, BrowserScan). Returns a summary report. Use tier1_only=true to restrict to regression-safe services.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "targets": {
+                    "type": "array",
+                    "items": { "type": "string", "enum": ["creepjs", "browserscan", "fingerprint_js", "kasada", "cloudflare", "akamai", "data_dome", "perimeter_x"] },
+                    "description": "List of services to validate. Empty = Tier 1 only. Tier 2+ tests may rate-limit.",
+                    "default": ["creepjs", "browserscan"]
+                },
+                "timeout_secs": { "type": "integer", "default": 30, "description": "Per-target timeout in seconds." }
+            },
+            "required": []
+        }
+    }));
     tools
 });
 
@@ -551,6 +570,12 @@ impl McpBrowserServer {
             #[cfg(not(feature = "stealth"))]
             "browser_verify_stealth" => Err(BrowserError::ConfigError(
                 "browser_verify_stealth requires the 'stealth' feature".to_string(),
+            )),
+            #[cfg(feature = "stealth")]
+            "browser_validate_stealth" => self.tool_browser_validate_stealth(&args).await,
+            #[cfg(not(feature = "stealth"))]
+            "browser_validate_stealth" => Err(BrowserError::ConfigError(
+                "browser_validate_stealth requires the 'stealth' feature".to_string(),
             )),
             "browser_release" => self.tool_browser_release(&args).await,
             "pool_stats" => Ok(self.tool_pool_stats()),
@@ -1178,6 +1203,39 @@ impl McpBrowserServer {
 
         info!(%session_id, "MCP session released");
         Ok(json!({ "released": true, "session_id": session_id }))
+    }
+
+    #[cfg(feature = "stealth")]
+    async fn tool_browser_validate_stealth(&self, args: &Value) -> Result<Value> {
+        use crate::validation::{ValidationSuite, ValidationTarget};
+
+        // Parse target list, defaulting to Tier 1 (CreepJS, BrowserScan)
+        let targets = args.get("targets").and_then(|v| v.as_array()).map_or_else(
+            || ValidationTarget::tier1().to_vec(),
+            |arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str())
+                    .filter_map(|s| match s {
+                        "creepjs" => Some(ValidationTarget::CreepJs),
+                        "browserscan" => Some(ValidationTarget::BrowserScan),
+                        "fingerprint_js" => Some(ValidationTarget::FingerprintJs),
+                        "kasada" => Some(ValidationTarget::Kasada),
+                        "cloudflare" => Some(ValidationTarget::Cloudflare),
+                        "akamai" => Some(ValidationTarget::Akamai),
+                        "data_dome" => Some(ValidationTarget::DataDome),
+                        "perimeter_x" => Some(ValidationTarget::PerimeterX),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            },
+        );
+
+        // Run validators
+        let results = ValidationSuite::run_all(&self.pool, &targets).await;
+
+        // Serialize results
+        serde_json::to_value(&results)
+            .map_err(|e| BrowserError::ConfigError(format!("failed to serialize results: {e}")))
     }
 
     fn tool_pool_stats(&self) -> Value {

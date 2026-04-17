@@ -375,7 +375,7 @@ async fn creepjs_page_loads_without_bot_crash() -> Result<(), Box<dyn std::error
     page.navigate(
         "https://abrahamjuliot.github.io/creepjs/",
         WaitUntil::Selector("body".to_string()),
-        Duration::from_secs(60),
+        Duration::from_mins(1),
     )
     .await?;
 

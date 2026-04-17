@@ -830,7 +830,7 @@ impl TlsProfile {
             None => "00",
         };
 
-        let section_a = format!("{proto}{version}{sni}{cipher_count:02}{ext_count:02}_{alpn_tag}",);
+        let section_a = format!("{proto}{version}{sni}{cipher_count:02}{ext_count:02}_{alpn_tag}");
 
         // Section b: sorted cipher suites (GREASE stripped), comma-separated,
         // hashed, first 12 hex chars.
