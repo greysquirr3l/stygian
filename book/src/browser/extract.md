@@ -38,7 +38,10 @@ struct Article {
 }
 
 let handle = pool.acquire().await?;
-let mut page = handle.browser().expect("browser is available").new_page().await?;
+let browser = handle
+    .browser()
+    .ok_or_else(|| std::io::Error::other("browser handle already released"))?;
+let mut page = browser.new_page().await?;
 page.navigate("https://example.com", WaitUntil::Load, Duration::from_secs(30)).await?;
 let article: Article = page.extract::<Article>(".article-body").await?;
 println!("{:#?}", article);

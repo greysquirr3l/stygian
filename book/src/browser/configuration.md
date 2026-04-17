@@ -100,7 +100,7 @@ All config values can be overridden without touching source code:
 | `STYGIAN_POOL_ACQUIRE_SECS` | `5` | Seconds to wait for a pool slot |
 | `STYGIAN_LAUNCH_TIMEOUT_SECS` | `10` | Browser launch timeout |
 | `STYGIAN_CDP_TIMEOUT_SECS` | `30` | Per-operation CDP timeout |
-| `STYGIAN_CDP_FIX_MODE` | `addBinding` | `addBinding`, `isolatedworld`, `enabledisable` |
+| `STYGIAN_CDP_FIX_MODE` | `addBinding` | `addBinding`, `isolatedWorld`, `enableDisable`, `none` |
 | `STYGIAN_PROXY` | — | Proxy URL |
 | `STYGIAN_PROXY_BYPASS` | — | Comma-separated proxy bypass list (e.g. `<local>,localhost`) |
 | `STYGIAN_DISABLE_SANDBOX` | auto-detect | `true` inside containers, `false` on bare metal |

@@ -160,10 +160,14 @@ use std::time::Duration;
 
 let pool = BrowserPool::new(BrowserConfig::builder()
     .stealth_level(StealthLevel::Advanced)
-    .build());
+    .build())
+    .await?;
 
 let handle = pool.acquire().await?;
-let page = handle.browser().expect("browser is available").new_page().await?;
+let browser = handle
+    .browser()
+    .ok_or_else(|| std::io::Error::other("browser handle already released"))?;
+let page = browser.new_page().await?;
 page.navigate("https://example.com", WaitUntil::Load, Duration::from_secs(30)).await?;  // navigate for realistic context
 
 let report = page.verify_stealth().await?;
