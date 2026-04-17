@@ -106,7 +106,7 @@
 
 | Task | Status | Notes |
 |---|---|---|
-| T49 — Stealth Benchmark Harness | `[ ]` | |
+| T49 — Stealth Benchmark Harness | `[x]` | benchmark harness + `stealth_benchmark` example + deterministic JSON/Markdown reporting |
 | T50 — Transport Profile Packs and Cadence | `[ ]` | |
 | T51 — Session Warmup and Refresh Primitives | `[ ]` | |
 | T52 — Proxy Capability Model and Protocol-Aware Routing | `[ ]` | |
@@ -116,6 +116,8 @@
 ---
 
 ## Accumulated Learnings
+
+- T49: strict clippy settings (`-D warnings`, pedantic profile) require `writeln!` over `write!(...\n)`, const-friendly constructors, and panic/index-safe tests even under `#[ignore]`.
 
 > Subagents append discoveries here after each task.
 > The orchestrator reads this section at the start of every iteration
