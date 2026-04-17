@@ -410,7 +410,8 @@ impl ProxyFetcher for FreeListFetcher {
 /// payloads.
 ///
 /// The adapter accepts either a top-level array payload or an object payload
-/// with `data` or `results` arrays.
+/// with `data` or `results` arrays.  Optional query parameters (`limit`,
+/// `protocol`, `country`) are appended to the endpoint URL when set.
 ///
 /// # Example
 ///
@@ -418,7 +419,10 @@ impl ProxyFetcher for FreeListFetcher {
 /// use stygian_proxy::fetcher::{FreeApiProxiesFetcher, ProxyFetcher};
 ///
 /// # async fn run() -> stygian_proxy::error::ProxyResult<()> {
-/// let fetcher = FreeApiProxiesFetcher::new();
+/// let fetcher = FreeApiProxiesFetcher::new()
+///     .with_limit(100)
+///     .with_protocol_filter("http")
+///     .with_country_filter("US");
 /// let proxies = fetcher.fetch().await?;
 /// println!("Got {} proxies", proxies.len());
 /// # Ok(())
@@ -428,6 +432,12 @@ pub struct FreeApiProxiesFetcher {
     endpoint: String,
     client: Client,
     tags: Vec<String>,
+    /// Maximum number of proxies to request from the API.
+    limit: Option<u32>,
+    /// Protocol filter sent as a query parameter (e.g. `"http"`, `"socks5"`).
+    protocol_filter: Option<String>,
+    /// ISO 3166-1 alpha-2 country code filter (e.g. `"US"`, `"DE"`).
+    country_filter: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -490,6 +500,9 @@ impl FreeApiProxiesFetcher {
             endpoint: endpoint.into(),
             client,
             tags: vec!["freeapiproxies".into()],
+            limit: None,
+            protocol_filter: None,
+            country_filter: None,
         }
     }
 
@@ -498,6 +511,81 @@ impl FreeApiProxiesFetcher {
     pub fn with_tags(mut self, tags: Vec<String>) -> Self {
         self.tags.extend(tags);
         self
+    }
+
+    /// Set the maximum number of proxies to request from the API.
+    ///
+    /// Appended to the request as `?limit=<n>`.  Ignored when `None`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_proxy::fetcher::FreeApiProxiesFetcher;
+    /// let _f = FreeApiProxiesFetcher::new().with_limit(50);
+    /// ```
+    #[must_use]
+    pub fn with_limit(mut self, limit: u32) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    /// Filter by proxy protocol on the server side.
+    ///
+    /// Appended to the request as `?protocol=<value>`.  Common values are
+    /// `"http"`, `"https"`, `"socks4"`, and `"socks5"`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_proxy::fetcher::FreeApiProxiesFetcher;
+    /// let _f = FreeApiProxiesFetcher::new().with_protocol_filter("http");
+    /// ```
+    #[must_use]
+    pub fn with_protocol_filter(mut self, protocol: impl Into<String>) -> Self {
+        self.protocol_filter = Some(protocol.into());
+        self
+    }
+
+    /// Filter by ISO 3166-1 alpha-2 country code on the server side.
+    ///
+    /// Appended to the request as `?country=<value>` (uppercased).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_proxy::fetcher::FreeApiProxiesFetcher;
+    /// let _f = FreeApiProxiesFetcher::new().with_country_filter("US");
+    /// ```
+    #[must_use]
+    pub fn with_country_filter(mut self, country_code: impl Into<String>) -> Self {
+        self.country_filter = Some(country_code.into().to_ascii_uppercase());
+        self
+    }
+
+    /// Build the full request URL with any configured query parameters.
+    fn request_url(&self) -> String {
+        let mut params: Vec<(&str, String)> = Vec::new();
+        if let Some(limit) = self.limit {
+            params.push(("limit", limit.to_string()));
+        }
+        if let Some(ref protocol) = self.protocol_filter {
+            params.push(("protocol", protocol.clone()));
+        }
+        if let Some(ref country) = self.country_filter {
+            params.push(("country", country.clone()));
+        }
+        if params.is_empty() {
+            return self.endpoint.clone();
+        }
+        let qs: String = params
+            .iter()
+            .enumerate()
+            .map(|(i, (k, v))| {
+                let sep = if i == 0 { "?" } else { "&" };
+                format!("{sep}{k}={v}")
+            })
+            .collect();
+        format!("{}{qs}", self.endpoint)
     }
 
     fn protocol_to_proxy_type(protocol: Option<&str>) -> Option<ProxyType> {
@@ -601,25 +689,26 @@ impl Default for FreeApiProxiesFetcher {
 #[async_trait]
 impl ProxyFetcher for FreeApiProxiesFetcher {
     async fn fetch(&self) -> ProxyResult<Vec<Proxy>> {
+        let url = self.request_url();
         let body = self
             .client
-            .get(&self.endpoint)
+            .get(&url)
             .timeout(Duration::from_secs(10))
             .send()
             .await
             .map_err(|e| ProxyError::FetchFailed {
-                origin: self.endpoint.clone(),
+                origin: url.clone(),
                 message: e.to_string(),
             })?
             .error_for_status()
             .map_err(|e| ProxyError::FetchFailed {
-                origin: self.endpoint.clone(),
+                origin: url.clone(),
                 message: e.to_string(),
             })?
             .text()
             .await
             .map_err(|e| ProxyError::FetchFailed {
-                origin: self.endpoint.clone(),
+                origin: url.clone(),
                 message: e.to_string(),
             })?;
 
@@ -680,6 +769,68 @@ pub async fn load_from_fetcher(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn free_api_proxies_fetcher_request_url_no_params() {
+        let f = FreeApiProxiesFetcher::with_endpoint("https://example.test/api");
+        assert_eq!(f.request_url(), "https://example.test/api");
+    }
+
+    #[test]
+    fn free_api_proxies_fetcher_request_url_with_params() {
+        let f = FreeApiProxiesFetcher::with_endpoint("https://example.test/api")
+            .with_limit(50)
+            .with_protocol_filter("http")
+            .with_country_filter("us");
+        let url = f.request_url();
+        assert!(url.contains("limit=50"), "expected limit param in {url}");
+        assert!(
+            url.contains("protocol=http"),
+            "expected protocol param in {url}"
+        );
+        assert!(
+            url.contains("country=US"),
+            "expected country uppercased in {url}"
+        );
+        assert!(url.starts_with("https://example.test/api?"), "missing ?");
+    }
+
+    #[test]
+    fn free_api_proxies_fetcher_country_filter_uppercased() {
+        let f = FreeApiProxiesFetcher::new().with_country_filter("de");
+        assert_eq!(f.country_filter.as_deref(), Some("DE"));
+    }
+
+    /// Integration test — hits the live FreeAPIProxies endpoint.
+    /// Run with: `cargo test -p stygian-proxy --all-features -- --ignored`
+    #[test]
+    #[ignore = "requires live network access to freeapiproxies.azurewebsites.net"]
+    fn free_api_proxies_fetcher_live_fetch() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
+        let fetcher = FreeApiProxiesFetcher::new().with_limit(20);
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| {
+                std::io::Error::other(format!("failed to build runtime for test: {e}"))
+            })?;
+        let proxies = rt.block_on(fetcher.fetch())?;
+        assert!(
+            !proxies.is_empty(),
+            "expected at least one proxy from live endpoint"
+        );
+        for proxy in &proxies {
+            assert!(
+                proxy.url.starts_with("http://")
+                    || proxy.url.starts_with("https://")
+                    || proxy.url.starts_with("socks4://")
+                    || proxy.url.starts_with("socks5://"),
+                "unexpected proxy url scheme: {}",
+                proxy.url
+            );
+        }
+        Ok(())
+    }
 
     #[test]
     fn free_list_source_url_is_nonempty() {
