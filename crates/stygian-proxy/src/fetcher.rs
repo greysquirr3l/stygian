@@ -479,13 +479,13 @@ struct FreeApiProxyRecord {
 impl FreeApiProxiesFetcher {
     const DEFAULT_ENDPOINT: &str = "https://freeapiproxies.azurewebsites.net/";
 
-    /// Create a FreeAPIProxies fetcher using the default endpoint.
+    /// Create a `FreeAPIProxies` fetcher using the default endpoint.
     #[must_use]
     pub fn new() -> Self {
         Self::with_endpoint(Self::DEFAULT_ENDPOINT)
     }
 
-    /// Create a FreeAPIProxies fetcher using a custom JSON endpoint.
+    /// Create a `FreeAPIProxies` fetcher using a custom JSON endpoint.
     #[must_use]
     pub fn with_endpoint(endpoint: impl Into<String>) -> Self {
         let client = Client::builder()
@@ -524,7 +524,7 @@ impl FreeApiProxiesFetcher {
     /// let _f = FreeApiProxiesFetcher::new().with_limit(50);
     /// ```
     #[must_use]
-    pub fn with_limit(mut self, limit: u32) -> Self {
+    pub const fn with_limit(mut self, limit: u32) -> Self {
         self.limit = Some(limit);
         self
     }
@@ -577,24 +577,25 @@ impl FreeApiProxiesFetcher {
         if params.is_empty() {
             return self.endpoint.clone();
         }
-        let qs: String = params
+        let qs = params
             .iter()
             .enumerate()
-            .map(|(i, (k, v))| {
+            .fold(String::new(), |mut acc, (i, (k, v))| {
+                use std::fmt::Write as _;
                 let sep = if i == 0 { "?" } else { "&" };
-                format!("{sep}{k}={v}")
-            })
-            .collect();
+                let _ = write!(acc, "{sep}{k}={v}");
+                acc
+            });
         format!("{}{qs}", self.endpoint)
     }
 
     fn protocol_to_proxy_type(protocol: Option<&str>) -> Option<ProxyType> {
         let normalized = protocol.map(str::trim).map(str::to_ascii_lowercase);
         match normalized.as_deref() {
-            None | Some("") | Some("http") => Some(ProxyType::Http),
+            None | Some("" | "http") => Some(ProxyType::Http),
             Some("https") => Some(ProxyType::Https),
             #[cfg(feature = "socks")]
-            Some("socks") | Some("socks5") => Some(ProxyType::Socks5),
+            Some("socks" | "socks5") => Some(ProxyType::Socks5),
             #[cfg(feature = "socks")]
             Some("socks4") => Some(ProxyType::Socks4),
             _ => None,
@@ -801,7 +802,7 @@ mod tests {
         assert_eq!(f.country_filter.as_deref(), Some("DE"));
     }
 
-    /// Integration test — hits the live FreeAPIProxies endpoint.
+    /// Integration test — hits the live `FreeAPIProxies` endpoint.
     /// Run with: `cargo test -p stygian-proxy --all-features -- --ignored`
     #[test]
     #[ignore = "requires live network access to freeapiproxies.azurewebsites.net"]
@@ -811,9 +812,7 @@ mod tests {
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .map_err(|e| {
-                std::io::Error::other(format!("failed to build runtime for test: {e}"))
-            })?;
+            .map_err(|e| std::io::Error::other(format!("failed to build runtime for test: {e}")))?;
         let proxies = rt.block_on(fetcher.fetch())?;
         assert!(
             !proxies.is_empty(),
