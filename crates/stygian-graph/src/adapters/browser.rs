@@ -456,10 +456,7 @@ mod tests {
     fn test_resolve_timeout_override() {
         let adapter = BrowserAdapter::new();
         let params = json!({ "timeout_ms": 5000u64 });
-        assert_eq!(
-            adapter.resolve_timeout(&params),
-            Duration::from_secs(5)
-        );
+        assert_eq!(adapter.resolve_timeout(&params), Duration::from_secs(5));
     }
 
     #[test]

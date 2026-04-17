@@ -780,7 +780,11 @@ mod tests {
         ];
         for p in &profiles {
             let validation = p.validate();
-            assert!(validation.is_ok(), "profile '{}' failed validation: {validation:?}", p.name);
+            assert!(
+                validation.is_ok(),
+                "profile '{}' failed validation: {validation:?}",
+                p.name
+            );
         }
     }
 
@@ -848,7 +852,10 @@ mod tests {
     fn toml_round_trip() {
         let p = FingerprintProfile::windows_chrome_136_rtx3060();
         let toml_result = toml::to_string(&p);
-        assert!(toml_result.is_ok(), "serialize to TOML failed: {toml_result:?}");
+        assert!(
+            toml_result.is_ok(),
+            "serialize to TOML failed: {toml_result:?}"
+        );
         let Ok(toml_str) = toml_result else {
             return;
         };

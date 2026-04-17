@@ -239,7 +239,7 @@ fn build_ua_data_js(profile: &FingerprintProfile) -> String {
 /// Input: `"Chromium";v="136", "Google Chrome";v="136", "Not-A.Brand";v="99"`
 /// Output: `[{brand:"Chromium",version:"136"}, ...]`
 fn parse_sec_ch_ua_brands(sec_ch_ua: &str) -> String {
-  use std::fmt::Write;
+    use std::fmt::Write;
 
     let mut result = String::from('[');
     for part in sec_ch_ua.split(',') {

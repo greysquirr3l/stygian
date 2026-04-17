@@ -178,7 +178,10 @@ mod tests {
     #[test]
     fn script_overrides_all_methods() {
         let js = rects_noise_script(&eng(1));
-        assert!(js.contains("getBoundingClientRect"), "missing getBoundingClientRect");
+        assert!(
+            js.contains("getBoundingClientRect"),
+            "missing getBoundingClientRect"
+        );
         assert!(js.contains("getClientRects"), "missing getClientRects");
         assert!(js.contains("Range"), "missing Range overrides");
         assert!(js.contains("measureText"), "missing measureText");
@@ -188,8 +191,14 @@ mod tests {
     fn script_preserves_domrect_consistency() {
         let js = rects_noise_script(&eng(1));
         // The _noiseRect helper must set right = x + w and bottom = y + h
-        assert!(js.contains("right: x + w"), "DOMRect right not derived from x+w");
-        assert!(js.contains("bottom: y + h"), "DOMRect bottom not derived from y+h");
+        assert!(
+            js.contains("right: x + w"),
+            "DOMRect right not derived from x+w"
+        );
+        assert!(
+            js.contains("bottom: y + h"),
+            "DOMRect bottom not derived from y+h"
+        );
     }
 
     #[test]

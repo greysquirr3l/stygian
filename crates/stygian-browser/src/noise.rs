@@ -232,8 +232,7 @@ impl NoiseEngine {
         let upper53 = h >> 11;
         let high = ((upper53 >> 21) & 0xFFFF_FFFF) as u32;
         let low = (upper53 & ((1_u64 << 21) - 1)) as u32;
-        let normalized =
-            (f64::from(high) * 2_097_152.0 + f64::from(low)) / 9_007_199_254_740_991.0;
+        let normalized = (f64::from(high) * 2_097_152.0 + f64::from(low)) / 9_007_199_254_740_991.0;
         (normalized - 0.5) * 2.0e-5 // [-1e-5, 1e-5]
     }
 

@@ -412,7 +412,7 @@ const PDF_VIEWER_SECTION: &str = r"  // ── 7. pdfViewerEnabled ────�
 // ---------------------------------------------------------------------------
 
 fn f64_bits_to_hex(value: f64) -> String {
-  format!("{:016x}", value.to_bits())
+    format!("{:016x}", value.to_bits())
 }
 
 trait NoiseEngineExt {
@@ -428,13 +428,13 @@ impl NoiseEngineExt for NoiseEngine {
         let b = self.float_noise(key, 1);
         let c = self.float_noise(key, 2);
         let d = self.float_noise(key, 3);
-      format!(
-        "{}{}{}{}",
-        f64_bits_to_hex(a),
-        f64_bits_to_hex(b),
-        f64_bits_to_hex(c),
-        f64_bits_to_hex(d)
-      )
+        format!(
+            "{}{}{}{}",
+            f64_bits_to_hex(a),
+            f64_bits_to_hex(b),
+            f64_bits_to_hex(c),
+            f64_bits_to_hex(d)
+        )
     }
 
     /// Derive a deterministic `u64` from `key`.

@@ -507,8 +507,8 @@ mod retry_tests {
 
     #[test]
     fn delay_capped_at_max() {
-        let p = RetryPolicy::new(10, Duration::from_secs(1), Duration::from_secs(3))
-            .with_jitter_ms(0);
+        let p =
+            RetryPolicy::new(10, Duration::from_secs(1), Duration::from_secs(3)).with_jitter_ms(0);
         // 1000 * 2^4 = 16_000 ms, capped at 3_000 ms
         assert_eq!(p.delay_for(4), Duration::from_secs(3));
     }
