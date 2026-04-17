@@ -2587,7 +2587,6 @@ impl ProfileChannel {
             Self::EdgeLatest | Self::Edge131 => Ok(&PACK_EDGE_131),
         }
     }
-
 }
 
 impl std::str::FromStr for ProfileChannel {
@@ -2650,7 +2649,9 @@ impl std::str::FromStr for ProfileChannel {
 #[non_exhaustive]
 pub enum ProfileChannelError {
     /// The channel name string is not recognised.
-    #[error("unknown profile channel '{0}'; known channels: chrome-latest, firefox-latest, safari-latest, edge-latest, chrome-131, firefox-133, safari-18, edge-131")]
+    #[error(
+        "unknown profile channel '{0}'; known channels: chrome-latest, firefox-latest, safari-latest, edge-latest, chrome-131, firefox-133, safari-18, edge-131"
+    )]
     UnknownChannel(String),
 }
 
@@ -2822,49 +2823,55 @@ mod pack_tests {
     use super::*;
 
     #[test]
-    fn channel_latest_resolves_to_expected_profile() {
-        let chrome = ProfileChannel::ChromeLatest.resolve(None).unwrap();
+    fn channel_latest_resolves_to_expected_profile() -> Result<(), ProfileChannelError> {
+        let chrome = ProfileChannel::ChromeLatest.resolve(None)?;
         assert_eq!(chrome.profile.name, "Chrome 131");
 
-        let firefox = ProfileChannel::FirefoxLatest.resolve(None).unwrap();
+        let firefox = ProfileChannel::FirefoxLatest.resolve(None)?;
         assert_eq!(firefox.profile.name, "Firefox 133");
 
-        let safari = ProfileChannel::SafariLatest.resolve(None).unwrap();
+        let safari = ProfileChannel::SafariLatest.resolve(None)?;
         assert_eq!(safari.profile.name, "Safari 18");
 
-        let edge = ProfileChannel::EdgeLatest.resolve(None).unwrap();
+        let edge = ProfileChannel::EdgeLatest.resolve(None)?;
         assert_eq!(edge.profile.name, "Edge 131");
+        Ok(())
     }
 
     #[test]
-    fn pinned_channels_resolve_to_same_as_latest() {
-        let chrome_pinned = ProfileChannel::Chrome131.resolve(None).unwrap();
-        let chrome_latest = ProfileChannel::ChromeLatest.resolve(None).unwrap();
+    fn pinned_channels_resolve_to_same_as_latest() -> Result<(), ProfileChannelError> {
+        let chrome_pinned = ProfileChannel::Chrome131.resolve(None)?;
+        let chrome_latest = ProfileChannel::ChromeLatest.resolve(None)?;
         assert!(std::ptr::eq(chrome_pinned, chrome_latest));
+        Ok(())
     }
 
     #[test]
-    fn metadata_is_serializable() {
+    fn metadata_is_serializable() -> Result<(), Box<dyn std::error::Error>> {
         let pack = &*PACK_CHROME_131;
-        let json = serde_json::to_string(&pack.metadata).unwrap();
+        let json = serde_json::to_string(&pack.metadata)?;
         assert!(json.contains("Chrome"));
         assert!(json.contains("131"));
 
-        let meta: ProfileMetadata = serde_json::from_str(json.as_str()).unwrap();
+        let meta: ProfileMetadata = serde_json::from_str(json.as_str())?;
         assert_eq!(meta.family, BrowserFamily::Chrome);
         assert_eq!(meta.browser_version, "131");
+        Ok(())
     }
 
     #[test]
     fn invalid_channel_returns_error() {
-        let err: ProfileChannelError = "netscape-4".parse::<ProfileChannel>().unwrap_err();
-        assert!(err.to_string().contains("netscape-4"));
+        let result = "netscape-4".parse::<ProfileChannel>();
+        assert!(
+            matches!(result, Err(ProfileChannelError::UnknownChannel(ref s)) if s.contains("netscape-4"))
+        );
     }
 
     #[test]
-    fn from_str_parsing_case_insensitive() {
-        let ch: ProfileChannel = "CHROME-LATEST".parse().unwrap();
+    fn from_str_parsing_case_insensitive() -> Result<(), ProfileChannelError> {
+        let ch: ProfileChannel = "CHROME-LATEST".parse()?;
         assert_eq!(ch, ProfileChannel::ChromeLatest);
+        Ok(())
     }
 
     #[test]
@@ -2880,9 +2887,9 @@ mod pack_tests {
     }
 
     #[test]
-    fn platform_hint_accepted_without_error() {
-        let pack =
-            ProfileChannel::ChromeLatest.resolve(Some(PlatformClass::Linux)).unwrap();
+    fn platform_hint_accepted_without_error() -> Result<(), ProfileChannelError> {
+        let pack = ProfileChannel::ChromeLatest.resolve(Some(PlatformClass::Linux))?;
         assert_eq!(pack.profile.name, "Chrome 131");
+        Ok(())
     }
 }
