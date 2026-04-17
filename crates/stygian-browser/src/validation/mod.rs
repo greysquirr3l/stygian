@@ -427,22 +427,6 @@ mod tests {
         }
     }
 
-    // ── ValidationSuite empty list ──────────────────────────────────────────────
-
-    #[tokio::test]
-    async fn run_all_empty_targets_returns_empty() {
-        // We cannot construct a real BrowserPool in a unit test, but the
-        // contract is clear: zero targets → zero results. Validate the
-        // logic by skipping pool construction; this test only exercises
-        // the loop guard.
-        //
-        // A real BrowserPool would require a Chrome binary; use an existing
-        // integration guard via the `#[ignore]` pattern for live tests.
-        let targets: Vec<ValidationTarget> = vec![];
-        // Empty slice trivially returns empty without touching the pool.
-        assert!(targets.is_empty());
-    }
-
     // ── Display ───────────────────────────────────────────────────────────────
 
     #[test]

@@ -577,7 +577,12 @@ pub async fn apply_stealth_to_page(
     if config.stealth_level == StealthLevel::Advanced {
         let fp = crate::fingerprint::Fingerprint::random();
         // Build one engine once so all spoofed surfaces share the same per-session seed.
-        let noise_engine = config.noise.build_engine();
+        // Prefer the fingerprint profile seed when present to keep profile identity coherent.
+        let profile_seed = config.fingerprint_profile.as_ref().map(|p| p.noise_seed);
+        let noise_seed = profile_seed
+            .or(config.noise.seed)
+            .unwrap_or_else(crate::noise::NoiseSeed::random);
+        let noise_engine = crate::noise::NoiseEngine::new(noise_seed);
         let noise_seed = noise_engine.seed();
         let fp_script = crate::fingerprint::inject_fingerprint(&fp);
         inject_one(
