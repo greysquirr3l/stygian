@@ -34,7 +34,7 @@ Claude, IDE plugins, etc.) to begin calling scraping, browser, and proxy tools.
 | Feature | Description | Default |
 | --------- | ------------- | --------- |
 | Base | Proxy + browser tools | ✓ |
-| `extract` | Enable `browser_extract` and `graph_extract` tools for structured data | — |
+| `extract` | Enable browser structured extraction tools (`browser_extract`, `browser_extract_with_fallback`, `browser_extract_resilient`) | — |
 
 Enable extraction (requires `stygian-browser/extract` and `stygian-graph/extract`):
 
@@ -49,8 +49,8 @@ All tools from the three underlying crates are available under their respective 
 | Prefix | Crate | Example tools |
 | ------ | ----- | ------------- |
 | `graph_*` | `stygian-graph` | `graph_scrape`, `graph_scrape_rest`, `graph_pipeline_run` |
-| `browser_*` | `stygian-browser` | `browser_acquire`, `browser_navigate`, `browser_screenshot` |
-| `proxy_*` | `stygian-proxy` | `proxy_add`, `proxy_acquire`, `proxy_pool_stats` |
+| `browser_*` | `stygian-browser` | `browser_acquire`, `browser_extract_with_fallback`, `browser_extract_resilient` |
+| `proxy_*` | `stygian-proxy` | `proxy_add`, `proxy_acquire_with_capabilities`, `proxy_fetch_freelist`, `proxy_fetch_freeapiproxies` |
 
 The aggregator also adds two cross-crate tools:
 
@@ -81,10 +81,11 @@ The aggregator also adds two cross-crate tools:
 1. Client calls `tools/list` → aggregator merges all three sub-server tool lists
 2. Client calls `tools/call` with a tool name + params
 3. Aggregator routes:
-   - `graph_*` → strips prefix, forwards to graph sub-server
-   - `browser_*` → strips prefix, forwards to browser sub-server
-   - `proxy_*` → strips prefix, forwards to proxy sub-server
-   - `scrape_proxied`, `browser_proxied` → handled by aggregator (cross-crate coordination)
+
+- `graph_*` → strips prefix, forwards to graph sub-server
+- `browser_*` → forwards to browser sub-server
+- `proxy_*` → forwards to proxy sub-server
+- `scrape_proxied`, `browser_proxied` → handled by aggregator (cross-crate coordination)
 
 ## Examples
 
@@ -97,8 +98,7 @@ The aggregator also adds two cross-crate tools:
   "params": {
     "name": "scrape_proxied",
     "arguments": {
-      "url": "https://example.com",
-      "proxy_id": "proxy-1"
+      "url": "https://example.com"
     }
   }
 }
@@ -113,9 +113,7 @@ The aggregator also adds two cross-crate tools:
   "params": {
     "name": "browser_proxied",
     "arguments": {
-      "url": "https://example.com",
-      "stealth_level": "advanced",
-      "action": "screenshot"
+      "url": "https://example.com"
     }
   }
 }
@@ -132,10 +130,13 @@ With `extract` feature enabled, use `browser_extract`:
   "params": {
     "name": "browser_extract",
     "arguments": {
+      "session_id": "01HV4...",
       "url": "https://example.com/products",
-      "selector": "a.product-link",
-      "extract_format": "json",
-      "stealth_level": "advanced"
+      "root_selector": "article.product",
+      "schema": {
+        "name": { "selector": "h2" },
+        "href": { "selector": "a", "attr": "href" }
+      }
     }
   }
 }

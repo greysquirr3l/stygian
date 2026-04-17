@@ -34,6 +34,9 @@
 //! | `proxy_acquire` | – | `handle_token`, `proxy_url` |
 //! | `proxy_acquire_for_domain` | `domain` | `handle_token`, `proxy_url` |
 //! | `proxy_release` | `handle_token`, `success?` | success |
+//! | `proxy_acquire_with_capabilities` | `require_https_connect?`, `require_socks5_udp?`, `require_http3_tunnel?`, `require_geo_country?` | `handle_token`, `proxy_url` |
+//! | `proxy_fetch_freelist` | `sources`, `tags?` | `loaded` |
+//! | `proxy_fetch_freeapiproxies` | `endpoint?`, `tags?` | `loaded` |
 
 use std::collections::HashMap;
 use std::sync::Arc;

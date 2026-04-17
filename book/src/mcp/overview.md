@@ -1,10 +1,14 @@
 # MCP — Model Context Protocol
 
-All three Stygian crates expose their capabilities over the
-[Model Context Protocol (MCP)](https://modelcontextprotocol.io/) with negotiated protocol
-version support for `2025-11-25`, `2025-06-18`, and `2024-11-05`, enabling LLM
-agents, IDE plug-ins, and automation pipelines to scrape the web, control browsers, and manage
-proxy pools without writing any Rust code.
+All Stygian MCP servers expose capabilities over the
+[Model Context Protocol (MCP)](https://modelcontextprotocol.io/). The standalone
+`stygian-graph`, `stygian-browser`, and `stygian-proxy` servers speak MCP
+`2025-11-25`; the `stygian-mcp` aggregator additionally supports protocol
+negotiation for `2025-11-25`, `2025-06-18`, and `2024-11-05`.
+
+This gives LLM agents, IDE plug-ins, and automation pipelines a stable JSON-RPC
+surface for web scraping, browser control, and proxy pool management without
+writing Rust code.
 
 ---
 
@@ -59,6 +63,10 @@ All servers implement **JSON-RPC 2.0 over stdin/stdout**. Newline-delimited requ
 newline-delimited responses out.
 
 Notifications (messages without an `id`) do not produce responses.
+
+The implementation follows MCP `2025-11-25` message shapes for tool schemas,
+tool content blocks, and resource payloads. For protocol details, see the
+official spec: <https://modelcontextprotocol.io/specification/2025-11-25>.
 
 | Method | Description |
 | ------ | ----------- |

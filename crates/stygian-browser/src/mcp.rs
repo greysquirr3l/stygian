@@ -45,6 +45,8 @@
 //! | `pool_stats` | – | `active, max, available` |
 //! | `browser_query` | `session_id, url, selector, fields?, limit?, timeout_secs?` | `results` array of text or field objects |
 //! | `browser_extract` | `session_id, url, root_selector, schema, timeout_secs?` | `results` array of structured objects |
+//! | `browser_extract_with_fallback` | `session_id, url, root_selectors, schema, timeout_secs?` | first successful selector + `results` |
+//! | `browser_extract_resilient` | `session_id, url, root_selector, schema, timeout_secs?` | `results` plus skipped-count metadata |
 //! | `browser_find_similar` *(similarity feature)* | `session_id, url, reference_selector, threshold?, max_results?, timeout_secs?` | scored `matches` array |
 //! | `browser_warmup` | `session_id, url, wait?, timeout_ms?, stabilize_ms?` | warmup report |
 //! | `browser_refresh` | `session_id, wait?, timeout_ms?, reset_connection?` | refresh report |
