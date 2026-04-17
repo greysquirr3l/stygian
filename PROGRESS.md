@@ -110,7 +110,7 @@
 | T50 — Transport Profile Packs and Cadence | `[x]` | |
 | T51 — Session Warmup and Refresh Primitives | `[x]` | `warmup()`/`refresh()` on PageHandle; `browser_warmup`/`browser_refresh` MCP tools; 12 unit tests |
 | T52 — Proxy Capability Model and Protocol-Aware Routing | `[x]` | `ProxyCapabilities` + `CapabilityRequirement`; protocol routing resolver; capability-aware manager acquisition path; tests/clippy clean |
-| T53 — FreeAPIProxies Source Adapter (Optional) | `[ ]` | |
+| T53 — FreeAPIProxies Source Adapter (Optional) | `[~]` | initial adapter scaffold + parser added |
 | T54 — Adaptive Selector Recovery for Extraction | `[ ]` | |
 
 ---

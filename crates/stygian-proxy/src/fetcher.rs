@@ -38,6 +38,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use futures::future::join_all;
 use reqwest::Client;
+use serde::Deserialize;
 use tracing::{debug, warn};
 
 use crate::{
@@ -59,6 +60,7 @@ use crate::{
 /// use stygian_proxy::{Proxy, ProxyType};
 /// use stygian_proxy::fetcher::ProxyFetcher;
 /// use stygian_proxy::error::ProxyResult;
+/// use stygian_proxy::types::ProxyCapabilities;
 ///
 /// struct MyStaticFetcher;
 ///
@@ -72,6 +74,7 @@ use crate::{
 ///             password: None,
 ///             weight: 1,
 ///             tags: vec!["static".into()],
+///             capabilities: ProxyCapabilities::default(),
 ///         }])
 ///     }
 /// }
@@ -401,6 +404,229 @@ impl ProxyFetcher for FreeListFetcher {
     }
 }
 
+// ─── FreeAPIProxies adapter ──────────────────────────────────────────────────
+
+/// Fetches proxies from a JSON API compatible with FreeAPIProxies-style
+/// payloads.
+///
+/// The adapter accepts either a top-level array payload or an object payload
+/// with `data` or `results` arrays.
+///
+/// # Example
+///
+/// ```no_run
+/// use stygian_proxy::fetcher::{FreeApiProxiesFetcher, ProxyFetcher};
+///
+/// # async fn run() -> stygian_proxy::error::ProxyResult<()> {
+/// let fetcher = FreeApiProxiesFetcher::new();
+/// let proxies = fetcher.fetch().await?;
+/// println!("Got {} proxies", proxies.len());
+/// # Ok(())
+/// # }
+/// ```
+pub struct FreeApiProxiesFetcher {
+    endpoint: String,
+    client: Client,
+    tags: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum FreeApiProxiesResponse {
+    List(Vec<FreeApiProxyRecord>),
+    Data { data: Vec<FreeApiProxyRecord> },
+    Results { results: Vec<FreeApiProxyRecord> },
+}
+
+impl FreeApiProxiesResponse {
+    fn into_records(self) -> Vec<FreeApiProxyRecord> {
+        match self {
+            Self::List(records)
+            | Self::Data { data: records }
+            | Self::Results { results: records } => records,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct FreeApiProxyRecord {
+    #[serde(default, alias = "ip", alias = "host")]
+    address_host: String,
+    #[serde(default)]
+    port: Option<u16>,
+    #[serde(default, alias = "proxy", alias = "address")]
+    address: Option<String>,
+    #[serde(default, alias = "protocol", alias = "type", alias = "proxy_type")]
+    protocol: Option<String>,
+    #[serde(default)]
+    username: Option<String>,
+    #[serde(default)]
+    password: Option<String>,
+    #[serde(default, alias = "countryCode", alias = "country_code")]
+    country_code: Option<String>,
+}
+
+impl FreeApiProxiesFetcher {
+    const DEFAULT_ENDPOINT: &str = "https://freeapiproxies.azurewebsites.net/";
+
+    /// Create a FreeAPIProxies fetcher using the default endpoint.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::with_endpoint(Self::DEFAULT_ENDPOINT)
+    }
+
+    /// Create a FreeAPIProxies fetcher using a custom JSON endpoint.
+    #[must_use]
+    pub fn with_endpoint(endpoint: impl Into<String>) -> Self {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .unwrap_or_else(|e| {
+                warn!("Failed to build HTTP client with 10 s timeout (TLS backend issue?): {e}; falling back to default client with per-request timeout enforcement");
+                Client::default()
+            });
+
+        Self {
+            endpoint: endpoint.into(),
+            client,
+            tags: vec!["freeapiproxies".into()],
+        }
+    }
+
+    /// Attach extra tags to every proxy produced by this fetcher.
+    #[must_use]
+    pub fn with_tags(mut self, tags: Vec<String>) -> Self {
+        self.tags.extend(tags);
+        self
+    }
+
+    fn protocol_to_proxy_type(protocol: Option<&str>) -> Option<ProxyType> {
+        let normalized = protocol.map(str::trim).map(str::to_ascii_lowercase);
+        match normalized.as_deref() {
+            None | Some("") | Some("http") => Some(ProxyType::Http),
+            Some("https") => Some(ProxyType::Https),
+            #[cfg(feature = "socks")]
+            Some("socks") | Some("socks5") => Some(ProxyType::Socks5),
+            #[cfg(feature = "socks")]
+            Some("socks4") => Some(ProxyType::Socks4),
+            _ => None,
+        }
+    }
+
+    fn parse_address(record: &FreeApiProxyRecord) -> Option<(String, u16)> {
+        if let Some(address) = record.address.as_deref() {
+            if let Some((host, port)) = FreeListFetcher::parse_host_port_line(address) {
+                return Some((host, port));
+            }
+
+            if let Ok(url) = reqwest::Url::parse(address)
+                && let Some(port) = url.port_or_known_default()
+            {
+                return Some((url.host_str()?.to_string(), port));
+            }
+        }
+
+        let host = record.address_host.trim();
+        let port = record.port?;
+        if host.is_empty() || port == 0 {
+            return None;
+        }
+        Some((host.to_string(), port))
+    }
+
+    fn record_to_proxy(&self, record: FreeApiProxyRecord) -> Option<Proxy> {
+        let proxy_type = Self::protocol_to_proxy_type(record.protocol.as_deref())?;
+        let (host, port) = Self::parse_address(&record)?;
+
+        let scheme = match proxy_type {
+            ProxyType::Http => "http",
+            ProxyType::Https => "https",
+            #[cfg(feature = "socks")]
+            ProxyType::Socks4 => "socks4",
+            #[cfg(feature = "socks")]
+            ProxyType::Socks5 => "socks5",
+        };
+
+        let mut tags = self.tags.clone();
+        if let Some(country_code) = record.country_code.as_deref()
+            && !country_code.trim().is_empty()
+        {
+            tags.push(format!(
+                "country:{}",
+                country_code.trim().to_ascii_uppercase()
+            ));
+        }
+
+        Some(Proxy {
+            url: format!("{scheme}://{host}:{port}"),
+            proxy_type,
+            username: record.username.filter(|v| !v.trim().is_empty()),
+            password: record.password.filter(|v| !v.trim().is_empty()),
+            weight: 1,
+            tags,
+            capabilities: crate::types::ProxyCapabilities::default(),
+        })
+    }
+
+    fn parse_payload(&self, body: &str) -> ProxyResult<Vec<Proxy>> {
+        let response: FreeApiProxiesResponse =
+            serde_json::from_str(body).map_err(|e| ProxyError::FetchFailed {
+                origin: self.endpoint.clone(),
+                message: format!("invalid freeapiproxies json payload: {e}"),
+            })?;
+
+        let proxies: Vec<Proxy> = response
+            .into_records()
+            .into_iter()
+            .filter_map(|record| self.record_to_proxy(record))
+            .collect();
+
+        if proxies.is_empty() {
+            return Err(ProxyError::FetchFailed {
+                origin: self.endpoint.clone(),
+                message: "freeapiproxies payload contained no usable proxies".into(),
+            });
+        }
+
+        Ok(proxies)
+    }
+}
+
+impl Default for FreeApiProxiesFetcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl ProxyFetcher for FreeApiProxiesFetcher {
+    async fn fetch(&self) -> ProxyResult<Vec<Proxy>> {
+        let body = self
+            .client
+            .get(&self.endpoint)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+            .map_err(|e| ProxyError::FetchFailed {
+                origin: self.endpoint.clone(),
+                message: e.to_string(),
+            })?
+            .error_for_status()
+            .map_err(|e| ProxyError::FetchFailed {
+                origin: self.endpoint.clone(),
+                message: e.to_string(),
+            })?
+            .text()
+            .await
+            .map_err(|e| ProxyError::FetchFailed {
+                origin: self.endpoint.clone(),
+                message: e.to_string(),
+            })?;
+
+        self.parse_payload(&body)
+    }
+}
+
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
 /// Fetch proxies from `fetcher` and add them all to `manager`.
@@ -506,6 +732,49 @@ mod tests {
             ProxyType::Socks5
         );
         assert_eq!(FreeListSource::ClarketmHttp.proxy_type(), ProxyType::Http);
+    }
+
+    #[test]
+    fn free_api_proxies_fetcher_parses_array_payload() -> crate::error::ProxyResult<()> {
+        let fetcher = FreeApiProxiesFetcher::with_endpoint("https://example.test/freeapi");
+        let body = r#"
+[
+    {"host":"1.2.3.4","port":8080,"protocol":"http","countryCode":"us"},
+    {"address":"5.6.7.8:8443","protocol":"https"}
+]
+"#;
+
+        let proxies = fetcher.parse_payload(body)?;
+        assert_eq!(proxies.len(), 2);
+        assert_eq!(
+            proxies.first().map(|proxy| proxy.url.as_str()),
+            Some("http://1.2.3.4:8080")
+        );
+        assert_eq!(
+            proxies.get(1).map(|proxy| proxy.url.as_str()),
+            Some("https://5.6.7.8:8443")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn free_api_proxies_fetcher_parses_wrapped_results_payload() -> crate::error::ProxyResult<()> {
+        let fetcher = FreeApiProxiesFetcher::with_endpoint("https://example.test/freeapi");
+        let body = r#"
+{
+    "results": [
+        {"ip":"9.9.9.9","port":3128,"type":"http"}
+    ]
+}
+"#;
+
+        let proxies = fetcher.parse_payload(body)?;
+        assert_eq!(proxies.len(), 1);
+        assert_eq!(
+            proxies.first().map(|proxy| proxy.url.as_str()),
+            Some("http://9.9.9.9:3128")
+        );
+        Ok(())
     }
 
     #[test]

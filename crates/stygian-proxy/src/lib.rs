@@ -52,7 +52,9 @@ pub mod mcp;
 // Top-level re-exports
 pub use circuit_breaker::{CircuitBreaker, STATE_CLOSED, STATE_HALF_OPEN, STATE_OPEN};
 pub use error::{ProxyError, ProxyResult};
-pub use fetcher::{FreeListFetcher, FreeListSource, ProxyFetcher, load_from_fetcher};
+pub use fetcher::{
+    FreeApiProxiesFetcher, FreeListFetcher, FreeListSource, ProxyFetcher, load_from_fetcher,
+};
 pub use health::{HealthChecker, HealthMap};
 pub use manager::{PoolStats, ProxyHandle, ProxyManager, ProxyManagerBuilder};
 pub use session::{SessionMap, StickyPolicy};

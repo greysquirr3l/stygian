@@ -147,6 +147,7 @@ impl Drop for ProxyHandle {
 /// use std::sync::Arc;
 /// use stygian_proxy::{ProxyManager, ProxyConfig, Proxy, ProxyType};
 /// use stygian_proxy::storage::MemoryProxyStore;
+/// use stygian_proxy::types::ProxyCapabilities;
 ///
 /// let storage = Arc::new(MemoryProxyStore::default());
 /// let mgr = ProxyManager::with_round_robin(storage, ProxyConfig::default())?;
@@ -158,6 +159,7 @@ impl Drop for ProxyHandle {
 ///     password: None,
 ///     weight: 1,
 ///     tags: vec![],
+///     capabilities: ProxyCapabilities::default(),
 /// }).await?;
 /// let handle = mgr.acquire_proxy().await?;
 /// handle.mark_success();
@@ -372,7 +374,7 @@ impl ProxyManager {
     /// async fn example(manager: &ProxyManager) {
     ///     let req = CapabilityRequirement { require_https_connect: true, ..Default::default() };
     ///     let handle = manager.acquire_with_capabilities(&req).await.unwrap();
-    ///     println!("url: {}", handle.url());
+    ///     println!("url: {}", handle.proxy_url);
     /// }
     /// ```
     pub async fn acquire_with_capabilities(

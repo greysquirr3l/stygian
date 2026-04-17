@@ -107,7 +107,8 @@ pub fn healthy_candidates(all: &[ProxyCandidate]) -> Vec<&ProxyCandidate> {
 ///     capabilities: caps,
 /// };
 /// let req = CapabilityRequirement { require_https_connect: true, ..Default::default() };
-/// let result = capable_healthy_candidates(&[candidate], &req);
+/// let candidates = [candidate];
+/// let result = capable_healthy_candidates(&candidates, &req);
 /// assert_eq!(result.len(), 1);
 /// ```
 pub fn capable_healthy_candidates<'a>(
