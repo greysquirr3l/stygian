@@ -46,7 +46,7 @@ stygian-graph = { version = "*", features = ["browser", "redis", "extract"] }
 | Feature | Dependency | Purpose |
 | --------- | ----------- | ------- |
 | `browser` | stygian-browser | Browser automation adapter |
-| `extract` | stygian-extract-derive | Structured data extraction via `#[derive(Extract)]` |
+| `extract` | stygian-browser (`extract` feature) | Structured data extraction via `#[derive(Extract)]` |
 | `api` | — | REST API server (Axum routes) |
 | `redis` | redis + deadpool-redis | Redis/Valkey cache & work queue |
 | `postgres` | sqlx | PostgreSQL storage adapter |
@@ -60,7 +60,7 @@ stygian-graph = { version = "*", features = ["browser", "redis", "extract"] }
 
 ---
 
-## Installation
+## Usage
 
 ### Basic Scraping Pipeline
 

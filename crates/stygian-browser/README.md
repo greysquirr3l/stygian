@@ -25,10 +25,6 @@ for bypassing modern anti-bot systems: Cloudflare, `DataDome`, `PerimeterX`, Aka
 
 ---
 
-## Features
-
----
-
 ## Installation
 
 ```toml
@@ -130,7 +126,7 @@ All config values can be overridden at runtime without recompiling:
 | `STYGIAN_POOL_MIN` | `2` | Minimum warm browser count |
 | `STYGIAN_POOL_MAX` | `10` | Maximum concurrent browsers |
 | `STYGIAN_POOL_ACQUIRE_TIMEOUT_SECS` | `30` | Seconds to wait for pool slot |
-| `STYGIAN_CDP_FIX_MODE` | `addBinding` | `addBinding`, `isolatedworld`, `enabledisable` |
+| `STYGIAN_CDP_FIX_MODE` | `addBinding` | `addBinding`, `isolatedWorld`, `enableDisable`, `none` |
 | `STYGIAN_PROXY` | — | Proxy URL |
 | `STYGIAN_DISABLE_SANDBOX` | auto-detect | `true` to pass `--no-sandbox` (see note below) |
 

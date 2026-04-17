@@ -549,7 +549,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Optional proactive rate limiting via `params.rate_limit` (sliding-window or token-bucket, same shape as GraphQL rate limiter)
   - `params.server.url` overrides `servers[0].url` from the spec at runtime
   - Two new workspace dependencies: `openapiv3 = "1"`, `serde_yaml = "0.9"` (always compiled; pure Rust)
-- `book`: OpenAPI adapter section added to [Built-in Adapters](./graph/adapters.md)
+  - `book`: OpenAPI adapter section added to [Built-in Adapters](./book/src/graph/adapters.md)
 
 ## [0.1.20] - 2026-03-16
 
