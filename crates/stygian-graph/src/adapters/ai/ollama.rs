@@ -51,7 +51,7 @@ impl OllamaConfig {
         Self {
             base_url: DEFAULT_BASE_URL.to_string(),
             model: DEFAULT_MODEL.to_string(),
-            timeout: Duration::from_secs(300),
+            timeout: Duration::from_mins(5),
         }
     }
 

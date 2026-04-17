@@ -76,7 +76,7 @@ impl ScrapingService for FaultInjectingService {
 
 #[test]
 fn circuit_breaker_opens_under_sustained_error_stream() {
-    let cb = CircuitBreakerImpl::new(5, Duration::from_secs(60));
+    let cb = CircuitBreakerImpl::new(5, Duration::from_mins(1));
 
     for _ in 0..5 {
         assert_eq!(
@@ -112,7 +112,7 @@ fn circuit_breaker_closes_after_zero_timeout_and_success() {
 
 #[test]
 fn circuit_breaker_alternating_success_failure_does_not_trip() {
-    let cb = CircuitBreakerImpl::new(10, Duration::from_secs(60));
+    let cb = CircuitBreakerImpl::new(10, Duration::from_mins(1));
 
     // 5 failures interleaved with 5 successes — must not reach threshold
     // because success should reset the counter
@@ -165,7 +165,7 @@ async fn worker_pool_processes_burst_of_tasks() {
     let results = join_all(handles).await;
     let successes = results
         .iter()
-        .filter(|r| r.as_ref().map(Result::is_ok).unwrap_or(false))
+        .filter(|r| r.as_ref().is_ok_and(Result::is_ok))
         .count();
     assert_eq!(successes, 50, "all 50 tasks must succeed");
 }
@@ -280,7 +280,7 @@ async fn worker_pool_concurrent_producers_all_complete() {
         .iter()
         .filter_map(|g| g.as_ref().ok())
         .flat_map(|v| v.iter())
-        .filter(|r| r.as_ref().map(Result::is_ok).unwrap_or(false))
+        .filter(|r| r.as_ref().is_ok_and(Result::is_ok))
         .count();
 
     assert_eq!(total_success, 40, "all 40 submissions must succeed");

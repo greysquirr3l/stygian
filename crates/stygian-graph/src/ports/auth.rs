@@ -71,7 +71,7 @@ impl TokenSet {
             return false;
         };
         let threshold = SystemTime::now()
-            .checked_add(Duration::from_secs(60))
+            .checked_add(Duration::from_mins(1))
             .unwrap_or(SystemTime::UNIX_EPOCH);
         exp <= threshold
     }
@@ -367,7 +367,7 @@ mod tests {
             Ok(Some(TokenSet {
                 access_token: "old_token".to_string(),
                 refresh_token: Some("ref".to_string()),
-                expires_at: SystemTime::now().checked_sub(Duration::from_secs(3600)),
+                expires_at: SystemTime::now().checked_sub(Duration::from_hours(1)),
                 scopes: vec![],
             }))
         }
@@ -398,7 +398,7 @@ mod tests {
         let ts = TokenSet {
             access_token: "tok".to_string(),
             refresh_token: None,
-            expires_at: SystemTime::now().checked_sub(Duration::from_secs(300)),
+            expires_at: SystemTime::now().checked_sub(Duration::from_mins(5)),
             scopes: vec![],
         };
         assert!(ts.is_expired());
@@ -421,7 +421,7 @@ mod tests {
         let ts = TokenSet {
             access_token: "tok".to_string(),
             refresh_token: None,
-            expires_at: SystemTime::now().checked_add(Duration::from_secs(120)),
+            expires_at: SystemTime::now().checked_add(Duration::from_mins(2)),
             scopes: vec![],
         };
         assert!(!ts.is_expired());

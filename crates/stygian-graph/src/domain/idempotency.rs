@@ -36,10 +36,10 @@ use crate::domain::error::Result;
 use crate::ports::{CachePort, ServiceOutput};
 
 /// Default time-to-live for idempotency records (24 hours)
-pub const DEFAULT_TTL: Duration = Duration::from_secs(24 * 60 * 60);
+pub const DEFAULT_TTL: Duration = Duration::from_hours(24);
 
 /// Maximum time-to-live for idempotency records (72 hours)
-pub const MAX_TTL: Duration = Duration::from_secs(72 * 60 * 60);
+pub const MAX_TTL: Duration = Duration::from_hours(72);
 
 /// An idempotency key for a scraping operation.
 ///

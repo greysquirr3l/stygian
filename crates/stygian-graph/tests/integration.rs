@@ -205,7 +205,7 @@ fn registry_deregister_removes_service() {
 
 #[tokio::test]
 async fn dashmap_cache_set_get_delete_lifecycle() {
-    let cache = DashMapCache::new(Duration::from_secs(300));
+    let cache = DashMapCache::new(Duration::from_mins(5));
 
     cache.set("key", "value".into(), None).await.expect("set");
     let val = cache.get("key").await.expect("get");
@@ -218,7 +218,7 @@ async fn dashmap_cache_set_get_delete_lifecycle() {
 
 #[tokio::test]
 async fn dashmap_cache_exists_returns_correct_bool() {
-    let cache = DashMapCache::new(Duration::from_secs(300));
+    let cache = DashMapCache::new(Duration::from_mins(5));
 
     assert!(!cache.exists("missing").await.expect("exists"));
     cache.set("present", "v".into(), None).await.expect("set");
@@ -243,7 +243,7 @@ async fn lru_cache_evicts_beyond_capacity() {
 
 #[test]
 fn circuit_breaker_opens_after_threshold_failures() {
-    let cb = CircuitBreakerImpl::new(3, Duration::from_secs(60));
+    let cb = CircuitBreakerImpl::new(3, Duration::from_mins(1));
     assert_eq!(cb.state(), CircuitState::Closed);
 
     cb.record_failure();
@@ -423,7 +423,7 @@ async fn worker_pool_handles_concurrent_submissions() {
     let results = join_all(handles).await;
     let successes = results
         .iter()
-        .filter(|r| r.as_ref().map(Result::is_ok).unwrap_or(false))
+        .filter(|r| r.as_ref().is_ok_and(Result::is_ok))
         .count();
     assert_eq!(successes, 20, "all 20 submissions must succeed");
 }

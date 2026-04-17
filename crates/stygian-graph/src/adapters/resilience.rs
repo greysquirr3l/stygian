@@ -310,7 +310,7 @@ mod tests {
     async fn test_rate_limiter_allows_within_limit() -> Result<()> {
         let config = RateLimitConfig {
             max_requests: 10,
-            window: Duration::from_secs(60),
+            window: Duration::from_mins(1),
         };
         let limiter = TokenBucketRateLimiter::new(config);
 
@@ -497,7 +497,7 @@ mod retry_tests {
 
     #[test]
     fn delay_for_doubles() {
-        let p = RetryPolicy::new(4, Duration::from_millis(100), Duration::from_secs(60))
+        let p = RetryPolicy::new(4, Duration::from_millis(100), Duration::from_mins(1))
             .with_jitter_ms(0);
         assert_eq!(p.delay_for(0), Duration::from_millis(100));
         assert_eq!(p.delay_for(1), Duration::from_millis(200));
@@ -507,7 +507,7 @@ mod retry_tests {
 
     #[test]
     fn delay_capped_at_max() {
-        let p = RetryPolicy::new(10, Duration::from_millis(1000), Duration::from_secs(3))
+        let p = RetryPolicy::new(10, Duration::from_secs(1), Duration::from_secs(3))
             .with_jitter_ms(0);
         // 1000 * 2^4 = 16_000 ms, capped at 3_000 ms
         assert_eq!(p.delay_for(4), Duration::from_secs(3));
