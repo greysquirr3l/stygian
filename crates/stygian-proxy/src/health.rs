@@ -369,7 +369,7 @@ mod tests {
         let health_map: HealthMap = Arc::new(RwLock::new(HashMap::new()));
         let config = ProxyConfig {
             health_check_url: format!("{}/", server.uri()),
-            health_check_interval: Duration::from_secs(3600),
+            health_check_interval: Duration::from_hours(1),
             health_check_timeout: Duration::from_secs(2),
             ..ProxyConfig::default()
         };
@@ -390,7 +390,7 @@ mod tests {
         let storage = Arc::new(MemoryProxyStore::default());
         let health_map: HealthMap = Arc::new(RwLock::new(HashMap::new()));
         let config = ProxyConfig {
-            health_check_interval: Duration::from_secs(3600),
+            health_check_interval: Duration::from_hours(1),
             ..ProxyConfig::default()
         };
         let token = CancellationToken::new();
