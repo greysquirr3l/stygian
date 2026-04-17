@@ -302,8 +302,9 @@ impl Fingerprint {
     pub fn random() -> Self {
         let seed = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs() ^ u64::from(d.subsec_nanos()))
-            .unwrap_or(0x5a5a_5a5a_5a5a_5a5a);
+            .map_or(0x5a5a_5a5a_5a5a_5a5a, |d| {
+                d.as_secs() ^ u64::from(d.subsec_nanos())
+            });
 
         let res = pick(SCREEN_RESOLUTIONS, rng(seed, 1));
         let tz = pick(TIMEZONES, rng(seed, 2));
@@ -756,8 +757,9 @@ impl FingerprintProfile {
     pub fn random_weighted(name: String) -> Self {
         let seed = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs() ^ u64::from(d.subsec_nanos()))
-            .unwrap_or(0x5a5a_5a5a_5a5a_5a5a);
+            .map_or(0x5a5a_5a5a_5a5a_5a5a, |d| {
+                d.as_secs() ^ u64::from(d.subsec_nanos())
+            });
 
         let device = DeviceProfile::random_weighted(seed);
         Self {

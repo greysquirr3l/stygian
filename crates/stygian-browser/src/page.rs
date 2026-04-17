@@ -559,7 +559,7 @@ impl NodeHandle {
             })?
             .map_err(|e| BrowserError::CdpError {
                 operation: op_resolve,
-                message: e.to_string(),
+                message: format!("{e:?}"),
             })?;
 
         // is non-fatal — it leaves a harmless stale attribute in the DOM).
@@ -582,7 +582,7 @@ impl NodeHandle {
         err: &chromiumoxide::error::CdpError,
         operation: &str,
     ) -> BrowserError {
-        let msg = err.to_string();
+        let msg = format!("{err:?}");
         if msg.contains("Cannot find object with id")
             || msg.contains("context with specified id")
             || msg.contains("Cannot find context")
@@ -719,7 +719,7 @@ impl PageHandle {
                     .await
                     .map_err(|e| BrowserError::NavigationFailed {
                         url: url_owned.clone(),
-                        reason: e.to_string(),
+                        reason: format!("{e:?}"),
                     })?,
             ),
             _ => None,

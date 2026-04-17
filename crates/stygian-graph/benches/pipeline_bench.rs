@@ -107,7 +107,7 @@ fn bench_dashmap_cache_write_heavy(c: &mut Criterion) {
 
     c.bench_function("dashmap_cache_write_heavy_200_entries", |b| {
         b.to_async(&rt).iter(|| async {
-            let cache = DashMapCache::new(Duration::from_secs(300));
+            let cache = DashMapCache::new(Duration::from_mins(5));
             for i in 0u32..200 {
                 let key = format!("k{i}");
                 let val = format!("v{i}");

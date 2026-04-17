@@ -456,10 +456,7 @@ mod tests {
     fn test_resolve_timeout_override() {
         let adapter = BrowserAdapter::new();
         let params = json!({ "timeout_ms": 5000u64 });
-        assert_eq!(
-            adapter.resolve_timeout(&params),
-            Duration::from_millis(5000)
-        );
+        assert_eq!(adapter.resolve_timeout(&params), Duration::from_secs(5));
     }
 
     #[test]
@@ -472,13 +469,13 @@ mod tests {
     #[test]
     fn test_config_builder() {
         let config = BrowserAdapterConfig {
-            timeout: Duration::from_secs(60),
+            timeout: Duration::from_mins(1),
             max_concurrent: 3,
             block_resources: false,
             ..BrowserAdapterConfig::default()
         };
         let adapter = BrowserAdapter::with_config(config);
-        assert_eq!(adapter.config.timeout, Duration::from_secs(60));
+        assert_eq!(adapter.config.timeout, Duration::from_mins(1));
         assert_eq!(adapter.config.max_concurrent, 3);
     }
 

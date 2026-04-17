@@ -53,7 +53,7 @@ impl GeminiConfig {
             api_key,
             model: DEFAULT_MODEL.to_string(),
             max_tokens: 8192,
-            timeout: Duration::from_secs(120),
+            timeout: Duration::from_mins(2),
         }
     }
 

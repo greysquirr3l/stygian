@@ -214,7 +214,7 @@ mod tests {
     fn same_domain_returns_same_proxy() {
         let map = SessionMap::new();
         let id = Uuid::new_v4();
-        map.bind("example.com", id, Duration::from_secs(60));
+        map.bind("example.com", id, Duration::from_mins(1));
         assert_eq!(map.lookup("example.com"), Some(id));
         assert_eq!(map.lookup("example.com"), Some(id));
     }
@@ -224,8 +224,8 @@ mod tests {
         let map = SessionMap::new();
         let id_a = Uuid::new_v4();
         let id_b = Uuid::new_v4();
-        map.bind("a.com", id_a, Duration::from_secs(60));
-        map.bind("b.com", id_b, Duration::from_secs(60));
+        map.bind("a.com", id_a, Duration::from_mins(1));
+        map.bind("b.com", id_b, Duration::from_mins(1));
         assert_eq!(map.lookup("a.com"), Some(id_a));
         assert_eq!(map.lookup("b.com"), Some(id_b));
     }
@@ -245,7 +245,7 @@ mod tests {
     fn purge_removes_expired() {
         let map = SessionMap::new();
         map.bind("expired.com", Uuid::new_v4(), Duration::ZERO);
-        map.bind("active.com", Uuid::new_v4(), Duration::from_secs(300));
+        map.bind("active.com", Uuid::new_v4(), Duration::from_mins(5));
         std::thread::sleep(Duration::from_millis(1));
 
         let removed = map.purge_expired();
@@ -256,7 +256,7 @@ mod tests {
     #[test]
     fn unbind_removes_session() {
         let map = SessionMap::new();
-        map.bind("example.com", Uuid::new_v4(), Duration::from_secs(60));
+        map.bind("example.com", Uuid::new_v4(), Duration::from_mins(1));
         map.unbind("example.com");
         assert_eq!(map.lookup("example.com"), None);
     }
@@ -266,15 +266,15 @@ mod tests {
         let map = SessionMap::new();
         let old_id = Uuid::new_v4();
         let new_id = Uuid::new_v4();
-        map.bind("example.com", old_id, Duration::from_secs(60));
-        map.bind("example.com", new_id, Duration::from_secs(60));
+        map.bind("example.com", old_id, Duration::from_mins(1));
+        map.bind("example.com", new_id, Duration::from_mins(1));
         assert_eq!(map.lookup("example.com"), Some(new_id));
     }
 
     #[test]
     fn policy_domain_default_ttl() {
         let policy = StickyPolicy::domain_default();
-        assert!(matches!(policy, StickyPolicy::Domain { ttl } if ttl == Duration::from_secs(300)));
+        assert!(matches!(policy, StickyPolicy::Domain { ttl } if ttl == Duration::from_mins(5)));
     }
 
     #[test]
@@ -285,10 +285,10 @@ mod tests {
 
     #[test]
     fn policy_serde_roundtrip() -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let policy = StickyPolicy::domain(Duration::from_secs(120));
+        let policy = StickyPolicy::domain(Duration::from_mins(2));
         let json = serde_json::to_string(&policy)?;
         let back: StickyPolicy = serde_json::from_str(&json)?;
-        assert!(matches!(back, StickyPolicy::Domain { ttl } if ttl == Duration::from_secs(120)));
+        assert!(matches!(back, StickyPolicy::Domain { ttl } if ttl == Duration::from_mins(2)));
         Ok(())
     }
 }

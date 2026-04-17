@@ -326,7 +326,7 @@ impl CachePort for BoundedLruCache {
 /// ```
 pub fn global_cache() -> &'static DashMapCache {
     static INSTANCE: LazyLock<DashMapCache> =
-        LazyLock::new(|| DashMapCache::new(Duration::from_secs(300)));
+        LazyLock::new(|| DashMapCache::new(Duration::from_mins(5)));
     &INSTANCE
 }
 
@@ -340,7 +340,7 @@ mod tests {
 
     #[tokio::test]
     async fn dashmap_set_get() -> Result<()> {
-        let c = DashMapCache::new(Duration::from_secs(60));
+        let c = DashMapCache::new(Duration::from_mins(1));
         c.set("a", "1".to_string(), None).await?;
         assert_eq!(c.get("a").await?, Some("1".to_string()));
         Ok(())
@@ -348,14 +348,14 @@ mod tests {
 
     #[tokio::test]
     async fn dashmap_miss_returns_none() -> Result<()> {
-        let c = DashMapCache::new(Duration::from_secs(60));
+        let c = DashMapCache::new(Duration::from_mins(1));
         assert_eq!(c.get("missing").await?, None);
         Ok(())
     }
 
     #[tokio::test]
     async fn dashmap_invalidate() -> Result<()> {
-        let c = DashMapCache::new(Duration::from_secs(60));
+        let c = DashMapCache::new(Duration::from_mins(1));
         c.set("b", "2".to_string(), None).await?;
         c.invalidate("b").await?;
         assert_eq!(c.get("b").await?, None);
@@ -364,7 +364,7 @@ mod tests {
 
     #[tokio::test]
     async fn dashmap_ttl_expires() -> Result<()> {
-        let c = DashMapCache::new(Duration::from_secs(60));
+        let c = DashMapCache::new(Duration::from_mins(1));
         // 1ns TTL — effectively already expired after one tokio yield
         c.set("x", "y".to_string(), Some(Duration::from_nanos(1)))
             .await?;
@@ -375,7 +375,7 @@ mod tests {
 
     #[tokio::test]
     async fn dashmap_exists() -> Result<()> {
-        let c = DashMapCache::new(Duration::from_secs(60));
+        let c = DashMapCache::new(Duration::from_mins(1));
         c.set("e", "z".to_string(), None).await?;
         assert!(c.exists("e").await?);
         assert!(!c.exists("nope").await?);

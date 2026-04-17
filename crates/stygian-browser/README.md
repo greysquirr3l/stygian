@@ -25,10 +25,6 @@ for bypassing modern anti-bot systems: Cloudflare, `DataDome`, `PerimeterX`, Aka
 
 ---
 
-## Features
-
----
-
 ## Installation
 
 ```toml
@@ -65,7 +61,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let handle = pool.acquire().await?;
 
     // Open a tab and navigate
-    let mut page = handle.browser().unwrap().new_page().await?;
+    let browser = handle
+        .browser()
+        .ok_or_else(|| std::io::Error::other("browser handle already released"))?;
+    let mut page = browser.new_page().await?;
     page.navigate(
         "https://example.com",
         WaitUntil::Selector("body".to_string()),
@@ -130,7 +129,7 @@ All config values can be overridden at runtime without recompiling:
 | `STYGIAN_POOL_MIN` | `2` | Minimum warm browser count |
 | `STYGIAN_POOL_MAX` | `10` | Maximum concurrent browsers |
 | `STYGIAN_POOL_ACQUIRE_TIMEOUT_SECS` | `30` | Seconds to wait for pool slot |
-| `STYGIAN_CDP_FIX_MODE` | `addBinding` | `addBinding`, `isolatedworld`, `enabledisable` |
+| `STYGIAN_CDP_FIX_MODE` | `addBinding` | `addBinding`, `isolatedWorld`, `enableDisable`, `none` |
 | `STYGIAN_PROXY` | — | Proxy URL |
 | `STYGIAN_DISABLE_SANDBOX` | auto-detect | `true` to pass `--no-sandbox` (see note below) |
 
@@ -293,7 +292,10 @@ use std::time::Duration;
 # async fn run() -> stygian_browser::error::Result<()> {
 let pool = BrowserPool::new(BrowserConfig::default()).await?;
 let handle = pool.acquire().await?;
-let mut page = handle.browser().unwrap().new_page().await?;
+let browser = handle
+    .browser()
+    .ok_or_else(|| std::io::Error::other("browser handle already released"))?;
+let mut page = browser.new_page().await?;
 
 // Block images/fonts to speed up text-only scraping
 page.set_resource_filter(ResourceFilter::block_media()).await?;
@@ -346,8 +348,8 @@ any IP addresses from leaking via WebRTC peer connections.
 ## FAQ
 
 **Q: Does this work on macOS / Linux / Windows?**  
-A: macOS and Linux are fully supported.  Windows support depends on the `chromiumoxide`
-backend; not actively tested.
+A: macOS and Linux are fully supported. Windows is validated in CI on `windows-latest`,
+with runtime behavior depending on the `chromiumoxide` backend.
 
 **Q: Which Chrome versions are supported?**  
 A: The library targets Chrome 120+.  Older versions may work but stealth scripts are

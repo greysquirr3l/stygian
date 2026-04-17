@@ -137,7 +137,7 @@ impl Default for RateLimitConfig {
     fn default() -> Self {
         Self {
             max_requests: 100,
-            window: Duration::from_secs(60),
+            window: Duration::from_mins(1),
             max_delay_ms: 30_000,
             strategy: RateLimitStrategy::SlidingWindow,
         }

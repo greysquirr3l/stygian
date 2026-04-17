@@ -54,7 +54,7 @@ impl CopilotConfig {
             token,
             model: DEFAULT_MODEL.to_string(),
             max_tokens: 4096,
-            timeout: Duration::from_secs(120),
+            timeout: Duration::from_mins(2),
         }
     }
 

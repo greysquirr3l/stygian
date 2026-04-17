@@ -52,7 +52,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool   = BrowserPool::new(BrowserConfig::default()).await?;
     let handle = pool.acquire().await?;            // < 100 ms from warm pool
 
-    let mut page = handle.browser().expect("browser is available").new_page().await?;
+    let browser = handle
+        .browser()
+        .ok_or_else(|| std::io::Error::other("browser handle already released"))?;
+    let mut page = browser.new_page().await?;
 
     page.navigate(
         "https://example.com",
@@ -87,7 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 | --- | --- |
 | macOS (Apple Silicon / Intel) | Fully supported, actively tested |
 | Linux (x86-64, ARM64) | Fully supported, CI tested |
-| Windows | Depends on `chromiumoxide` backend; not actively tested |
+| Windows | Supported via CI matrix on `windows-latest`; backend behavior depends on `chromiumoxide` |
 | Headless CI (GitHub Actions) | Supported — default config is `headless: true` |
 
 ---

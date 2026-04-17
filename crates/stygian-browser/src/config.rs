@@ -19,6 +19,8 @@ use std::time::Duration;
 use crate::cdp_protection::CdpFixMode;
 
 #[cfg(feature = "stealth")]
+use crate::noise::NoiseConfig;
+#[cfg(feature = "stealth")]
 use crate::webrtc::WebRtcConfig;
 
 // ─── HeadlessMode ───────────────────────────────────────────────────────────────
@@ -227,6 +229,28 @@ pub struct BrowserConfig {
     #[cfg(feature = "stealth")]
     pub webrtc: WebRtcConfig,
 
+    /// Deterministic noise configuration for fingerprint perturbation.
+    ///
+    /// Only active when the `stealth` feature is enabled.
+    #[cfg(feature = "stealth")]
+    pub noise: NoiseConfig,
+
+    /// CDP leak hardening configuration.
+    ///
+    /// Controls removal of Playwright/Puppeteer binding remnants, `Error.stack`
+    /// sanitization, and `console.debug` protection. Only active when the
+    /// `stealth` feature is enabled.
+    #[cfg(feature = "stealth")]
+    pub cdp_hardening: crate::cdp_hardening::CdpHardeningConfig,
+
+    /// Unified fingerprint profile for coherent identity injection.
+    ///
+    /// When set, navigator properties and other identity signals are overridden
+    /// to form a self-consistent browser/device identity. Only active when the
+    /// `stealth` feature is enabled.
+    #[cfg(feature = "stealth")]
+    pub fingerprint_profile: Option<crate::profile::FingerprintProfile>,
+
     /// Anti-detection intensity level.
     pub stealth_level: StealthLevel,
 
@@ -298,6 +322,12 @@ impl Default for BrowserConfig {
             proxy_bypass_list: std::env::var("STYGIAN_PROXY_BYPASS").ok(),
             #[cfg(feature = "stealth")]
             webrtc: WebRtcConfig::default(),
+            #[cfg(feature = "stealth")]
+            noise: NoiseConfig::default(),
+            #[cfg(feature = "stealth")]
+            cdp_hardening: crate::cdp_hardening::CdpHardeningConfig::default(),
+            #[cfg(feature = "stealth")]
+            fingerprint_profile: None,
             disable_sandbox: env_bool("STYGIAN_DISABLE_SANDBOX", is_containerized()),
             stealth_level: StealthLevel::from_env(),
             cdp_fix_mode: CdpFixMode::from_env(),
@@ -600,6 +630,60 @@ impl BrowserConfigBuilder {
         self
     }
 
+    /// Set the fingerprint noise configuration.
+    ///
+    /// # Example
+    /// ```
+    /// use stygian_browser::BrowserConfig;
+    /// use stygian_browser::noise::{NoiseConfig, NoiseSeed};
+    /// let cfg = BrowserConfig::builder()
+    ///     .noise(NoiseConfig { seed: Some(NoiseSeed::from(42_u64)), ..Default::default() })
+    ///     .build();
+    /// assert_eq!(cfg.noise.seed.unwrap().as_u64(), 42);
+    /// ```
+    #[cfg(feature = "stealth")]
+    #[must_use]
+    pub const fn noise(mut self, config: NoiseConfig) -> Self {
+        self.config.noise = config;
+        self
+    }
+
+    /// Set the unified fingerprint profile for coherent identity injection.
+    ///
+    /// # Example
+    /// ```
+    /// use stygian_browser::BrowserConfig;
+    /// use stygian_browser::profile::FingerprintProfile;
+    /// let cfg = BrowserConfig::builder()
+    ///     .fingerprint_profile(FingerprintProfile::windows_chrome_136_rtx3060())
+    ///     .build();
+    /// assert!(cfg.fingerprint_profile.is_some());
+    /// ```
+    #[cfg(feature = "stealth")]
+    #[must_use]
+    pub fn fingerprint_profile(mut self, profile: crate::profile::FingerprintProfile) -> Self {
+        self.config.fingerprint_profile = Some(profile);
+        self
+    }
+
+    /// Set CDP leak hardening configuration.
+    ///
+    /// # Example
+    /// ```
+    /// use stygian_browser::BrowserConfig;
+    /// use stygian_browser::cdp_hardening::CdpHardeningConfig;
+    /// let cfg = BrowserConfig::builder()
+    ///     .cdp_hardening(CdpHardeningConfig { enabled: false, ..Default::default() })
+    ///     .build();
+    /// assert!(!cfg.cdp_hardening.enabled);
+    /// ```
+    #[cfg(feature = "stealth")]
+    #[must_use]
+    pub const fn cdp_hardening(mut self, config: crate::cdp_hardening::CdpHardeningConfig) -> Self {
+        self.config.cdp_hardening = config;
+        self
+    }
+
     /// Append a custom Chrome argument.
     #[must_use]
     pub fn arg(mut self, arg: String) -> Self {
@@ -754,9 +838,9 @@ mod duration_secs {
 // ─── Env helpers (private) ────────────────────────────────────────────────────
 
 fn env_bool(key: &str, default: bool) -> bool {
-    std::env::var(key)
-        .map(|v| !matches!(v.to_lowercase().as_str(), "false" | "0" | "no"))
-        .unwrap_or(default)
+    std::env::var(key).map_or(default, |v| {
+        !matches!(v.to_lowercase().as_str(), "false" | "0" | "no")
+    })
 }
 
 /// Heuristic: returns `true` when the process appears to be running inside a

@@ -181,35 +181,20 @@ impl DatabaseSource {
         let idx = col.ordinal();
 
         match type_name {
-            "INT4" | "INT2" => row
-                .try_get::<i32, _>(idx)
-                .map(|v| json!(v))
-                .unwrap_or(Value::Null),
-            "INT8" => row
-                .try_get::<i64, _>(idx)
-                .map(|v| json!(v))
-                .unwrap_or(Value::Null),
-            "FLOAT4" => row
-                .try_get::<f32, _>(idx)
-                .map(|v| json!(v))
-                .unwrap_or(Value::Null),
-            "FLOAT8" | "NUMERIC" => row
-                .try_get::<f64, _>(idx)
-                .map(|v| json!(v))
-                .unwrap_or(Value::Null),
+            "INT4" | "INT2" => row.try_get::<i32, _>(idx).map_or(Value::Null, |v| json!(v)),
+            "INT8" => row.try_get::<i64, _>(idx).map_or(Value::Null, |v| json!(v)),
+            "FLOAT4" => row.try_get::<f32, _>(idx).map_or(Value::Null, |v| json!(v)),
+            "FLOAT8" | "NUMERIC" => row.try_get::<f64, _>(idx).map_or(Value::Null, |v| json!(v)),
             "BOOL" => row
                 .try_get::<bool, _>(idx)
-                .map(|v| json!(v))
-                .unwrap_or(Value::Null),
+                .map_or(Value::Null, |v| json!(v)),
             "TEXT" | "VARCHAR" | "CHAR" | "NAME" => row
                 .try_get::<String, _>(idx)
-                .map(|v| json!(v))
-                .unwrap_or(Value::Null),
+                .map_or(Value::Null, |v| json!(v)),
             "JSON" | "JSONB" => row.try_get::<Value, _>(idx).unwrap_or(Value::Null),
             _ => row
                 .try_get::<String, _>(idx)
-                .map(|v| json!(v))
-                .unwrap_or(Value::Null),
+                .map_or(Value::Null, |v| json!(v)),
         }
     }
 }

@@ -48,7 +48,8 @@
 //!
 //! ## Stealth Levels
 //!
-//! | ------- |:-----------:|:------:|:-----:|:-----------:|:--------------:|
+//! | Level | Navigator spoof | Canvas noise | WebGL random | CDP protection | Human behavior |
+//! | ----- | --------------- | ------------ | ------------ | -------------- | -------------- |
 //! | `None` | — | — | — | — | — |
 //! | `Basic` | ✓ | — | — | ✓ | — |
 //! | `Advanced` | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -100,6 +101,41 @@ pub mod tls;
 
 #[cfg(feature = "stealth")]
 pub mod webrtc;
+
+#[cfg(feature = "stealth")]
+pub mod noise;
+
+#[cfg(feature = "stealth")]
+pub mod canvas_noise;
+
+#[cfg(feature = "stealth")]
+pub mod webgl_noise;
+
+#[cfg(feature = "stealth")]
+pub mod audio_noise;
+
+#[cfg(feature = "stealth")]
+pub mod rects_noise;
+
+#[cfg(feature = "stealth")]
+pub mod cdp_hardening;
+
+#[cfg(feature = "stealth")]
+pub mod peripheral_stealth;
+
+#[cfg(feature = "stealth")]
+pub mod validation;
+
+pub mod tls_validation;
+
+#[cfg(feature = "stealth")]
+pub mod profile;
+
+#[cfg(feature = "stealth")]
+pub mod navigator_coherence;
+
+#[cfg(feature = "stealth")]
+pub mod timing_noise;
 
 #[cfg(feature = "stealth")]
 pub mod diagnostic;

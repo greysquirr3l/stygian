@@ -365,12 +365,10 @@ fn parse_sitemapindex(xml: &str) -> Result<Vec<String>> {
                     _ => {}
                 }
             }
-            Ok(Event::Text(ref t)) => {
-                if in_loc {
-                    let text = t.unescape().unwrap_or_default().trim().to_string();
-                    if !text.is_empty() {
-                        urls.push(text);
-                    }
+            Ok(Event::Text(ref t)) if in_loc => {
+                let text = t.unescape().unwrap_or_default().trim().to_string();
+                if !text.is_empty() {
+                    urls.push(text);
                 }
             }
             Ok(Event::End(ref e)) => {

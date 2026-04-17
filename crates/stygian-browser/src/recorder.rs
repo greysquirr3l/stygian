@@ -389,12 +389,12 @@ impl SessionRecorder {
 
     /// Return the number of buffered CDP events.
     pub fn event_count(&self) -> usize {
-        self.events.lock().map(|g| g.len()).unwrap_or(0)
+        self.events.lock().map_or(0, |g| g.len())
     }
 
     /// Return the number of completed network entries.
     pub fn network_entry_count(&self) -> usize {
-        self.completed.lock().map(|g| g.len()).unwrap_or(0)
+        self.completed.lock().map_or(0, |g| g.len())
     }
 
     // ── Network event handlers ─────────────────────────────────────────────────

@@ -800,7 +800,7 @@ mod tests {
     fn parse_rate_limit_config_defaults() {
         let cfg = parse_rate_limit_config(&json!({}));
         assert_eq!(cfg.max_requests, 100);
-        assert_eq!(cfg.window, Duration::from_secs(60));
+        assert_eq!(cfg.window, Duration::from_mins(1));
         assert_eq!(cfg.strategy, RateLimitStrategy::SlidingWindow);
     }
 

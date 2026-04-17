@@ -264,7 +264,7 @@ impl Default for ProxyConfig {
     fn default() -> Self {
         Self {
             health_check_url: "https://httpbin.org/ip".into(),
-            health_check_interval: Duration::from_secs(60),
+            health_check_interval: Duration::from_mins(1),
             health_check_timeout: Duration::from_secs(5),
             circuit_open_threshold: 5,
             circuit_half_open_after: Duration::from_secs(30),

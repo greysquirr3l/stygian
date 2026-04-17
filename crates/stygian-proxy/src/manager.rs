@@ -273,7 +273,7 @@ impl ProxyManager {
         let sessions = self.sessions.clone();
         let purge_token = token.clone();
         let purge_handle = tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+            let mut interval = tokio::time::interval(std::time::Duration::from_mins(1));
             loop {
                 tokio::select! {
                     _ = interval.tick() => { sessions.purge_expired(); }
@@ -654,7 +654,7 @@ mod tests {
         let mgr = ProxyManager::with_round_robin(
             store,
             ProxyConfig {
-                health_check_interval: Duration::from_secs(3600),
+                health_check_interval: Duration::from_hours(1),
                 ..ProxyConfig::default()
             },
         )

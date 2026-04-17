@@ -36,8 +36,7 @@ const TARGET_URL: &str = "https://pixelscan.net/fingerprint-check";
 fn epoch_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
+        .map_or(0, |d| d.as_secs())
 }
 
 // ─── JS extraction scripts ────────────────────────────────────────────────────
@@ -214,7 +213,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .pool(PoolConfig {
             min_size: 1,
             max_size: 2,
-            idle_timeout: Duration::from_secs(60),
+            idle_timeout: Duration::from_mins(1),
             acquire_timeout: Duration::from_secs(30),
         })
         .build();
@@ -233,7 +232,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // the Angular app has rendered the verdict cards before we begin extraction.
     eprintln!("[pixelscan] navigating...");
     let t0 = Instant::now();
-    page.navigate(TARGET_URL, WaitUntil::NetworkIdle, Duration::from_secs(60))
+    page.navigate(TARGET_URL, WaitUntil::NetworkIdle, Duration::from_mins(1))
         .await?;
     let load_time_ms = u64::try_from(t0.elapsed().as_millis()).unwrap_or(u64::MAX);
     eprintln!("[pixelscan] loaded in {load_time_ms}ms, waiting for cards...");

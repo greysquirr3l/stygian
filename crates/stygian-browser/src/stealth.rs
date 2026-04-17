@@ -500,6 +500,7 @@ impl StealthProfile {
 /// # Ok(())
 /// # }
 /// ```
+#[allow(clippy::too_many_lines)]
 pub async fn apply_stealth_to_page(
     page: &chromiumoxide::Page,
     config: &crate::config::BrowserConfig,
@@ -533,6 +534,20 @@ pub async fn apply_stealth_to_page(
         return Ok(());
     }
 
+    // ── CDP hardening — runs FIRST to clean up binding remnants ───────────────
+    #[cfg(feature = "stealth")]
+    {
+        let hardening_script = crate::cdp_hardening::cdp_hardening_script(&config.cdp_hardening);
+        if !hardening_script.is_empty() {
+            inject_one(
+                page,
+                "AddScriptToEvaluateOnNewDocument(cdp-hardening)",
+                hardening_script,
+            )
+            .await?;
+        }
+    }
+
     // ── Basic and above ────────────────────────────────────────────────────────
     let cdp_script =
         CdpProtection::new(config.cdp_fix_mode, config.source_url.clone()).build_injection_script();
@@ -561,6 +576,14 @@ pub async fn apply_stealth_to_page(
     // ── Advanced only ──────────────────────────────────────────────────────────
     if config.stealth_level == StealthLevel::Advanced {
         let fp = crate::fingerprint::Fingerprint::random();
+        // Build one engine once so all spoofed surfaces share the same per-session seed.
+        // Prefer the fingerprint profile seed when present to keep profile identity coherent.
+        let profile_seed = config.fingerprint_profile.as_ref().map(|p| p.noise_seed);
+        let noise_seed = profile_seed
+            .or(config.noise.seed)
+            .unwrap_or_else(crate::noise::NoiseSeed::random);
+        let noise_engine = crate::noise::NoiseEngine::new(noise_seed);
+        let noise_seed = noise_engine.seed();
         let fp_script = crate::fingerprint::inject_fingerprint(&fp);
         inject_one(
             page,
@@ -577,6 +600,96 @@ pub async fn apply_stealth_to_page(
                 webrtc_script,
             )
             .await?;
+        }
+
+        if config.noise.canvas_enabled {
+            let canvas_script = crate::canvas_noise::canvas_noise_script(&noise_engine);
+            inject_one(
+                page,
+                "AddScriptToEvaluateOnNewDocument(canvas-noise)",
+                canvas_script,
+            )
+            .await?;
+        }
+
+        // WebGL, audio, and rects noise (T39, T40, T41)
+        if config.noise.webgl_enabled {
+            let webgl_script = crate::webgl_noise::webgl_noise_script(
+                &crate::webgl_noise::WebGlProfile::nvidia_rtx_3060(),
+                &noise_engine,
+            );
+            inject_one(
+                page,
+                "AddScriptToEvaluateOnNewDocument(webgl-noise)",
+                webgl_script,
+            )
+            .await?;
+        }
+
+        if config.noise.audio_enabled {
+            let audio_script = crate::audio_noise::audio_noise_script(&noise_engine);
+            inject_one(
+                page,
+                "AddScriptToEvaluateOnNewDocument(audio-noise)",
+                audio_script,
+            )
+            .await?;
+        }
+
+        if config.noise.rects_enabled {
+            let rects_script = crate::rects_noise::rects_noise_script(&noise_engine);
+            inject_one(
+                page,
+                "AddScriptToEvaluateOnNewDocument(rects-noise)",
+                rects_script,
+            )
+            .await?;
+        }
+
+        // Navigator coherence (T43) — inject only when a fingerprint profile is configured
+        if let Some(ref fp) = config.fingerprint_profile {
+            let nav_script = crate::navigator_coherence::navigator_coherence_script(fp);
+            inject_one(
+                page,
+                "AddScriptToEvaluateOnNewDocument(navigator-coherence)",
+                nav_script,
+            )
+            .await?;
+        }
+
+        // Timing noise (T44)
+        {
+            let timing_cfg = crate::timing_noise::TimingNoiseConfig {
+                enabled: true,
+                jitter_ms: 0.3,
+                seed: noise_seed,
+            };
+            let timing_script = crate::timing_noise::timing_noise_script(&timing_cfg);
+            inject_one(
+                page,
+                "AddScriptToEvaluateOnNewDocument(timing-noise)",
+                timing_script,
+            )
+            .await?;
+        }
+
+        // Peripheral stealth (T47)
+        {
+            let peripheral_cfg =
+                crate::peripheral_stealth::PeripheralStealthConfig::default_with_seed(noise_seed);
+            let peripheral_script =
+                crate::peripheral_stealth::peripheral_stealth_script_with_profile(
+                    &peripheral_cfg,
+                    config.fingerprint_profile.as_ref(),
+                );
+            if !peripheral_script.is_empty() {
+                inject_one(
+                    page,
+                    "AddScriptToEvaluateOnNewDocument(peripheral-stealth)",
+                    peripheral_script,
+                )
+                .await?;
+            }
         }
     }
 

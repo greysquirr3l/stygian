@@ -38,8 +38,7 @@ use stygian_browser::{BrowserConfig, BrowserPool, WaitUntil};
 fn epoch_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
+        .map_or(0, |d| d.as_secs())
 }
 
 // ─── main ─────────────────────────────────────────────────────────────────────
@@ -61,7 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .pool(PoolConfig {
             min_size: 1,
             max_size: 2,
-            idle_timeout: Duration::from_secs(60),
+            idle_timeout: Duration::from_mins(1),
             acquire_timeout: Duration::from_secs(30),
         })
         .build();

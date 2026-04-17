@@ -38,6 +38,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `#[allow(clippy::expect_used)]` suppressions removed, return types corrected
 - `stygian-browser (config)`: `PoisonError` recovery in `RwLock` guards now emits
   `tracing::warn!` before recovering instead of recovering silently
+- `stygian-browser`: resolve CI test and doctest regressions in `cdp_hardening`,
+  `peripheral_stealth`, and `profile` modules; test assertions aligned with generated JS
+  and `validate()` rules
+- `stygian-browser`: fix rustdoc intra-doc links (`[Type]` references) that caused the
+  documentation CI job to fail with `-D warnings`
+- `stygian-browser`: align stealth seed coherence and validation tests with updated
+  `FingerprintProfile::validate()` rules
+- `stygian-browser`: simplify MCP target selection logic to resolve `clippy::pedantic`
+  lint
 - `workspace`: `core-foundation` duplicate version (0.9.x and 0.10.x, both transitive
   via `chromiumoxide`/`reqwest`) added to `deny.toml` skip list to unblock `cargo deny`
   CI — no direct upgrade path available upstream
@@ -540,7 +549,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Optional proactive rate limiting via `params.rate_limit` (sliding-window or token-bucket, same shape as GraphQL rate limiter)
   - `params.server.url` overrides `servers[0].url` from the spec at runtime
   - Two new workspace dependencies: `openapiv3 = "1"`, `serde_yaml = "0.9"` (always compiled; pure Rust)
-- `book`: OpenAPI adapter section added to [Built-in Adapters](./graph/adapters.md)
+  - `book`: OpenAPI adapter section added to [Built-in Adapters](./book/src/graph/adapters.md)
 
 ## [0.1.20] - 2026-03-16
 

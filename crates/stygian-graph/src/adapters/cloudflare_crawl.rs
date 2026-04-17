@@ -57,7 +57,7 @@ const CF_API_BASE: &str = "https://api.cloudflare.com/client/v4/accounts";
 const DEFAULT_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 /// Default maximum time to wait for a crawl job to complete.
-const DEFAULT_JOB_TIMEOUT: Duration = Duration::from_secs(300);
+const DEFAULT_JOB_TIMEOUT: Duration = Duration::from_mins(5);
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -159,7 +159,7 @@ impl CloudflareCrawlAdapter {
     /// ```
     pub fn with_config(config: CloudflareCrawlConfig) -> Result<Self> {
         let client = Client::builder()
-            .timeout(Duration::from_secs(60))
+            .timeout(Duration::from_mins(1))
             .build()
             .map_err(|e| ServiceError::Unavailable(format!("reqwest client init failed: {e}")))?;
         Ok(Self { client, config })
@@ -552,7 +552,7 @@ mod tests {
 
         let adapter = CloudflareCrawlAdapter::with_config(CloudflareCrawlConfig {
             poll_interval: Duration::from_secs(3),
-            job_timeout: Duration::from_secs(120),
+            job_timeout: Duration::from_mins(2),
         })
         .expect("test: client init");
 

@@ -106,17 +106,20 @@ use std::time::Duration;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = BrowserPool::new(BrowserConfig::default()).await?;
     let handle = pool.acquire().await?;
-    
-    let mut page = handle.browser().new_page().await?;
+
+    let browser = handle
+        .browser()
+        .ok_or_else(|| std::io::Error::other("browser handle already released"))?;
+    let mut page = browser.new_page().await?;
     page.navigate(
         "https://example.com",
         WaitUntil::Selector("body".to_string()),
         Duration::from_secs(30),
     ).await?;
-    
+
     let html = page.content().await?;
     println!("Page loaded: {} bytes", html.len());
-    
+
     handle.release().await;
     Ok(())
 }
