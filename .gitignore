@@ -91,3 +91,4 @@ crates/stygian-proxy/docs
 PROGRESS-*.md
 docs/spider-gap-analysis.md
 .papertowelignore
+reference_projects/
