@@ -330,6 +330,65 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
             "required": ["session_id", "url", "root_selector", "schema"]
         }
     }));
+    tools.push(json!({
+        "name": "browser_extract_with_fallback",
+        "description": "Like browser_extract but accepts multiple root selectors (tried in order). Returns the first selector that produces results. Useful when a site layout may have changed and you want to try modern markup before falling back to legacy selectors.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": { "type": "string" },
+                "url": { "type": "string" },
+                "root_selectors": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "CSS selectors tried in order; the first that produces results is used.",
+                    "minItems": 1
+                },
+                "schema": {
+                    "type": "object",
+                    "description": "Map of field name → { \"selector\": \"...\", \"attr\": \"...\", \"required\": true/false }.",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                            "selector": { "type": "string" },
+                            "attr": { "type": "string" },
+                            "required": { "type": "boolean", "default": false }
+                        },
+                        "required": ["selector"]
+                    }
+                },
+                "timeout_secs": { "type": "number", "default": 30 }
+            },
+            "required": ["session_id", "url", "root_selectors", "schema"]
+        }
+    }));
+    tools.push(json!({
+        "name": "browser_extract_resilient",
+        "description": "Like browser_extract but skips root nodes where *all* required schema fields are absent (partial records). Useful for heterogeneous lists where some items lack an optional field.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": { "type": "string" },
+                "url": { "type": "string" },
+                "root_selector": { "type": "string", "description": "CSS selector whose matches become the root of each result object." },
+                "schema": {
+                    "type": "object",
+                    "description": "Map of field name → { \"selector\": \"...\", \"attr\": \"...\", \"required\": true/false }.",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                            "selector": { "type": "string" },
+                            "attr": { "type": "string" },
+                            "required": { "type": "boolean", "default": false }
+                        },
+                        "required": ["selector"]
+                    }
+                },
+                "timeout_secs": { "type": "number", "default": 30 }
+            },
+            "required": ["session_id", "url", "root_selector", "schema"]
+        }
+    }));
     // Advertise browser_find_similar only when the similarity feature is compiled in.
     #[cfg(feature = "similarity")]
     tools.push(json!({
@@ -628,6 +687,8 @@ impl McpBrowserServer {
             "pool_stats" => Ok(self.tool_pool_stats()),
             "browser_query" => self.tool_browser_query(&args).await,
             "browser_extract" => self.tool_browser_extract(&args).await,
+            "browser_extract_with_fallback" => self.tool_browser_extract_with_fallback(&args).await,
+            "browser_extract_resilient" => self.tool_browser_extract_resilient(&args).await,
             #[cfg(feature = "similarity")]
             "browser_find_similar" => self.tool_browser_find_similar(&args).await,
             "browser_warmup" => self.tool_browser_warmup(&args).await,
@@ -1538,6 +1599,210 @@ impl McpBrowserServer {
     ///
     /// Returns `None` if any required field is absent; otherwise returns a
     /// JSON object with one entry per field.
+    // ── browser_extract_with_fallback ─────────────────────────────────────────
+
+    /// Extract using the first `root_selectors` entry that yields results.
+    async fn tool_browser_extract_with_fallback(&self, args: &Value) -> Result<Value> {
+        let session_id = Self::require_str(args, "session_id")?;
+        let url = Self::require_str(args, "url")?;
+        let timeout_secs = args
+            .get("timeout_secs")
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(30.0);
+
+        let selectors: Vec<String> = args
+            .get("root_selectors")
+            .and_then(Value::as_array)
+            .ok_or_else(|| {
+                BrowserError::ConfigError(
+                    "Missing or non-array 'root_selectors' argument".to_string(),
+                )
+            })?
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect();
+
+        if selectors.is_empty() {
+            return Err(BrowserError::ConfigError(
+                "root_selectors must contain at least one entry".to_string(),
+            ));
+        }
+
+        let schema_obj = args
+            .get("schema")
+            .and_then(|v| v.as_object())
+            .ok_or_else(|| {
+                BrowserError::ConfigError("Missing or non-object 'schema' argument".to_string())
+            })?;
+
+        let schema: Vec<(String, ExtractFieldDef)> = schema_obj
+            .iter()
+            .filter_map(|(name, spec)| {
+                let selector = spec
+                    .get("selector")
+                    .and_then(serde_json::Value::as_str)
+                    .map(ToString::to_string)?;
+                let attr = spec
+                    .get("attr")
+                    .and_then(serde_json::Value::as_str)
+                    .map(ToString::to_string);
+                let required = spec
+                    .get("required")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
+                Some((
+                    name.clone(),
+                    ExtractFieldDef {
+                        selector,
+                        attr,
+                        required,
+                    },
+                ))
+            })
+            .collect();
+
+        let session_arc = self.session_handle(&session_id).await?;
+        let mut page = session_arc
+            .lock()
+            .await
+            .as_ref()
+            .ok_or_else(|| {
+                BrowserError::ConfigError(format!("Session already released: {session_id}"))
+            })?
+            .browser()
+            .ok_or_else(|| {
+                BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
+            })?
+            .new_page()
+            .await?;
+
+        page.navigate(
+            &url,
+            WaitUntil::DomContentLoaded,
+            Duration::from_secs_f64(timeout_secs),
+        )
+        .await?;
+
+        let mut matched_selector = String::new();
+        let mut results: Vec<Value> = vec![];
+
+        for selector in &selectors {
+            let roots = page.query_selector_all(selector).await?;
+            if roots.is_empty() {
+                continue;
+            }
+            matched_selector = selector.clone();
+            results.reserve(roots.len());
+            for root in &roots {
+                if let Some(obj) = Self::extract_record(root, &schema).await {
+                    results.push(Value::Object(obj));
+                }
+            }
+            break;
+        }
+
+        page.close().await?;
+
+        Ok(json!({
+            "url":              url,
+            "matched_selector": matched_selector,
+            "tried_selectors":  selectors,
+            "count":            results.len(),
+            "results":          results
+        }))
+    }
+
+    // ── browser_extract_resilient ─────────────────────────────────────────────
+
+    /// Extract from every root node matching `root_selector`, silently
+    /// dropping nodes where *all* required schema fields are absent.
+    async fn tool_browser_extract_resilient(&self, args: &Value) -> Result<Value> {
+        let session_id = Self::require_str(args, "session_id")?;
+        let url = Self::require_str(args, "url")?;
+        let root_selector = Self::require_str(args, "root_selector")?;
+        let timeout_secs = args
+            .get("timeout_secs")
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(30.0);
+
+        let schema_obj = args
+            .get("schema")
+            .and_then(|v| v.as_object())
+            .ok_or_else(|| {
+                BrowserError::ConfigError("Missing or non-object 'schema' argument".to_string())
+            })?;
+
+        let schema: Vec<(String, ExtractFieldDef)> = schema_obj
+            .iter()
+            .filter_map(|(name, spec)| {
+                let selector = spec
+                    .get("selector")
+                    .and_then(serde_json::Value::as_str)
+                    .map(ToString::to_string)?;
+                let attr = spec
+                    .get("attr")
+                    .and_then(serde_json::Value::as_str)
+                    .map(ToString::to_string);
+                let required = spec
+                    .get("required")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
+                Some((
+                    name.clone(),
+                    ExtractFieldDef {
+                        selector,
+                        attr,
+                        required,
+                    },
+                ))
+            })
+            .collect();
+
+        let session_arc = self.session_handle(&session_id).await?;
+        let mut page = session_arc
+            .lock()
+            .await
+            .as_ref()
+            .ok_or_else(|| {
+                BrowserError::ConfigError(format!("Session already released: {session_id}"))
+            })?
+            .browser()
+            .ok_or_else(|| {
+                BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
+            })?
+            .new_page()
+            .await?;
+
+        page.navigate(
+            &url,
+            WaitUntil::DomContentLoaded,
+            Duration::from_secs_f64(timeout_secs),
+        )
+        .await?;
+
+        let roots = page.query_selector_all(&root_selector).await?;
+        // Resilient mode: `extract_record` returns None when a required field is
+        // missing.  We count those as "skipped" rather than bubbling an error.
+        let mut results: Vec<Value> = Vec::with_capacity(roots.len());
+        let mut skipped: usize = 0;
+        for root in &roots {
+            match Self::extract_record(root, &schema).await {
+                Some(obj) => results.push(Value::Object(obj)),
+                None => skipped += 1,
+            }
+        }
+
+        page.close().await?;
+
+        Ok(json!({
+            "url":           url,
+            "root_selector": root_selector,
+            "count":         results.len(),
+            "skipped":       skipped,
+            "results":       results
+        }))
+    }
+
     async fn extract_record(
         root: &crate::page::NodeHandle,
         schema: &[(String, ExtractFieldDef)],
@@ -1617,6 +1882,50 @@ mod tests {
                 .any(|t| t.get("name").and_then(|n| n.as_str()) == Some("browser_extract")),
             "TOOL_DEFINITIONS must contain browser_extract"
         );
+    }
+
+    #[test]
+    fn tool_defs_include_browser_extract_with_fallback() {
+        let defs = &*TOOL_DEFINITIONS;
+        assert!(
+            defs.iter()
+                .any(|t| t.get("name").and_then(|n| n.as_str())
+                    == Some("browser_extract_with_fallback")),
+            "TOOL_DEFINITIONS must contain browser_extract_with_fallback"
+        );
+    }
+
+    #[test]
+    fn tool_defs_include_browser_extract_resilient() {
+        let defs = &*TOOL_DEFINITIONS;
+        assert!(
+            defs.iter().any(
+                |t| t.get("name").and_then(|n| n.as_str()) == Some("browser_extract_resilient")
+            ),
+            "TOOL_DEFINITIONS must contain browser_extract_resilient"
+        );
+    }
+
+    #[test]
+    fn browser_extract_with_fallback_requires_root_selectors()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let defs = &*TOOL_DEFINITIONS;
+        let def = defs
+            .iter()
+            .find(|t| {
+                t.get("name").and_then(|n| n.as_str()) == Some("browser_extract_with_fallback")
+            })
+            .ok_or("browser_extract_with_fallback must be in TOOL_DEFINITIONS")?;
+        let required = def
+            .get("inputSchema")
+            .and_then(|s| s.get("required"))
+            .and_then(Value::as_array)
+            .ok_or("browser_extract_with_fallback inputSchema missing 'required' array")?;
+        assert!(
+            required.iter().any(|v| v == "root_selectors"),
+            "root_selectors must be required in browser_extract_with_fallback"
+        );
+        Ok(())
     }
 
     #[test]
