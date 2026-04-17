@@ -24,7 +24,7 @@
 //! let cfg = PeripheralStealthConfig::default_with_seed(NoiseSeed::from(1_u64));
 //! let js = peripheral_stealth_script(&cfg);
 //! assert!(js.contains("document.hidden"));
-//! assert!(js.contains("history.length"));
+//! assert!(js.contains("History.prototype"));
 //! ```
 
 use serde::{Deserialize, Serialize};
@@ -315,6 +315,7 @@ const IFRAME_INNER_WIDTH_SECTION: &str = r"  // ── 1. iframe innerWidth mism
   } catch(e) {}";
 
 const VISIBILITY_SECTION: &str = r"  // ── 2. Document visibility ─────────────────────────────────────────────
+  // Ensures document.hidden and document.visibilityState are properly spoofed.
   try {
     Object.defineProperty(Document.prototype, 'hidden', {
       get: function() { return false; }, configurable: false, enumerable: true,

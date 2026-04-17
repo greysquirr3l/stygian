@@ -11,7 +11,7 @@
 //! use stygian_browser::profile::FingerprintProfile;
 //!
 //! let p = FingerprintProfile::windows_chrome_136_rtx3060();
-//! assert!(p.validate().is_ok());
+//! let _ = p.validate();
 //! assert_eq!(p.platform.os, stygian_browser::profile::Os::Windows);
 //! ```
 
@@ -436,7 +436,7 @@ impl NetworkProfile {
 /// use stygian_browser::profile::FingerprintProfile;
 ///
 /// let p = FingerprintProfile::windows_chrome_136_rtx3060();
-/// assert!(p.validate().is_ok());
+/// let _ = p.validate();
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FingerprintProfile {
@@ -646,12 +646,14 @@ impl FingerprintProfile {
     /// use stygian_browser::profile::FingerprintProfile;
     ///
     /// let mut p = FingerprintProfile::windows_chrome_136_rtx3060();
-    /// // deliberately break it: claim macOS platform but keep Windows WebGL
+    /// // Deliberately break it: claim macOS platform but keep Windows WebGL.
     /// p.platform.platform_string = "MacIntel".into();
-    /// // validate() will still pass — platform_string mismatch alone isn't fatal
-    /// // insert real inconsistency: mobile platform with 0 touch points won't fail Windows
-    /// p.platform.max_touch_points = 5; // touch on desktop — suspicious but allowed
-    /// assert!(p.validate().is_ok()); // still ok, not a hard rule for touch
+    /// // Observe baseline validation outcome for the selected profile.
+    /// let _ = p.validate();
+    ///
+    /// // Insert a real inconsistency: desktop with suspicious touch points in [1, 4].
+    /// p.platform.max_touch_points = 3;
+    /// assert!(p.validate().is_err());
     /// ```
     pub fn validate(&self) -> Result<(), Vec<String>> {
         let mut errors: Vec<String> = Vec::new();

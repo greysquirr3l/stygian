@@ -206,6 +206,8 @@ pub fn cdp_hardening_script(config: &CdpHardeningConfig) -> String {
 
 /// Error.prototype.stack sanitization section.
 const ERROR_STACK_SECTION: &str = r"  // ── 2. Sanitize Error.prototype.stack ───────────────────────────────
+  // Detects and removes frames from: __puppeteer, __playwright, pptr:, puppeteer-eval,
+  // playwright-eval, and chrome-extension:// URLs.
   try {
     var _origStackDesc = Object.getOwnPropertyDescriptor(Error.prototype, 'stack');
     if (_origStackDesc && _origStackDesc.get) {
