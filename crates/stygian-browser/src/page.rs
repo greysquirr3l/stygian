@@ -1434,6 +1434,117 @@ impl PageHandle {
             .await
             .map_err(BrowserError::ExtractionFailed)
     }
+
+    /// Try each selector in `selectors` in order and return the extracted
+    /// results from the **first** selector that matches at least one node.
+    ///
+    /// This is useful when a page may use different markup across versions or
+    /// A/B variants — supply the preferred selector first and progressively
+    /// wider fallbacks afterwards.
+    ///
+    /// Returns an empty `Vec` only when *all* selectors match zero nodes
+    /// (i.e. the element is genuinely absent from the page).  A non-empty
+    /// intermediate selector result that then fails during extraction **will**
+    /// return an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::QuerySelectorFailed`] if the CDP call fails, or
+    /// [`BrowserError::ExtractionFailed`] if a matched node fails extraction.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use stygian_browser::extract::Extract;
+    ///
+    /// #[derive(Extract)]
+    /// struct Headline { title: String }
+    ///
+    /// # async fn run(page: &stygian_browser::PageHandle) -> stygian_browser::error::Result<()> {
+    /// // Try modern selector first, fall back to legacy markup.
+    /// let items = page
+    ///     .extract_all_with_fallback::<Headline>(&["h2.headline", "h2.title", "h2"])
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn extract_all_with_fallback<T>(&self, selectors: &[&str]) -> Result<Vec<T>>
+    where
+        T: crate::extract::Extractable,
+    {
+        use futures::future::try_join_all;
+
+        for &selector in selectors {
+            let nodes = self.query_selector_all(selector).await?;
+            if nodes.is_empty() {
+                continue;
+            }
+            return try_join_all(nodes.iter().map(|n| T::extract_from(n)))
+                .await
+                .map_err(BrowserError::ExtractionFailed);
+        }
+
+        Ok(vec![])
+    }
+
+    /// Extract from every node matching `selector`, **skipping** nodes where
+    /// a required field is absent (i.e. [`ExtractionError::Missing`]).
+    ///
+    /// Unlike [`extract_all`], this method is lenient about structural
+    /// mismatches: nodes that fail with [`ExtractionError::Missing`] are
+    /// silently dropped from the result set.  All other extraction errors
+    /// (CDP failures, stale nodes, nested errors) still propagate as hard
+    /// failures.
+    ///
+    /// This is useful when scraping heterogeneous lists where some items
+    /// lack an optional field that your struct treats as required.
+    ///
+    /// [`extract_all`]: Self::extract_all
+    /// [`ExtractionError::Missing`]: crate::extract::ExtractionError::Missing
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::QuerySelectorFailed`] if the CDP call fails, or
+    /// [`BrowserError::ExtractionFailed`] for non-`Missing` extraction errors.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use stygian_browser::extract::Extract;
+    ///
+    /// #[derive(Extract)]
+    /// struct Price { amount: String }
+    ///
+    /// # async fn run(page: &stygian_browser::PageHandle) -> stygian_browser::error::Result<()> {
+    /// // Products without a price tag are silently skipped.
+    /// let prices = page.extract_resilient::<Price>(".product").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn extract_resilient<T>(&self, selector: &str) -> Result<Vec<T>>
+    where
+        T: crate::extract::Extractable,
+    {
+        use crate::extract::ExtractionError;
+
+        let nodes = self.query_selector_all(selector).await?;
+        let mut results = Vec::with_capacity(nodes.len());
+
+        for node in &nodes {
+            match T::extract_from(node).await {
+                Ok(item) => results.push(item),
+                Err(ExtractionError::Missing { .. }) => {
+                    tracing::debug!(
+                        selector,
+                        "extract_resilient: skipping node with missing required field"
+                    );
+                }
+                Err(e) => return Err(BrowserError::ExtractionFailed(e)),
+            }
+        }
+
+        Ok(results)
+    }
 }
 
 // ─── similarity feature ──────────────────────────────────────────────────────
@@ -1952,6 +2063,36 @@ mod tests {
         fn assert_sync<T: Sync>() {}
         assert_send::<PageHandle>();
         assert_sync::<PageHandle>();
+    }
+
+    /// Verify the resilient extractor correctly classifies `ExtractionError`
+    /// variants — `Missing` must be treated as "skip", others as hard errors.
+    #[cfg(feature = "extract")]
+    #[test]
+    fn extraction_error_missing_is_skippable() {
+        use crate::extract::ExtractionError;
+
+        let missing = ExtractionError::Missing {
+            field: "title",
+            selector: "h1",
+        };
+        assert!(
+            matches!(missing, ExtractionError::Missing { .. }),
+            "ExtractionError::Missing should be the skip variant"
+        );
+
+        // Non-Missing variants should NOT match the skip pattern
+        let nested = ExtractionError::Nested {
+            field: "link",
+            source: Box::new(ExtractionError::Missing {
+                field: "href",
+                selector: "a",
+            }),
+        };
+        assert!(
+            !matches!(nested, ExtractionError::Missing { .. }),
+            "ExtractionError::Nested must not match Missing"
+        );
     }
 
     /// `Option<u16>` are pure-logic invariants testable without a live browser.
