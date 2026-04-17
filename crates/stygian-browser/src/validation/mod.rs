@@ -8,9 +8,9 @@
 //!
 //! | Tier | Services | Rate limits | CI-safe |
 //! |------|----------|------------|---------|
-//! | 1 | [`CreepJs`], [`BrowserScan`] | None (open) | Yes |
-//! | 2 | [`Kasada`], [`Cloudflare`], [`Akamai`] | Yes | `#[ignore]` |
-//! | 3 | [`FingerprintJs`], [`DataDome`], [`PerimeterX`] | Account required | Manual |
+//! | 1 | [`ValidationTarget::CreepJs`], [`ValidationTarget::BrowserScan`] | None (open) | Yes |
+//! | 2 | [`ValidationTarget::Kasada`], [`ValidationTarget::Cloudflare`], [`ValidationTarget::Akamai`] | Yes | `#[ignore]` |
+//! | 3 | [`ValidationTarget::FingerprintJs`], [`ValidationTarget::DataDome`], [`ValidationTarget::PerimeterX`] | Account required | Manual |
 //!
 //! # Example
 //!

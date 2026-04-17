@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 /// A 64-bit seed that drives all deterministic noise generators.
 ///
 /// Construct via [`NoiseSeed::random()`] for per-session uniqueness or
-/// [`NoiseSeed::from(u64)`] for reproducible testing.
+/// `NoiseSeed::from(<u64>)` for reproducible testing.
 ///
 /// # Example
 ///
