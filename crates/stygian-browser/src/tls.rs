@@ -2423,3 +2423,466 @@ mod tests {
         }
     }
 }
+
+// ── Profile Pack abstraction (T50) ───────────────────────────────────────────
+
+/// Browser family for a TLS profile pack.
+///
+/// # Example
+///
+/// ```
+/// use stygian_browser::tls::BrowserFamily;
+///
+/// assert_eq!(BrowserFamily::Chrome.as_str(), "chrome");
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum BrowserFamily {
+    /// Google Chrome / Chromium.
+    Chrome,
+    /// Mozilla Firefox.
+    Firefox,
+    /// Apple Safari.
+    Safari,
+    /// Microsoft Edge (Chromium-based).
+    Edge,
+}
+
+impl BrowserFamily {
+    /// Lowercase ASCII identifier used in channel names.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_browser::tls::BrowserFamily;
+    ///
+    /// assert_eq!(BrowserFamily::Firefox.as_str(), "firefox");
+    /// ```
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Chrome => "chrome",
+            Self::Firefox => "firefox",
+            Self::Safari => "safari",
+            Self::Edge => "edge",
+        }
+    }
+}
+
+impl fmt::Display for BrowserFamily {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Operating system platform class for a TLS profile pack.
+///
+/// # Example
+///
+/// ```
+/// use stygian_browser::tls::PlatformClass;
+///
+/// assert_eq!(PlatformClass::Windows.as_str(), "windows");
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum PlatformClass {
+    /// Windows (any version).
+    Windows,
+    /// macOS / iOS / iPadOS.
+    MacOs,
+    /// Linux desktop or server.
+    Linux,
+}
+
+impl PlatformClass {
+    /// Lowercase ASCII identifier.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_browser::tls::PlatformClass;
+    ///
+    /// assert_eq!(PlatformClass::Linux.as_str(), "linux");
+    /// ```
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Windows => "windows",
+            Self::MacOs => "macos",
+            Self::Linux => "linux",
+        }
+    }
+}
+
+impl fmt::Display for PlatformClass {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Named update channel for automatic profile resolution.
+///
+/// `ChromeLatest`, `FirefoxLatest`, etc. are symbolic aliases that always
+/// resolve to the most recent pinned profile for that browser.  Pinned
+/// variants reference a specific browser version and never change.
+///
+/// # Example
+///
+/// ```
+/// use stygian_browser::tls::{ProfileChannel, TlsProfilePack};
+///
+/// let pack = ProfileChannel::ChromeLatest.resolve(None).unwrap();
+/// assert_eq!(pack.metadata.family, stygian_browser::tls::BrowserFamily::Chrome);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum ProfileChannel {
+    /// Always resolves to the latest built-in Chrome profile.
+    ChromeLatest,
+    /// Always resolves to the latest built-in Firefox profile.
+    FirefoxLatest,
+    /// Always resolves to the latest built-in Safari profile.
+    SafariLatest,
+    /// Always resolves to the latest built-in Edge profile.
+    EdgeLatest,
+    /// Pinned: Chrome 131.
+    Chrome131,
+    /// Pinned: Firefox 133.
+    Firefox133,
+    /// Pinned: Safari 18.
+    Safari18,
+    /// Pinned: Edge 131.
+    Edge131,
+}
+
+impl ProfileChannel {
+    /// Resolve this channel to a static [`TlsProfilePack`].
+    ///
+    /// `platform` is an optional hint; it is recorded in diagnostics but does
+    /// not change which profile is returned for the current built-in set.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfileChannelError::UnknownChannel`] if the channel string
+    /// cannot be parsed. (This variant is only reachable via
+    /// [`ProfileChannel::from_str`].)
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_browser::tls::{ProfileChannel, PlatformClass};
+    ///
+    /// let pack = ProfileChannel::Firefox133.resolve(Some(PlatformClass::Linux)).unwrap();
+    /// assert_eq!(pack.profile.name, "Firefox 133");
+    /// ```
+    pub fn resolve(
+        self,
+        _platform: Option<PlatformClass>,
+    ) -> Result<&'static TlsProfilePack, ProfileChannelError> {
+        match self {
+            Self::ChromeLatest | Self::Chrome131 => Ok(&PACK_CHROME_131),
+            Self::FirefoxLatest | Self::Firefox133 => Ok(&PACK_FIREFOX_133),
+            Self::SafariLatest | Self::Safari18 => Ok(&PACK_SAFARI_18),
+            Self::EdgeLatest | Self::Edge131 => Ok(&PACK_EDGE_131),
+        }
+    }
+
+}
+
+impl std::str::FromStr for ProfileChannel {
+    type Err = ProfileChannelError;
+
+    /// Parse a channel name string (case-insensitive).
+    ///
+    /// Recognised channel names:
+    ///
+    /// | Input | Channel |
+    /// |---|---|
+    /// | `chrome-latest` | [`ProfileChannel::ChromeLatest`] |
+    /// | `firefox-latest` | [`ProfileChannel::FirefoxLatest`] |
+    /// | `safari-latest` | [`ProfileChannel::SafariLatest`] |
+    /// | `edge-latest` | [`ProfileChannel::EdgeLatest`] |
+    /// | `chrome-131` | [`ProfileChannel::Chrome131`] |
+    /// | `firefox-133` | [`ProfileChannel::Firefox133`] |
+    /// | `safari-18` | [`ProfileChannel::Safari18`] |
+    /// | `edge-131` | [`ProfileChannel::Edge131`] |
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfileChannelError::UnknownChannel`] for unrecognised names.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_browser::tls::ProfileChannel;
+    ///
+    /// let ch: ProfileChannel = "chrome-latest".parse().unwrap();
+    /// assert_eq!(ch, ProfileChannel::ChromeLatest);
+    /// ```
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "chrome-latest" => Ok(Self::ChromeLatest),
+            "firefox-latest" => Ok(Self::FirefoxLatest),
+            "safari-latest" => Ok(Self::SafariLatest),
+            "edge-latest" => Ok(Self::EdgeLatest),
+            "chrome-131" => Ok(Self::Chrome131),
+            "firefox-133" => Ok(Self::Firefox133),
+            "safari-18" => Ok(Self::Safari18),
+            "edge-131" => Ok(Self::Edge131),
+            other => Err(ProfileChannelError::UnknownChannel(other.to_string())),
+        }
+    }
+}
+
+/// Error returned when a profile channel cannot be resolved.
+///
+/// # Example
+///
+/// ```
+/// use stygian_browser::tls::ProfileChannel;
+/// use std::str::FromStr;
+///
+/// let err = ProfileChannel::from_str("ie-6").unwrap_err();
+/// assert!(err.to_string().contains("ie-6"));
+/// ```
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum ProfileChannelError {
+    /// The channel name string is not recognised.
+    #[error("unknown profile channel '{0}'; known channels: chrome-latest, firefox-latest, safari-latest, edge-latest, chrome-131, firefox-133, safari-18, edge-131")]
+    UnknownChannel(String),
+}
+
+/// Metadata describing the provenance of a [`TlsProfilePack`].
+///
+/// # Example
+///
+/// ```
+/// use stygian_browser::tls::PACK_CHROME_131;
+///
+/// let meta = &PACK_CHROME_131.metadata;
+/// assert_eq!(meta.browser_version, "131");
+/// assert!(meta.h2_support);
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProfileMetadata {
+    /// Browser family (Chrome, Firefox, Safari, Edge).
+    pub family: BrowserFamily,
+    /// Major browser version string (e.g. `"131"`).
+    pub browser_version: String,
+    /// Primary platform class this profile was captured on.
+    pub platform: PlatformClass,
+    /// Whether the profile advertises HTTP/2 via ALPN.
+    pub h2_support: bool,
+    /// Whether the profile advertises HTTP/3 / QUIC perk data.
+    pub h3_support: bool,
+    /// ISO 8601 date this profile was added to the pack (e.g. `"2024-12-01"`).
+    pub added_date: String,
+    /// Source notes describing where the profile data came from.
+    pub source_notes: String,
+}
+
+impl ProfileMetadata {
+    /// Return a short provenance string suitable for diagnostics and logging.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_browser::tls::PACK_CHROME_131;
+    ///
+    /// let desc = PACK_CHROME_131.metadata.provenance();
+    /// assert!(desc.contains("Chrome"));
+    /// assert!(desc.contains("131"));
+    /// ```
+    #[must_use]
+    pub fn provenance(&self) -> String {
+        format!(
+            "{} {} on {} (added {}; {})",
+            self.family, self.browser_version, self.platform, self.added_date, self.source_notes
+        )
+    }
+}
+
+/// A versioned TLS profile bundle pairing a [`TlsProfile`] with its
+/// [`ProfileMetadata`].
+///
+/// # Example
+///
+/// ```
+/// use stygian_browser::tls::{PACK_CHROME_131, ProfileChannel};
+///
+/// let pack = ProfileChannel::ChromeLatest.resolve(None).unwrap();
+/// assert_eq!(pack.profile.name, "Chrome 131");
+/// assert!(pack.metadata.h2_support);
+/// println!("{}", pack.metadata.provenance());
+/// ```
+#[derive(Debug)]
+pub struct TlsProfilePack {
+    /// The TLS fingerprint profile.
+    pub profile: &'static TlsProfile,
+    /// Provenance and capability metadata.
+    pub metadata: ProfileMetadata,
+}
+
+/// Chrome 131 profile pack.
+///
+/// # Example
+///
+/// ```
+/// use stygian_browser::tls::PACK_CHROME_131;
+///
+/// assert_eq!(PACK_CHROME_131.profile.name, "Chrome 131");
+/// assert!(PACK_CHROME_131.metadata.h3_support);
+/// ```
+pub static PACK_CHROME_131: LazyLock<TlsProfilePack> = LazyLock::new(|| TlsProfilePack {
+    profile: &CHROME_131,
+    metadata: ProfileMetadata {
+        family: BrowserFamily::Chrome,
+        browser_version: "131".to_string(),
+        platform: PlatformClass::Windows,
+        h2_support: true,
+        h3_support: true,
+        added_date: "2024-12-01".to_string(),
+        source_notes: "ClientHello capture from Chrome 131.0.6778.86 on Windows 11".to_string(),
+    },
+});
+
+/// Firefox 133 profile pack.
+///
+/// # Example
+///
+/// ```
+/// use stygian_browser::tls::PACK_FIREFOX_133;
+///
+/// assert_eq!(PACK_FIREFOX_133.profile.name, "Firefox 133");
+/// assert!(PACK_FIREFOX_133.metadata.h3_support);
+/// ```
+pub static PACK_FIREFOX_133: LazyLock<TlsProfilePack> = LazyLock::new(|| TlsProfilePack {
+    profile: &FIREFOX_133,
+    metadata: ProfileMetadata {
+        family: BrowserFamily::Firefox,
+        browser_version: "133".to_string(),
+        platform: PlatformClass::Windows,
+        h2_support: true,
+        h3_support: true,
+        added_date: "2024-12-01".to_string(),
+        source_notes: "ClientHello capture from Firefox 133.0 on Windows 11".to_string(),
+    },
+});
+
+/// Safari 18 profile pack.
+///
+/// # Example
+///
+/// ```
+/// use stygian_browser::tls::PACK_SAFARI_18;
+///
+/// assert_eq!(PACK_SAFARI_18.profile.name, "Safari 18");
+/// assert!(!PACK_SAFARI_18.metadata.h3_support);
+/// ```
+pub static PACK_SAFARI_18: LazyLock<TlsProfilePack> = LazyLock::new(|| TlsProfilePack {
+    profile: &SAFARI_18,
+    metadata: ProfileMetadata {
+        family: BrowserFamily::Safari,
+        browser_version: "18".to_string(),
+        platform: PlatformClass::MacOs,
+        h2_support: true,
+        h3_support: false,
+        added_date: "2024-12-01".to_string(),
+        source_notes: "ClientHello capture from Safari 18.1 on macOS 15 Sequoia".to_string(),
+    },
+});
+
+/// Edge 131 profile pack.
+///
+/// # Example
+///
+/// ```
+/// use stygian_browser::tls::PACK_EDGE_131;
+///
+/// assert_eq!(PACK_EDGE_131.profile.name, "Edge 131");
+/// assert!(PACK_EDGE_131.metadata.h3_support);
+/// ```
+pub static PACK_EDGE_131: LazyLock<TlsProfilePack> = LazyLock::new(|| TlsProfilePack {
+    profile: &EDGE_131,
+    metadata: ProfileMetadata {
+        family: BrowserFamily::Edge,
+        browser_version: "131".to_string(),
+        platform: PlatformClass::Windows,
+        h2_support: true,
+        h3_support: true,
+        added_date: "2024-12-01".to_string(),
+        source_notes: "ClientHello capture from Edge 131.0.2903.70 on Windows 11".to_string(),
+    },
+});
+
+#[cfg(test)]
+mod pack_tests {
+    use super::*;
+
+    #[test]
+    fn channel_latest_resolves_to_expected_profile() {
+        let chrome = ProfileChannel::ChromeLatest.resolve(None).unwrap();
+        assert_eq!(chrome.profile.name, "Chrome 131");
+
+        let firefox = ProfileChannel::FirefoxLatest.resolve(None).unwrap();
+        assert_eq!(firefox.profile.name, "Firefox 133");
+
+        let safari = ProfileChannel::SafariLatest.resolve(None).unwrap();
+        assert_eq!(safari.profile.name, "Safari 18");
+
+        let edge = ProfileChannel::EdgeLatest.resolve(None).unwrap();
+        assert_eq!(edge.profile.name, "Edge 131");
+    }
+
+    #[test]
+    fn pinned_channels_resolve_to_same_as_latest() {
+        let chrome_pinned = ProfileChannel::Chrome131.resolve(None).unwrap();
+        let chrome_latest = ProfileChannel::ChromeLatest.resolve(None).unwrap();
+        assert!(std::ptr::eq(chrome_pinned, chrome_latest));
+    }
+
+    #[test]
+    fn metadata_is_serializable() {
+        let pack = &*PACK_CHROME_131;
+        let json = serde_json::to_string(&pack.metadata).unwrap();
+        assert!(json.contains("Chrome"));
+        assert!(json.contains("131"));
+
+        let meta: ProfileMetadata = serde_json::from_str(json.as_str()).unwrap();
+        assert_eq!(meta.family, BrowserFamily::Chrome);
+        assert_eq!(meta.browser_version, "131");
+    }
+
+    #[test]
+    fn invalid_channel_returns_error() {
+        let err: ProfileChannelError = "netscape-4".parse::<ProfileChannel>().unwrap_err();
+        assert!(err.to_string().contains("netscape-4"));
+    }
+
+    #[test]
+    fn from_str_parsing_case_insensitive() {
+        let ch: ProfileChannel = "CHROME-LATEST".parse().unwrap();
+        assert_eq!(ch, ProfileChannel::ChromeLatest);
+    }
+
+    #[test]
+    fn provenance_contains_family_and_version() {
+        let prov = PACK_FIREFOX_133.metadata.provenance();
+        assert!(prov.contains("firefox"), "provenance: {prov}");
+        assert!(prov.contains("133"), "provenance: {prov}");
+    }
+
+    #[test]
+    fn safari_h3_not_supported() {
+        assert!(!PACK_SAFARI_18.metadata.h3_support);
+    }
+
+    #[test]
+    fn platform_hint_accepted_without_error() {
+        let pack =
+            ProfileChannel::ChromeLatest.resolve(Some(PlatformClass::Linux)).unwrap();
+        assert_eq!(pack.profile.name, "Chrome 131");
+    }
+}

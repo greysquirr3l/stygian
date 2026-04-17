@@ -107,7 +107,7 @@
 | Task | Status | Notes |
 |---|---|---|
 | T49 — Stealth Benchmark Harness | `[x]` | benchmark harness + `stealth_benchmark` example + deterministic JSON/Markdown reporting |
-| T50 — Transport Profile Packs and Cadence | `[ ]` | |
+| T50 — Transport Profile Packs and Cadence | `[x]` | |
 | T51 — Session Warmup and Refresh Primitives | `[ ]` | |
 | T52 — Proxy Capability Model and Protocol-Aware Routing | `[ ]` | |
 | T53 — FreeAPIProxies Source Adapter (Optional) | `[ ]` | |
