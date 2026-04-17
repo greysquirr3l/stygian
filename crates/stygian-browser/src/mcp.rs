@@ -1224,29 +1224,29 @@ impl McpBrowserServer {
             .unwrap_or(30);
 
         // Parse target list, defaulting to Tier 1 (CreepJS, BrowserScan)
-        let mut targets = args.get("targets").and_then(|v| v.as_array()).map_or_else(
-            || ValidationTarget::tier1().to_vec(),
-            |arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str())
-                    .filter_map(|s| match s {
-                        "creepjs" => Some(ValidationTarget::CreepJs),
-                        "browserscan" => Some(ValidationTarget::BrowserScan),
-                        "fingerprint_js" => Some(ValidationTarget::FingerprintJs),
-                        "kasada" => Some(ValidationTarget::Kasada),
-                        "cloudflare" => Some(ValidationTarget::Cloudflare),
-                        "akamai" => Some(ValidationTarget::Akamai),
-                        "data_dome" => Some(ValidationTarget::DataDome),
-                        "perimeter_x" => Some(ValidationTarget::PerimeterX),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-            },
-        );
-
-        if tier1_only {
-            targets = ValidationTarget::tier1().to_vec();
-        }
+        let targets = if tier1_only {
+            ValidationTarget::tier1().to_vec()
+        } else {
+            args.get("targets").and_then(|v| v.as_array()).map_or_else(
+                || ValidationTarget::tier1().to_vec(),
+                |arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str())
+                        .filter_map(|s| match s {
+                            "creepjs" => Some(ValidationTarget::CreepJs),
+                            "browserscan" => Some(ValidationTarget::BrowserScan),
+                            "fingerprint_js" => Some(ValidationTarget::FingerprintJs),
+                            "kasada" => Some(ValidationTarget::Kasada),
+                            "cloudflare" => Some(ValidationTarget::Cloudflare),
+                            "akamai" => Some(ValidationTarget::Akamai),
+                            "data_dome" => Some(ValidationTarget::DataDome),
+                            "perimeter_x" => Some(ValidationTarget::PerimeterX),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                },
+            )
+        };
 
         // Run validators with per-target timeout so MCP responses remain bounded.
         let mut results = Vec::with_capacity(targets.len());
