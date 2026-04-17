@@ -152,6 +152,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh issue create \
-            --title "Stealth regression detected $(date -u +%Y-%m-%d)" \
-            --body-file /tmp/issue-body.md
+          DATE="$(date -u +%Y-%m-%d)"
+          TITLE="Stealth regression detected ${DATE}"
+          RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          EXISTING_ISSUE_NUMBER=$(gh issue list \
+            --state open \
+            --search '"Stealth regression detected" in:title' \
+            --json number \
+            --jq '.[0].number // empty')
+
+          if [[ -n "${EXISTING_ISSUE_NUMBER}" ]]; then
+            gh issue comment "${EXISTING_ISSUE_NUMBER}" \
+              --body "Another stealth canary regression was detected on ${DATE}.\n\nRun: ${RUN_URL}\n\nSee attached report in this workflow run for details."
+            echo "Updated existing issue #${EXISTING_ISSUE_NUMBER}"
+          else
+            gh issue create \
+              --title "${TITLE}" \
+              --body-file /tmp/issue-body.md
+          fi
