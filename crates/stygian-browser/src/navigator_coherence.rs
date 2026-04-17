@@ -2,7 +2,7 @@
 //!
 //! Overrides all navigator properties that anti-bot systems cross-reference to
 //! ensure they are consistent with a single [`FingerprintProfile`]. Covers:
-//! `hardwareConcurrency`, `deviceMemory`, `connection` (NetworkInformation),
+//! `hardwareConcurrency`, `deviceMemory`, `connection` (`NetworkInformation API`),
 //! `maxTouchPoints`, `languages`, `pdfViewerEnabled`, `plugins`, `mimeTypes`,
 //! and `userAgentData` Client Hints.
 //!
@@ -62,7 +62,7 @@ pub fn navigator_coherence_script(profile: &FingerprintProfile) -> String {
     let platform_string = &profile.platform.platform_string;
 
     format!(
-        r#"(function() {{
+        r"(function() {{
   'use strict';
 
   // ── toString spoof utility ───────────────────────────────────────────────
@@ -117,7 +117,7 @@ pub fn navigator_coherence_script(profile: &FingerprintProfile) -> String {
   {ua_data_js}
 
 }})();
-"#,
+",
         cores = cores,
         memory = memory,
         rtt = rtt,
@@ -141,12 +141,8 @@ pub fn navigator_coherence_script(profile: &FingerprintProfile) -> String {
 fn build_languages_js(profile: &FingerprintProfile) -> String {
     // Derive language from the sec_ch_ua_platform — always en-US as primary for now.
     // Future: add locale field to BrowserProfile.
-    let mobile = profile.browser.sec_ch_ua_mobile == "?1";
-    if mobile {
-        r#"['en-US', 'en']"#.into()
-    } else {
-        r#"['en-US', 'en']"#.into()
-    }
+    let _ = profile.browser.sec_ch_ua_mobile == "?1";
+    "['en-US', 'en']".into()
 }
 
 fn build_plugins_js(profile: &FingerprintProfile) -> String {
@@ -158,7 +154,7 @@ fn build_plugins_js(profile: &FingerprintProfile) -> String {
         return String::new();
     }
     // Chrome 136 standard plugin list (5 entries)
-    r#"
+    r"
   (function() {
     const _mimeTypes = [
       { type: 'application/pdf', suffixes: 'pdf', description: '' },
@@ -194,7 +190,7 @@ fn build_plugins_js(profile: &FingerprintProfile) -> String {
     Object.defineProperty(Navigator.prototype, 'plugins', {
       get: function() { return _pluginArray; }, configurable: false, enumerable: true
     });
-  })();"#.into()
+  })();".into()
 }
 
 fn build_ua_data_js(profile: &FingerprintProfile) -> String {
@@ -204,7 +200,7 @@ fn build_ua_data_js(profile: &FingerprintProfile) -> String {
     let os_version = &profile.platform.os_version;
 
     format!(
-        r#"
+        r"
   if (typeof NavigatorUAData !== 'undefined' || 'userAgentData' in navigator) {{
     const _brands = {brands};
     const _uaData = {{
@@ -230,7 +226,7 @@ fn build_ua_data_js(profile: &FingerprintProfile) -> String {
     Object.defineProperty(Navigator.prototype, 'userAgentData', {{
       get: function() {{ return _uaData; }}, configurable: false, enumerable: true
     }});
-  }}"#,
+  }}",
         brands = brands,
         mobile_js = if mobile { "true" } else { "false" },
         platform = platform,
@@ -243,6 +239,8 @@ fn build_ua_data_js(profile: &FingerprintProfile) -> String {
 /// Input: `"Chromium";v="136", "Google Chrome";v="136", "Not-A.Brand";v="99"`
 /// Output: `[{brand:"Chromium",version:"136"}, ...]`
 fn parse_sec_ch_ua_brands(sec_ch_ua: &str) -> String {
+  use std::fmt::Write;
+
     let mut result = String::from('[');
     for part in sec_ch_ua.split(',') {
         let part = part.trim();
@@ -254,18 +252,17 @@ fn parse_sec_ch_ua_brands(sec_ch_ua: &str) -> String {
             if result.len() > 1 {
                 result.push(',');
             }
-            result.push_str(&format!(
-                "{{brand:\"{brand}\",version:\"{version}\"}}",
-                brand = brand_raw,
-                version = version_raw,
-            ));
+            let _ = write!(
+                result,
+                "{{brand:\"{brand_raw}\",version:\"{version_raw}\"}}",
+            );
         }
     }
     result.push(']');
     result
 }
 
-/// Strip surrounding quotes from a sec_ch_ua_platform value like `"Windows"`.
+/// Strip surrounding quotes from a `sec_ch_ua_platform` value like `"Windows"`.
 fn strip_quotes(s: &str) -> String {
     s.trim_matches('"').to_string()
 }
@@ -277,7 +274,7 @@ fn strip_quotes(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::profile::{FingerprintProfile, Os};
+    use crate::profile::FingerprintProfile;
 
     fn script_for(p: &FingerprintProfile) -> String {
         navigator_coherence_script(p)

@@ -1,8 +1,8 @@
-//! ClientRects and TextMetrics fingerprint noise injection.
+//! `ClientRects` and `TextMetrics` fingerprint noise injection.
 //!
 //! Overrides `getBoundingClientRect`, `getClientRects`, `Range` equivalents, and
 //! `CanvasRenderingContext2D.measureText` to inject deterministic sub-pixel noise
-//! that breaks font/layout fingerprinting while preserving DOMRect consistency.
+//! that breaks font/layout fingerprinting while preserving `DOMRect` consistency.
 //!
 //! # Example
 //!
@@ -18,7 +18,7 @@
 
 use crate::noise::NoiseEngine;
 
-/// Generate the ClientRects and TextMetrics noise injection script.
+/// Generate the `ClientRects` and `TextMetrics` noise injection script.
 ///
 /// Must be injected via `Page.addScriptToEvaluateOnNewDocument`.
 ///
@@ -41,7 +41,7 @@ use crate::noise::NoiseEngine;
 pub fn rects_noise_script(engine: &NoiseEngine) -> String {
     let noise_fn = engine.js_noise_fn();
     format!(
-        r#"(function() {{
+        r"(function() {{
   'use strict';
 
   // ── Noise helpers ──────────────────────────────────────────────────────
@@ -158,8 +158,7 @@ pub fn rects_noise_script(engine: &NoiseEngine) -> String {
   }}
 
 }})();
-"#,
-        noise_fn = noise_fn
+"
     )
 }
 

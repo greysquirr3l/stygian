@@ -43,7 +43,7 @@ use crate::noise::NoiseEngine;
 pub fn audio_noise_script(engine: &NoiseEngine) -> String {
     let noise_fn = engine.js_noise_fn();
     format!(
-        r#"(function() {{
+        r"(function() {{
   'use strict';
 
   // ── Noise helpers ──────────────────────────────────────────────────────
@@ -136,8 +136,7 @@ pub fn audio_noise_script(engine: &NoiseEngine) -> String {
   }}
 
 }})();
-"#,
-        noise_fn = noise_fn
+"
     )
 }
 
@@ -159,17 +158,32 @@ mod tests {
         let js = audio_noise_script(&eng(1));
         assert!(js.contains("getChannelData"), "missing getChannelData");
         assert!(js.contains("copyFromChannel"), "missing copyFromChannel");
-        assert!(js.contains("getFloatFrequencyData"), "missing getFloatFrequencyData");
-        assert!(js.contains("getByteFrequencyData"), "missing getByteFrequencyData");
-        assert!(js.contains("getFloatTimeDomainData"), "missing getFloatTimeDomainData");
-        assert!(js.contains("getByteTimeDomainData"), "missing getByteTimeDomainData");
+        assert!(
+            js.contains("getFloatFrequencyData"),
+            "missing getFloatFrequencyData"
+        );
+        assert!(
+            js.contains("getByteFrequencyData"),
+            "missing getByteFrequencyData"
+        );
+        assert!(
+            js.contains("getFloatTimeDomainData"),
+            "missing getFloatTimeDomainData"
+        );
+        assert!(
+            js.contains("getByteTimeDomainData"),
+            "missing getByteTimeDomainData"
+        );
         assert!(js.contains("startRendering"), "missing startRendering");
     }
 
     #[test]
     fn script_contains_float_noise_fn() {
         let js = audio_noise_script(&eng(1));
-        assert!(js.contains("__stygian_float_noise"), "missing __stygian_float_noise");
+        assert!(
+            js.contains("__stygian_float_noise"),
+            "missing __stygian_float_noise"
+        );
     }
 
     #[test]

@@ -125,8 +125,9 @@ impl MouseSimulator {
     pub fn new() -> Self {
         let seed = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs() ^ u64::from(d.subsec_nanos()))
-            .unwrap_or(0x1234_5678_9abc_def0);
+            .map_or(0x1234_5678_9abc_def0, |d| {
+                d.as_secs() ^ u64::from(d.subsec_nanos())
+            });
         Self {
             current_x: 0.0,
             current_y: 0.0,
@@ -416,8 +417,9 @@ impl TypingSimulator {
     pub fn new() -> Self {
         let seed = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs() ^ u64::from(d.subsec_nanos()))
-            .unwrap_or(0xdead_beef_cafe_babe);
+            .map_or(0xdead_beef_cafe_babe, |d| {
+                d.as_secs() ^ u64::from(d.subsec_nanos())
+            });
         Self {
             rng: seed,
             error_rate: 0.015,
@@ -637,8 +639,9 @@ impl InteractionSimulator {
     pub fn new(level: InteractionLevel) -> Self {
         let seed = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs() ^ u64::from(d.subsec_nanos()))
-            .unwrap_or(0x0123_4567_89ab_cdef);
+            .map_or(0x0123_4567_89ab_cdef, |d| {
+                d.as_secs() ^ u64::from(d.subsec_nanos())
+            });
         Self {
             rng: seed,
             mouse: MouseSimulator::with_seed_and_position(seed ^ 0xca11_ab1e, 400.0, 300.0),
@@ -886,8 +889,9 @@ impl RequestPacer {
     pub fn new() -> Self {
         let seed = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs() ^ u64::from(d.subsec_nanos()))
-            .unwrap_or(0xdead_beef_cafe_1337);
+            .map_or(0xdead_beef_cafe_1337, |d| {
+                d.as_secs() ^ u64::from(d.subsec_nanos())
+            });
         Self {
             rng: seed,
             mean_ms: 1_200,
@@ -917,8 +921,9 @@ impl RequestPacer {
         };
         let seed = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs() ^ u64::from(d.subsec_nanos()))
-            .unwrap_or(0xdead_beef_cafe_1337);
+            .map_or(0xdead_beef_cafe_1337, |d| {
+                d.as_secs() ^ u64::from(d.subsec_nanos())
+            });
         Self {
             rng: seed,
             mean_ms,
@@ -949,8 +954,9 @@ impl RequestPacer {
         let max_ms = mean_ms.saturating_mul(2);
         let seed = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs() ^ u64::from(d.subsec_nanos()))
-            .unwrap_or(0xdead_beef_cafe_1337);
+            .map_or(0xdead_beef_cafe_1337, |d| {
+                d.as_secs() ^ u64::from(d.subsec_nanos())
+            });
         Self {
             rng: seed,
             mean_ms,

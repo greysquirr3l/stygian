@@ -1,6 +1,6 @@
 //! WebGL parameter spoofing and readPixels noise injection.
 //!
-//! Overrides WebGL1 and WebGL2 APIs to present a coherent, session-unique GPU
+//! Overrides `WebGL1` and `WebGL2` APIs to present a coherent, session-unique GPU
 //! identity and apply deterministic noise to `readPixels()` output.
 //!
 //! # Example
@@ -26,7 +26,7 @@ use crate::noise::NoiseEngine;
 /// Shader precision format values for a GPU profile.
 ///
 /// Matches the structure returned by `getShaderPrecisionFormat()`.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ShaderPrecisionProfile {
     /// High-float range exponent bits.
     pub high_float_range_min: i32,
@@ -60,7 +60,7 @@ impl Default for ShaderPrecisionProfile {
 // ---------------------------------------------------------------------------
 
 /// WebGL context attributes returned by `getContextAttributes()`.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ContextAttributes {
     /// Alpha channel enabled.
     pub alpha: bool,
@@ -115,7 +115,7 @@ impl Default for ContextAttributes {
 /// assert!(profile.renderer.contains("RTX 3060"));
 /// assert!(profile.max_texture_size >= 16384);
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WebGlProfile {
     /// `UNMASKED_VENDOR_WEBGL` / `getParameter(GL_VENDOR)` value.
     pub vendor: String,
@@ -144,7 +144,7 @@ pub struct WebGlProfile {
 }
 
 impl WebGlProfile {
-    /// NVIDIA GeForce RTX 3060 profile (Windows, Chrome 131, ANGLE D3D11).
+    /// NVIDIA `GeForce` RTX 3060 profile (Windows, Chrome 131, ANGLE D3D11).
     pub const NVIDIA_RTX_3060: Self = Self {
         vendor: String::new(),   // Populated via `Self::nvidia_rtx_3060()`
         renderer: String::new(), // — const fields can't hold String; use associated fn
@@ -219,8 +219,9 @@ impl WebGlProfile {
     pub fn nvidia_gtx_1660() -> Self {
         Self {
             vendor: "Google Inc. (NVIDIA)".to_string(),
-            renderer: "ANGLE (NVIDIA, NVIDIA GeForce GTX 1660 SUPER Direct3D11 vs_5_0 ps_5_0, D3D11)"
-                .to_string(),
+            renderer:
+                "ANGLE (NVIDIA, NVIDIA GeForce GTX 1660 SUPER Direct3D11 vs_5_0 ps_5_0, D3D11)"
+                    .to_string(),
             max_texture_size: 16384,
             max_viewport_dims: (32768, 32768),
             max_renderbuffer_size: 16384,
@@ -247,8 +248,8 @@ impl WebGlProfile {
     pub fn amd_rx_6700() -> Self {
         Self {
             vendor: "Google Inc. (AMD)".to_string(),
-            renderer:
-                "ANGLE (AMD, AMD Radeon RX 6700 XT Direct3D11 vs_5_0 ps_5_0, D3D11)".to_string(),
+            renderer: "ANGLE (AMD, AMD Radeon RX 6700 XT Direct3D11 vs_5_0 ps_5_0, D3D11)"
+                .to_string(),
             max_texture_size: 16384,
             max_viewport_dims: (32768, 32768),
             max_renderbuffer_size: 16384,
@@ -372,6 +373,7 @@ fn default_extensions() -> Vec<String> {
 /// assert!(js.contains("readPixels"));
 /// ```
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn webgl_noise_script(profile: &WebGlProfile, engine: &NoiseEngine) -> String {
     let noise_fn = engine.js_noise_fn();
     let vendor = &profile.vendor;
@@ -381,9 +383,9 @@ pub fn webgl_noise_script(profile: &WebGlProfile, engine: &NoiseEngine) -> Strin
     let vp_h = profile.max_viewport_dims.1;
     let max_rb = profile.max_renderbuffer_size;
     let max_va = profile.max_vertex_attribs;
-    let max_vv = profile.max_varying_vectors;
-    let max_fv = profile.max_fragment_uniform_vectors;
-    let max_vu = profile.max_vertex_uniform_vectors;
+    let max_varying_vectors = profile.max_varying_vectors;
+    let max_fragment_uniform_vectors = profile.max_fragment_uniform_vectors;
+    let max_vertex_uniform_vectors = profile.max_vertex_uniform_vectors;
 
     let exts_json = {
         let items: Vec<String> = profile
@@ -399,7 +401,7 @@ pub fn webgl_noise_script(profile: &WebGlProfile, engine: &NoiseEngine) -> Strin
     let ca_power = &ca.power_preference;
 
     format!(
-        r#"(function() {{
+        r"(function() {{
   'use strict';
 
   // ── Noise helpers ──────────────────────────────────────────────────────
@@ -447,9 +449,9 @@ pub fn webgl_noise_script(profile: &WebGlProfile, engine: &NoiseEngine) -> Strin
           case _MAX_VIEWPORT_DIMS:  return new Int32Array([{vp_w}, {vp_h}]);
           case _MAX_RENDERBUFFER_SIZE: return {max_rb};
           case _MAX_VERTEX_ATTRIBS: return {max_va};
-          case _MAX_VARYING_VECTORS: return {max_vv};
-          case _MAX_FRAGMENT_UNIFORM_VECTORS: return {max_fv};
-          case _MAX_VERTEX_UNIFORM_VECTORS: return {max_vu};
+          case _MAX_VARYING_VECTORS: return {max_varying_vectors};
+          case _MAX_FRAGMENT_UNIFORM_VECTORS: return {max_fragment_uniform_vectors};
+          case _MAX_VERTEX_UNIFORM_VECTORS: return {max_vertex_uniform_vectors};
           default: return _origGP.call(this, pname);
         }}
       }});
@@ -515,7 +517,7 @@ pub fn webgl_noise_script(profile: &WebGlProfile, engine: &NoiseEngine) -> Strin
       }});
     }});
 }})();
-"#,
+",
         noise_fn = noise_fn,
         vendor = vendor,
         renderer = renderer,
@@ -525,9 +527,9 @@ pub fn webgl_noise_script(profile: &WebGlProfile, engine: &NoiseEngine) -> Strin
         vp_h = vp_h,
         max_rb = max_rb,
         max_va = max_va,
-        max_vv = max_vv,
-        max_fv = max_fv,
-        max_vu = max_vu,
+        max_varying_vectors = max_varying_vectors,
+        max_fragment_uniform_vectors = max_fragment_uniform_vectors,
+        max_vertex_uniform_vectors = max_vertex_uniform_vectors,
         sp_hfrm = sp.high_float_range_min,
         sp_hfrx = sp.high_float_range_max,
         sp_hfp = sp.high_float_precision,
@@ -570,17 +572,29 @@ mod tests {
     fn script_contains_webgl_overrides() {
         let js = webgl_noise_script(&WebGlProfile::nvidia_rtx_3060(), &eng());
         assert!(js.contains("getParameter"), "missing getParameter");
-        assert!(js.contains("getSupportedExtensions"), "missing getSupportedExtensions");
+        assert!(
+            js.contains("getSupportedExtensions"),
+            "missing getSupportedExtensions"
+        );
         assert!(js.contains("getExtension"), "missing getExtension");
-        assert!(js.contains("getShaderPrecisionFormat"), "missing getShaderPrecisionFormat");
-        assert!(js.contains("getContextAttributes"), "missing getContextAttributes");
+        assert!(
+            js.contains("getShaderPrecisionFormat"),
+            "missing getShaderPrecisionFormat"
+        );
+        assert!(
+            js.contains("getContextAttributes"),
+            "missing getContextAttributes"
+        );
         assert!(js.contains("readPixels"), "missing readPixels");
     }
 
     #[test]
     fn script_contains_noise_reference() {
         let js = webgl_noise_script(&WebGlProfile::nvidia_rtx_3060(), &eng());
-        assert!(js.contains("__stygian_webgl_noise"), "missing webgl noise fn");
+        assert!(
+            js.contains("__stygian_webgl_noise"),
+            "missing webgl noise fn"
+        );
     }
 
     #[test]
@@ -592,8 +606,16 @@ mod tests {
     #[test]
     fn profile_serde_round_trip() {
         let p = WebGlProfile::nvidia_rtx_3060();
-        let json = serde_json::to_string(&p).expect("serialize");
-        let back: WebGlProfile = serde_json::from_str(&json).expect("deserialize");
+        let json_result = serde_json::to_string(&p);
+        assert!(json_result.is_ok(), "serialize failed: {json_result:?}");
+        let Ok(json) = json_result else {
+            return;
+        };
+        let back_result: Result<WebGlProfile, _> = serde_json::from_str(&json);
+        assert!(back_result.is_ok(), "deserialize failed: {back_result:?}");
+        let Ok(back) = back_result else {
+            return;
+        };
         assert_eq!(back.vendor, p.vendor);
         assert_eq!(back.renderer, p.renderer);
         assert_eq!(back.max_texture_size, p.max_texture_size);

@@ -266,7 +266,7 @@ impl ScreenProfile {
         }
     }
 
-    /// 2560×1600 MacBook Pro 14" at DPR 2.0.
+    /// 2560×1600 `MacBook` Pro 14" at DPR 2.0.
     #[must_use]
     pub fn macbook_pro_14() -> Self {
         Self {
@@ -373,7 +373,7 @@ impl HardwareProfile {
     }
 }
 
-/// Network configuration (NetworkInformation API).
+/// Network configuration (`NetworkInformation` API).
 ///
 /// # Example
 ///
@@ -395,7 +395,7 @@ pub struct NetworkProfile {
 }
 
 impl NetworkProfile {
-    /// Typical home WiFi / broadband connection profile.
+    /// Typical home `WiFi` / broadband connection profile.
     #[must_use]
     pub fn fast_wifi() -> Self {
         Self {
@@ -617,8 +617,9 @@ impl FingerprintProfile {
         use std::time::{SystemTime, UNIX_EPOCH};
         let seed = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos() as u64)
-            .unwrap_or(0xdead_beef_1234_5678);
+            .map_or(0xdead_beef_1234_5678, |d| {
+                d.as_secs() ^ u64::from(d.subsec_nanos())
+            });
         // splitmix64 step
         let v = seed
             .wrapping_add(0x9e37_79b9_7f4a_7c15_u64)
@@ -778,12 +779,8 @@ mod tests {
             FingerprintProfile::android_chrome_136_pixel(),
         ];
         for p in &profiles {
-            assert!(
-                p.validate().is_ok(),
-                "profile '{}' failed validation: {:?}",
-                p.name,
-                p.validate().unwrap_err()
-            );
+            let validation = p.validate();
+            assert!(validation.is_ok(), "profile '{}' failed validation: {validation:?}", p.name);
         }
     }
 
@@ -794,7 +791,9 @@ mod tests {
         p.platform.platform_string = "MacIntel".into();
         let result = p.validate();
         assert!(result.is_err(), "expected validation failure");
-        let errs = result.unwrap_err();
+        let Err(errs) = result else {
+            return;
+        };
         assert!(
             errs.iter().any(|e| e.contains("macOS-indicating")),
             "expected cross-OS platform_string error, got: {errs:?}"
@@ -823,11 +822,11 @@ mod tests {
         // Run enough times to hit most branches
         for _ in 0..20 {
             let p = FingerprintProfile::random_weighted();
+            let validation = p.validate();
             assert!(
-                p.validate().is_ok(),
-                "random_weighted() produced invalid profile '{}': {:?}",
+                validation.is_ok(),
+                "random_weighted() produced invalid profile '{}': {validation:?}",
                 p.name,
-                p.validate().unwrap_err()
             );
         }
     }
@@ -848,8 +847,19 @@ mod tests {
     #[test]
     fn toml_round_trip() {
         let p = FingerprintProfile::windows_chrome_136_rtx3060();
-        let toml_str = toml::to_string(&p).expect("serialize to TOML");
-        let p2: FingerprintProfile = toml::from_str(&toml_str).expect("deserialize from TOML");
+        let toml_result = toml::to_string(&p);
+        assert!(toml_result.is_ok(), "serialize to TOML failed: {toml_result:?}");
+        let Ok(toml_str) = toml_result else {
+            return;
+        };
+        let profile_result: Result<FingerprintProfile, _> = toml::from_str(&toml_str);
+        assert!(
+            profile_result.is_ok(),
+            "deserialize from TOML failed: {profile_result:?}"
+        );
+        let Ok(p2) = profile_result else {
+            return;
+        };
         assert_eq!(p.name, p2.name);
         assert_eq!(p.hardware.cores, p2.hardware.cores);
         assert_eq!(p.noise_seed.as_u64(), p2.noise_seed.as_u64());

@@ -37,6 +37,7 @@ use serde::{Deserialize, Serialize};
 /// let seed2 = NoiseSeed::random();
 /// assert_ne!(seed, seed2); // extremely unlikely to collide
 /// ```
+#[allow(clippy::unsafe_derive_deserialize)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NoiseSeed(u64);
 
@@ -80,9 +81,6 @@ impl NoiseSeed {
         // Mix time + counter + stack address for uniqueness across threads/sessions
         nanos.hash(&mut hasher);
         count.hash(&mut hasher);
-        // Use the address of a stack variable as an entropy source
-        let addr: usize = &nanos as *const _ as usize;
-        addr.hash(&mut hasher);
         Self(hasher.finish())
     }
 
@@ -138,13 +136,13 @@ fn mix(seed: u64, operation: &str, a: u32, b: u32) -> u64 {
 
 /// Extract four independent `i8` values from a `u64`, each bounded to `[-3, 3]`.
 #[inline]
-fn bounded_bytes(h: u64) -> (i8, i8, i8, i8) {
+const fn bounded_bytes(h: u64) -> (i8, i8, i8, i8) {
     // Split hash into four 16-bit lanes, map each mod 7 → [0,6] → shift by 3 → [-3,3]
-    let r = ((h & 0xFFFF) % 7) as i8 - 3;
-    let g = (((h >> 16) & 0xFFFF) % 7) as i8 - 3;
-    let b = (((h >> 32) & 0xFFFF) % 7) as i8 - 3;
-    let a = (((h >> 48) & 0xFFFF) % 7) as i8 - 3;
-    (r, g, b, a)
+    let red = ((h & 0xFFFF) % 7) as i8 - 3;
+    let green = (((h >> 16) & 0xFFFF) % 7) as i8 - 3;
+    let blue = (((h >> 32) & 0xFFFF) % 7) as i8 - 3;
+    let alpha = (((h >> 48) & 0xFFFF) % 7) as i8 - 3;
+    (red, green, blue, alpha)
 }
 
 // ---------------------------------------------------------------------------
@@ -230,8 +228,12 @@ impl NoiseEngine {
     #[must_use]
     pub fn float_noise(&self, operation: &str, index: u32) -> f64 {
         let h = mix(self.seed.0, operation, index, 0);
-        // Map [0, u64::MAX] to [-1e-5, 1e-5]
-        let normalized = (h as f64) / (u64::MAX as f64); // [0, 1]
+        // Keep only 53 bits so conversion to f64 is exact.
+        let upper53 = h >> 11;
+        let high = ((upper53 >> 21) & 0xFFFF_FFFF) as u32;
+        let low = (upper53 & ((1_u64 << 21) - 1)) as u32;
+        let normalized =
+            (f64::from(high) * 2_097_152.0 + f64::from(low)) / 9_007_199_254_740_991.0;
         (normalized - 0.5) * 2.0e-5 // [-1e-5, 1e-5]
     }
 
@@ -249,15 +251,15 @@ impl NoiseEngine {
     /// ```
     #[must_use]
     pub fn rect_noise(&self, operation: &str, index: u32) -> (f64, f64, f64, f64) {
-        let h = mix(self.seed.0, operation, index, 0xDEAD_BEEF);
-        let (r, g, b, a) = bounded_bytes(h);
+        let hash = mix(self.seed.0, operation, index, 0xDEAD_BEEF);
+        let (red, green, blue, alpha) = bounded_bytes(hash);
         // Map [-3, 3] → [-0.5, 0.5] (divide by 6)
         let scale = 1.0_f64 / 6.0;
         (
-            f64::from(r) * scale,
-            f64::from(g) * scale,
-            f64::from(b) * scale,
-            f64::from(a) * scale,
+            f64::from(red) * scale,
+            f64::from(green) * scale,
+            f64::from(blue) * scale,
+            f64::from(alpha) * scale,
         )
     }
 
@@ -299,7 +301,7 @@ impl NoiseEngine {
         // The JS reimplements the Rust mix() function using BigInt arithmetic
         // so that 64-bit multiply/XOR is exact. Returns [r, g, b, a] each in [-3, 3].
         format!(
-            r#"(function() {{
+            r"(function() {{
   const _SEED = {seed}n;
   const _M = 0x9e3779b97f4a7c15n;
   const _MASK = 0xFFFFFFFFFFFFFFFFn;
@@ -343,8 +345,7 @@ impl NoiseEngine {
   globalThis.__stygian_webgl_noise = function(operation, x, y) {{
     return _bb(_mix(_SEED, operation, x >>> 0, (y >>> 0) ^ 0xCAFEBABE));
   }};
-}})();"#,
-            seed = seed
+}})();"
         )
     }
 }
@@ -455,13 +456,13 @@ mod tests {
     #[test]
     fn pixel_noise_bounded() {
         let e = NoiseEngine::new(NoiseSeed::from(0xDEAD_BEEF_u64));
-        for x in 0u32..16 {
-            for y in 0u32..16 {
-                let (r, g, b, a) = e.pixel_noise("canvas", x, y);
-                assert!((-3..=3).contains(&r), "r={r} out of range");
-                assert!((-3..=3).contains(&g), "g={g} out of range");
-                assert!((-3..=3).contains(&b), "b={b} out of range");
-                assert!((-3..=3).contains(&a), "a={a} out of range");
+        for px in 0u32..16 {
+            for py in 0u32..16 {
+                let (red, green, blue, alpha) = e.pixel_noise("canvas", px, py);
+                assert!((-3..=3).contains(&red), "r={red} out of range");
+                assert!((-3..=3).contains(&green), "g={green} out of range");
+                assert!((-3..=3).contains(&blue), "b={blue} out of range");
+                assert!((-3..=3).contains(&alpha), "a={alpha} out of range");
             }
         }
     }
@@ -469,13 +470,13 @@ mod tests {
     #[test]
     fn webgl_noise_bounded() {
         let e = NoiseEngine::new(NoiseSeed::from(0xCAFE_u64));
-        for x in 0u32..8 {
-            for y in 0u32..8 {
-                let (r, g, b, a) = e.webgl_noise("readPixels", x, y);
-                assert!((-3..=3).contains(&r));
-                assert!((-3..=3).contains(&g));
-                assert!((-3..=3).contains(&b));
-                assert!((-3..=3).contains(&a));
+        for px in 0u32..8 {
+            for py in 0u32..8 {
+                let (red, green, blue, alpha) = e.webgl_noise("readPixels", px, py);
+                assert!((-3..=3).contains(&red));
+                assert!((-3..=3).contains(&green));
+                assert!((-3..=3).contains(&blue));
+                assert!((-3..=3).contains(&alpha));
             }
         }
     }
@@ -513,8 +514,16 @@ mod tests {
             audio_enabled: true,
             rects_enabled: false,
         };
-        let json = serde_json::to_string(&cfg).expect("serialize");
-        let back: NoiseConfig = serde_json::from_str(&json).expect("deserialize");
+        let json_result = serde_json::to_string(&cfg);
+        assert!(json_result.is_ok(), "serialize failed: {json_result:?}");
+        let Ok(json) = json_result else {
+            return;
+        };
+        let back_result: Result<NoiseConfig, _> = serde_json::from_str(&json);
+        assert!(back_result.is_ok(), "deserialize failed: {back_result:?}");
+        let Ok(back) = back_result else {
+            return;
+        };
         assert_eq!(back.seed, cfg.seed);
         assert_eq!(back.canvas_enabled, cfg.canvas_enabled);
         assert_eq!(back.webgl_enabled, cfg.webgl_enabled);

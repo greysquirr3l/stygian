@@ -102,7 +102,7 @@ pub fn timing_noise_script(config: &TimingNoiseConfig) -> String {
     let origin_shift_ms = origin_shift.clamp(-10.0, 10.0);
 
     format!(
-        r#"(function() {{
+        r"(function() {{
   'use strict';
 
   // ── Noise helpers ──────────────────────────────────────────────────────
@@ -209,10 +209,7 @@ pub fn timing_noise_script(config: &TimingNoiseConfig) -> String {
   }});
 
 }})();
-"#,
-        noise_fn = noise_fn,
-        jitter_ms = jitter_ms,
-        origin_shift_ms = origin_shift_ms,
+",
     )
 }
 
@@ -292,8 +289,16 @@ mod tests {
             jitter_ms: 0.25,
             seed: NoiseSeed::from(98765_u64),
         };
-        let json = serde_json::to_string(&c).expect("serialize");
-        let c2: TimingNoiseConfig = serde_json::from_str(&json).expect("deserialize");
+        let json_result = serde_json::to_string(&c);
+        assert!(json_result.is_ok(), "serialize failed: {json_result:?}");
+        let Ok(json) = json_result else {
+            return;
+        };
+        let cfg_result: Result<TimingNoiseConfig, _> = serde_json::from_str(&json);
+        assert!(cfg_result.is_ok(), "deserialize failed: {cfg_result:?}");
+        let Ok(c2) = cfg_result else {
+            return;
+        };
         assert_eq!(c2.enabled, c.enabled);
         assert!((c2.jitter_ms - c.jitter_ms).abs() < f64::EPSILON);
         assert_eq!(c2.seed.as_u64(), c.seed.as_u64());

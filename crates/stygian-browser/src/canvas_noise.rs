@@ -6,7 +6,7 @@
 //!
 //! The noise is driven by [`crate::noise::NoiseEngine`] (T37). Given the same
 //! seed, every canvas read produces the same perturbation — enabling
-//! cross-context consistency (main thread vs. OffscreenCanvas in a Worker).
+//! cross-context consistency (main thread vs. `OffscreenCanvas` in a Worker).
 //!
 //! # Example
 //!
@@ -26,7 +26,7 @@ use crate::noise::NoiseEngine;
 ///
 /// The script must be injected via `Page.addScriptToEvaluateOnNewDocument`
 /// so it runs before any page JavaScript. It works in both the main thread
-/// and Web Worker / OffscreenCanvas contexts.
+/// and Web Worker / `OffscreenCanvas` contexts.
 ///
 /// Returns an empty string if canvas noise is not needed (callers should
 /// check [`crate::noise::NoiseConfig::canvas_enabled`] before calling).
@@ -44,11 +44,12 @@ use crate::noise::NoiseEngine;
 /// assert!(js.contains("convertToBlob"));
 /// ```
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn canvas_noise_script(engine: &NoiseEngine) -> String {
     // First emit the seed-embedded noise helper (from T37), then the overrides.
     let noise_fn = engine.js_noise_fn();
     format!(
-        r#"(function() {{
+        r"(function() {{
   'use strict';
 
   // ── Noise helpers (injected from T37 NoiseEngine) ──────────────────────
@@ -178,8 +179,7 @@ pub fn canvas_noise_script(engine: &NoiseEngine) -> String {
   }})();
 
 }})();
-"#,
-        noise_fn = noise_fn
+"
     )
 }
 

@@ -500,6 +500,7 @@ impl StealthProfile {
 /// # Ok(())
 /// # }
 /// ```
+#[allow(clippy::too_many_lines)]
 pub async fn apply_stealth_to_page(
     page: &chromiumoxide::Page,
     config: &crate::config::BrowserConfig,
@@ -536,8 +537,7 @@ pub async fn apply_stealth_to_page(
     // ── CDP hardening — runs FIRST to clean up binding remnants ───────────────
     #[cfg(feature = "stealth")]
     {
-        let hardening_script =
-            crate::cdp_hardening::cdp_hardening_script(&config.cdp_hardening);
+        let hardening_script = crate::cdp_hardening::cdp_hardening_script(&config.cdp_hardening);
         if !hardening_script.is_empty() {
             inject_one(
                 page,

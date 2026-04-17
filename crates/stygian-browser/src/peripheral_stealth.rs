@@ -86,7 +86,7 @@ impl PeripheralStealthConfig {
     /// assert!(cfg.iframe_inner_width);
     /// ```
     #[must_use]
-    pub fn default_with_seed(seed: NoiseSeed) -> Self {
+    pub const fn default_with_seed(seed: NoiseSeed) -> Self {
         Self {
             iframe_inner_width: true,
             always_visible: true,
@@ -179,7 +179,7 @@ pub fn peripheral_stealth_script_with_profile(
         let audio_group_id = engine.hex_id("media.audio.group_id");
 
         sections.push(format!(
-            r#"  // ── 3. Fake media devices (camera / microphone) ───────────────────────
+            r"  // ── 3. Fake media devices (camera / microphone) ───────────────────────
   if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {{
     const _fakeDevices = [
       {{
@@ -214,13 +214,7 @@ pub fn peripheral_stealth_script_with_profile(
       }},
       writable: false, configurable: false, enumerable: true,
     }});
-  }}"#,
-            video_device_id = video_device_id,
-            video_group_id = video_group_id,
-            audio_device_id = audio_device_id,
-            audio_group_id = audio_group_id,
-            video_device = video_device,
-            audio_device = audio_device,
+  }}",
         ));
     }
 
@@ -234,14 +228,13 @@ pub fn peripheral_stealth_script_with_profile(
         // Derive a stable value in [3, 8] from the seed
         let history_len = 3u64 + (engine.u64_noise("history.length") % 6);
         sections.push(format!(
-            r#"  // ── 5. History length ──────────────────────────────────────────────────
+            r"  // ── 5. History length ──────────────────────────────────────────────────
   try {{
     Object.defineProperty(History.prototype, 'length', {{
       get: function() {{ return {history_len}; }},
       configurable: true, enumerable: true,
     }});
-  }} catch(e) {{}}"#,
-            history_len = history_len,
+  }} catch(e) {{}}",
         ));
     }
 
@@ -269,18 +262,18 @@ pub fn peripheral_stealth_script_with_profile(
 // Platform-aware device names
 // ---------------------------------------------------------------------------
 
-fn platform_video_device(os: Option<&Os>) -> &'static str {
+const fn platform_video_device(os: Option<&Os>) -> &'static str {
     match os {
-        Some(Os::MacOs) | Some(Os::Ios) => "FaceTime HD Camera",
+        Some(Os::MacOs | Os::Ios) => "FaceTime HD Camera",
         Some(Os::Linux) => "USB2.0 PC Camera",
         Some(Os::Android) => "Camera 0",
         _ => "Integrated Webcam",
     }
 }
 
-fn platform_audio_device(os: Option<&Os>) -> &'static str {
+const fn platform_audio_device(os: Option<&Os>) -> &'static str {
     match os {
-        Some(Os::MacOs) | Some(Os::Ios) => "MacBook Pro Microphone",
+        Some(Os::MacOs | Os::Ios) => "MacBook Pro Microphone",
         Some(Os::Linux) => "Built-in Audio Analog Stereo",
         Some(Os::Android) => "Default",
         _ => "Microphone (Realtek Audio)",
@@ -291,7 +284,7 @@ fn platform_audio_device(os: Option<&Os>) -> &'static str {
 // Static script sections
 // ---------------------------------------------------------------------------
 
-const IFRAME_INNER_WIDTH_SECTION: &str = r#"  // ── 1. iframe innerWidth mismatch ─────────────────────────────────────
+const IFRAME_INNER_WIDTH_SECTION: &str = r"  // ── 1. iframe innerWidth mismatch ─────────────────────────────────────
   try {
     const _origContentWindow = Object.getOwnPropertyDescriptor(
       HTMLIFrameElement.prototype, 'contentWindow'
@@ -319,9 +312,9 @@ const IFRAME_INNER_WIDTH_SECTION: &str = r#"  // ── 1. iframe innerWidth mis
         enumerable: true,
       });
     }
-  } catch(e) {}"#;
+  } catch(e) {}";
 
-const VISIBILITY_SECTION: &str = r#"  // ── 2. Document visibility ─────────────────────────────────────────────
+const VISIBILITY_SECTION: &str = r"  // ── 2. Document visibility ─────────────────────────────────────────────
   try {
     Object.defineProperty(Document.prototype, 'hidden', {
       get: function() { return false; }, configurable: false, enumerable: true,
@@ -338,9 +331,9 @@ const VISIBILITY_SECTION: &str = r#"  // ── 2. Document visibility ───
     Document.prototype.addEventListener.toString = function toString() {
       return 'function addEventListener() { [native code] }';
     };
-  } catch(e) {}"#;
+  } catch(e) {}";
 
-const PORT_SCAN_SECTION: &str = r#"  // ── 4. Port scan protection ──────────────────────────────────────────────
+const PORT_SCAN_SECTION: &str = r"  // ── 4. Port scan protection ──────────────────────────────────────────────
   (function() {
     // Ports commonly probed by anti-bot scripts during port scanning
     const _probePorts = new Set([
@@ -383,9 +376,9 @@ const PORT_SCAN_SECTION: &str = r#"  // ── 4. Port scan protection ───
     XMLHttpRequest.prototype.open.toString = function toString() {
       return 'function open() { [native code] }';
     };
-  })();"#;
+  })();";
 
-const RAF_TIMING_SECTION: &str = r#"  // ── 6. requestAnimationFrame timing jitter ─────────────────────────────
+const RAF_TIMING_SECTION: &str = r"  // ── 6. requestAnimationFrame timing jitter ─────────────────────────────
   try {
     const _origRAF = window.requestAnimationFrame;
     let __raf_counter = 0;
@@ -401,9 +394,9 @@ const RAF_TIMING_SECTION: &str = r#"  // ── 6. requestAnimationFrame timing 
     window.requestAnimationFrame.toString = function toString() {
       return 'function requestAnimationFrame() { [native code] }';
     };
-  } catch(e) {}"#;
+  } catch(e) {}";
 
-const PDF_VIEWER_SECTION: &str = r#"  // ── 7. pdfViewerEnabled ─────────────────────────────────────────────────
+const PDF_VIEWER_SECTION: &str = r"  // ── 7. pdfViewerEnabled ─────────────────────────────────────────────────
   try {
     const _pdfDesc = Object.getOwnPropertyDescriptor(Navigator.prototype, 'pdfViewerEnabled');
     if (!_pdfDesc || (_pdfDesc.get && navigator.pdfViewerEnabled !== true)) {
@@ -412,11 +405,15 @@ const PDF_VIEWER_SECTION: &str = r#"  // ── 7. pdfViewerEnabled ────
         configurable: false, enumerable: true,
       });
     }
-  } catch(e) {}"#;
+  } catch(e) {}";
 
 // ---------------------------------------------------------------------------
 // NoiseEngine hex_id helper (private extension)
 // ---------------------------------------------------------------------------
+
+fn f64_bits_to_hex(value: f64) -> String {
+  format!("{:016x}", value.to_bits())
+}
 
 trait NoiseEngineExt {
     fn hex_id(&self, key: &str) -> String;
@@ -431,11 +428,13 @@ impl NoiseEngineExt for NoiseEngine {
         let b = self.float_noise(key, 1);
         let c = self.float_noise(key, 2);
         let d = self.float_noise(key, 3);
-        // Convert floats to u64 bits and format
-        fn to_hex(f: f64) -> String {
-            format!("{:016x}", f.to_bits())
-        }
-        format!("{}{}{}{}", to_hex(a), to_hex(b), to_hex(c), to_hex(d))
+      format!(
+        "{}{}{}{}",
+        f64_bits_to_hex(a),
+        f64_bits_to_hex(b),
+        f64_bits_to_hex(c),
+        f64_bits_to_hex(d)
+      )
     }
 
     /// Derive a deterministic `u64` from `key`.
@@ -478,7 +477,10 @@ mod tests {
     #[test]
     fn visibility_forces_hidden_false_and_visible() {
         let js = script(1);
-        assert!(js.contains("document.hidden") || js.contains("'hidden'"), "missing hidden");
+        assert!(
+            js.contains("document.hidden") || js.contains("'hidden'"),
+            "missing hidden"
+        );
         assert!(js.contains("visibilityState"), "missing visibilityState");
         assert!(js.contains("'visible'"), "must set visible");
     }
@@ -489,7 +491,10 @@ mod tests {
     fn camera_names_windows_default() {
         let cfg = cfg(1);
         let js = peripheral_stealth_script_with_profile(&cfg, None);
-        assert!(js.contains("Integrated Webcam"), "missing Windows video device");
+        assert!(
+            js.contains("Integrated Webcam"),
+            "missing Windows video device"
+        );
         assert!(js.contains("Realtek"), "missing Windows audio device");
     }
 
@@ -500,7 +505,10 @@ mod tests {
         let profile = FingerprintProfile::macos_chrome_136_m1();
         let js = peripheral_stealth_script_with_profile(&cfg, Some(&profile));
         assert!(js.contains("FaceTime"), "missing macOS video device");
-        assert!(js.contains("MacBook Pro Microphone"), "missing macOS audio device");
+        assert!(
+            js.contains("MacBook Pro Microphone"),
+            "missing macOS audio device"
+        );
     }
 
     #[test]
@@ -509,7 +517,10 @@ mod tests {
         let cfg = cfg(1);
         let profile = FingerprintProfile::linux_chrome_136_intel();
         let js = peripheral_stealth_script_with_profile(&cfg, Some(&profile));
-        assert!(js.contains("USB2.0 PC Camera"), "missing Linux video device");
+        assert!(
+            js.contains("USB2.0 PC Camera"),
+            "missing Linux video device"
+        );
         assert!(js.contains("Built-in Audio"), "missing Linux audio device");
     }
 
@@ -532,14 +543,20 @@ mod tests {
             let cfg = cfg(seed);
             let engine = NoiseEngine::new(cfg.seed);
             let len = 3u64 + (engine.u64_noise("history.length") % 6);
-            assert!((3..=8).contains(&len), "history length {len} out of range for seed {seed}");
+            assert!(
+                (3..=8).contains(&len),
+                "history length {len} out of range for seed {seed}"
+            );
         }
     }
 
     #[test]
     fn history_length_script_in_output() {
         let js = script(1);
-        assert!(js.contains("history.length") || js.contains("History.prototype"), "missing history override");
+        assert!(
+            js.contains("history.length") || js.contains("History.prototype"),
+            "missing history override"
+        );
     }
 
     // ── rAF timing ────────────────────────────────────────────────────────────
@@ -547,10 +564,7 @@ mod tests {
     #[test]
     fn raf_timing_script_references_noise() {
         let js = script(1);
-        assert!(
-            js.contains("requestAnimationFrame"),
-            "missing rAF override"
-        );
+        assert!(js.contains("requestAnimationFrame"), "missing rAF override");
         assert!(js.contains("jitter"), "missing jitter variable in rAF");
     }
 
@@ -584,7 +598,10 @@ mod tests {
             seed: NoiseSeed::from(1_u64),
         };
         let js = peripheral_stealth_script(&cfg);
-        assert!(js.contains("visibilityState"), "visibility should be present");
+        assert!(
+            js.contains("visibilityState"),
+            "visibility should be present"
+        );
         assert!(!js.contains("innerWidth"), "iframe should be absent");
         assert!(!js.contains("history.length"), "history should be absent");
     }
