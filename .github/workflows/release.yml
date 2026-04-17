@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - "v*"
+  workflow_run:
+    workflows:
+      - "Auto-tag on release merge"
+    types:
+      - completed
   workflow_dispatch:
 
 env:
@@ -16,17 +21,29 @@ jobs:
   resolve:
     name: Resolve release ref
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     outputs:
       release_ref: ${{ steps.tag.outputs.release_ref }}
       version: ${{ steps.tag.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Derive tag from Cargo.toml
+      - name: Resolve release tag and version
         id: tag
         run: |
           if [[ "${{ github.event_name }}" == "push" ]]; then
             REF="${{ github.ref }}"
+          elif [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            SHA="${{ github.event.workflow_run.head_sha }}"
+            git fetch --tags origin
+            TAG=$(git tag --points-at "$SHA" | sort -V | tail -n 1)
+            if [[ -z "$TAG" ]]; then
+              echo "No tag found for workflow_run SHA $SHA"
+              exit 1
+            fi
+            REF="refs/tags/$TAG"
           else
             VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
             REF="refs/tags/v$VERSION"
