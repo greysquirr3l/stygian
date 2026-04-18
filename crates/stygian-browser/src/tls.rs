@@ -2566,7 +2566,7 @@ impl ProfileChannel {
     ///
     /// Returns [`ProfileChannelError::UnknownChannel`] if the channel string
     /// cannot be parsed. (This variant is only reachable via
-    /// [`ProfileChannel::from_str`].)
+    /// [`std::str::FromStr::from_str`].)
     ///
     /// # Example
     ///

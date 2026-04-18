@@ -1,6 +1,6 @@
 # Proxy MCP Tools
 
-`stygian-proxy` exposes six tools for managing a proxy pool plus a readable pool-stats resource.
+`stygian-proxy` exposes nine tools for managing a proxy pool plus a readable pool-stats resource.
 
 ---
 
@@ -23,6 +23,12 @@ Proxy handles are tracked across tool calls by a `handle_token` (a ULID string):
 
 ```
 proxy_add → proxy_acquire / proxy_acquire_for_domain → [use proxy] → proxy_release
+```
+
+Capability-aware acquisition adds one more path:
+
+```
+proxy_add → proxy_acquire_with_capabilities → [use proxy] → proxy_release
 ```
 
 The handle acts as a circuit-breaker ticket. **Always call `proxy_release`** — the server stores
@@ -153,6 +159,66 @@ succeeded or failed.
 
 ```json
 { "released": true }
+```
+
+---
+
+### `proxy_acquire_with_capabilities`
+
+Acquire a proxy that satisfies explicit capability requirements.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `require_https_connect` | boolean | | Require HTTPS CONNECT tunnel support (default: `false`) |
+| `require_socks5_udp` | boolean | | Require SOCKS5 UDP relay support (default: `false`) |
+| `require_http3_tunnel` | boolean | | Require HTTP/3 QUIC tunnel support (default: `false`) |
+| `require_geo_country` | string | | ISO-3166-1 alpha-2 country code (for example `US`) |
+
+**Returns:** Same shape as `proxy_acquire`:
+
+```json
+{
+  "handle_token": "01HV4...",
+  "proxy_url": "http://proxy3.example.com:8080"
+}
+```
+
+---
+
+### `proxy_fetch_freelist`
+
+Fetch plain host:port proxies from curated public free-list feeds and add them to
+the pool.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `sources` | array[string] | ✓ | Feed names. Supported: `the_speedx_http`, `the_speedx_socks4`, `the_speedx_socks5`, `clarketm_http`, `open_proxy_list_http` |
+| `tags` | array[string] | | Extra tags attached to each loaded proxy |
+
+> `the_speedx_socks4` and `the_speedx_socks5` require the crate `socks` feature.
+
+**Returns:**
+
+```json
+{ "loaded": 127 }
+```
+
+---
+
+### `proxy_fetch_freeapiproxies`
+
+Fetch proxies from a FreeAPIProxies-compatible JSON endpoint and add them to the
+pool.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `endpoint` | string | | Custom endpoint URL (default: public FreeAPIProxies endpoint) |
+| `tags` | array[string] | | Extra tags attached to each loaded proxy |
+
+**Returns:**
+
+```json
+{ "loaded": 64 }
 ```
 
 ---

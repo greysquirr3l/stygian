@@ -59,6 +59,15 @@ MCP (Model Context Protocol) aggregator for LLM tool integration:
 - **Cross-crate tools** — `scrape_proxied`, `browser_proxied`
 - **VS Code/Claude** — direct integration with MCP-compatible clients
 
+MCP tool matrix (aggregator surface):
+
+| Namespace | Representative tools | Purpose |
+| --------- | -------------------- | ------- |
+| `graph_*` | `graph_scrape`, `graph_scrape_rest`, `graph_scrape_graphql`, `graph_pipeline_validate`, `graph_pipeline_run` | HTTP/API/feed scraping and DAG execution |
+| `browser_*` | `browser_acquire`, `browser_navigate`, `browser_query`, `browser_extract`, `browser_extract_with_fallback`, `browser_extract_resilient`, `browser_release` | Headless browser automation and structured extraction |
+| `proxy_*` | `proxy_add`, `proxy_remove`, `proxy_pool_stats`, `proxy_acquire`, `proxy_acquire_for_domain`, `proxy_acquire_with_capabilities`, `proxy_fetch_freelist`, `proxy_fetch_freeapiproxies`, `proxy_release` | Proxy pool management, capability-aware leasing, and feed bootstrap |
+| cross-crate | `scrape_proxied`, `browser_proxied` | End-to-end orchestration across graph/browser/proxy |
+
 ### [stygian-extract-derive](crates/stygian-extract-derive)
 
 Proc-macro backend that powers `#[derive(Extract)]` in `stygian-browser`:

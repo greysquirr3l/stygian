@@ -1,6 +1,6 @@
 # Browser MCP Tools
 
-`stygian-browser` exposes eleven tools for headless browser automation plus a pool stats tool.
+`stygian-browser` exposes thirteen tools for headless browser automation plus a pool stats tool.
 
 ---
 
@@ -179,13 +179,12 @@ to calling `page.extract_all::<T>()` with an inline schema definition.
 | `session_id` | string | ✓ | Session ID |
 | `url` | string | ✓ | URL to navigate to before extracting |
 | `root_selector` | string | ✓ | CSS selector for the repeating container element |
-| `schema` | array | ✓ | Array of `{ name, selector, attr?, required? }` field descriptors |
+| `schema` | object | ✓ | Map of field name to `{ selector, attr?, required? }` field descriptor |
 
 **Schema field descriptor:**
 
 | Key | Type | Required | Description |
 | --- | ---- | -------- | ----------- |
-| `name` | string | ✓ | Key in the output object |
 | `selector` | string | ✓ | CSS selector scoped to the root element |
 | `attr` | string | | If present, captures this attribute instead of `textContent` |
 | `required` | boolean | | `true` (default) — omit or set to `false` for optional fields |
@@ -210,11 +209,57 @@ to calling `page.extract_all::<T>()` with an inline schema definition.
   "session_id":    "01HV4...",
   "url":           "https://news.example.com",
   "root_selector": "article.story",
-  "schema": [
-    { "name": "title",  "selector": "h2" },
-    { "name": "url",    "selector": "h2 a", "attr": "href" },
-    { "name": "author", "selector": "span.author" },
-    { "name": "date",   "selector": "time", "attr": "datetime", "required": false }
+  "schema": {
+    "title":  { "selector": "h2" },
+    "url":    { "selector": "h2 a", "attr": "href" },
+    "author": { "selector": "span.author" },
+    "date":   { "selector": "time", "attr": "datetime", "required": false }
+  }
+}
+```
+
+---
+
+### `browser_extract_with_fallback`
+
+Structured extraction with multiple root selectors. Selectors are tried in order,
+and the first selector that yields results is used.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `session_id` | string | ✓ | Session ID |
+| `url` | string | ✓ | URL to navigate to before extracting |
+| `root_selectors` | array[string] | ✓ | Candidate root selectors in priority order |
+| `schema` | object | ✓ | Same schema object used by `browser_extract` |
+| `timeout_secs` | number | | Navigation/extraction timeout (default: 30) |
+
+**Returns:** same structured `results` array as `browser_extract`, plus the selected root selector.
+
+---
+
+### `browser_extract_resilient`
+
+Structured extraction mode that tolerates partial records by skipping invalid root
+nodes instead of failing the full extraction call.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `session_id` | string | ✓ | Session ID |
+| `url` | string | ✓ | URL to navigate to before extracting |
+| `root_selector` | string | ✓ | Root selector for repeated record containers |
+| `schema` | object | ✓ | Same schema object used by `browser_extract` |
+| `timeout_secs` | number | | Navigation/extraction timeout (default: 30) |
+
+**Returns:**
+
+```json
+{
+  "url": "https://news.example.com",
+  "root_selector": "article.story",
+  "count": 42,
+  "skipped": 3,
+  "results": [
+    { "title": "...", "url": "..." }
   ]
 }
 ```

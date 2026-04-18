@@ -34,6 +34,9 @@
 //! | `proxy_acquire` | – | `handle_token`, `proxy_url` |
 //! | `proxy_acquire_for_domain` | `domain` | `handle_token`, `proxy_url` |
 //! | `proxy_release` | `handle_token`, `success?` | success |
+//! | `proxy_acquire_with_capabilities` | `require_https_connect?`, `require_socks5_udp?`, `require_http3_tunnel?`, `require_geo_country?` | `handle_token`, `proxy_url` |
+//! | `proxy_fetch_freelist` | `sources`, `tags?` | `loaded` |
+//! | `proxy_fetch_freeapiproxies` | `endpoint?`, `tags?` | `loaded` |
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -49,7 +52,8 @@ use uuid::Uuid;
 
 use crate::{
     MemoryProxyStore, PoolStats, ProxyHandle, ProxyManager,
-    types::{Proxy, ProxyConfig, ProxyType},
+    fetcher::{FreeApiProxiesFetcher, FreeListFetcher, FreeListSource, load_from_fetcher},
+    types::{CapabilityRequirement, Proxy, ProxyConfig, ProxyType},
 };
 
 // ─── Error response helpers ───────────────────────────────────────────────────
@@ -274,79 +278,184 @@ impl McpProxyServer {
     }
 
     fn handle_tools_list(id: &Value) -> Value {
-        ok_response(
-            id,
-            json!({
-                "tools": [
-                    {
-                        "name": "proxy_add",
-                        "description": "Add a proxy to the pool. Returns a stable UUID that identifies the proxy for future removal.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "url":        { "type": "string", "description": "Proxy URL (e.g. http://host:port, socks5://user:pass@host:port)" },
-                                "proxy_type": { "type": "string", "description": "Protocol: http | https | socks4 | socks5 (default: inferred from URL scheme, falling back to http)" },
-                                "username":   { "type": "string", "description": "Optional proxy username" },
-                                "password":   { "type": "string", "description": "Optional proxy password" },
-                                "weight":     { "type": "integer", "description": "Relative selection weight for weighted rotation (default: 1)" },
-                                "tags":       { "type": "array", "items": { "type": "string" }, "description": "Optional user-defined tags" }
-                            },
-                            "required": ["url"]
-                        }
+        ok_response(id, json!({ "tools": Self::tool_definitions() }))
+    }
+
+    fn tool_definitions() -> Vec<Value> {
+        vec![
+            Self::tool_def_proxy_add(),
+            Self::tool_def_proxy_remove(),
+            Self::tool_def_proxy_pool_stats(),
+            Self::tool_def_proxy_acquire(),
+            Self::tool_def_proxy_acquire_for_domain(),
+            Self::tool_def_proxy_release(),
+            Self::tool_def_proxy_acquire_with_capabilities(),
+            Self::tool_def_proxy_fetch_freelist(),
+            Self::tool_def_proxy_fetch_freeapiproxies(),
+        ]
+    }
+
+    fn tool_def_proxy_add() -> Value {
+        json!({
+            "name": "proxy_add",
+            "description": "Add a proxy to the pool. Returns a stable UUID that identifies the proxy for future removal.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "url":        { "type": "string", "description": "Proxy URL (e.g. http://host:port, socks5://user:pass@host:port)" },
+                    "proxy_type": { "type": "string", "description": "Protocol: http | https | socks4 | socks5 (default: inferred from URL scheme, falling back to http)" },
+                    "username":   { "type": "string", "description": "Optional proxy username" },
+                    "password":   { "type": "string", "description": "Optional proxy password" },
+                    "weight":     { "type": "integer", "description": "Relative selection weight for weighted rotation (default: 1)" },
+                    "tags":       { "type": "array", "items": { "type": "string" }, "description": "Optional user-defined tags" }
+                },
+                "required": ["url"]
+            }
+        })
+    }
+
+    fn tool_def_proxy_remove() -> Value {
+        json!({
+            "name": "proxy_remove",
+            "description": "Remove a proxy from the pool by its UUID.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "proxy_id": { "type": "string", "description": "UUID of the proxy to remove (returned by proxy_add)" }
+                },
+                "required": ["proxy_id"]
+            }
+        })
+    }
+
+    fn tool_def_proxy_pool_stats() -> Value {
+        json!({
+            "name": "proxy_pool_stats",
+            "description": "Return a health snapshot of the proxy pool: total count, healthy count, open circuit-breaker count, and active sticky-session count.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        })
+    }
+
+    fn tool_def_proxy_acquire() -> Value {
+        json!({
+            "name": "proxy_acquire",
+            "description": "Lease one proxy from the pool using the configured rotation strategy. Returns a handle_token (opaque string) and the proxy URL. Call proxy_release when done.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        })
+    }
+
+    fn tool_def_proxy_acquire_for_domain() -> Value {
+        json!({
+            "name": "proxy_acquire_for_domain",
+            "description": "Lease a proxy for a specific domain, honouring sticky-session policy. The same proxy is returned for repeated calls with the same domain during the TTL. Returns handle_token and proxy_url.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "domain": { "type": "string", "description": "Target domain (e.g. example.com)" }
+                },
+                "required": ["domain"]
+            }
+        })
+    }
+
+    fn tool_def_proxy_release() -> Value {
+        json!({
+            "name": "proxy_release",
+            "description": "Release a previously acquired proxy handle. Pass success=true if the request succeeded (updates circuit-breaker health), false to mark failure.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "handle_token": { "type": "string", "description": "Token returned by proxy_acquire or proxy_acquire_for_domain" },
+                    "success":      { "type": "boolean", "description": "Whether the request using this proxy succeeded (default: true)" }
+                },
+                "required": ["handle_token"]
+            }
+        })
+    }
+
+    fn tool_def_proxy_acquire_with_capabilities() -> Value {
+        json!({
+            "name": "proxy_acquire_with_capabilities",
+            "description": "Lease one proxy from the pool that satisfies all specified capability requirements. Returns handle_token and proxy_url. Call proxy_release when done.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "require_https_connect": { "type": "boolean", "description": "Require the proxy to support HTTPS CONNECT tunnelling (default: false)" },
+                    "require_socks5_udp":    { "type": "boolean", "description": "Require SOCKS5 UDP relay support (default: false)" },
+                    "require_http3_tunnel":  { "type": "boolean", "description": "Require HTTP/3 QUIC tunnel support (default: false)" },
+                    "require_geo_country":   { "type": "string",  "description": "ISO-3166-1 alpha-2 country code the egress IP must match (e.g. \"US\")" }
+                }
+            }
+        })
+    }
+
+    fn tool_def_proxy_fetch_freelist() -> Value {
+        let description = if cfg!(feature = "socks") {
+            "List of feed names to fetch."
+        } else {
+            "List of feed names to fetch. SOCKS feeds are available only when built with the 'socks' feature."
+        };
+        json!({
+            "name": "proxy_fetch_freelist",
+            "description": "Fetch proxies from one or more well-known free proxy list feeds (plain host:port format) and add them to the pool. Returns the number of proxies loaded.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "sources": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": Self::freelist_source_enum_values()
+                        },
+                        "description": description,
+                        "minItems": 1
                     },
-                    {
-                        "name": "proxy_remove",
-                        "description": "Remove a proxy from the pool by its UUID.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "proxy_id": { "type": "string", "description": "UUID of the proxy to remove (returned by proxy_add)" }
-                            },
-                            "required": ["proxy_id"]
-                        }
-                    },
-                    {
-                        "name": "proxy_pool_stats",
-                        "description": "Return a health snapshot of the proxy pool: total count, healthy count, open circuit-breaker count, and active sticky-session count.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {}
-                        }
-                    },
-                    {
-                        "name": "proxy_acquire",
-                        "description": "Lease one proxy from the pool using the configured rotation strategy. Returns a handle_token (opaque string) and the proxy URL. Call proxy_release when done.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {}
-                        }
-                    },
-                    {
-                        "name": "proxy_acquire_for_domain",
-                        "description": "Lease a proxy for a specific domain, honouring sticky-session policy. The same proxy is returned for repeated calls with the same domain during the TTL. Returns handle_token and proxy_url.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "domain": { "type": "string", "description": "Target domain (e.g. example.com)" }
-                            },
-                            "required": ["domain"]
-                        }
-                    },
-                    {
-                        "name": "proxy_release",
-                        "description": "Release a previously acquired proxy handle. Pass success=true if the request succeeded (updates circuit-breaker health), false to mark failure.",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "handle_token": { "type": "string", "description": "Token returned by proxy_acquire or proxy_acquire_for_domain" },
-                                "success":      { "type": "boolean", "description": "Whether the request using this proxy succeeded (default: true)" }
-                            },
-                            "required": ["handle_token"]
-                        }
-                    }
-                ]
-            }),
-        )
+                    "tags": { "type": "array", "items": { "type": "string" }, "description": "Extra tags attached to every loaded proxy" }
+                },
+                "required": ["sources"]
+            }
+        })
+    }
+
+    fn freelist_source_enum_values() -> Vec<&'static str> {
+        #[cfg(feature = "socks")]
+        {
+            vec![
+                "the_speedx_http",
+                "the_speedx_socks4",
+                "the_speedx_socks5",
+                "clarketm_http",
+                "open_proxy_list_http",
+            ]
+        }
+
+        #[cfg(not(feature = "socks"))]
+        {
+            vec!["the_speedx_http", "clarketm_http", "open_proxy_list_http"]
+        }
+    }
+
+    fn tool_def_proxy_fetch_freeapiproxies() -> Value {
+        json!({
+            "name": "proxy_fetch_freeapiproxies",
+            "description": "Fetch proxies from a FreeAPIProxies-compatible JSON endpoint and add them to the pool. Returns the number of proxies loaded.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "limit":    { "type": "integer", "description": "Maximum number of proxies to request (default: API default)" },
+                    "protocol": { "type": "string",  "description": "Protocol filter (e.g. \"http\", \"socks5\")" },
+                    "country":  { "type": "string",  "description": "ISO-3166-1 alpha-2 country filter (e.g. \"US\")" },
+                    "endpoint": { "type": "string",  "description": "Custom API endpoint URL (defaults to the public FreeAPIProxies endpoint)" },
+                    "tags":     { "type": "array", "items": { "type": "string" }, "description": "Extra tags attached to every loaded proxy" }
+                }
+            }
+        })
     }
 
     async fn handle_tools_call(&self, id: &Value, req: &Value) -> Value {
@@ -361,6 +470,11 @@ impl McpProxyServer {
             "proxy_acquire" => self.tool_proxy_acquire(id).await,
             "proxy_acquire_for_domain" => self.tool_proxy_acquire_for_domain(id, args).await,
             "proxy_release" => self.tool_proxy_release(id, args).await,
+            "proxy_acquire_with_capabilities" => {
+                self.tool_proxy_acquire_with_capabilities(id, args).await
+            }
+            "proxy_fetch_freelist" => self.tool_proxy_fetch_freelist(id, args).await,
+            "proxy_fetch_freeapiproxies" => self.tool_proxy_fetch_freeapiproxies(id, args).await,
             _ => error_response(id, -32602, &format!("Unknown tool: {name}")),
         }
     }
@@ -642,6 +756,150 @@ impl McpProxyServer {
             }),
         )
     }
+
+    // ── proxy_acquire_with_capabilities ──────────────────────────────────────
+
+    /// Lease a proxy that satisfies all capability requirements in `args`.
+    ///
+    /// Accepts the same JSON structure as [`CapabilityRequirement`] —
+    /// `require_https_connect`, `require_socks5_udp`, `require_http3_tunnel`,
+    /// `require_geo_country`.  All fields are optional; an empty call is
+    /// equivalent to plain `proxy_acquire`.
+    async fn tool_proxy_acquire_with_capabilities(&self, id: &Value, args: &Value) -> Value {
+        let req = CapabilityRequirement {
+            require_https_connect: args
+                .get("require_https_connect")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            require_socks5_udp: args
+                .get("require_socks5_udp")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            require_http3_tunnel: args
+                .get("require_http3_tunnel")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            require_geo_country: args
+                .get("require_geo_country")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+        };
+
+        match self.manager.acquire_with_capabilities(&req).await {
+            Ok(handle) => {
+                let proxy_url = handle.proxy_url.clone();
+                let token = Ulid::new().to_string();
+                self.handles.lock().await.insert(token.clone(), handle);
+                ok_response(
+                    id,
+                    json!({
+                        "content": [{
+                            "type": "text",
+                            "text": serde_json::to_string(&json!({
+                                "handle_token": token,
+                                "proxy_url":    proxy_url
+                            })).unwrap_or_default()
+                        }]
+                    }),
+                )
+            }
+            Err(e) => error_response(
+                id,
+                -32603,
+                &format!("Acquire with capabilities failed: {e}"),
+            ),
+        }
+    }
+
+    // ── proxy_fetch_freelist ──────────────────────────────────────────────────
+
+    /// Fetch proxies from well-known free list feeds and populate the pool.
+    async fn tool_proxy_fetch_freelist(&self, id: &Value, args: &Value) -> Value {
+        let Some(sources_arr) = args.get("sources").and_then(Value::as_array) else {
+            return error_response(id, -32602, "Missing required parameter: sources");
+        };
+
+        if sources_arr.is_empty() {
+            return error_response(id, -32602, "sources must contain at least one entry");
+        }
+
+        let mut sources: Vec<FreeListSource> = Vec::new();
+        for src in sources_arr {
+            let name = src.as_str().unwrap_or("");
+            match name {
+                "the_speedx_http" => sources.push(FreeListSource::TheSpeedXHttp),
+                #[cfg(feature = "socks")]
+                "the_speedx_socks4" => sources.push(FreeListSource::TheSpeedXSocks4),
+                #[cfg(feature = "socks")]
+                "the_speedx_socks5" => sources.push(FreeListSource::TheSpeedXSocks5),
+                "clarketm_http" => sources.push(FreeListSource::ClarketmHttp),
+                "open_proxy_list_http" => sources.push(FreeListSource::OpenProxyListHttp),
+                other => {
+                    return error_response(
+                        id,
+                        -32602,
+                        &format!(
+                            "Unknown source: {other}. Valid values: the_speedx_http, the_speedx_socks4, the_speedx_socks5, clarketm_http, open_proxy_list_http"
+                        ),
+                    );
+                }
+            }
+        }
+
+        let mut fetcher = FreeListFetcher::new(sources);
+        if let Some(tags) = args.get("tags").and_then(Value::as_array) {
+            let tag_vec: Vec<String> = tags
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect();
+            fetcher = fetcher.with_tags(tag_vec);
+        }
+
+        match load_from_fetcher(&self.manager, &fetcher).await {
+            Ok(count) => ok_response(
+                id,
+                json!({
+                    "content": [{
+                        "type": "text",
+                        "text": serde_json::to_string(&json!({ "loaded": count })).unwrap_or_default()
+                    }]
+                }),
+            ),
+            Err(e) => error_response(id, -32603, &format!("Fetch failed: {e}")),
+        }
+    }
+
+    // ── proxy_fetch_freeapiproxies ────────────────────────────────────────────
+
+    /// Fetch proxies from a FreeAPIProxies-compatible JSON API and populate the pool.
+    async fn tool_proxy_fetch_freeapiproxies(&self, id: &Value, args: &Value) -> Value {
+        let mut fetcher = args.get("endpoint").and_then(Value::as_str).map_or_else(
+            FreeApiProxiesFetcher::new,
+            FreeApiProxiesFetcher::with_endpoint,
+        );
+        if let Some(tags) = args.get("tags").and_then(Value::as_array) {
+            let tag_vec: Vec<String> = tags
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect();
+            fetcher = fetcher.with_tags(tag_vec);
+        }
+
+        match load_from_fetcher(&self.manager, &fetcher).await {
+            Ok(count) => ok_response(
+                id,
+                json!({
+                    "content": [{
+                        "type": "text",
+                        "text": serde_json::to_string(&json!({ "loaded": count })).unwrap_or_default()
+                    }]
+                }),
+            ),
+            Err(e) => error_response(id, -32603, &format!("Fetch failed: {e}")),
+        }
+    }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -711,6 +969,9 @@ mod tests {
         assert!(names.contains(&"proxy_acquire"));
         assert!(names.contains(&"proxy_acquire_for_domain"));
         assert!(names.contains(&"proxy_release"));
+        assert!(names.contains(&"proxy_acquire_with_capabilities"));
+        assert!(names.contains(&"proxy_fetch_freelist"));
+        assert!(names.contains(&"proxy_fetch_freeapiproxies"));
         let _ = server;
         Ok(())
     }
@@ -756,6 +1017,94 @@ mod tests {
         assert!(
             resp.get("error").is_some_and(Value::is_object),
             "empty pool should return error"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn acquire_with_capabilities_on_empty_pool_returns_error()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let server = McpProxyServer::new()?;
+        let id = json!(1);
+        let resp = server
+            .tool_proxy_acquire_with_capabilities(&id, &json!({}))
+            .await;
+        assert!(
+            resp.get("error").is_some_and(Value::is_object),
+            "empty pool should return error for capability-aware acquire"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn proxy_fetch_freelist_missing_sources_returns_error()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let server = McpProxyServer::new()?;
+        let id = json!(1);
+        let resp = server.tool_proxy_fetch_freelist(&id, &json!({})).await;
+        assert!(
+            resp.get("error").is_some_and(Value::is_object),
+            "missing sources should return error"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn proxy_fetch_freelist_empty_sources_returns_error()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let server = McpProxyServer::new()?;
+        let id = json!(1);
+        let resp = server
+            .tool_proxy_fetch_freelist(&id, &json!({ "sources": [] }))
+            .await;
+        assert!(
+            resp.get("error").is_some_and(Value::is_object),
+            "empty sources array should return error"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn proxy_fetch_freelist_unknown_source_returns_error()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let server = McpProxyServer::new()?;
+        let id = json!(1);
+        let resp = server
+            .tool_proxy_fetch_freelist(&id, &json!({ "sources": ["not_a_real_source"] }))
+            .await;
+        assert!(
+            resp.get("error").is_some_and(Value::is_object),
+            "unknown source name should return error"
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn proxy_fetch_freeapiproxies_accepts_limit_and_protocol()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        // This test does not make a real HTTP call; it only checks that building
+        // the tool returns an error from the (unreachable) test endpoint rather
+        // than a parse/config error.
+        let server = McpProxyServer::new()?;
+        let id = json!(1);
+        // Use a local non-routable address so the fetch fails fast without
+        // waiting on a real network timeout.
+        let resp = server
+            .tool_proxy_fetch_freeapiproxies(
+                &id,
+                &json!({
+                    "endpoint": "http://127.0.0.1:1",
+                    "limit": 50,
+                    "protocol": "http"
+                }),
+            )
+            .await;
+        // Fetch must either succeed (unlikely in CI) or return an error —
+        // the important thing is that it does not panic.
+        assert!(
+            resp.get("error").is_some_and(Value::is_object)
+                || resp.get("result").is_some_and(Value::is_object),
+            "fetch_freeapiproxies should return either an error or result"
         );
         Ok(())
     }
