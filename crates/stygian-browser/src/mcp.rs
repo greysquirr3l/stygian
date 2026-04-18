@@ -1774,7 +1774,9 @@ impl McpBrowserServer {
             .get("root_selectors")
             .and_then(Value::as_array)
             .ok_or_else(|| {
-                BrowserError::ConfigError("Missing or non-array 'root_selectors' argument".to_string())
+                BrowserError::ConfigError(
+                    "Missing or non-array 'root_selectors' argument".to_string(),
+                )
             })?
             .iter()
             .filter_map(|v| v.as_str().map(str::to_string))
