@@ -191,7 +191,7 @@ jobs:
             set -e
             if [ $STATUS -eq 0 ]; then
               echo "$OUTPUT"
-            elif echo "$OUTPUT" | grep -q "already exists on crates.io index"; then
+            elif echo "$OUTPUT" | grep -qE "already exists on crates.io index|already uploaded"; then
               echo "stygian-extract-derive@$VERSION already exists on crates.io, skipping"
             else
               echo "$OUTPUT"
@@ -217,7 +217,7 @@ jobs:
             set -e
             if [ $STATUS -eq 0 ]; then
               echo "$OUTPUT"
-            elif echo "$OUTPUT" | grep -q "already exists on crates.io index"; then
+            elif echo "$OUTPUT" | grep -qE "already exists on crates.io index|already uploaded"; then
               echo "stygian-browser@$VERSION already exists on crates.io, skipping"
             else
               echo "$OUTPUT"
@@ -243,7 +243,7 @@ jobs:
             set -e
             if [ $STATUS -eq 0 ]; then
               echo "$OUTPUT"
-            elif echo "$OUTPUT" | grep -q "already exists on crates.io index"; then
+            elif echo "$OUTPUT" | grep -qE "already exists on crates.io index|already uploaded"; then
               echo "stygian-proxy@$VERSION already exists on crates.io, skipping"
             else
               echo "$OUTPUT"
@@ -269,7 +269,7 @@ jobs:
             set -e
             if [ $STATUS -eq 0 ]; then
               echo "$OUTPUT"
-            elif echo "$OUTPUT" | grep -q "already exists on crates.io index"; then
+            elif echo "$OUTPUT" | grep -qE "already exists on crates.io index|already uploaded"; then
               echo "stygian-graph@$VERSION already exists on crates.io, skipping"
             else
               echo "$OUTPUT"
@@ -295,7 +295,7 @@ jobs:
             set -e
             if [ $STATUS -eq 0 ]; then
               echo "$OUTPUT"
-            elif echo "$OUTPUT" | grep -q "already exists on crates.io index"; then
+            elif echo "$OUTPUT" | grep -qE "already exists on crates.io index|already uploaded"; then
               echo "stygian-mcp@$VERSION already exists on crates.io, skipping"
             else
               echo "$OUTPUT"
