@@ -1449,7 +1449,7 @@ impl PageHandle {
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::QuerySelectorFailed`] if the CDP call fails, or
+    /// Returns [`BrowserError::CdpError`] if the selector query fails, or
     /// [`BrowserError::ExtractionFailed`] if a matched node fails extraction.
     ///
     /// # Example
@@ -1504,7 +1504,7 @@ impl PageHandle {
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::QuerySelectorFailed`] if the CDP call fails, or
+    /// Returns [`BrowserError::CdpError`] if the selector query fails, or
     /// [`BrowserError::ExtractionFailed`] for non-`Missing` extraction errors.
     ///
     /// # Example
