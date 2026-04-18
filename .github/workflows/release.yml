@@ -45,7 +45,7 @@ jobs:
         id: tag
         run: |
           set -euo pipefail
-          git fetch --tags origin
+          git fetch --tags --force origin
 
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             TAG="${{ inputs.tag }}"
