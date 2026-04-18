@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-04-17
+
+### Added
+
+- `stygian-browser`: three new MCP tools — `browser_extract_with_fallback` (tries multiple CSS
+  selectors in priority order, advancing only when at least one record is extracted),
+  `browser_extract_resilient` (schema-driven extraction with configurable per-field fallback
+  selectors), and `browser_proxied` cross-crate tool forwarded by `stygian-mcp`
+- `stygian-proxy`: three new MCP tools — `proxy_acquire_with_capabilities` (acquire a proxy
+  constrained by capabilities bitmask: `anonymous`, `rotating`, `residential`, `datacenter`,
+  `socks`), `proxy_fetch_freelist` (fetch and import proxies from a named free-list source;
+  SOCKS4/5 sources gated behind the `socks` feature), and `proxy_fetch_freeapiproxies`
+  (import proxies from the free-api-proxies provider)
+- `stygian-mcp`: MCP tool matrix documenting all `graph_*`, `browser_*`, `proxy_*`, and
+  cross-crate tools added to root README and book overview
+
+### Changed
+
+- `stygian-proxy`: `proxy_fetch_freelist` schema enum for `source` field is now conditionally
+  built by `freelist_source_enum_values()` — SOCKS4/5 source variants (`the_speedx_socks4`,
+  `the_speedx_socks5`) are included only when the `socks` feature is enabled, keeping the
+  schema honest at compile time
+- `stygian-browser`: `browser_extract_with_fallback` selector logic now only advances
+  `matched_selector` and breaks when at least one record is actually extracted from
+  a selector, preventing false-positive selector matches on empty result sets
+- `book/mcp`: overview page updated to document MCP `2025-11-25` as the current protocol
+  version; proxy-tools and browser-tools pages updated with full reference entries for all
+  new tools
+
+### Refactored
+
+- `stygian-browser`: `tool_browser_extract_with_fallback` split into `parse_root_selectors`
+  and `parse_extract_schema` helpers to satisfy `clippy::too_many_lines` — no behaviour change
+
+### Fixed
+
+- `stygian-browser`: broken intra-doc links in `page.rs` (`BrowserError::QuerySelectorFailed`
+  replaced with `BrowserError::CdpError`) and `tls.rs` (`ProfileChannel::from_str` replaced
+  with `std::str::FromStr::from_str`) that caused `RUSTDOCFLAGS=-Dwarnings` Documentation CI failures
+
+### CI
+
+- `release.yml` synced with updated workflow template: tag trigger narrowed to semver
+  `v[0-9]*.[0-9]*.[0-9]*`, `workflow_dispatch` accepts a `tag` input, concurrency group
+  added (`cancel-in-progress: false`), `resolve` job gains `release_sha` output and
+  `set -euo pipefail`, `verify-ci` uses `needs.resolve.outputs.release_sha`
+
 ## [0.9.3] - 2026-04-16
 
 ### Added
@@ -841,7 +888,9 @@ Both crates are functional and well-tested, but APIs may evolve based on communi
 
 ---
 
-[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.9.2...HEAD
+[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.9.4...HEAD
+[0.9.4]: https://github.com/greysquirr3l/stygian/compare/v0.9.3...v0.9.4
+[0.9.3]: https://github.com/greysquirr3l/stygian/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/greysquirr3l/stygian/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/greysquirr3l/stygian/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/greysquirr3l/stygian/compare/v0.1.9...v0.9.0
