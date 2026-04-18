@@ -36,6 +36,7 @@ jobs:
       release_ref: ${{ steps.tag.outputs.release_ref }}
       release_sha: ${{ steps.tag.outputs.release_sha }}
       version: ${{ steps.tag.outputs.version }}
+      should_release: ${{ steps.tag.outputs.should_release }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,12 +65,14 @@ jobs:
               | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
               | sort -V | tail -n 1 || true)
             if [[ -z "$TAG" ]]; then
-              echo "No semver tag found for workflow_run SHA $SHA"
-              exit 1
+              echo "No semver tag found for workflow_run SHA $SHA — skipping release"
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              exit 0
             fi
             REF="refs/tags/$TAG"
           fi
           VERSION="${REF#refs/tags/v}"
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
           echo "release_ref=$REF" >> "$GITHUB_OUTPUT"
           echo "release_sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION"  >> "$GITHUB_OUTPUT"
@@ -78,6 +81,7 @@ jobs:
     name: Validate tag vs Cargo versions
     runs-on: ubuntu-latest
     needs: resolve
+    if: ${{ needs.resolve.outputs.should_release == 'true' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -103,7 +107,7 @@ jobs:
     name: Verify CI is green
     runs-on: ubuntu-latest
     needs: resolve
-    if: ${{ needs.resolve.outputs.release_ref != '' && needs.resolve.outputs.release_sha != '' }}
+    if: ${{ needs.resolve.outputs.should_release == 'true' }}
     steps:
       - name: Wait for CI workflow result on tagged commit
         env:
@@ -155,6 +159,7 @@ jobs:
     name: Publish crates to crates.io
     runs-on: ubuntu-latest
     needs: [resolve, validate, verify-ci]
+    if: ${{ needs.resolve.outputs.should_release == 'true' }}
     steps:
       - uses: actions/checkout@v4
         with:
