@@ -610,13 +610,15 @@ const SCRIPT_STORAGE_ESTIMATE: &str = concat!(
 
 const SCRIPT_HIDDEN_FONT_PROBE: &str = concat!(
     "(function(){",
+    "var root=document.body||document.documentElement;",
+    "if(!root){return JSON.stringify({passed:false,details:'no root element available'});}",
     "var probe=document.createElement('div');",
     "probe.textContent='mmmmmmmmmlli';",
     "probe.setAttribute('aria-hidden','true');",
     "probe.style.position='absolute';",
     "probe.style.visibility='hidden';",
     "probe.style.font='16px Arial';",
-    "document.body.appendChild(probe);",
+    "root.appendChild(probe);",
     "var rect=probe.getBoundingClientRect();",
     "probe.remove();",
     "var ok=rect.width>0&&rect.height>0;",

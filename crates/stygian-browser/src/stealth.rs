@@ -541,7 +541,7 @@ pub async fn apply_stealth_to_page(
         config
             .fingerprint_profile
             .clone()
-            .unwrap_or_else(crate::profile::FingerprintProfile::random_weighted)
+            .unwrap_or_else(|| fallback_profile_for_config(config))
     });
 
     // ── CDP hardening — runs FIRST to clean up binding remnants ───────────────
@@ -728,10 +728,11 @@ fn fingerprint_from_coherent_profile(
     crate::fingerprint::Fingerprint {
         user_agent: profile.browser.user_agent.clone(),
         screen_resolution: (profile.screen.width, profile.screen.height),
-        // The v3 profile model does not currently include timezone/language.
-        // Keep stable defaults until those fields are promoted into the profile.
-        timezone: "America/New_York".to_string(),
-        language: profile.platform.keyboard_layout.clone(),
+        // The v3 profile model does not currently include explicit
+        // timezone/language fields; derive deterministic values from profile
+        // seed so they stay stable per profile and vary across sessions.
+        timezone: fingerprint_timezone_from_coherent_profile(profile),
+        language: fingerprint_language_from_coherent_profile(profile),
         platform: profile.platform.platform_string.clone(),
         hardware_concurrency: profile.hardware.cores,
         device_memory: profile.hardware.memory_gb,
@@ -740,6 +741,104 @@ fn fingerprint_from_coherent_profile(
         canvas_noise: true,
         fonts: Vec::new(),
     }
+}
+
+fn fallback_profile_for_config(
+    config: &crate::config::BrowserConfig,
+) -> crate::profile::FingerprintProfile {
+    let seed = config
+        .noise
+        .seed
+        .map(crate::noise::NoiseSeed::as_u64)
+        .unwrap_or_else(|| {
+            // Keep a stable fallback per BrowserConfig instance so all pages
+            // from the same instance share one coherent profile.
+            (config as *const crate::config::BrowserConfig as usize) as u64
+        });
+
+    // Weighted mapping: windows 65%, macOS 20%, linux 5%, android 10%.
+    match seed % 100 {
+        0..=64 => crate::profile::FingerprintProfile::windows_chrome_136_rtx3060(),
+        65..=84 => crate::profile::FingerprintProfile::macos_chrome_136_m1(),
+        85..=89 => crate::profile::FingerprintProfile::linux_chrome_136_intel(),
+        _ => crate::profile::FingerprintProfile::android_chrome_136_pixel(),
+    }
+}
+
+fn deterministic_profile_choice<'a>(seed: u64, salt: &str, choices: &'a [&'a str]) -> &'a str {
+    let mut hash = seed ^ 0xcbf2_9ce4_8422_2325_u64;
+    for byte in salt.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100_0000_01b3);
+    }
+    let idx = (hash as usize) % choices.len();
+    choices[idx]
+}
+
+fn fingerprint_timezone_from_coherent_profile(
+    profile: &crate::profile::FingerprintProfile,
+) -> String {
+    const TZ_WINDOWS: &[&str] = &[
+        "America/New_York",
+        "America/Chicago",
+        "America/Denver",
+        "America/Los_Angeles",
+        "America/Toronto",
+    ];
+    const TZ_MAC: &[&str] = &[
+        "America/Los_Angeles",
+        "America/New_York",
+        "Europe/London",
+        "Europe/Paris",
+    ];
+    const TZ_LINUX: &[&str] = &[
+        "Europe/Berlin",
+        "Europe/Amsterdam",
+        "Europe/London",
+        "America/New_York",
+    ];
+    const TZ_ANDROID: &[&str] = &[
+        "Asia/Tokyo",
+        "Asia/Seoul",
+        "Asia/Singapore",
+        "Australia/Sydney",
+        "America/Los_Angeles",
+    ];
+
+    let choices = match profile.platform.os {
+        crate::profile::Os::Windows => TZ_WINDOWS,
+        crate::profile::Os::MacOs => TZ_MAC,
+        crate::profile::Os::Linux => TZ_LINUX,
+        crate::profile::Os::Android | crate::profile::Os::Ios => TZ_ANDROID,
+    };
+
+    deterministic_profile_choice(profile.noise_seed.as_u64(), "timezone", choices).to_string()
+}
+
+fn fingerprint_language_from_coherent_profile(
+    profile: &crate::profile::FingerprintProfile,
+) -> String {
+    let keyboard = profile.platform.keyboard_layout.trim();
+    let normalized = match keyboard {
+        "en" | "en-US" | "en_US" | "us" | "US" => Some("en-US"),
+        "en-GB" | "en_GB" | "uk" | "UK" => Some("en-GB"),
+        "fr" | "fr-FR" | "fr_FR" => Some("fr-FR"),
+        "de" | "de-DE" | "de_DE" => Some("de-DE"),
+        "es" | "es-ES" | "es_ES" => Some("es-ES"),
+        "it" | "it-IT" | "it_IT" => Some("it-IT"),
+        "nl" | "nl-NL" | "nl_NL" => Some("nl-NL"),
+        "pt" | "pt-BR" | "pt_BR" => Some("pt-BR"),
+        "sv" | "sv-SE" | "sv_SE" => Some("sv-SE"),
+        _ => None,
+    };
+    if let Some(lang) = normalized {
+        return lang.to_string();
+    }
+
+    const LANGUAGES: &[&str] = &[
+        "en-US", "en-GB", "fr-FR", "de-DE", "es-ES", "it-IT", "nl-NL", "pt-BR", "sv-SE",
+    ];
+    deterministic_profile_choice(profile.noise_seed.as_u64(), "language", LANGUAGES).to_string()
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
