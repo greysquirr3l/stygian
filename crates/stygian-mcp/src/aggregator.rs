@@ -291,7 +291,12 @@ impl McpAggregator {
                 "method": "tools/call",
                 "params": { "name": name, "arguments": args }
             });
-            self.browser.dispatch(&sub).await
+            let response = self.browser.dispatch(&sub).await;
+            if name == "browser_verify_stealth" {
+                normalize_browser_verify_stealth_response(response)
+            } else {
+                response
+            }
         } else if name.starts_with("proxy_") {
             let sub = json!({
                 "jsonrpc": "2.0",
@@ -712,6 +717,78 @@ fn is_jsonrpc_notification(req: &Value) -> bool {
         && req.get("method").and_then(Value::as_str).is_some()
 }
 
+/// Enrich `browser_verify_stealth` responses with an aggregation summary while
+/// preserving the underlying `DiagnosticReport` payload.
+fn normalize_browser_verify_stealth_response(mut resp: Value) -> Value {
+    let Some(text_slot) = resp
+        .get_mut("result")
+        .and_then(Value::as_object_mut)
+        .and_then(|r| r.get_mut("content"))
+        .and_then(Value::as_array_mut)
+        .and_then(|a| a.get_mut(0))
+        .and_then(Value::as_object_mut)
+        .and_then(|c| c.get_mut("text"))
+    else {
+        return resp;
+    };
+
+    let Some(raw_text) = text_slot.as_str() else {
+        return resp;
+    };
+
+    let Ok(mut report) = serde_json::from_str::<Value>(raw_text) else {
+        return resp;
+    };
+
+    let failed_check_ids: Vec<Value> = report
+        .get("checks")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|check| check.get("passed").and_then(Value::as_bool) == Some(false))
+        .map(|check| {
+            check
+                .get("id")
+                .cloned()
+                .unwrap_or_else(|| Value::String("unknown".to_string()))
+        })
+        .collect();
+
+    let known_limitation_ids: Vec<Value> = report
+        .get("known_limitations")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|limitation| {
+            limitation
+                .get("id")
+                .cloned()
+                .unwrap_or_else(|| Value::String("unknown".to_string()))
+        })
+        .collect();
+
+    let known_limitations_count = u64::try_from(known_limitation_ids.len()).unwrap_or(0);
+    let failed_checks_count = u64::try_from(failed_check_ids.len()).unwrap_or(0);
+
+    if let Some(report_obj) = report.as_object_mut() {
+        report_obj.insert(
+            "aggregation_summary".to_string(),
+            json!({
+                "failed_checks_count": failed_checks_count,
+                "failed_check_ids": failed_check_ids,
+                "known_limitations_count": known_limitations_count,
+                "known_limitation_ids": known_limitation_ids
+            }),
+        );
+    }
+
+    if let Ok(serialized) = serde_json::to_string(&report) {
+        *text_slot = Value::String(serialized);
+    }
+
+    resp
+}
+
 /// Release a proxy handle via the proxy sub-server.
 async fn release_proxy(proxy: &Arc<McpProxyServer>, handle_token: &str, success: bool) {
     let _ = proxy
@@ -788,6 +865,69 @@ mod tests {
             Some("bar")
         );
         assert_eq!(resp.get("jsonrpc").and_then(Value::as_str), Some("2.0"));
+    }
+
+    #[test]
+    fn test_normalize_browser_verify_stealth_response_adds_summary() {
+        let resp = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "content": [{
+                    "type": "text",
+                    "text": "{\"checks\":[{\"id\":\"web_driver_flag\",\"passed\":false},{\"id\":\"chrome_object\",\"passed\":true}],\"known_limitations\":[{\"id\":\"web_gpu_surface\"}],\"passed_count\":1,\"failed_count\":1}"
+                }]
+            }
+        });
+
+        let normalized = normalize_browser_verify_stealth_response(resp);
+        let text = normalized
+            .pointer("/result/content/0/text")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let parsed: Value = serde_json::from_str(text).unwrap_or(Value::Null);
+
+        assert_eq!(
+            parsed
+                .pointer("/aggregation_summary/failed_checks_count")
+                .and_then(Value::as_u64),
+            Some(1)
+        );
+        assert_eq!(
+            parsed
+                .pointer("/aggregation_summary/known_limitations_count")
+                .and_then(Value::as_u64),
+            Some(1)
+        );
+        assert_eq!(
+            parsed
+                .pointer("/aggregation_summary/failed_check_ids/0")
+                .and_then(Value::as_str),
+            Some("web_driver_flag")
+        );
+        assert_eq!(
+            parsed
+                .pointer("/aggregation_summary/known_limitation_ids/0")
+                .and_then(Value::as_str),
+            Some("web_gpu_surface")
+        );
+    }
+
+    #[test]
+    fn test_normalize_browser_verify_stealth_response_passthrough_on_non_json_text() {
+        let resp = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "content": [{
+                    "type": "text",
+                    "text": "not-json"
+                }]
+            }
+        });
+
+        let normalized = normalize_browser_verify_stealth_response(resp.clone());
+        assert_eq!(normalized, resp);
     }
 
     #[test]

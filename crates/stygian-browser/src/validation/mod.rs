@@ -484,6 +484,69 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires network connectivity and a running Chrome binary"]
+    async fn tier1_non_regression_against_optional_baseline() {
+        use crate::BrowserConfig;
+        use crate::pool::BrowserPool;
+        use std::sync::Arc;
+
+        let pool_result = BrowserPool::new(BrowserConfig::default()).await;
+        assert!(pool_result.is_ok(), "pool init failed");
+        let Ok(pool) = pool_result else {
+            return;
+        };
+        let pool = Arc::new(pool);
+
+        let results = ValidationSuite::run_all(&pool, ValidationTarget::tier1()).await;
+        assert_eq!(results.len(), 2, "tier1 should execute exactly two targets");
+
+        for result in &results {
+            assert!(
+                result.score.is_some(),
+                "{} should return a score for baseline comparison: {:?}",
+                result.target,
+                result.details
+            );
+        }
+
+        // Optional per-target baseline scores can be supplied by CI or local runners.
+        // If omitted, this test still validates Tier1 score extraction correctness.
+        let creepjs_baseline = std::env::var("STYGIAN_TIER1_BASELINE_CREEPJS")
+            .ok()
+            .and_then(|v| v.parse::<f64>().ok());
+        let browserscan_baseline = std::env::var("STYGIAN_TIER1_BASELINE_BROWSERSCAN")
+            .ok()
+            .and_then(|v| v.parse::<f64>().ok());
+
+        for result in results {
+            let Some(score) = result.score else {
+                continue;
+            };
+            match result.target {
+                ValidationTarget::CreepJs => {
+                    if let Some(baseline) = creepjs_baseline {
+                        assert!(
+                            score >= baseline,
+                            "CreepJS score regressed: score={score:.4}, baseline={baseline:.4}, details={:?}",
+                            result.details
+                        );
+                    }
+                }
+                ValidationTarget::BrowserScan => {
+                    if let Some(baseline) = browserscan_baseline {
+                        assert!(
+                            score >= baseline,
+                            "BrowserScan score regressed: score={score:.4}, baseline={baseline:.4}, details={:?}",
+                            result.details
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires network connectivity and a running Chrome binary"]
     async fn live_kasada_wizzair_not_blocked() {
         use crate::BrowserConfig;
         use crate::pool::BrowserPool;

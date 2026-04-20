@@ -77,6 +77,30 @@ pub enum CheckId {
     ExecCommandPresent,
     /// `process.versions.node` must be absent — not a Node.js environment (PX env-bitmask bit 7).
     NodeJsAbsent,
+    /// `Navigator.prototype.webdriver` should look like a native accessor descriptor.
+    WebDriverDescriptorShape,
+    /// `navigator.userAgentData` should exist and expose coherent client hints.
+    UserAgentDataPresent,
+    /// `navigator.connection` should expose plausible network information.
+    ConnectionPresent,
+    /// `navigator.storage.estimate` should exist for quota/usage probing.
+    StorageEstimatePresent,
+    /// Hidden font-probe elements should yield non-zero layout measurements.
+    HiddenFontProbeRect,
+    /// `screen` metrics and `devicePixelRatio` should be plausible and coherent.
+    ScreenMetricsCoherent,
+    /// The Web Audio surface should exist and expose a non-zero sample rate.
+    AudioContextPresent,
+}
+
+/// Stable identifier for a browser surface we do not yet spoof or validate fully.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LimitationId {
+    /// WebGPU / `navigator.gpu` is exposed but not yet spoofed or validated.
+    WebGpuSurface,
+    /// `performance.memory` is exposed but not yet spoofed or validated.
+    PerformanceMemorySurface,
 }
 
 // ── CheckResult ───────────────────────────────────────────────────────────────
@@ -91,6 +115,17 @@ pub struct CheckResult {
     /// `true` if the browser appears legitimate for this check.
     pub passed: bool,
     /// Diagnostic detail returned by the JavaScript evaluation.
+    pub details: String,
+}
+
+/// A known browser surface that is visible but not yet covered by stealth diagnostics.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KnownLimitation {
+    /// Which limitation was observed.
+    pub id: LimitationId,
+    /// Human-readable description of the uncovered surface.
+    pub description: String,
+    /// Runtime detail from the page context.
     pub details: String,
 }
 
@@ -250,6 +285,9 @@ pub struct DiagnosticReport {
     pub passed_count: usize,
     /// Number of checks where `passed == false`.
     pub failed_count: usize,
+    /// Browser surfaces observed at runtime that are not yet covered fully.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub known_limitations: Vec<KnownLimitation>,
     /// Optional transport-layer diagnostics (JA3/JA4/HTTP3 perk).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transport: Option<TransportDiagnostic>,
@@ -264,8 +302,16 @@ impl DiagnosticReport {
             checks,
             passed_count,
             failed_count,
+            known_limitations: Vec::new(),
             transport: None,
         }
+    }
+
+    /// Attach known browser-surface limitations to this report.
+    #[must_use]
+    pub fn with_known_limitations(mut self, known_limitations: Vec<KnownLimitation>) -> Self {
+        self.known_limitations = known_limitations;
+        self
     }
 
     /// Attach transport diagnostics to this report.
@@ -313,6 +359,17 @@ pub struct DetectionCheck {
     pub script: &'static str,
 }
 
+/// A runtime probe for a visible browser surface we do not yet fully cover.
+pub struct LimitationProbe {
+    /// Stable identifier.
+    pub id: LimitationId,
+    /// Human-readable description.
+    pub description: &'static str,
+    /// JavaScript expression returning a JSON string with shape
+    /// `'{"limited":true|false,"details":"..."}'`.
+    pub script: &'static str,
+}
+
 impl DetectionCheck {
     /// Parse the JSON string returned by the CDP evaluation of [`script`](Self::script).
     ///
@@ -340,6 +397,31 @@ impl DetectionCheck {
                 passed: false,
                 details: format!("parse error: {e} | raw: {json}"),
             },
+        }
+    }
+}
+
+impl LimitationProbe {
+    fn limitation(&self, details: String) -> KnownLimitation {
+        KnownLimitation {
+            id: self.id,
+            description: self.description.to_string(),
+            details,
+        }
+    }
+
+    /// Parse the JSON string returned by the CDP evaluation of [`script`](Self::script).
+    pub fn parse_output(&self, json: &str) -> Option<KnownLimitation> {
+        #[derive(Deserialize)]
+        struct Output {
+            limited: bool,
+            #[serde(default)]
+            details: String,
+        }
+
+        match serde_json::from_str::<Output>(json) {
+            Ok(output) => output.limited.then(|| self.limitation(output.details)),
+            Err(error) => Some(self.limitation(format!("parse error: {error} | raw: {json}"))),
         }
     }
 }
@@ -490,6 +572,93 @@ const SCRIPT_NODEJS_ABSENT: &str = concat!(
     "})"
 );
 
+const SCRIPT_WEBDRIVER_DESCRIPTOR: &str = concat!(
+    "(function(){",
+    "var d=Object.getOwnPropertyDescriptor(Navigator.prototype,'webdriver');",
+    "var ok=typeof d==='undefined'||(typeof d.get==='function'&&d.set===undefined&&d.configurable===true);",
+    "var detail=d?('getter='+typeof d.get+',set='+typeof d.set+',configurable='+String(d.configurable)+',enumerable='+String(d.enumerable)):'missing';",
+    "return JSON.stringify({passed:ok,details:detail});",
+    "})()"
+);
+
+const SCRIPT_USER_AGENT_DATA: &str = concat!(
+    "(function(){",
+    "var d=navigator.userAgentData;",
+    "var ok=typeof d==='undefined'||(Array.isArray(d.brands)&&d.brands.length>0&&typeof d.mobile==='boolean'&&typeof d.getHighEntropyValues==='function');",
+    "var detail=typeof d==='undefined'?'undefined':('brands='+(Array.isArray(d.brands)?d.brands.length:0)+',mobile='+String(d.mobile)+',platform='+(d.platform||''));",
+    "return JSON.stringify({passed:ok,details:detail});",
+    "})()"
+);
+
+const SCRIPT_CONNECTION: &str = concat!(
+    "(function(){",
+    "var c=navigator.connection;",
+    "var ok=typeof c!=='undefined'&&typeof c.rtt==='number'&&c.rtt>=0&&typeof c.downlink==='number'&&c.downlink>=0&&typeof c.effectiveType==='string'&&c.effectiveType.length>0;",
+    "var detail=typeof c==='undefined'?'undefined':('rtt='+String(c.rtt)+',downlink='+String(c.downlink)+',effectiveType='+(c.effectiveType||''));",
+    "return JSON.stringify({passed:ok,details:detail});",
+    "})()"
+);
+
+const SCRIPT_STORAGE_ESTIMATE: &str = concat!(
+    "(function(){",
+    "var s=navigator.storage;",
+    "var ok=!!s&&typeof s.estimate==='function';",
+    "var detail=!s?'storage unavailable':typeof s.estimate;",
+    "return JSON.stringify({passed:ok,details:detail});",
+    "})()"
+);
+
+const SCRIPT_HIDDEN_FONT_PROBE: &str = concat!(
+    "(function(){",
+    "var root=document.body||document.documentElement;",
+    "if(!root){return JSON.stringify({passed:false,details:'no root element available'});}",
+    "var probe=document.createElement('div');",
+    "probe.textContent='mmmmmmmmmlli';",
+    "probe.setAttribute('aria-hidden','true');",
+    "probe.style.position='absolute';",
+    "probe.style.visibility='hidden';",
+    "probe.style.font='16px Arial';",
+    "root.appendChild(probe);",
+    "var rect=probe.getBoundingClientRect();",
+    "probe.remove();",
+    "var ok=rect.width>0&&rect.height>0;",
+    "return JSON.stringify({passed:ok,details:'width='+rect.width+',height='+rect.height});",
+    "})()"
+);
+
+const SCRIPT_SCREEN_METRICS: &str = concat!(
+    "JSON.stringify({",
+    "passed:screen.width>0&&screen.height>0&&screen.availWidth>0&&screen.availHeight>0&&screen.availWidth<=screen.width&&screen.availHeight<=screen.height&&window.devicePixelRatio>0,",
+    "details:'screen='+screen.width+'x'+screen.height+',avail='+screen.availWidth+'x'+screen.availHeight+',dpr='+window.devicePixelRatio",
+    "})"
+);
+
+const SCRIPT_AUDIO_CONTEXT: &str = concat!(
+    "(function(){",
+    "var C=window.AudioContext||window.webkitAudioContext;",
+    "if(!C)return JSON.stringify({passed:false,details:'AudioContext unavailable'});",
+    "var ctx=new C();",
+    "var sampleRate=ctx.sampleRate||0;",
+    "var baseLatency=typeof ctx.baseLatency==='number'?ctx.baseLatency:-1;",
+    "if(typeof ctx.close==='function'){ctx.close();}",
+    "return JSON.stringify({passed:sampleRate>0,details:'sampleRate='+sampleRate+',baseLatency='+baseLatency});",
+    "})()"
+);
+
+const SCRIPT_WEBGPU_LIMITATION: &str = concat!(
+    "JSON.stringify({",
+    "limited:'gpu' in navigator,",
+    "details:typeof navigator.gpu",
+    "})"
+);
+
+const SCRIPT_PERFORMANCE_MEMORY_LIMITATION: &str = concat!(
+    "JSON.stringify({",
+    "limited:typeof performance.memory!=='undefined',",
+    "details:typeof performance.memory",
+    "})"
+);
+
 // ── Static check catalogue ────────────────────────────────────────────────────
 
 /// Return all built-in stealth detection checks.
@@ -498,6 +667,11 @@ const SCRIPT_NODEJS_ABSENT: &str = concat!(
 /// call [`DetectionCheck::parse_output`] with the returned JSON string.
 pub fn all_checks() -> &'static [DetectionCheck] {
     CHECKS
+}
+
+/// Return all known browser-surface limitation probes.
+pub fn all_limitation_probes() -> &'static [LimitationProbe] {
+    LIMITATION_PROBES
 }
 
 static CHECKS: &[DetectionCheck] = &[
@@ -591,6 +765,54 @@ static CHECKS: &[DetectionCheck] = &[
         description: "process.versions.node must be absent — not a Node.js environment (PX env-bitmask bit 7)",
         script: SCRIPT_NODEJS_ABSENT,
     },
+    DetectionCheck {
+        id: CheckId::WebDriverDescriptorShape,
+        description: "Navigator.prototype.webdriver must look like an accessor descriptor",
+        script: SCRIPT_WEBDRIVER_DESCRIPTOR,
+    },
+    DetectionCheck {
+        id: CheckId::UserAgentDataPresent,
+        description: "navigator.userAgentData must expose coherent client hints",
+        script: SCRIPT_USER_AGENT_DATA,
+    },
+    DetectionCheck {
+        id: CheckId::ConnectionPresent,
+        description: "navigator.connection must expose plausible network information",
+        script: SCRIPT_CONNECTION,
+    },
+    DetectionCheck {
+        id: CheckId::StorageEstimatePresent,
+        description: "navigator.storage.estimate must exist",
+        script: SCRIPT_STORAGE_ESTIMATE,
+    },
+    DetectionCheck {
+        id: CheckId::HiddenFontProbeRect,
+        description: "hidden font probes must yield non-zero layout measurements",
+        script: SCRIPT_HIDDEN_FONT_PROBE,
+    },
+    DetectionCheck {
+        id: CheckId::ScreenMetricsCoherent,
+        description: "screen metrics and devicePixelRatio must be coherent",
+        script: SCRIPT_SCREEN_METRICS,
+    },
+    DetectionCheck {
+        id: CheckId::AudioContextPresent,
+        description: "AudioContext must expose a non-zero sample rate",
+        script: SCRIPT_AUDIO_CONTEXT,
+    },
+];
+
+static LIMITATION_PROBES: &[LimitationProbe] = &[
+    LimitationProbe {
+        id: LimitationId::WebGpuSurface,
+        description: "navigator.gpu / WebGPU is exposed but not yet spoofed or validated",
+        script: SCRIPT_WEBGPU_LIMITATION,
+    },
+    LimitationProbe {
+        id: LimitationId::PerformanceMemorySurface,
+        description: "performance.memory is exposed but not yet spoofed or validated",
+        script: SCRIPT_PERFORMANCE_MEMORY_LIMITATION,
+    },
 ];
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -603,7 +825,12 @@ mod tests {
 
     #[test]
     fn all_checks_returns_eighteen_entries() {
-        assert_eq!(all_checks().len(), 18);
+        assert_eq!(all_checks().len(), 25);
+    }
+
+    #[test]
+    fn all_limitation_probes_returns_two_entries() {
+        assert_eq!(all_limitation_probes().len(), 2);
     }
 
     #[test]
@@ -683,7 +910,8 @@ mod tests {
             .collect();
         let report = DiagnosticReport::new(results);
         assert!(report.is_clean());
-        assert_eq!(report.passed_count, 18);
+        assert_eq!(report.passed_count, 25);
+        assert!(report.known_limitations.is_empty());
         assert_eq!(report.failed_count, 0);
         assert!((report.coverage_pct() - 100.0).abs() < 0.001);
         assert_eq!(report.failures().count(), 0);
@@ -700,7 +928,7 @@ mod tests {
         let report = DiagnosticReport::new(results);
         assert!(!report.is_clean());
         assert_eq!(report.failed_count, 2);
-        assert_eq!(report.passed_count, 16);
+        assert_eq!(report.passed_count, 23);
         assert_eq!(report.failures().count(), 2);
     }
 
@@ -730,11 +958,37 @@ mod tests {
             .iter()
             .map(|c| c.parse_output(r#"{"passed":true,"details":"ok"}"#))
             .collect();
-        let report = DiagnosticReport::new(results);
+        let report = DiagnosticReport::new(results).with_known_limitations(vec![KnownLimitation {
+            id: LimitationId::WebGpuSurface,
+            description: "navigator.gpu / WebGPU is exposed but not yet spoofed or validated"
+                .to_string(),
+            details: "object".to_string(),
+        }]);
         let json = serde_json::to_string(&report).unwrap();
         let restored: DiagnosticReport = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.passed_count, report.passed_count);
+        assert_eq!(restored.known_limitations.len(), 1);
         assert!(restored.is_clean());
+    }
+
+    #[test]
+    fn limitation_probe_reports_surface_when_limited() {
+        let probe = &all_limitation_probes()[0];
+        let limitation = probe
+            .parse_output(r#"{"limited":true,"details":"object"}"#)
+            .unwrap();
+        assert_eq!(limitation.id, LimitationId::WebGpuSurface);
+        assert_eq!(limitation.details, "object");
+    }
+
+    #[test]
+    fn limitation_probe_returns_none_when_surface_not_limited() {
+        let probe = &all_limitation_probes()[0];
+        assert!(
+            probe
+                .parse_output(r#"{"limited":false,"details":"undefined"}"#)
+                .is_none()
+        );
     }
 
     #[test]
