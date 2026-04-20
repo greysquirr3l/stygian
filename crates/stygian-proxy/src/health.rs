@@ -245,6 +245,7 @@ impl HealthChecker {
     }
 }
 
+#[cfg(any(test, feature = "tls-profiled"))]
 fn proxy_url_with_auth(proxy_url: &str, username: Option<&str>, password: Option<&str>) -> String {
     let (Some(user), Some(pass)) = (username, password) else {
         return proxy_url.to_string();

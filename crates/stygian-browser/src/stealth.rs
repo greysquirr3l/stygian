@@ -746,15 +746,14 @@ fn fingerprint_from_coherent_profile(
 fn fallback_profile_for_config(
     config: &crate::config::BrowserConfig,
 ) -> crate::profile::FingerprintProfile {
-    let seed = config
-        .noise
-        .seed
-        .map(crate::noise::NoiseSeed::as_u64)
-        .unwrap_or_else(|| {
+    let seed = config.noise.seed.map_or_else(
+        || {
             // Keep a stable fallback per BrowserConfig instance so all pages
             // from the same instance share one coherent profile.
-            (config as *const crate::config::BrowserConfig as usize) as u64
-        });
+            std::ptr::from_ref(config) as usize as u64
+        },
+        crate::noise::NoiseSeed::as_u64,
+    );
 
     // Weighted mapping: windows 65%, macOS 20%, linux 5%, android 10%.
     match seed % 100 {
@@ -766,13 +765,29 @@ fn fallback_profile_for_config(
 }
 
 fn deterministic_profile_choice<'a>(seed: u64, salt: &str, choices: &'a [&'a str]) -> &'a str {
+    let Some(default_choice) = choices.first().copied() else {
+        return "";
+    };
+
     let mut hash = seed ^ 0xcbf2_9ce4_8422_2325_u64;
     for byte in salt.as_bytes() {
         hash ^= u64::from(*byte);
         hash = hash.wrapping_mul(0x100_0000_01b3);
     }
-    let idx = (hash as usize) % choices.len();
-    choices[idx]
+
+    let Ok(len_u64) = u64::try_from(choices.len()) else {
+        return default_choice;
+    };
+    if len_u64 == 0 {
+        return default_choice;
+    }
+
+    let idx_u64 = hash % len_u64;
+    let Ok(idx) = usize::try_from(idx_u64) else {
+        return default_choice;
+    };
+
+    choices.get(idx).copied().unwrap_or(default_choice)
 }
 
 fn fingerprint_timezone_from_coherent_profile(
@@ -818,6 +833,10 @@ fn fingerprint_timezone_from_coherent_profile(
 fn fingerprint_language_from_coherent_profile(
     profile: &crate::profile::FingerprintProfile,
 ) -> String {
+    const LANGUAGES: &[&str] = &[
+        "en-US", "en-GB", "fr-FR", "de-DE", "es-ES", "it-IT", "nl-NL", "pt-BR", "sv-SE",
+    ];
+
     let keyboard = profile.platform.keyboard_layout.trim();
     let normalized = match keyboard {
         "en" | "en-US" | "en_US" | "us" | "US" => Some("en-US"),
@@ -835,9 +854,6 @@ fn fingerprint_language_from_coherent_profile(
         return lang.to_string();
     }
 
-    const LANGUAGES: &[&str] = &[
-        "en-US", "en-GB", "fr-FR", "de-DE", "es-ES", "it-IT", "nl-NL", "pt-BR", "sv-SE",
-    ];
     deterministic_profile_choice(profile.noise_seed.as_u64(), "language", LANGUAGES).to_string()
 }
 
