@@ -413,7 +413,7 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
     #[cfg(feature = "stealth")]
     tools.push(json!({
         "name": "browser_verify_stealth",
-        "description": "Navigate to a URL and run built-in stealth checks with optional transport diagnostics (JA3/JA4/HTTP3). Returns a DiagnosticReport with pass/fail results, coverage percentage, and transport mismatch details when observation fields are provided.",
+        "description": "Navigate to a URL and run built-in stealth checks with optional transport diagnostics (JA3/JA4/HTTP3). Returns a DiagnosticReport with pass/fail results, coverage percentage, transport mismatch details, and known_limitations for visible-but-not-yet-covered surfaces.",
         "inputSchema": {
             "type": "object",
             "properties": {

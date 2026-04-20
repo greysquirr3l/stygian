@@ -1326,9 +1326,10 @@ impl PageHandle {
     /// # }
     /// ```
     pub async fn verify_stealth(&self) -> Result<crate::diagnostic::DiagnosticReport> {
-        use crate::diagnostic::{CheckResult, DiagnosticReport, all_checks};
+        use crate::diagnostic::{CheckResult, DiagnosticReport, all_checks, all_limitation_probes};
 
         let mut results: Vec<CheckResult> = Vec::new();
+        let mut known_limitations = Vec::new();
 
         for check in all_checks() {
             let result = match self.eval::<String>(check.script).await {
@@ -1356,7 +1357,26 @@ impl PageHandle {
             results.push(result);
         }
 
-        Ok(DiagnosticReport::new(results))
+        for probe in all_limitation_probes() {
+            let limitation = match self.eval::<String>(probe.script).await {
+                Ok(json) => probe.parse_output(&json),
+                Err(error) => Some(crate::diagnostic::KnownLimitation {
+                    id: probe.id,
+                    description: probe.description.to_string(),
+                    details: format!("script error: {error}"),
+                }),
+            };
+            if let Some(limitation) = limitation {
+                tracing::debug!(
+                    limitation = ?limitation.id,
+                    details = %limitation.details,
+                    "stealth limitation observed"
+                );
+                known_limitations.push(limitation);
+            }
+        }
+
+        Ok(DiagnosticReport::new(results).with_known_limitations(known_limitations))
     }
 
     /// Run stealth checks and attach transport diagnostics (JA3/JA4/HTTP3).
