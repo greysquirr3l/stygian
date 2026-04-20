@@ -547,6 +547,92 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "requires network connectivity and a running Chrome binary"]
+    async fn live_about_blank_webgl_vendor_not_swiftshader() {
+        use crate::BrowserConfig;
+        use crate::WaitUntil;
+        use crate::config::StealthLevel;
+        use crate::diagnostic::CheckId;
+        use crate::pool::BrowserPool;
+
+        let config = BrowserConfig::builder()
+            .headless(true)
+            .stealth_level(StealthLevel::Advanced)
+            .build();
+
+        let pool_result = BrowserPool::new(config).await;
+        assert!(pool_result.is_ok(), "pool init failed");
+        let Ok(pool) = pool_result else {
+            return;
+        };
+
+        let handle_result = pool.acquire().await;
+        assert!(handle_result.is_ok(), "acquire failed");
+        let Ok(handle) = handle_result else {
+            return;
+        };
+
+        let browser = handle.browser();
+        assert!(browser.is_some(), "browser handle no longer valid");
+        let Some(browser) = browser else {
+            handle.release().await;
+            return;
+        };
+
+        let page_result = browser.new_page().await;
+        assert!(page_result.is_ok(), "new_page failed");
+        let Ok(mut page) = page_result else {
+            handle.release().await;
+            return;
+        };
+
+        let nav_result = page
+            .navigate(
+                "about:blank",
+                WaitUntil::DomContentLoaded,
+                Duration::from_secs(20),
+            )
+            .await;
+        assert!(nav_result.is_ok(), "navigate failed: {nav_result:?}");
+        let verify_result = page.verify_stealth().await;
+        assert!(
+            verify_result.is_ok(),
+            "verify_stealth failed: {verify_result:?}"
+        );
+
+        let Ok(report) = verify_result else {
+            let _ = page.close().await;
+            handle.release().await;
+            return;
+        };
+
+        let webgl_check = report.checks.iter().find(|c| c.id == CheckId::WebGlVendor);
+        assert!(
+            webgl_check.is_some(),
+            "web_gl_vendor check missing from report"
+        );
+        let Some(webgl_check) = webgl_check else {
+            let _ = page.close().await;
+            handle.release().await;
+            return;
+        };
+
+        assert!(
+            webgl_check.passed,
+            "web_gl_vendor failed: {}",
+            webgl_check.details
+        );
+        assert!(
+            !webgl_check.details.contains("SwiftShader"),
+            "web_gl_vendor details still expose SwiftShader: {}",
+            webgl_check.details
+        );
+
+        let _ = page.close().await;
+        handle.release().await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires network connectivity and a running Chrome binary"]
     async fn live_kasada_wizzair_not_blocked() {
         use crate::BrowserConfig;
         use crate::pool::BrowserPool;
