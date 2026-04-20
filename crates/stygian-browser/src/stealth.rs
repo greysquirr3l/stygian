@@ -507,6 +507,7 @@ pub async fn apply_stealth_to_page(
 ) -> crate::error::Result<()> {
     use crate::cdp_protection::CdpProtection;
     use crate::config::StealthLevel;
+    use crate::error::BrowserError;
     use chromiumoxide::cdp::browser_protocol::page::AddScriptToEvaluateOnNewDocumentParams;
 
     /// Inline helper: push one script as `AddScriptToEvaluateOnNewDocument`.
@@ -534,6 +535,15 @@ pub async fn apply_stealth_to_page(
         return Ok(());
     }
 
+    // For Advanced stealth, always resolve a coherent profile so every
+    // injected surface can derive from the same identity.
+    let effective_profile = (config.stealth_level == StealthLevel::Advanced).then(|| {
+        config
+            .fingerprint_profile
+            .clone()
+            .unwrap_or_else(crate::profile::FingerprintProfile::random_weighted)
+    });
+
     // ── CDP hardening — runs FIRST to clean up binding remnants ───────────────
     #[cfg(feature = "stealth")]
     {
@@ -557,10 +567,15 @@ pub async fn apply_stealth_to_page(
 
     let (nav_profile, stealth_cfg) = match config.stealth_level {
         StealthLevel::Basic => (NavigatorProfile::default(), StealthConfig::minimal()),
-        StealthLevel::Advanced => (
-            NavigatorProfile::windows_chrome(),
-            StealthConfig::paranoid(),
-        ),
+        StealthLevel::Advanced => {
+            let profile = effective_profile
+                .as_ref()
+                .ok_or_else(|| BrowserError::ConfigError("missing advanced profile".to_string()))?;
+            (
+                navigator_profile_from_coherent_profile(profile),
+                StealthConfig::paranoid(),
+            )
+        }
         StealthLevel::None => unreachable!(),
     };
     let nav_script = StealthProfile::new(stealth_cfg, nav_profile).injection_script();
@@ -575,13 +590,12 @@ pub async fn apply_stealth_to_page(
 
     // ── Advanced only ──────────────────────────────────────────────────────────
     if config.stealth_level == StealthLevel::Advanced {
-        let fp = crate::fingerprint::Fingerprint::random();
+        let profile = effective_profile
+            .as_ref()
+            .ok_or_else(|| BrowserError::ConfigError("missing advanced profile".to_string()))?;
+        let fp = fingerprint_from_coherent_profile(profile);
         // Build one engine once so all spoofed surfaces share the same per-session seed.
-        // Prefer the fingerprint profile seed when present to keep profile identity coherent.
-        let profile_seed = config.fingerprint_profile.as_ref().map(|p| p.noise_seed);
-        let noise_seed = profile_seed
-            .or(config.noise.seed)
-            .unwrap_or_else(crate::noise::NoiseSeed::random);
+        let noise_seed = profile.noise_seed;
         let noise_engine = crate::noise::NoiseEngine::new(noise_seed);
         let noise_seed = noise_engine.seed();
         let fp_script = crate::fingerprint::inject_fingerprint(&fp);
@@ -614,10 +628,8 @@ pub async fn apply_stealth_to_page(
 
         // WebGL, audio, and rects noise (T39, T40, T41)
         if config.noise.webgl_enabled {
-            let webgl_script = crate::webgl_noise::webgl_noise_script(
-                &crate::webgl_noise::WebGlProfile::nvidia_rtx_3060(),
-                &noise_engine,
-            );
+            let webgl_script =
+                crate::webgl_noise::webgl_noise_script(&profile.webgl, &noise_engine);
             inject_one(
                 page,
                 "AddScriptToEvaluateOnNewDocument(webgl-noise)",
@@ -646,16 +658,15 @@ pub async fn apply_stealth_to_page(
             .await?;
         }
 
-        // Navigator coherence (T43) — inject only when a fingerprint profile is configured
-        if let Some(ref fp) = config.fingerprint_profile {
-            let nav_script = crate::navigator_coherence::navigator_coherence_script(fp);
-            inject_one(
-                page,
-                "AddScriptToEvaluateOnNewDocument(navigator-coherence)",
-                nav_script,
-            )
-            .await?;
-        }
+        // Navigator coherence (T43) — always inject in Advanced using the
+        // effective coherent profile.
+        let nav_script = crate::navigator_coherence::navigator_coherence_script(profile);
+        inject_one(
+            page,
+            "AddScriptToEvaluateOnNewDocument(navigator-coherence)",
+            nav_script,
+        )
+        .await?;
 
         // Timing noise (T44)
         {
@@ -680,7 +691,7 @@ pub async fn apply_stealth_to_page(
             let peripheral_script =
                 crate::peripheral_stealth::peripheral_stealth_script_with_profile(
                     &peripheral_cfg,
-                    config.fingerprint_profile.as_ref(),
+                    Some(profile),
                 );
             if !peripheral_script.is_empty() {
                 inject_one(
@@ -694,6 +705,41 @@ pub async fn apply_stealth_to_page(
     }
 
     Ok(())
+}
+
+fn navigator_profile_from_coherent_profile(
+    profile: &crate::profile::FingerprintProfile,
+) -> NavigatorProfile {
+    NavigatorProfile {
+        user_agent: profile.browser.user_agent.clone(),
+        platform: profile.platform.platform_string.clone(),
+        vendor: "Google Inc.".to_string(),
+        hardware_concurrency: u8::try_from(profile.hardware.cores).unwrap_or(8),
+        device_memory: u8::try_from(profile.hardware.memory_gb).unwrap_or(8),
+        max_touch_points: profile.platform.max_touch_points,
+        webgl_vendor: profile.webgl.vendor.clone(),
+        webgl_renderer: profile.webgl.renderer.clone(),
+    }
+}
+
+fn fingerprint_from_coherent_profile(
+    profile: &crate::profile::FingerprintProfile,
+) -> crate::fingerprint::Fingerprint {
+    crate::fingerprint::Fingerprint {
+        user_agent: profile.browser.user_agent.clone(),
+        screen_resolution: (profile.screen.width, profile.screen.height),
+        // The v3 profile model does not currently include timezone/language.
+        // Keep stable defaults until those fields are promoted into the profile.
+        timezone: "America/New_York".to_string(),
+        language: profile.platform.keyboard_layout.clone(),
+        platform: profile.platform.platform_string.clone(),
+        hardware_concurrency: profile.hardware.cores,
+        device_memory: profile.hardware.memory_gb,
+        webgl_vendor: Some(profile.webgl.vendor.clone()),
+        webgl_renderer: Some(profile.webgl.renderer.clone()),
+        canvas_noise: true,
+        fonts: Vec::new(),
+    }
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
