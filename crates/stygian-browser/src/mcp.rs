@@ -164,7 +164,7 @@ impl JsonRpcResponse {
 struct McpSession {
     /// Pool handle for this session — `None` after [`tool_browser_release`].
     handle: Arc<Mutex<Option<BrowserHandle>>>,
-    /// Attached browser runtime for cdp_ws sessions.
+    /// Attached browser runtime for `cdp_ws` sessions.
     attached_browser: Arc<Mutex<Option<Browser>>>,
     /// Background task driving the attached browser protocol handler.
     attached_handler_task: Arc<Mutex<Option<JoinHandle<()>>>>,
