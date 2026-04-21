@@ -159,8 +159,8 @@ async fn mcp_acquire_navigate_release_round_trip() -> Result<(), Box<dyn std::er
 
 #[tokio::test]
 #[ignore = "requires Chrome and external network"]
-async fn mcp_session_save_restore_and_humanize_round_trip(
-) -> Result<(), Box<dyn std::error::Error>> {
+async fn mcp_session_save_restore_and_humanize_round_trip() -> Result<(), Box<dyn std::error::Error>>
+{
     let pool = BrowserPool::new(test_config()).await?;
     let server = McpBrowserServer::new(pool);
 
@@ -263,10 +263,56 @@ async fn mcp_session_save_restore_and_humanize_round_trip(
         "humanize should report applied=true"
     );
 
-    let release_resp = server
+    let auth_capture_resp = server
         .dispatch(&json!({
             "jsonrpc": "2.0",
             "id": 16,
+            "method": "tools/call",
+            "params": {
+                "name": "browser_auth_session",
+                "arguments": {
+                    "session_id": session_id,
+                    "mode": "capture",
+                    "ttl_secs": 1800,
+                    "interaction_level": "none"
+                }
+            }
+        }))
+        .await;
+    let auth_capture_payload = parse_tools_call_text(&auth_capture_resp)?;
+    assert_eq!(
+        auth_capture_payload.get("mode").and_then(Value::as_str),
+        Some("capture"),
+        "auth session wrapper should report capture mode"
+    );
+
+    let auth_resume_resp = server
+        .dispatch(&json!({
+            "jsonrpc": "2.0",
+            "id": 17,
+            "method": "tools/call",
+            "params": {
+                "name": "browser_auth_session",
+                "arguments": {
+                    "session_id": session_id,
+                    "mode": "resume",
+                    "navigate_to_origin": false,
+                    "interaction_level": "none"
+                }
+            }
+        }))
+        .await;
+    let auth_resume_payload = parse_tools_call_text(&auth_resume_resp)?;
+    assert_eq!(
+        auth_resume_payload.get("mode").and_then(Value::as_str),
+        Some("resume"),
+        "auth session wrapper should report resume mode"
+    );
+
+    let release_resp = server
+        .dispatch(&json!({
+            "jsonrpc": "2.0",
+            "id": 18,
             "method": "tools/call",
             "params": {
                 "name": "browser_release",

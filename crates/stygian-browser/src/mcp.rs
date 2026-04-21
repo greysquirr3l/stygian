@@ -276,6 +276,22 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
             }
         }),
         json!({
+            "name": "browser_auth_session",
+            "description": "High-level auth/session workflow wrapper. Use mode='capture' to persist login state and mode='resume' to restore it.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "session_id": { "type": "string" },
+                    "mode": { "type": "string", "enum": ["capture", "resume"] },
+                    "file_path": { "type": "string", "description": "Optional snapshot file path for durable persistence." },
+                    "ttl_secs": { "type": "integer", "description": "Optional TTL (seconds) when capturing." },
+                    "navigate_to_origin": { "type": "boolean", "default": true, "description": "When resuming, navigate to snapshot origin before restore." },
+                    "interaction_level": { "type": "string", "enum": ["none", "low", "medium", "high"], "default": "none", "description": "Optional post-operation human-like interaction step." }
+                },
+                "required": ["session_id", "mode"]
+            }
+        }),
+        json!({
             "name": "browser_release",
             "description": "Release a browser session back to the pool.",
             "inputSchema": {
@@ -730,6 +746,7 @@ impl McpBrowserServer {
             "browser_eval" => self.tool_browser_eval(&args).await,
             "browser_screenshot" => self.tool_browser_screenshot(&args).await,
             "browser_content" => self.tool_browser_content(&args).await,
+            "browser_auth_session" => self.tool_browser_auth_session(&args).await,
             "browser_session_save" => self.tool_browser_session_save(&args).await,
             "browser_session_restore" => self.tool_browser_session_restore(&args).await,
             "browser_humanize" => self.tool_browser_humanize(&args).await,
@@ -1098,6 +1115,97 @@ impl McpBrowserServer {
         Ok(json!({ "html": html, "bytes": html.len() }))
     }
 
+    async fn tool_browser_auth_session(&self, args: &Value) -> Result<Value> {
+        let session_id = Self::require_str(args, "session_id")?;
+        let mode = Self::require_str(args, "mode")?;
+        let file_path = args
+            .get("file_path")
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
+        let ttl_secs = args.get("ttl_secs").and_then(Value::as_u64);
+        let navigate_to_origin = args
+            .get("navigate_to_origin")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        let interaction_level = args
+            .get("interaction_level")
+            .and_then(Value::as_str)
+            .unwrap_or("none")
+            .to_string();
+
+        let payload = match mode.as_str() {
+            "capture" => {
+                let mut save_args = json!({
+                    "session_id": session_id,
+                    "ttl_secs": ttl_secs,
+                    "include_snapshot": false
+                });
+                if let Some(path) = file_path.clone()
+                    && let Some(obj) = save_args.as_object_mut()
+                {
+                    obj.insert("file_path".to_string(), Value::String(path));
+                }
+
+                let save = self.tool_browser_session_save(&save_args).await?;
+
+                let humanize = if interaction_level != "none" {
+                    let humanize_args = json!({
+                        "session_id": session_id,
+                        "level": interaction_level
+                    });
+                    Some(self.tool_browser_humanize(&humanize_args).await?)
+                } else {
+                    None
+                };
+
+                json!({
+                    "mode": "capture",
+                    "session_id": session_id,
+                    "save": save,
+                    "humanize": humanize
+                })
+            }
+            "resume" => {
+                let mut restore_args = json!({
+                    "session_id": session_id,
+                    "use_saved": file_path.is_none(),
+                    "navigate_to_origin": navigate_to_origin
+                });
+                if let Some(path) = file_path.clone()
+                    && let Some(obj) = restore_args.as_object_mut()
+                {
+                    obj.insert("file_path".to_string(), Value::String(path));
+                }
+
+                let restore = self.tool_browser_session_restore(&restore_args).await?;
+
+                let humanize = if interaction_level != "none" {
+                    let humanize_args = json!({
+                        "session_id": session_id,
+                        "level": interaction_level
+                    });
+                    Some(self.tool_browser_humanize(&humanize_args).await?)
+                } else {
+                    None
+                };
+
+                json!({
+                    "mode": "resume",
+                    "session_id": session_id,
+                    "restore": restore,
+                    "humanize": humanize
+                })
+            }
+            other => {
+                return Err(BrowserError::ConfigError(format!(
+                    "Invalid mode '{other}'. Use one of: capture, resume"
+                )));
+            }
+        };
+
+        Ok(payload)
+    }
+
     async fn tool_browser_session_save(&self, args: &Value) -> Result<Value> {
         let session_id = Self::require_str(args, "session_id")?;
         let ttl_secs = args.get("ttl_secs").and_then(Value::as_u64);
@@ -1155,12 +1263,13 @@ impl McpBrowserServer {
             "saved_to_file": file_path
         });
 
-        if include_snapshot
-            && let Some(obj) = out.as_object_mut()
-        {
-            obj.insert("snapshot".to_string(), serde_json::to_value(&snapshot).map_err(|e| {
-                BrowserError::ConfigError(format!("failed to serialize session snapshot: {e}"))
-            })?);
+        if include_snapshot && let Some(obj) = out.as_object_mut() {
+            obj.insert(
+                "snapshot".to_string(),
+                serde_json::to_value(&snapshot).map_err(|e| {
+                    BrowserError::ConfigError(format!("failed to serialize session snapshot: {e}"))
+                })?,
+            );
         }
 
         Ok(out)
@@ -1265,11 +1374,7 @@ impl McpBrowserServer {
 
     async fn tool_browser_humanize(&self, args: &Value) -> Result<Value> {
         let session_id = Self::require_str(args, "session_id")?;
-        let level = match args
-            .get("level")
-            .and_then(Value::as_str)
-            .unwrap_or("low")
-        {
+        let level = match args.get("level").and_then(Value::as_str).unwrap_or("low") {
             "none" => InteractionLevel::None,
             "medium" => InteractionLevel::Medium,
             "high" => InteractionLevel::High,
