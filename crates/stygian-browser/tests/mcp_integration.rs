@@ -25,6 +25,8 @@ use stygian_browser::BrowserPool;
 use stygian_browser::config::PoolConfig;
 use stygian_browser::mcp::McpBrowserServer;
 
+type DynError = Box<dyn std::error::Error>;
+
 fn unique_user_data_dir() -> PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -54,7 +56,7 @@ fn test_config() -> BrowserConfig {
     cfg
 }
 
-fn parse_tools_call_text(resp: &Value) -> Result<Value, Box<dyn std::error::Error>> {
+fn parse_tools_call_text(resp: &Value) -> Result<Value, DynError> {
     let is_error = resp
         .get("result")
         .and_then(|r| r.get("isError"))
@@ -77,6 +79,185 @@ fn parse_tools_call_text(resp: &Value) -> Result<Value, Box<dyn std::error::Erro
         .ok_or_else(|| std::io::Error::other(format!("missing tools/call text payload: {resp}")))?;
 
     Ok(serde_json::from_str(text)?)
+}
+
+async fn call_tool(
+    server: &McpBrowserServer,
+    id: u64,
+    name: &str,
+    arguments: Value,
+) -> Result<Value, DynError> {
+    let resp = server
+        .dispatch(&json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "tools/call",
+            "params": {
+                "name": name,
+                "arguments": arguments
+            }
+        }))
+        .await;
+    parse_tools_call_text(&resp)
+}
+
+fn session_id_from_payload(payload: &Value) -> Result<String, DynError> {
+    payload
+        .get("session_id")
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+        .ok_or_else(|| std::io::Error::other("browser_acquire returned no session_id").into())
+}
+
+async fn acquire_session(
+    server: &McpBrowserServer,
+    id: u64,
+    target_profile: &str,
+) -> Result<String, DynError> {
+    let payload = call_tool(
+        server,
+        id,
+        "browser_acquire",
+        json!({ "target_profile": target_profile }),
+    )
+    .await?;
+    session_id_from_payload(&payload)
+}
+
+async fn release_session(
+    server: &McpBrowserServer,
+    id: u64,
+    session_id: &str,
+) -> Result<Value, DynError> {
+    call_tool(
+        server,
+        id,
+        "browser_release",
+        json!({ "session_id": session_id }),
+    )
+    .await
+}
+
+async fn assert_session_save_ttl(
+    server: &McpBrowserServer,
+    id: u64,
+    session_id: &str,
+    ttl_secs: u64,
+) -> Result<(), DynError> {
+    let save_payload = call_tool(
+        server,
+        id,
+        "browser_session_save",
+        json!({
+            "session_id": session_id,
+            "ttl_secs": ttl_secs
+        }),
+    )
+    .await?;
+    assert_eq!(
+        save_payload.get("ttl_secs").and_then(Value::as_u64),
+        Some(ttl_secs),
+        "saved snapshot should persist requested ttl"
+    );
+    Ok(())
+}
+
+async fn assert_session_restore_saved(
+    server: &McpBrowserServer,
+    id: u64,
+    session_id: &str,
+) -> Result<(), DynError> {
+    let restore_payload = call_tool(
+        server,
+        id,
+        "browser_session_restore",
+        json!({
+            "session_id": session_id,
+            "use_saved": true,
+            "navigate_to_origin": false
+        }),
+    )
+    .await?;
+    assert_eq!(
+        restore_payload.get("source").and_then(Value::as_str),
+        Some("saved"),
+        "restore should use in-memory saved snapshot by default"
+    );
+    Ok(())
+}
+
+async fn assert_humanize_applied(
+    server: &McpBrowserServer,
+    id: u64,
+    session_id: &str,
+) -> Result<(), DynError> {
+    let humanize_payload = call_tool(
+        server,
+        id,
+        "browser_humanize",
+        json!({
+            "session_id": session_id,
+            "level": "none"
+        }),
+    )
+    .await?;
+    assert_eq!(
+        humanize_payload.get("applied").and_then(Value::as_bool),
+        Some(true),
+        "humanize should report applied=true"
+    );
+    Ok(())
+}
+
+async fn assert_auth_session_mode(
+    server: &McpBrowserServer,
+    id: u64,
+    session_id: &str,
+    mode: &str,
+    ttl_secs: Option<u64>,
+) -> Result<(), DynError> {
+    let mut args = json!({
+        "session_id": session_id,
+        "mode": mode,
+        "navigate_to_origin": false,
+        "interaction_level": "none"
+    });
+    if mode == "capture"
+        && let Some(ttl) = ttl_secs
+        && let Some(obj) = args.as_object_mut()
+    {
+        obj.insert("ttl_secs".to_string(), Value::from(ttl));
+    }
+
+    let payload = call_tool(server, id, "browser_auth_session", args).await?;
+    assert_eq!(
+        payload.get("mode").and_then(Value::as_str),
+        Some(mode),
+        "auth session wrapper should report {mode} mode"
+    );
+    Ok(())
+}
+
+#[cfg(feature = "mcp-attach")]
+async fn assert_attach_contract(server: &McpBrowserServer, id: u64) -> Result<(), DynError> {
+    let attach_contract_payload = call_tool(
+        server,
+        id,
+        "browser_attach",
+        json!({
+            "mode": "cdp_ws",
+            "endpoint": "ws://127.0.0.1:9222/devtools/browser/mock"
+        }),
+    )
+    .await?;
+    assert_eq!(
+        attach_contract_payload
+            .get("supported")
+            .and_then(Value::as_bool),
+        Some(false),
+        "attach contract tool should clearly report unsupported until backend is implemented"
+    );
+    Ok(())
 }
 
 #[tokio::test]
@@ -164,189 +345,33 @@ async fn mcp_session_save_restore_and_humanize_round_trip() -> Result<(), Box<dy
     let pool = BrowserPool::new(test_config()).await?;
     let server = McpBrowserServer::new(pool);
 
-    let acquire_resp = server
-        .dispatch(&json!({
-            "jsonrpc": "2.0",
-            "id": 11,
-            "method": "tools/call",
-            "params": {
-                "name": "browser_acquire",
-                "arguments": {"target_profile": "reddit"}
-            }
-        }))
-        .await;
-    let acquire_payload = parse_tools_call_text(&acquire_resp)?;
-    let session_id = acquire_payload
-        .get("session_id")
-        .and_then(Value::as_str)
-        .ok_or_else(|| std::io::Error::other("browser_acquire returned no session_id"))?
-        .to_string();
+    let session_id = acquire_session(&server, 11, "reddit").await?;
 
-    let navigate_resp = server
-        .dispatch(&json!({
-            "jsonrpc": "2.0",
-            "id": 12,
-            "method": "tools/call",
-            "params": {
-                "name": "browser_navigate",
-                "arguments": {
-                    "session_id": session_id,
-                    "url": "https://example.com",
-                    "timeout_secs": 30
-                }
-            }
-        }))
-        .await;
-    let _ = parse_tools_call_text(&navigate_resp)?;
+    let _ = call_tool(
+        &server,
+        12,
+        "browser_navigate",
+        json!({
+            "session_id": session_id,
+            "url": "https://example.com",
+            "timeout_secs": 30
+        }),
+    )
+    .await?;
 
-    let save_resp = server
-        .dispatch(&json!({
-            "jsonrpc": "2.0",
-            "id": 13,
-            "method": "tools/call",
-            "params": {
-                "name": "browser_session_save",
-                "arguments": {
-                    "session_id": session_id,
-                    "ttl_secs": 3600
-                }
-            }
-        }))
-        .await;
-    let save_payload = parse_tools_call_text(&save_resp)?;
-    assert_eq!(
-        save_payload.get("ttl_secs").and_then(Value::as_u64),
-        Some(3600),
-        "saved snapshot should persist requested ttl"
-    );
-
-    let restore_resp = server
-        .dispatch(&json!({
-            "jsonrpc": "2.0",
-            "id": 14,
-            "method": "tools/call",
-            "params": {
-                "name": "browser_session_restore",
-                "arguments": {
-                    "session_id": session_id,
-                    "use_saved": true,
-                    "navigate_to_origin": false
-                }
-            }
-        }))
-        .await;
-    let restore_payload = parse_tools_call_text(&restore_resp)?;
-    assert_eq!(
-        restore_payload.get("source").and_then(Value::as_str),
-        Some("saved"),
-        "restore should use in-memory saved snapshot by default"
-    );
-
-    let humanize_resp = server
-        .dispatch(&json!({
-            "jsonrpc": "2.0",
-            "id": 15,
-            "method": "tools/call",
-            "params": {
-                "name": "browser_humanize",
-                "arguments": {
-                    "session_id": session_id,
-                    "level": "none"
-                }
-            }
-        }))
-        .await;
-    let humanize_payload = parse_tools_call_text(&humanize_resp)?;
-    assert_eq!(
-        humanize_payload.get("applied").and_then(Value::as_bool),
-        Some(true),
-        "humanize should report applied=true"
-    );
+    assert_session_save_ttl(&server, 13, &session_id, 3600).await?;
+    assert_session_restore_saved(&server, 14, &session_id).await?;
+    assert_humanize_applied(&server, 15, &session_id).await?;
 
     #[cfg(feature = "mcp-attach")]
     {
-        let attach_contract_resp = server
-            .dispatch(&json!({
-                "jsonrpc": "2.0",
-                "id": 16,
-                "method": "tools/call",
-                "params": {
-                    "name": "browser_attach",
-                    "arguments": {
-                        "mode": "cdp_ws",
-                        "endpoint": "ws://127.0.0.1:9222/devtools/browser/mock"
-                    }
-                }
-            }))
-            .await;
-        let attach_contract_payload = parse_tools_call_text(&attach_contract_resp)?;
-        assert_eq!(
-            attach_contract_payload
-                .get("supported")
-                .and_then(Value::as_bool),
-            Some(false),
-            "attach contract tool should clearly report unsupported until backend is implemented"
-        );
+        assert_attach_contract(&server, 16).await?;
     }
 
-    let auth_capture_resp = server
-        .dispatch(&json!({
-            "jsonrpc": "2.0",
-            "id": 17,
-            "method": "tools/call",
-            "params": {
-                "name": "browser_auth_session",
-                "arguments": {
-                    "session_id": session_id,
-                    "mode": "capture",
-                    "ttl_secs": 1800,
-                    "interaction_level": "none"
-                }
-            }
-        }))
-        .await;
-    let auth_capture_payload = parse_tools_call_text(&auth_capture_resp)?;
-    assert_eq!(
-        auth_capture_payload.get("mode").and_then(Value::as_str),
-        Some("capture"),
-        "auth session wrapper should report capture mode"
-    );
+    assert_auth_session_mode(&server, 17, &session_id, "capture", Some(1800)).await?;
+    assert_auth_session_mode(&server, 18, &session_id, "resume", None).await?;
 
-    let auth_resume_resp = server
-        .dispatch(&json!({
-            "jsonrpc": "2.0",
-            "id": 18,
-            "method": "tools/call",
-            "params": {
-                "name": "browser_auth_session",
-                "arguments": {
-                    "session_id": session_id,
-                    "mode": "resume",
-                    "navigate_to_origin": false,
-                    "interaction_level": "none"
-                }
-            }
-        }))
-        .await;
-    let auth_resume_payload = parse_tools_call_text(&auth_resume_resp)?;
-    assert_eq!(
-        auth_resume_payload.get("mode").and_then(Value::as_str),
-        Some("resume"),
-        "auth session wrapper should report resume mode"
-    );
-
-    let release_resp = server
-        .dispatch(&json!({
-            "jsonrpc": "2.0",
-            "id": 19,
-            "method": "tools/call",
-            "params": {
-                "name": "browser_release",
-                "arguments": {"session_id": session_id}
-            }
-        }))
-        .await;
-    let release_payload = parse_tools_call_text(&release_resp)?;
+    let release_payload = release_session(&server, 19, &session_id).await?;
     assert_eq!(
         release_payload.get("released").and_then(Value::as_bool),
         Some(true),

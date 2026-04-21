@@ -772,7 +772,7 @@ impl McpBrowserServer {
             "browser_screenshot" => self.tool_browser_screenshot(&args).await,
             "browser_content" => self.tool_browser_content(&args).await,
             #[cfg(feature = "mcp-attach")]
-            "browser_attach" => self.tool_browser_attach(&args).await,
+            "browser_attach" => Self::tool_browser_attach(&args),
             #[cfg(not(feature = "mcp-attach"))]
             "browser_attach" => Err(BrowserError::ConfigError(
                 "browser_attach requires the 'mcp-attach' feature".to_string(),
@@ -1147,7 +1147,7 @@ impl McpBrowserServer {
     }
 
     #[cfg(feature = "mcp-attach")]
-    async fn tool_browser_attach(&self, args: &Value) -> Result<Value> {
+    fn tool_browser_attach(args: &Value) -> Result<Value> {
         let mode = Self::require_str(args, "mode")?;
         let endpoint = args
             .get("endpoint")
@@ -1239,14 +1239,14 @@ impl McpBrowserServer {
 
                 let save = self.tool_browser_session_save(&save_args).await?;
 
-                let humanize = if interaction_level != "none" {
+                let humanize = if interaction_level == "none" {
+                    None
+                } else {
                     let humanize_args = json!({
                         "session_id": session_id,
                         "level": interaction_level
                     });
                     Some(self.tool_browser_humanize(&humanize_args).await?)
-                } else {
-                    None
                 };
 
                 json!({
@@ -1270,14 +1270,14 @@ impl McpBrowserServer {
 
                 let restore = self.tool_browser_session_restore(&restore_args).await?;
 
-                let humanize = if interaction_level != "none" {
+                let humanize = if interaction_level == "none" {
+                    None
+                } else {
                     let humanize_args = json!({
                         "session_id": session_id,
                         "level": interaction_level
                     });
                     Some(self.tool_browser_humanize(&humanize_args).await?)
-                } else {
-                    None
                 };
 
                 json!({
