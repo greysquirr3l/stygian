@@ -2268,11 +2268,9 @@ impl McpBrowserServer {
     ) -> Result<crate::page::PageHandle> {
         let handle_guard = handle_arc.lock().await;
         if let Some(handle) = handle_guard.as_ref() {
-            let browser = handle
-                .browser()
-                .ok_or_else(|| {
-                    BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
-                })?;
+            let browser = handle.browser().ok_or_else(|| {
+                BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
+            })?;
             let page = browser.new_page().await?;
             drop(handle_guard);
             return Ok(page);
@@ -2956,9 +2954,8 @@ mod tests {
     fn tool_defs_include_browser_session_restore() {
         let defs = &*TOOL_DEFINITIONS;
         assert!(
-            defs.iter().any(
-                |t| t.get("name").and_then(|n| n.as_str()) == Some("browser_session_restore")
-            ),
+            defs.iter()
+                .any(|t| t.get("name").and_then(|n| n.as_str()) == Some("browser_session_restore")),
             "TOOL_DEFINITIONS must contain browser_session_restore"
         );
     }
@@ -2978,15 +2975,16 @@ mod tests {
     fn tool_defs_include_browser_attach() {
         let defs = &*TOOL_DEFINITIONS;
         assert!(
-            defs.iter().any(|t| t.get("name").and_then(|n| n.as_str()) == Some("browser_attach")),
+            defs.iter()
+                .any(|t| t.get("name").and_then(|n| n.as_str()) == Some("browser_attach")),
             "TOOL_DEFINITIONS must contain browser_attach when mcp-attach is enabled"
         );
     }
 
     #[cfg(feature = "mcp-attach")]
     #[test]
-    fn browser_attach_schema_includes_target_profile(
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    fn browser_attach_schema_includes_target_profile()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
         let defs = &*TOOL_DEFINITIONS;
         let def = defs
             .iter()

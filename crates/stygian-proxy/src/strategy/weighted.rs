@@ -1,7 +1,7 @@
 //! Weighted random proxy rotation strategy.
 
 use async_trait::async_trait;
-use rand::Rng as _;
+use rand::RngExt as _;
 
 use crate::error::{ProxyError, ProxyResult};
 use crate::strategy::{ProxyCandidate, RotationStrategy, healthy_candidates};

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-04-21
+
 ### Added
 
 - `stygian-browser/tests`: direct MCP integration test `mcp_acquire_navigate_release_round_trip`
@@ -21,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `stygian-browser`: Tier 1 validator implementations for `CreepJS` and `BrowserScan`
   now run real browser-backed checks (navigate, probe score/block state, capture
   failure screenshot, and release pooled session)
+- `stygian-mcp`: root README and crate README now document the `mcp-attach` feature,
+  expanded browser MCP tool surface, and auth/session workflow examples for attached
+  browser usage
 
 ### Changed
 
@@ -35,6 +40,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mcp-attach` is enabled
 - `stygian-browser (validation)`: `ValidationSuite::run_one` awaits async Tier 1
   validators, replacing prior stub-only behavior for baseline observatory checks
+- workspace: crate versions advanced to `0.9.5` and internal path dependency pins
+  updated to match the workspace release
+- workspace dependencies: `toml` advanced from `0.8` to `1.0` and `rand` unified
+  at workspace level on `0.10` (with `stygian-proxy` migrated to the shared
+  workspace dependency)
+- lockfile: refreshed via `cargo update`, pulling current compatible transitive
+  releases for the 0.9.5 line
+
+### Fixed
+
+- `stygian-browser (mcp)`: `browser_attach` connect and attached-session release paths
+  now use bounded timeouts; session page bootstrap errors once again include the
+  originating `session_id`
+- `stygian-browser (mcp)`: `browser_auth_session` no longer serializes `ttl_secs: null`
+  when capture mode omits a TTL, keeping the MCP request shape aligned with the schema
+- `stygian-browser/tests`: MCP tool-definition regression coverage now includes
+  `browser_attach`, `browser_auth_session`, `browser_session_save`,
+  `browser_session_restore`, and `browser_humanize`; integration helper errors for
+  missing `session_id` are now tool-agnostic
+- `book/mcp`: browser tools reference expanded to cover `browser_auth_session`,
+  `browser_session_save`, `browser_session_restore`, and `browser_humanize`
+- `stygian-proxy`: weighted strategy updated for rand 0.10 API compatibility by
+  switching trait import to `RngExt`
 
 ## [0.9.4] - 2026-04-17
 

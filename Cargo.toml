@@ -9,7 +9,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.9.4"
+version = "0.9.5"
 edition = "2024"
 rust-version = "1.94.0"
 authors = ["Nick Campbell <s0ma@protonmail.com>"]
@@ -33,7 +33,7 @@ anyhow = "1.0"
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-toml = "0.8"
+toml = "1.0"
 
 # HTTP client
 reqwest = { version = "0.13", features = ["rustls", "json", "cookies", "gzip", "brotli"] }
@@ -62,6 +62,7 @@ chromiumoxide = "=0.9.1"
 # Utilities
 ulid = "1.2"
 parking_lot = "0.12"
+rand = "0.10"
 dashmap = "6"
 lru = "0.16"
 base64 = "0.22"
