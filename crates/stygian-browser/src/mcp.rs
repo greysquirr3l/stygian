@@ -40,6 +40,7 @@
 //! | `browser_eval` | `session_id, script` | `result: Value` |
 //! | `browser_screenshot` | `session_id` | `data: base64 PNG` |
 //! | `browser_content` | `session_id` | `html: String` |
+//! | `browser_attach` | `mode, endpoint?, profile_hint?` | attach capability contract |
 //! | `browser_verify_stealth` | `session_id, url, timeout_secs?` | `DiagnosticReport` JSON |
 //! | `browser_release` | `session_id` | success |
 //! | `pool_stats` | – | `active, max, available` |
@@ -273,6 +274,29 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
                     "session_id": { "type": "string" }
                 },
                 "required": ["session_id"]
+            }
+        }),
+        json!({
+            "name": "browser_attach",
+            "description": "Bridge/attach capability contract for connecting MCP workflows to an existing user browser profile or CDP endpoint. Current implementation reports capability and validation hints; direct attach is not yet available.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "mode": {
+                        "type": "string",
+                        "enum": ["extension_bridge", "cdp_ws"],
+                        "description": "Attach strategy. extension_bridge is the recommended future path for existing user profiles. cdp_ws targets a remote debugging websocket endpoint."
+                    },
+                    "endpoint": {
+                        "type": "string",
+                        "description": "Optional endpoint for cdp_ws mode, e.g. ws://127.0.0.1:9222/devtools/browser/<id>."
+                    },
+                    "profile_hint": {
+                        "type": "string",
+                        "description": "Optional human-readable profile label (e.g. 'reddit-main')."
+                    }
+                },
+                "required": ["mode"]
             }
         }),
         json!({
@@ -746,6 +770,7 @@ impl McpBrowserServer {
             "browser_eval" => self.tool_browser_eval(&args).await,
             "browser_screenshot" => self.tool_browser_screenshot(&args).await,
             "browser_content" => self.tool_browser_content(&args).await,
+            "browser_attach" => self.tool_browser_attach(&args).await,
             "browser_auth_session" => self.tool_browser_auth_session(&args).await,
             "browser_session_save" => self.tool_browser_session_save(&args).await,
             "browser_session_restore" => self.tool_browser_session_restore(&args).await,
@@ -1113,6 +1138,65 @@ impl McpBrowserServer {
         drop(page_guard);
 
         Ok(json!({ "html": html, "bytes": html.len() }))
+    }
+
+    async fn tool_browser_attach(&self, args: &Value) -> Result<Value> {
+        let mode = Self::require_str(args, "mode")?;
+        let endpoint = args
+            .get("endpoint")
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
+        let profile_hint = args
+            .get("profile_hint")
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
+
+        let validation = match mode.as_str() {
+            "extension_bridge" => json!({
+                "ok": true,
+                "notes": [
+                    "extension bridge mode accepted",
+                    "attach backend not implemented yet"
+                ]
+            }),
+            "cdp_ws" => {
+                let endpoint_status = endpoint.as_deref().map_or_else(
+                    || {
+                        json!({
+                            "ok": false,
+                            "reason": "missing endpoint for cdp_ws mode"
+                        })
+                    },
+                    |ep| {
+                        let looks_ws = ep.starts_with("ws://") || ep.starts_with("wss://");
+                        json!({
+                            "ok": looks_ws,
+                            "reason": if looks_ws { Value::Null } else { Value::String("endpoint must start with ws:// or wss://".to_string()) }
+                        })
+                    },
+                );
+                json!({
+                    "ok": endpoint_status.get("ok").and_then(Value::as_bool).unwrap_or(false),
+                    "endpoint": endpoint_status,
+                    "notes": ["cdp websocket attach contract accepted", "attach backend not implemented yet"]
+                })
+            }
+            other => {
+                return Err(BrowserError::ConfigError(format!(
+                    "Invalid mode '{other}'. Use one of: extension_bridge, cdp_ws"
+                )));
+            }
+        };
+
+        Ok(json!({
+            "supported": false,
+            "mode": mode,
+            "endpoint": endpoint,
+            "profile_hint": profile_hint,
+            "validation": validation,
+            "status": "not_implemented",
+            "next_step": "Implement CDP attach plumbing in stygian-browser and wire session/page lifecycle for attached browsers"
+        }))
     }
 
     async fn tool_browser_auth_session(&self, args: &Value) -> Result<Value> {

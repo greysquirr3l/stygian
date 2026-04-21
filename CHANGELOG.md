@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `stygian-browser/tests`: direct MCP integration test `mcp_acquire_navigate_release_round_trip`
   in `mcp_integration.rs` exercises JSON-RPC `tools/call` flow for
   `browser_acquire` -> `browser_navigate` -> `browser_release` against a live browser
+- `stygian-browser (mcp)`: new `browser_attach` tool contract for future
+  extension/CDP attach workflows. The tool validates mode/endpoint intent and
+  reports attach capability status in a machine-readable payload for client
+  feature detection
 - `stygian-browser`: Tier 1 validator implementations for `CreepJS` and `BrowserScan`
   now run real browser-backed checks (navigate, probe score/block state, capture
   failure screenshot, and release pooled session)
@@ -24,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `stygian-browser (mcp)`: `browser_acquire` accepts `target_profile`
   (`default|reddit`) and `browser_navigate` now returns challenge status metadata
   (`challenge_detected`, `challenge_cleared`) for challenge-heavy targets
+- `stygian-browser/tests`: `mcp_session_save_restore_and_humanize_round_trip`
+  now also exercises the `browser_attach` capability contract path
 - `stygian-browser (validation)`: `ValidationSuite::run_one` awaits async Tier 1
   validators, replacing prior stub-only behavior for baseline observatory checks
 

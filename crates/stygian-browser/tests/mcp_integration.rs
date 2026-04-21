@@ -263,10 +263,33 @@ async fn mcp_session_save_restore_and_humanize_round_trip() -> Result<(), Box<dy
         "humanize should report applied=true"
     );
 
-    let auth_capture_resp = server
+    let attach_contract_resp = server
         .dispatch(&json!({
             "jsonrpc": "2.0",
             "id": 16,
+            "method": "tools/call",
+            "params": {
+                "name": "browser_attach",
+                "arguments": {
+                    "mode": "cdp_ws",
+                    "endpoint": "ws://127.0.0.1:9222/devtools/browser/mock"
+                }
+            }
+        }))
+        .await;
+    let attach_contract_payload = parse_tools_call_text(&attach_contract_resp)?;
+    assert_eq!(
+        attach_contract_payload
+            .get("supported")
+            .and_then(Value::as_bool),
+        Some(false),
+        "attach contract tool should clearly report unsupported until backend is implemented"
+    );
+
+    let auth_capture_resp = server
+        .dispatch(&json!({
+            "jsonrpc": "2.0",
+            "id": 17,
             "method": "tools/call",
             "params": {
                 "name": "browser_auth_session",
@@ -289,7 +312,7 @@ async fn mcp_session_save_restore_and_humanize_round_trip() -> Result<(), Box<dy
     let auth_resume_resp = server
         .dispatch(&json!({
             "jsonrpc": "2.0",
-            "id": 17,
+            "id": 18,
             "method": "tools/call",
             "params": {
                 "name": "browser_auth_session",
@@ -312,7 +335,7 @@ async fn mcp_session_save_restore_and_humanize_round_trip() -> Result<(), Box<dy
     let release_resp = server
         .dispatch(&json!({
             "jsonrpc": "2.0",
-            "id": 18,
+            "id": 19,
             "method": "tools/call",
             "params": {
                 "name": "browser_release",
