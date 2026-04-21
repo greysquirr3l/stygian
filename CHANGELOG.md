@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `stygian-browser/tests`: direct MCP integration test `mcp_acquire_navigate_release_round_trip`
   in `mcp_integration.rs` exercises JSON-RPC `tools/call` flow for
   `browser_acquire` -> `browser_navigate` -> `browser_release` against a live browser
+- `stygian-browser/tests`: new ignored integration test
+  `mcp_attach_cdp_ws_navigate_release_round_trip` validates live `cdp_ws`
+  attach behavior when `STYGIAN_ATTACH_WS_ENDPOINT` is provided
 - `stygian-browser (mcp)`: new `browser_attach` tool with `cdp_ws` support
   for attaching MCP sessions to an existing Chrome DevTools websocket endpoint.
   Attach behavior is gated behind the `mcp-attach` compile-time feature flag

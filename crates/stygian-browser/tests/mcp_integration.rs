@@ -260,6 +260,33 @@ async fn assert_attach_contract(server: &McpBrowserServer, id: u64) -> Result<()
     Ok(())
 }
 
+#[cfg(feature = "mcp-attach")]
+async fn attach_cdp_ws_session(
+    server: &McpBrowserServer,
+    id: u64,
+    endpoint: &str,
+) -> Result<String, DynError> {
+    let payload = call_tool(
+        server,
+        id,
+        "browser_attach",
+        json!({
+            "mode": "cdp_ws",
+            "endpoint": endpoint,
+            "target_profile": "default"
+        }),
+    )
+    .await?;
+
+    assert_eq!(
+        payload.get("supported").and_then(Value::as_bool),
+        Some(true),
+        "cdp_ws attach should return supported=true when connect succeeds"
+    );
+
+    session_id_from_payload(&payload)
+}
+
 #[tokio::test]
 #[ignore = "requires Chrome and external network"]
 async fn mcp_acquire_navigate_release_round_trip() -> Result<(), Box<dyn std::error::Error>> {
@@ -376,6 +403,56 @@ async fn mcp_session_save_restore_and_humanize_round_trip() -> Result<(), Box<dy
         release_payload.get("released").and_then(Value::as_bool),
         Some(true),
         "browser_release should return released=true"
+    );
+
+    Ok(())
+}
+
+#[cfg(feature = "mcp-attach")]
+#[tokio::test]
+#[ignore = "requires STYGIAN_ATTACH_WS_ENDPOINT and reachable DevTools websocket"]
+async fn mcp_attach_cdp_ws_navigate_release_round_trip() -> Result<(), Box<dyn std::error::Error>> {
+    let endpoint = match std::env::var("STYGIAN_ATTACH_WS_ENDPOINT") {
+        Ok(v) if !v.trim().is_empty() => v,
+        _ => {
+            eprintln!(
+                "Skipping mcp_attach_cdp_ws_navigate_release_round_trip: STYGIAN_ATTACH_WS_ENDPOINT is not set"
+            );
+            return Ok(());
+        }
+    };
+
+    let pool = BrowserPool::new(test_config()).await?;
+    let server = McpBrowserServer::new(pool);
+
+    let session_id = attach_cdp_ws_session(&server, 31, &endpoint).await?;
+
+    let navigate_payload = call_tool(
+        &server,
+        32,
+        "browser_navigate",
+        json!({
+            "session_id": session_id,
+            "url": "https://example.com",
+            "timeout_secs": 30
+        }),
+    )
+    .await?;
+    let title = navigate_payload
+        .get("title")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_lowercase();
+    assert!(
+        title.contains("example"),
+        "expected attached session navigation title to contain 'example', got payload: {navigate_payload}"
+    );
+
+    let release_payload = release_session(&server, 33, &session_id).await?;
+    assert_eq!(
+        release_payload.get("released").and_then(Value::as_bool),
+        Some(true),
+        "browser_release should return released=true for attached session"
     );
 
     Ok(())
