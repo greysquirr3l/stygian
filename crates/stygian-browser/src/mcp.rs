@@ -12,6 +12,13 @@
 //! stygian-browser = { version = "*", features = ["mcp"] }
 //! ```
 //!
+//! To use `browser_attach` (`cdp_ws` mode), also enable `mcp-attach`:
+//!
+//! ```toml
+//! [dependencies]
+//! stygian-browser = { version = "*", features = ["mcp", "mcp-attach"] }
+//! ```
+//!
 //! ## Running the server
 //!
 //! ```sh
@@ -40,7 +47,7 @@
 //! | `browser_eval` | `session_id, script` | `result: Value` |
 //! | `browser_screenshot` | `session_id` | `data: base64 PNG` |
 //! | `browser_content` | `session_id` | `html: String` |
-//! | `browser_attach` *(mcp-attach feature)* | `mode, endpoint?, profile_hint?` | attach capability contract |
+//! | `browser_attach` *(mcp-attach feature)* | `mode, endpoint?, profile_hint?, target_profile?` | attach session result |
 //! | `browser_verify_stealth` | `session_id, url, timeout_secs?` | `DiagnosticReport` JSON |
 //! | `browser_release` | `session_id` | success |
 //! | `pool_stats` | – | `active, max, available` |

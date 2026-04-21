@@ -144,6 +144,34 @@ Retrieve the current page's full outer HTML.
 
 ---
 
+### `browser_attach` *(requires `mcp-attach` feature)*
+
+Attach an MCP session to an existing DevTools websocket endpoint (`cdp_ws`) or
+use the extension bridge contract path (`extension_bridge`, currently not implemented).
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `mode` | string | ✓ | `cdp_ws` \| `extension_bridge` |
+| `endpoint` | string | | Required for `cdp_ws`; DevTools websocket URL |
+| `profile_hint` | string | | Optional label for external profile identity |
+| `target_profile` | string | | Optional tuning profile: `default` \| `reddit` |
+
+`cdp_ws` returns a new MCP `session_id` that can be used with the normal
+browser lifecycle tools (`browser_navigate`, `browser_eval`, `browser_content`,
+`browser_screenshot`, `browser_release`).
+
+**Example (`cdp_ws`):**
+
+```json
+{
+  "mode": "cdp_ws",
+  "endpoint": "ws://127.0.0.1:9222/devtools/browser/abcd1234",
+  "target_profile": "default"
+}
+```
+
+---
+
 ### `browser_query`
 
 Query all elements matching a CSS selector and return their text content (and optionally named
@@ -368,6 +396,30 @@ Return current browser pool statistics. No parameters required.
   "available": 6
 }
 ```
+
+---
+
+## Live Attach Test (End-to-End)
+
+Run a local Chrome with remote debugging enabled:
+
+```sh
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+  --remote-debugging-port=9222 \
+  --user-data-dir=/tmp/stygian-attach-profile
+```
+
+Resolve the websocket endpoint and run the ignored attach integration test:
+
+```sh
+export STYGIAN_ATTACH_WS_ENDPOINT=$(curl -s http://127.0.0.1:9222/json/version | jq -r .webSocketDebuggerUrl)
+cargo test -p stygian-browser \
+  --features "mcp,mcp-attach" \
+  --test mcp_integration \
+  -- --ignored --nocapture
+```
+
+If `STYGIAN_ATTACH_WS_ENDPOINT` is not set, the live attach test is skipped.
 
 ---
 
