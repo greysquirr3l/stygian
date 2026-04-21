@@ -35,11 +35,18 @@ Claude, IDE plugins, etc.) to begin calling scraping, browser, and proxy tools.
 | --------- | ------------- | --------- |
 | Base | Proxy + browser tools | ✓ |
 | `extract` | Enable browser structured extraction tools (`browser_extract`, `browser_extract_with_fallback`, `browser_extract_resilient`) | — |
+| `mcp-attach` | Enable `browser_attach` to connect workflows to an existing user browser via CDP WebSocket | — |
 
 Enable extraction (requires `stygian-browser/extract` and `stygian-graph/extract`):
 
 ```bash
 cargo install stygian-mcp --features extract
+```
+
+Enable CDP attach (lets agents attach to a running Chrome/Chromium profile):
+
+```bash
+cargo install stygian-mcp --features mcp-attach
 ```
 
 ## MCP Tools
@@ -49,8 +56,10 @@ All tools from the three underlying crates are available under their respective 
 | Prefix | Crate | Example tools |
 | ------ | ----- | ------------- |
 | `graph_*` | `stygian-graph` | `graph_scrape`, `graph_scrape_rest`, `graph_pipeline_run` |
-| `browser_*` | `stygian-browser` | `browser_acquire`, `browser_extract_with_fallback`, `browser_extract_resilient` |
+| `browser_*` | `stygian-browser` | `browser_acquire`, `browser_navigate`, `browser_screenshot`, `browser_content`, `browser_eval`, `browser_query`, `browser_warmup`, `browser_refresh`, `browser_auth_session`, `browser_session_save`, `browser_session_restore`, `browser_humanize`, `browser_release`, `browser_attach`\* |
 | `proxy_*` | `stygian-proxy` | `proxy_add`, `proxy_acquire_with_capabilities`, `proxy_fetch_freelist`, `proxy_fetch_freeapiproxies` |
+
+\* `browser_attach` requires the `mcp-attach` feature.
 
 The aggregator also adds two cross-crate tools:
 
@@ -114,6 +123,43 @@ The aggregator also adds two cross-crate tools:
     "name": "browser_proxied",
     "arguments": {
       "url": "https://example.com"
+    }
+  }
+}
+```
+
+### Capture and Resume a Login Session
+
+Capture login state after a manual or automated auth flow:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "browser_auth_session",
+    "arguments": {
+      "session_id": "01HV4...",
+      "mode": "capture",
+      "file_path": "/tmp/reddit-session.json",
+      "ttl_secs": 86400
+    }
+  }
+}
+```
+
+Restore it in a subsequent session:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "browser_auth_session",
+    "arguments": {
+      "session_id": "01HV5...",
+      "mode": "resume",
+      "file_path": "/tmp/reddit-session.json"
     }
   }
 }

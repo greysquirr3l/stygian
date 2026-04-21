@@ -26,6 +26,8 @@ stygian-proxy   = { path = "../stygian-proxy",    version = "0.9.3", features = 
 [features]
 # Structured data extraction via derive macros
 extract = ["stygian-graph/extract", "stygian-browser/extract"]
+# Attach to an existing user browser via CDP WebSocket (browser_attach tool)
+mcp-attach = ["stygian-browser/mcp-attach"]
 
 [[bin]]
 name = "stygian-mcp"

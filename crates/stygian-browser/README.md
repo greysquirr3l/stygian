@@ -18,6 +18,7 @@ for bypassing modern anti-bot systems: Cloudflare, `DataDome`, `PerimeterX`, Aka
 | `stealth` | Navigation spoofing, canvas noise, WebGL randomization, CDP protection | ✓ |
 | `tls-config` | TLS fingerprint profiling via rustls (requires `stealth`) | — |
 | `mcp` | MCP (Model Context Protocol) tools | — |
+| `mcp-attach` | Attach to an existing browser via CDP WebSocket (`browser_attach` tool; requires `mcp`) | — |
 | `metrics` | Prometheus metrics exporter | — |
 | `extract` | Structured data extraction via `#[derive(Extract)]` | — |
 | `similarity` | Similarity scoring for duplicate detection | — |
