@@ -297,7 +297,7 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
         #[cfg(feature = "mcp-attach")]
         json!({
             "name": "browser_attach",
-            "description": "Bridge/attach capability contract for connecting MCP workflows to an existing user browser profile or CDP endpoint. Current implementation reports capability and validation hints; direct attach is not yet available.",
+            "description": "Attach MCP workflows to an existing user browser/profile context. `cdp_ws` mode is implemented and creates a live attached session; `extension_bridge` remains a contract-only path.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -313,6 +313,11 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
                     "profile_hint": {
                         "type": "string",
                         "description": "Optional human-readable profile label (e.g. 'reddit-main')."
+                    },
+                    "target_profile": {
+                        "type": "string",
+                        "enum": ["default", "reddit"],
+                        "description": "Optional target tuning profile used by session navigation helpers."
                     }
                 },
                 "required": ["mode"]
@@ -1221,8 +1226,14 @@ impl McpBrowserServer {
                         }
                     })?;
 
-                let handler_task =
-                    tokio::spawn(async move { while handler.next().await.is_some() {} });
+                let handler_task = tokio::spawn(async move {
+                    while let Some(event) = handler.next().await {
+                        if let Err(error) = event {
+                            tracing::warn!(%error, "attached browser handler error");
+                            break;
+                        }
+                    }
+                });
 
                 let session_id = Ulid::new().to_string();
                 self.sessions.lock().await.insert(
