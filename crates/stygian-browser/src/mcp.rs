@@ -58,15 +58,20 @@ use std::{
     time::Duration,
 };
 
+use chromiumoxide::Browser;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     sync::Mutex,
+    task::JoinHandle,
     time::sleep,
 };
 use tracing::{debug, info};
 use ulid::Ulid;
+
+#[cfg(feature = "mcp-attach")]
+use futures::StreamExt;
 
 use crate::{
     BrowserHandle, BrowserPool,
@@ -152,6 +157,10 @@ impl JsonRpcResponse {
 struct McpSession {
     /// Pool handle for this session — `None` after [`tool_browser_release`].
     handle: Arc<Mutex<Option<BrowserHandle>>>,
+    /// Attached browser runtime for cdp_ws sessions.
+    attached_browser: Arc<Mutex<Option<Browser>>>,
+    /// Background task driving the attached browser protocol handler.
+    attached_handler_task: Arc<Mutex<Option<JoinHandle<()>>>>,
     /// Persistent page for this session. Reused across tool calls until release.
     page: Arc<Mutex<Option<crate::page::PageHandle>>>,
     /// Requested stealth level for this session.
@@ -170,6 +179,8 @@ struct McpSession {
     current_url: Option<String>,
     /// Optional in-memory saved session snapshot for auth/session reuse.
     saved_snapshot: Option<SessionSnapshot>,
+    /// Endpoint used by an attached browser session.
+    attach_endpoint: Option<String>,
 }
 
 // ─── MCP server ──────────────────────────────────────────────────────────────
@@ -772,7 +783,7 @@ impl McpBrowserServer {
             "browser_screenshot" => self.tool_browser_screenshot(&args).await,
             "browser_content" => self.tool_browser_content(&args).await,
             #[cfg(feature = "mcp-attach")]
-            "browser_attach" => Self::tool_browser_attach(&args),
+            "browser_attach" => self.tool_browser_attach(&args).await,
             #[cfg(not(feature = "mcp-attach"))]
             "browser_attach" => Err(BrowserError::ConfigError(
                 "browser_attach requires the 'mcp-attach' feature".to_string(),
@@ -867,6 +878,8 @@ impl McpBrowserServer {
             session_id.clone(),
             McpSession {
                 handle: Arc::new(Mutex::new(Some(handle))),
+                attached_browser: Arc::new(Mutex::new(None)),
+                attached_handler_task: Arc::new(Mutex::new(None)),
                 page: Arc::new(Mutex::new(None)),
                 stealth_level,
                 tls_profile: tls_profile.clone(),
@@ -876,6 +889,7 @@ impl McpBrowserServer {
                 target_profile: target_profile.clone(),
                 current_url: None,
                 saved_snapshot: None,
+                attach_endpoint: None,
             },
         );
 
@@ -920,12 +934,13 @@ impl McpBrowserServer {
                 .map(ToString::to_string),
         };
 
-        let (session_arc, page_arc, _, reddit_profile) = self.session_runtime(&session_id).await?;
+        let (session_arc, attached_browser_arc, page_arc, _, reddit_profile) =
+            self.session_runtime(&session_id).await?;
         let requested_stealth = self.session_handle_and_stealth(&session_id).await?.1;
 
         self.ensure_session_page(
-            &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             None,
             Duration::from_secs(timeout_secs),
@@ -992,11 +1007,12 @@ impl McpBrowserServer {
             .and_then(serde_json::Value::as_f64)
             .unwrap_or(30.0);
 
-        let (session_arc, page_arc, _, reddit_profile) = self.session_runtime(&session_id).await?;
+        let (session_arc, attached_browser_arc, page_arc, _, reddit_profile) =
+            self.session_runtime(&session_id).await?;
 
         self.ensure_session_page(
-            &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             None,
             Duration::from_secs_f64(timeout_secs),
@@ -1046,7 +1062,7 @@ impl McpBrowserServer {
             .and_then(serde_json::Value::as_f64)
             .unwrap_or(30.0);
 
-        let (session_arc, page_arc, nav_url_opt, reddit_profile) =
+        let (session_arc, attached_browser_arc, page_arc, nav_url_opt, reddit_profile) =
             self.session_runtime(&session_id).await?;
         let nav_url = nav_url_opt.ok_or_else(|| {
             BrowserError::ConfigError(
@@ -1055,8 +1071,8 @@ impl McpBrowserServer {
         })?;
 
         self.ensure_session_page(
-            &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             Some(&nav_url),
             Duration::from_secs_f64(timeout_secs),
@@ -1082,7 +1098,7 @@ impl McpBrowserServer {
             .and_then(serde_json::Value::as_f64)
             .unwrap_or(30.0);
 
-        let (session_arc, page_arc, nav_url_opt, reddit_profile) =
+        let (session_arc, attached_browser_arc, page_arc, nav_url_opt, reddit_profile) =
             self.session_runtime(&session_id).await?;
         let nav_url = nav_url_opt.ok_or_else(|| {
             BrowserError::ConfigError(
@@ -1091,8 +1107,8 @@ impl McpBrowserServer {
         })?;
 
         self.ensure_session_page(
-            &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             Some(&nav_url),
             Duration::from_secs_f64(timeout_secs),
@@ -1118,7 +1134,7 @@ impl McpBrowserServer {
             .and_then(serde_json::Value::as_f64)
             .unwrap_or(30.0);
 
-        let (session_arc, page_arc, nav_url_opt, reddit_profile) =
+        let (session_arc, attached_browser_arc, page_arc, nav_url_opt, reddit_profile) =
             self.session_runtime(&session_id).await?;
         let nav_url = nav_url_opt.ok_or_else(|| {
             BrowserError::ConfigError(
@@ -1127,8 +1143,8 @@ impl McpBrowserServer {
         })?;
 
         self.ensure_session_page(
-            &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             Some(&nav_url),
             Duration::from_secs_f64(timeout_secs),
@@ -1147,7 +1163,7 @@ impl McpBrowserServer {
     }
 
     #[cfg(feature = "mcp-attach")]
-    fn tool_browser_attach(args: &Value) -> Result<Value> {
+    async fn tool_browser_attach(&self, args: &Value) -> Result<Value> {
         let mode = Self::require_str(args, "mode")?;
         let endpoint = args
             .get("endpoint")
@@ -1158,52 +1174,84 @@ impl McpBrowserServer {
             .and_then(Value::as_str)
             .map(ToString::to_string);
 
-        let validation = match mode.as_str() {
-            "extension_bridge" => json!({
-                "ok": true,
-                "notes": [
-                    "extension bridge mode accepted",
-                    "attach backend not implemented yet"
-                ]
-            }),
+        let target_profile = args
+            .get("target_profile")
+            .and_then(Value::as_str)
+            .map_or_else(
+                || "default".to_string(),
+                |s| {
+                    if s.eq_ignore_ascii_case("reddit") {
+                        "reddit".to_string()
+                    } else {
+                        "default".to_string()
+                    }
+                },
+            );
+
+        match mode.as_str() {
+            "extension_bridge" => Ok(json!({
+                "supported": false,
+                "mode": mode,
+                "profile_hint": profile_hint,
+                "status": "not_implemented",
+                "next_step": "Implement extension bridge handshake and profile transfer"
+            })),
             "cdp_ws" => {
-                let endpoint_status = endpoint.as_deref().map_or_else(
-                    || {
-                        json!({
-                            "ok": false,
-                            "reason": "missing endpoint for cdp_ws mode"
-                        })
-                    },
-                    |ep| {
-                        let looks_ws = ep.starts_with("ws://") || ep.starts_with("wss://");
-                        json!({
-                            "ok": looks_ws,
-                            "reason": if looks_ws { Value::Null } else { Value::String("endpoint must start with ws:// or wss://".to_string()) }
-                        })
+                let endpoint = endpoint.ok_or_else(|| {
+                    BrowserError::ConfigError("missing endpoint for cdp_ws mode".to_string())
+                })?;
+                if !(endpoint.starts_with("ws://") || endpoint.starts_with("wss://")) {
+                    return Err(BrowserError::ConfigError(
+                        "endpoint must start with ws:// or wss://".to_string(),
+                    ));
+                }
+
+                let (browser, mut handler) =
+                    Browser::connect(endpoint.clone()).await.map_err(|e| {
+                        BrowserError::ConnectionError {
+                            url: endpoint.clone(),
+                            reason: e.to_string(),
+                        }
+                    })?;
+
+                let handler_task =
+                    tokio::spawn(async move { while handler.next().await.is_some() {} });
+
+                let session_id = Ulid::new().to_string();
+                self.sessions.lock().await.insert(
+                    session_id.clone(),
+                    McpSession {
+                        handle: Arc::new(Mutex::new(None)),
+                        attached_browser: Arc::new(Mutex::new(Some(browser))),
+                        attached_handler_task: Arc::new(Mutex::new(Some(handler_task))),
+                        page: Arc::new(Mutex::new(None)),
+                        stealth_level: StealthLevel::None,
+                        tls_profile: None,
+                        webrtc_policy: None,
+                        cdp_fix_mode: None,
+                        proxy: None,
+                        target_profile: target_profile.clone(),
+                        current_url: None,
+                        saved_snapshot: None,
+                        attach_endpoint: Some(endpoint.clone()),
                     },
                 );
-                json!({
-                    "ok": endpoint_status.get("ok").and_then(Value::as_bool).unwrap_or(false),
-                    "endpoint": endpoint_status,
-                    "notes": ["cdp websocket attach contract accepted", "attach backend not implemented yet"]
-                })
-            }
-            other => {
-                return Err(BrowserError::ConfigError(format!(
-                    "Invalid mode '{other}'. Use one of: extension_bridge, cdp_ws"
-                )));
-            }
-        };
 
-        Ok(json!({
-            "supported": false,
-            "mode": mode,
-            "endpoint": endpoint,
-            "profile_hint": profile_hint,
-            "validation": validation,
-            "status": "not_implemented",
-            "next_step": "Implement CDP attach plumbing in stygian-browser and wire session/page lifecycle for attached browsers"
-        }))
+                Ok(json!({
+                    "supported": true,
+                    "mode": "cdp_ws",
+                    "session_id": session_id,
+                    "endpoint": endpoint,
+                    "profile_hint": profile_hint,
+                    "requested_metadata": {
+                        "target_profile": target_profile
+                    }
+                }))
+            }
+            other => Err(BrowserError::ConfigError(format!(
+                "Invalid mode '{other}'. Use one of: extension_bridge, cdp_ws"
+            ))),
+        }
     }
 
     async fn tool_browser_auth_session(&self, args: &Value) -> Result<Value> {
@@ -1309,12 +1357,12 @@ impl McpBrowserServer {
             .and_then(Value::as_bool)
             .unwrap_or(false);
 
-        let (session_arc, page_arc, nav_url_opt, reddit_profile) =
+        let (session_arc, attached_browser_arc, page_arc, nav_url_opt, reddit_profile) =
             self.session_runtime(&session_id).await?;
 
         self.ensure_session_page(
-            &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             nav_url_opt.as_deref(),
             Duration::from_secs(30),
@@ -1413,12 +1461,12 @@ impl McpBrowserServer {
             "saved"
         };
 
-        let (session_arc, page_arc, nav_url_opt, reddit_profile) =
+        let (session_arc, attached_browser_arc, page_arc, nav_url_opt, reddit_profile) =
             self.session_runtime(&session_id).await?;
 
         self.ensure_session_page(
-            &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             nav_url_opt.as_deref(),
             Duration::from_secs(30),
@@ -1480,12 +1528,12 @@ impl McpBrowserServer {
             .and_then(Value::as_f64)
             .unwrap_or(768.0);
 
-        let (session_arc, page_arc, nav_url_opt, reddit_profile) =
+        let (session_arc, attached_browser_arc, page_arc, nav_url_opt, reddit_profile) =
             self.session_runtime(&session_id).await?;
 
         self.ensure_session_page(
-            &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             nav_url_opt.as_deref(),
             Duration::from_secs(30),
@@ -1551,10 +1599,11 @@ impl McpBrowserServer {
                     .collect()
             });
 
-        let (session_arc, page_arc, _, reddit_profile) = self.session_runtime(&session_id).await?;
+        let (session_arc, attached_browser_arc, page_arc, _, reddit_profile) =
+            self.session_runtime(&session_id).await?;
         self.ensure_session_page(
-            &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             None,
             Duration::from_secs_f64(timeout_secs),
@@ -1655,10 +1704,11 @@ impl McpBrowserServer {
             })
             .collect();
 
-        let (session_arc, page_arc, _, reddit_profile) = self.session_runtime(&session_id).await?;
+        let (session_arc, attached_browser_arc, page_arc, _, reddit_profile) =
+            self.session_runtime(&session_id).await?;
         self.ensure_session_page(
-            &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             None,
             Duration::from_secs_f64(timeout_secs),
@@ -1727,10 +1777,11 @@ impl McpBrowserServer {
             max_results,
         };
 
-        let (session_arc, page_arc, _, reddit_profile) = self.session_runtime(&session_id).await?;
+        let (session_arc, attached_browser_arc, page_arc, _, reddit_profile) =
+            self.session_runtime(&session_id).await?;
         self.ensure_session_page(
-            &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             None,
             Duration::from_secs_f64(timeout_secs),
@@ -1814,10 +1865,11 @@ impl McpBrowserServer {
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0);
 
-        let (session_arc, page_arc, _, _) = self.session_runtime(&session_id).await?;
+        let (session_arc, attached_browser_arc, page_arc, _, _) =
+            self.session_runtime(&session_id).await?;
         self.ensure_session_page(
-            &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             None,
             Duration::from_millis(timeout_ms),
@@ -1871,10 +1923,11 @@ impl McpBrowserServer {
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(false);
 
-        let (session_arc, page_arc, _, _) = self.session_runtime(&session_id).await?;
+        let (session_arc, attached_browser_arc, page_arc, _, _) =
+            self.session_runtime(&session_id).await?;
         self.ensure_session_page(
-            &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             None,
             Duration::from_millis(timeout_ms),
@@ -1908,19 +1961,34 @@ impl McpBrowserServer {
         let session_id = Self::require_str(args, "session_id")?;
 
         // Remove session from the map so further calls immediately fail.
-        let (session_arc, page_arc) = {
+        let (session_arc, attached_browser_arc, attached_handler_task_arc, page_arc) = {
             let mut sessions = self.sessions.lock().await;
             let removed = sessions.remove(&session_id).ok_or_else(|| {
                 BrowserError::ConfigError(format!("Unknown session: {session_id}"))
             })?;
             drop(sessions);
-            (removed.handle, removed.page)
+            (
+                removed.handle,
+                removed.attached_browser,
+                removed.attached_handler_task,
+                removed.page,
+            )
         };
 
         // Take and release the handle without holding the map lock
         let handle = session_arc.lock().await.take();
         if let Some(h) = handle {
             h.release().await;
+        }
+
+        let attached_browser = attached_browser_arc.lock().await.take();
+        if let Some(mut browser) = attached_browser {
+            browser.close().await.ok();
+        }
+
+        let attached_handler_task = attached_handler_task_arc.lock().await.take();
+        if let Some(task) = attached_handler_task {
+            task.abort();
         }
 
         let page = page_arc.lock().await.take();
@@ -2047,7 +2115,8 @@ impl McpBrowserServer {
                     "proxy": s.proxy,
                     "target_profile": s.target_profile,
                     "current_url": s.current_url,
-                    "has_saved_snapshot": s.saved_snapshot.is_some()
+                    "has_saved_snapshot": s.saved_snapshot.is_some(),
+                    "attach_endpoint": s.attach_endpoint
                 })
             })
         };
@@ -2081,6 +2150,7 @@ impl McpBrowserServer {
         session_id: &str,
     ) -> Result<(
         Arc<Mutex<Option<BrowserHandle>>>,
+        Arc<Mutex<Option<Browser>>>,
         Arc<Mutex<Option<crate::page::PageHandle>>>,
         Option<String>,
         bool,
@@ -2092,6 +2162,7 @@ impl McpBrowserServer {
             .map(|s| {
                 (
                     s.handle.clone(),
+                    s.attached_browser.clone(),
                     s.page.clone(),
                     s.current_url.clone(),
                     s.target_profile == "reddit",
@@ -2102,8 +2173,8 @@ impl McpBrowserServer {
 
     async fn ensure_session_page(
         &self,
-        session_id: &str,
         handle_arc: &Arc<Mutex<Option<BrowserHandle>>>,
+        attached_browser_arc: &Arc<Mutex<Option<Browser>>>,
         page_arc: &Arc<Mutex<Option<crate::page::PageHandle>>>,
         current_url: Option<&str>,
         timeout: Duration,
@@ -2111,19 +2182,7 @@ impl McpBrowserServer {
     ) -> Result<()> {
         let mut page_guard = page_arc.lock().await;
         let created = if page_guard.is_none() {
-            let new_page = handle_arc
-                .lock()
-                .await
-                .as_ref()
-                .ok_or_else(|| {
-                    BrowserError::ConfigError(format!("Session already released: {session_id}"))
-                })?
-                .browser()
-                .ok_or_else(|| {
-                    BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
-                })?
-                .new_page()
-                .await?;
+            let new_page = Self::create_session_page(handle_arc, attached_browser_arc).await?;
 
             *page_guard = Some(new_page);
             true
@@ -2141,6 +2200,41 @@ impl McpBrowserServer {
         drop(page_guard);
 
         Ok(())
+    }
+
+    async fn create_session_page(
+        handle_arc: &Arc<Mutex<Option<BrowserHandle>>>,
+        attached_browser_arc: &Arc<Mutex<Option<Browser>>>,
+    ) -> Result<crate::page::PageHandle> {
+        let handle_guard = handle_arc.lock().await;
+        if let Some(handle) = handle_guard.as_ref() {
+            let browser = handle
+                .browser()
+                .ok_or_else(|| BrowserError::ConfigError("Browser handle invalid".to_string()))?;
+            let page = browser.new_page().await?;
+            drop(handle_guard);
+            return Ok(page);
+        }
+        drop(handle_guard);
+
+        let browser_guard = attached_browser_arc.lock().await;
+        let browser = browser_guard
+            .as_ref()
+            .ok_or_else(|| BrowserError::ConfigError("Session already released".to_string()))?;
+        let raw_page =
+            browser
+                .new_page("about:blank")
+                .await
+                .map_err(|e| BrowserError::CdpError {
+                    operation: "Browser.newPage".to_string(),
+                    message: e.to_string(),
+                })?;
+        drop(browser_guard);
+
+        Ok(crate::page::PageHandle::new(
+            raw_page,
+            Duration::from_secs(30),
+        ))
     }
 
     async fn navigate_with_profile(
@@ -2247,10 +2341,11 @@ impl McpBrowserServer {
         let selectors = Self::parse_root_selectors(args)?;
         let schema = Self::parse_extract_schema(args)?;
 
-        let (session_arc, page_arc, _, reddit_profile) = self.session_runtime(&session_id).await?;
+        let (session_arc, attached_browser_arc, page_arc, _, reddit_profile) =
+            self.session_runtime(&session_id).await?;
         self.ensure_session_page(
-            &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             None,
             Duration::from_secs_f64(timeout_secs),
@@ -2323,10 +2418,11 @@ impl McpBrowserServer {
             .unwrap_or(30.0);
         let schema = Self::parse_extract_schema(args)?;
 
-        let (session_arc, page_arc, _, reddit_profile) = self.session_runtime(&session_id).await?;
+        let (session_arc, attached_browser_arc, page_arc, _, reddit_profile) =
+            self.session_runtime(&session_id).await?;
         self.ensure_session_page(
-            &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             None,
             Duration::from_secs_f64(timeout_secs),

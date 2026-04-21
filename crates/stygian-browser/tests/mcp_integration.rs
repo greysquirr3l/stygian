@@ -245,8 +245,8 @@ async fn assert_attach_contract(server: &McpBrowserServer, id: u64) -> Result<()
         id,
         "browser_attach",
         json!({
-            "mode": "cdp_ws",
-            "endpoint": "ws://127.0.0.1:9222/devtools/browser/mock"
+            "mode": "extension_bridge",
+            "profile_hint": "reddit-main"
         }),
     )
     .await?;
@@ -255,7 +255,7 @@ async fn assert_attach_contract(server: &McpBrowserServer, id: u64) -> Result<()
             .get("supported")
             .and_then(Value::as_bool),
         Some(false),
-        "attach contract tool should clearly report unsupported until backend is implemented"
+        "extension bridge mode should clearly report unsupported until backend is implemented"
     );
     Ok(())
 }
