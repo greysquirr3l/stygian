@@ -106,7 +106,7 @@ fn session_id_from_payload(payload: &Value) -> Result<String, DynError> {
         .get("session_id")
         .and_then(Value::as_str)
         .map(ToString::to_string)
-        .ok_or_else(|| std::io::Error::other("browser_acquire returned no session_id").into())
+        .ok_or_else(|| std::io::Error::other("tool response returned no session_id").into())
 }
 
 async fn acquire_session(
@@ -311,7 +311,7 @@ async fn mcp_acquire_navigate_release_round_trip() -> Result<(), Box<dyn std::er
     let session_id = acquire_payload
         .get("session_id")
         .and_then(Value::as_str)
-        .ok_or_else(|| std::io::Error::other("browser_acquire returned no session_id"))?
+        .ok_or_else(|| std::io::Error::other("tool response returned no session_id"))?
         .to_string();
 
     let navigate_resp = server
