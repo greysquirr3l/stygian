@@ -12,6 +12,13 @@
 //! stygian-browser = { version = "*", features = ["mcp"] }
 //! ```
 //!
+//! To use `browser_attach` (`cdp_ws` mode), also enable `mcp-attach`:
+//!
+//! ```toml
+//! [dependencies]
+//! stygian-browser = { version = "*", features = ["mcp", "mcp-attach"] }
+//! ```
+//!
 //! ## Running the server
 //!
 //! ```sh
@@ -40,6 +47,11 @@
 //! | `browser_eval` | `session_id, script` | `result: Value` |
 //! | `browser_screenshot` | `session_id` | `data: base64 PNG` |
 //! | `browser_content` | `session_id` | `html: String` |
+//! | `browser_attach` *(mcp-attach feature)* | `mode, endpoint?, profile_hint?, target_profile?` | attach session result |
+//! | `browser_auth_session` | `session_id, mode, file_path?, ttl_secs?, navigate_to_origin?, interaction_level?` | auth/session workflow result |
+//! | `browser_session_save` | `session_id, ttl_secs?, file_path?, include_snapshot?` | saved session state metadata |
+//! | `browser_session_restore` | `session_id, snapshot?, file_path?, use_saved?, navigate_to_origin?` | restored session state metadata |
+//! | `browser_humanize` | `session_id, level?, viewport_width?, viewport_height?` | humanization result |
 //! | `browser_verify_stealth` | `session_id, url, timeout_secs?` | `DiagnosticReport` JSON |
 //! | `browser_release` | `session_id` | success |
 //! | `pool_stats` | – | `active, max, available` |
@@ -57,21 +69,28 @@ use std::{
     time::Duration,
 };
 
+use chromiumoxide::Browser;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     sync::Mutex,
+    task::JoinHandle,
     time::sleep,
 };
 use tracing::{debug, info};
 use ulid::Ulid;
 
+#[cfg(feature = "mcp-attach")]
+use futures::StreamExt;
+
 use crate::{
     BrowserHandle, BrowserPool,
+    behavior::{InteractionLevel, InteractionSimulator},
     config::StealthLevel,
     error::{BrowserError, Result},
     page::WaitUntil,
+    session::{SessionSnapshot, restore_session, save_session},
 };
 
 // ─── JSON-RPC types ──────────────────────────────────────────────────────────
@@ -149,6 +168,10 @@ impl JsonRpcResponse {
 struct McpSession {
     /// Pool handle for this session — `None` after [`tool_browser_release`].
     handle: Arc<Mutex<Option<BrowserHandle>>>,
+    /// Attached browser runtime for `cdp_ws` sessions.
+    attached_browser: Arc<Mutex<Option<Browser>>>,
+    /// Background task driving the attached browser protocol handler.
+    attached_handler_task: Arc<Mutex<Option<JoinHandle<()>>>>,
     /// Persistent page for this session. Reused across tool calls until release.
     page: Arc<Mutex<Option<crate::page::PageHandle>>>,
     /// Requested stealth level for this session.
@@ -165,6 +188,10 @@ struct McpSession {
     target_profile: String,
     /// Last URL successfully navigated to via `browser_navigate`.
     current_url: Option<String>,
+    /// Optional in-memory saved session snapshot for auth/session reuse.
+    saved_snapshot: Option<SessionSnapshot>,
+    /// Endpoint used by an attached browser session.
+    attach_endpoint: Option<String>,
 }
 
 // ─── MCP server ──────────────────────────────────────────────────────────────
@@ -269,6 +296,51 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
                     "session_id": { "type": "string" }
                 },
                 "required": ["session_id"]
+            }
+        }),
+        #[cfg(feature = "mcp-attach")]
+        json!({
+            "name": "browser_attach",
+            "description": "Attach MCP workflows to an existing user browser/profile context. `cdp_ws` mode is implemented and creates a live attached session; `extension_bridge` remains a contract-only path.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "mode": {
+                        "type": "string",
+                        "enum": ["extension_bridge", "cdp_ws"],
+                        "description": "Attach strategy. extension_bridge is the recommended future path for existing user profiles. cdp_ws targets a remote debugging websocket endpoint."
+                    },
+                    "endpoint": {
+                        "type": "string",
+                        "description": "Optional endpoint for cdp_ws mode, e.g. ws://127.0.0.1:9222/devtools/browser/<id>."
+                    },
+                    "profile_hint": {
+                        "type": "string",
+                        "description": "Optional human-readable profile label (e.g. 'reddit-main')."
+                    },
+                    "target_profile": {
+                        "type": "string",
+                        "enum": ["default", "reddit"],
+                        "description": "Optional target tuning profile used by session navigation helpers."
+                    }
+                },
+                "required": ["mode"]
+            }
+        }),
+        json!({
+            "name": "browser_auth_session",
+            "description": "High-level auth/session workflow wrapper. Use mode='capture' to persist login state and mode='resume' to restore it.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "session_id": { "type": "string" },
+                    "mode": { "type": "string", "enum": ["capture", "resume"] },
+                    "file_path": { "type": "string", "description": "Optional snapshot file path for durable persistence." },
+                    "ttl_secs": { "type": "integer", "description": "Optional TTL (seconds) when capturing." },
+                    "navigate_to_origin": { "type": "boolean", "default": true, "description": "When resuming, navigate to snapshot origin before restore." },
+                    "interaction_level": { "type": "string", "enum": ["none", "low", "medium", "high"], "default": "none", "description": "Optional post-operation human-like interaction step." }
+                },
+                "required": ["session_id", "mode"]
             }
         }),
         json!({
@@ -502,6 +574,49 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
             "required": ["session_id"]
         }
     }));
+    tools.push(json!({
+            "name": "browser_session_save",
+            "description": "Save current browser session state (cookies + localStorage) to memory and optionally to disk.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "session_id": { "type": "string" },
+                    "ttl_secs": { "type": "integer", "description": "Optional snapshot TTL in seconds." },
+                    "file_path": { "type": "string", "description": "Optional path to save session snapshot JSON." },
+                    "include_snapshot": { "type": "boolean", "default": false, "description": "When true, include full snapshot payload in response." }
+                },
+                "required": ["session_id"]
+            }
+        }));
+    tools.push(json!({
+            "name": "browser_session_restore",
+            "description": "Restore browser session state from provided snapshot JSON, saved in-memory snapshot, or file.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "session_id": { "type": "string" },
+                    "snapshot": { "type": "object", "description": "Inline SessionSnapshot JSON." },
+                    "file_path": { "type": "string", "description": "Path to a SessionSnapshot JSON file." },
+                    "use_saved": { "type": "boolean", "default": true, "description": "Use in-memory snapshot when no inline/file snapshot is provided." },
+                    "navigate_to_origin": { "type": "boolean", "default": true, "description": "Navigate to snapshot origin before restore when origin is present." }
+                },
+                "required": ["session_id"]
+            }
+        }));
+    tools.push(json!({
+            "name": "browser_humanize",
+            "description": "Apply human-like interaction sequence on current page (scroll, key activity, mouse movement).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "session_id": { "type": "string" },
+                    "level": { "type": "string", "enum": ["none", "low", "medium", "high"], "default": "low" },
+                    "viewport_width": { "type": "number", "default": 1366.0 },
+                    "viewport_height": { "type": "number", "default": 768.0 }
+                },
+                "required": ["session_id"]
+            }
+        }));
     tools
 });
 
@@ -683,6 +798,16 @@ impl McpBrowserServer {
             "browser_eval" => self.tool_browser_eval(&args).await,
             "browser_screenshot" => self.tool_browser_screenshot(&args).await,
             "browser_content" => self.tool_browser_content(&args).await,
+            #[cfg(feature = "mcp-attach")]
+            "browser_attach" => self.tool_browser_attach(&args).await,
+            #[cfg(not(feature = "mcp-attach"))]
+            "browser_attach" => Err(BrowserError::ConfigError(
+                "browser_attach requires the 'mcp-attach' feature".to_string(),
+            )),
+            "browser_auth_session" => self.tool_browser_auth_session(&args).await,
+            "browser_session_save" => self.tool_browser_session_save(&args).await,
+            "browser_session_restore" => self.tool_browser_session_restore(&args).await,
+            "browser_humanize" => self.tool_browser_humanize(&args).await,
             #[cfg(feature = "stealth")]
             "browser_verify_stealth" => self.tool_browser_verify_stealth(&args).await,
             #[cfg(not(feature = "stealth"))]
@@ -769,6 +894,8 @@ impl McpBrowserServer {
             session_id.clone(),
             McpSession {
                 handle: Arc::new(Mutex::new(Some(handle))),
+                attached_browser: Arc::new(Mutex::new(None)),
+                attached_handler_task: Arc::new(Mutex::new(None)),
                 page: Arc::new(Mutex::new(None)),
                 stealth_level,
                 tls_profile: tls_profile.clone(),
@@ -777,6 +904,8 @@ impl McpBrowserServer {
                 proxy: proxy.clone(),
                 target_profile: target_profile.clone(),
                 current_url: None,
+                saved_snapshot: None,
+                attach_endpoint: None,
             },
         );
 
@@ -821,12 +950,14 @@ impl McpBrowserServer {
                 .map(ToString::to_string),
         };
 
-        let (session_arc, page_arc, _, reddit_profile) = self.session_runtime(&session_id).await?;
+        let (session_arc, attached_browser_arc, page_arc, _, reddit_profile) =
+            self.session_runtime(&session_id).await?;
         let requested_stealth = self.session_handle_and_stealth(&session_id).await?.1;
 
         self.ensure_session_page(
             &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             None,
             Duration::from_secs(timeout_secs),
@@ -893,11 +1024,13 @@ impl McpBrowserServer {
             .and_then(serde_json::Value::as_f64)
             .unwrap_or(30.0);
 
-        let (session_arc, page_arc, _, reddit_profile) = self.session_runtime(&session_id).await?;
+        let (session_arc, attached_browser_arc, page_arc, _, reddit_profile) =
+            self.session_runtime(&session_id).await?;
 
         self.ensure_session_page(
             &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             None,
             Duration::from_secs_f64(timeout_secs),
@@ -947,7 +1080,7 @@ impl McpBrowserServer {
             .and_then(serde_json::Value::as_f64)
             .unwrap_or(30.0);
 
-        let (session_arc, page_arc, nav_url_opt, reddit_profile) =
+        let (session_arc, attached_browser_arc, page_arc, nav_url_opt, reddit_profile) =
             self.session_runtime(&session_id).await?;
         let nav_url = nav_url_opt.ok_or_else(|| {
             BrowserError::ConfigError(
@@ -958,8 +1091,9 @@ impl McpBrowserServer {
         self.ensure_session_page(
             &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
-            Some(&nav_url),
+            Some(nav_url.as_str()),
             Duration::from_secs_f64(timeout_secs),
             reddit_profile,
         )
@@ -983,7 +1117,7 @@ impl McpBrowserServer {
             .and_then(serde_json::Value::as_f64)
             .unwrap_or(30.0);
 
-        let (session_arc, page_arc, nav_url_opt, reddit_profile) =
+        let (session_arc, attached_browser_arc, page_arc, nav_url_opt, reddit_profile) =
             self.session_runtime(&session_id).await?;
         let nav_url = nav_url_opt.ok_or_else(|| {
             BrowserError::ConfigError(
@@ -994,8 +1128,9 @@ impl McpBrowserServer {
         self.ensure_session_page(
             &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
-            Some(&nav_url),
+            Some(nav_url.as_str()),
             Duration::from_secs_f64(timeout_secs),
             reddit_profile,
         )
@@ -1019,7 +1154,7 @@ impl McpBrowserServer {
             .and_then(serde_json::Value::as_f64)
             .unwrap_or(30.0);
 
-        let (session_arc, page_arc, nav_url_opt, reddit_profile) =
+        let (session_arc, attached_browser_arc, page_arc, nav_url_opt, reddit_profile) =
             self.session_runtime(&session_id).await?;
         let nav_url = nav_url_opt.ok_or_else(|| {
             BrowserError::ConfigError(
@@ -1030,8 +1165,9 @@ impl McpBrowserServer {
         self.ensure_session_page(
             &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
-            Some(&nav_url),
+            Some(nav_url.as_str()),
             Duration::from_secs_f64(timeout_secs),
             reddit_profile,
         )
@@ -1045,6 +1181,432 @@ impl McpBrowserServer {
         drop(page_guard);
 
         Ok(json!({ "html": html, "bytes": html.len() }))
+    }
+
+    #[cfg(feature = "mcp-attach")]
+    async fn tool_browser_attach(&self, args: &Value) -> Result<Value> {
+        let mode = Self::require_str(args, "mode")?;
+        let endpoint = args
+            .get("endpoint")
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
+        let profile_hint = args
+            .get("profile_hint")
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
+
+        let target_profile = args
+            .get("target_profile")
+            .and_then(Value::as_str)
+            .map_or_else(
+                || "default".to_string(),
+                |s| {
+                    if s.eq_ignore_ascii_case("reddit") {
+                        "reddit".to_string()
+                    } else {
+                        "default".to_string()
+                    }
+                },
+            );
+
+        match mode.as_str() {
+            "extension_bridge" => Ok(json!({
+                "supported": false,
+                "mode": mode,
+                "profile_hint": profile_hint,
+                "status": "not_implemented",
+                "next_step": "Implement extension bridge handshake and profile transfer"
+            })),
+            "cdp_ws" => {
+                let endpoint = endpoint.ok_or_else(|| {
+                    BrowserError::ConfigError("missing endpoint for cdp_ws mode".to_string())
+                })?;
+                if !(endpoint.starts_with("ws://") || endpoint.starts_with("wss://")) {
+                    return Err(BrowserError::ConfigError(
+                        "endpoint must start with ws:// or wss://".to_string(),
+                    ));
+                }
+
+                let attach_timeout = Duration::from_secs(10);
+                let (browser, mut handler) =
+                    tokio::time::timeout(attach_timeout, Browser::connect(endpoint.clone()))
+                        .await
+                        .map_err(|_| BrowserError::Timeout {
+                            operation: "Browser.connect".to_string(),
+                            duration_ms: 10_000,
+                        })?
+                        .map_err(|e| BrowserError::ConnectionError {
+                            url: endpoint.clone(),
+                            reason: e.to_string(),
+                        })?;
+
+                let handler_task = tokio::spawn(async move {
+                    while let Some(event) = handler.next().await {
+                        if let Err(error) = event {
+                            tracing::warn!(%error, "attached browser handler error");
+                            break;
+                        }
+                    }
+                });
+
+                let session_id = Ulid::new().to_string();
+                self.sessions.lock().await.insert(
+                    session_id.clone(),
+                    McpSession {
+                        handle: Arc::new(Mutex::new(None)),
+                        attached_browser: Arc::new(Mutex::new(Some(browser))),
+                        attached_handler_task: Arc::new(Mutex::new(Some(handler_task))),
+                        page: Arc::new(Mutex::new(None)),
+                        stealth_level: StealthLevel::None,
+                        tls_profile: None,
+                        webrtc_policy: None,
+                        cdp_fix_mode: None,
+                        proxy: None,
+                        target_profile: target_profile.clone(),
+                        current_url: None,
+                        saved_snapshot: None,
+                        attach_endpoint: Some(endpoint.clone()),
+                    },
+                );
+
+                Ok(json!({
+                    "supported": true,
+                    "mode": "cdp_ws",
+                    "session_id": session_id,
+                    "endpoint": endpoint,
+                    "profile_hint": profile_hint,
+                    "requested_metadata": {
+                        "target_profile": target_profile
+                    }
+                }))
+            }
+            other => Err(BrowserError::ConfigError(format!(
+                "Invalid mode '{other}'. Use one of: extension_bridge, cdp_ws"
+            ))),
+        }
+    }
+
+    async fn tool_browser_auth_session(&self, args: &Value) -> Result<Value> {
+        let session_id = Self::require_str(args, "session_id")?;
+        let mode = Self::require_str(args, "mode")?;
+        let file_path = args
+            .get("file_path")
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
+        let ttl_secs = args.get("ttl_secs").and_then(Value::as_u64);
+        let navigate_to_origin = args
+            .get("navigate_to_origin")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        let interaction_level = args
+            .get("interaction_level")
+            .and_then(Value::as_str)
+            .unwrap_or("none")
+            .to_string();
+
+        let payload = match mode.as_str() {
+            "capture" => {
+                let mut save_args = json!({
+                    "session_id": session_id,
+                    "include_snapshot": false
+                });
+                if let Some(ttl) = ttl_secs
+                    && let Some(obj) = save_args.as_object_mut()
+                {
+                    obj.insert("ttl_secs".to_string(), Value::from(ttl));
+                }
+                if let Some(path) = file_path.clone()
+                    && let Some(obj) = save_args.as_object_mut()
+                {
+                    obj.insert("file_path".to_string(), Value::String(path));
+                }
+
+                let save = self.tool_browser_session_save(&save_args).await?;
+
+                let humanize = if interaction_level == "none" {
+                    None
+                } else {
+                    let humanize_args = json!({
+                        "session_id": session_id,
+                        "level": interaction_level
+                    });
+                    Some(self.tool_browser_humanize(&humanize_args).await?)
+                };
+
+                json!({
+                    "mode": "capture",
+                    "session_id": session_id,
+                    "save": save,
+                    "humanize": humanize
+                })
+            }
+            "resume" => {
+                let mut restore_args = json!({
+                    "session_id": session_id,
+                    "use_saved": file_path.is_none(),
+                    "navigate_to_origin": navigate_to_origin
+                });
+                if let Some(path) = file_path.clone()
+                    && let Some(obj) = restore_args.as_object_mut()
+                {
+                    obj.insert("file_path".to_string(), Value::String(path));
+                }
+
+                let restore = self.tool_browser_session_restore(&restore_args).await?;
+
+                let humanize = if interaction_level == "none" {
+                    None
+                } else {
+                    let humanize_args = json!({
+                        "session_id": session_id,
+                        "level": interaction_level
+                    });
+                    Some(self.tool_browser_humanize(&humanize_args).await?)
+                };
+
+                json!({
+                    "mode": "resume",
+                    "session_id": session_id,
+                    "restore": restore,
+                    "humanize": humanize
+                })
+            }
+            other => {
+                return Err(BrowserError::ConfigError(format!(
+                    "Invalid mode '{other}'. Use one of: capture, resume"
+                )));
+            }
+        };
+
+        Ok(payload)
+    }
+
+    async fn tool_browser_session_save(&self, args: &Value) -> Result<Value> {
+        let session_id = Self::require_str(args, "session_id")?;
+        let ttl_secs = args.get("ttl_secs").and_then(Value::as_u64);
+        let file_path = args
+            .get("file_path")
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
+        let include_snapshot = args
+            .get("include_snapshot")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
+        let (session_arc, attached_browser_arc, page_arc, nav_url_opt, reddit_profile) =
+            self.session_runtime(&session_id).await?;
+
+        self.ensure_session_page(
+            &session_id,
+            &session_arc,
+            &attached_browser_arc,
+            &page_arc,
+            nav_url_opt.as_deref(),
+            Duration::from_secs(30),
+            reddit_profile,
+        )
+        .await?;
+
+        let mut snapshot = {
+            let page_guard = page_arc.lock().await;
+            let page = page_guard.as_ref().ok_or_else(|| {
+                BrowserError::ConfigError(format!("Session page unavailable: {session_id}"))
+            })?;
+            let saved = save_session(page).await?;
+            drop(page_guard);
+            saved
+        };
+
+        snapshot.ttl_secs = ttl_secs;
+        if let Some(path) = &file_path {
+            snapshot.save_to_file(path)?;
+        }
+
+        let cookie_count = snapshot.cookies.len();
+        let local_storage_keys = snapshot.local_storage.len();
+        let origin = snapshot.origin.clone();
+
+        if let Some(session) = self.sessions.lock().await.get_mut(&session_id) {
+            session.saved_snapshot = Some(snapshot.clone());
+        }
+
+        let mut out = json!({
+            "session_id": session_id,
+            "origin": origin,
+            "cookie_count": cookie_count,
+            "local_storage_keys": local_storage_keys,
+            "ttl_secs": ttl_secs,
+            "saved_to_file": file_path
+        });
+
+        if include_snapshot && let Some(obj) = out.as_object_mut() {
+            obj.insert(
+                "snapshot".to_string(),
+                serde_json::to_value(&snapshot).map_err(|e| {
+                    BrowserError::ConfigError(format!("failed to serialize session snapshot: {e}"))
+                })?,
+            );
+        }
+
+        Ok(out)
+    }
+
+    async fn tool_browser_session_restore(&self, args: &Value) -> Result<Value> {
+        let session_id = Self::require_str(args, "session_id")?;
+        let file_path = args
+            .get("file_path")
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
+        let use_saved = args
+            .get("use_saved")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        let navigate_to_origin = args
+            .get("navigate_to_origin")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+
+        let snapshot = if let Some(path) = file_path.as_deref() {
+            SessionSnapshot::load_from_file(path)?
+        } else if let Some(inline) = args.get("snapshot") {
+            serde_json::from_value::<SessionSnapshot>(inline.clone()).map_err(|e| {
+                BrowserError::ConfigError(format!("invalid inline session snapshot: {e}"))
+            })?
+        } else if use_saved {
+            self.sessions
+                .lock()
+                .await
+                .get(&session_id)
+                .and_then(|s| s.saved_snapshot.clone())
+                .ok_or_else(|| {
+                    BrowserError::ConfigError(
+                        "No saved session snapshot found for this session".to_string(),
+                    )
+                })?
+        } else {
+            return Err(BrowserError::ConfigError(
+                "No restore source provided. Set one of: file_path, snapshot, or use_saved=true"
+                    .to_string(),
+            ));
+        };
+
+        let source = if file_path.is_some() {
+            "file"
+        } else if args.get("snapshot").is_some() {
+            "inline"
+        } else {
+            "saved"
+        };
+
+        let (session_arc, attached_browser_arc, page_arc, nav_url_opt, reddit_profile) =
+            self.session_runtime(&session_id).await?;
+
+        self.ensure_session_page(
+            &session_id,
+            &session_arc,
+            &attached_browser_arc,
+            &page_arc,
+            nav_url_opt.as_deref(),
+            Duration::from_secs(30),
+            reddit_profile,
+        )
+        .await?;
+
+        {
+            let mut page_guard = page_arc.lock().await;
+            let page = page_guard.as_mut().ok_or_else(|| {
+                BrowserError::ConfigError(format!("Session page unavailable: {session_id}"))
+            })?;
+
+            if navigate_to_origin && !snapshot.origin.is_empty() {
+                Self::navigate_with_profile(
+                    page,
+                    &snapshot.origin,
+                    Duration::from_secs(30),
+                    reddit_profile,
+                )
+                .await?;
+            }
+
+            restore_session(page, &snapshot).await?;
+            drop(page_guard);
+        }
+
+        if let Some(session) = self.sessions.lock().await.get_mut(&session_id) {
+            if !snapshot.origin.is_empty() {
+                session.current_url = Some(snapshot.origin.clone());
+            }
+            session.saved_snapshot = Some(snapshot.clone());
+        }
+
+        Ok(json!({
+            "session_id": session_id,
+            "source": source,
+            "origin": snapshot.origin,
+            "cookie_count": snapshot.cookies.len(),
+            "local_storage_keys": snapshot.local_storage.len(),
+            "snapshot_expired": snapshot.is_expired()
+        }))
+    }
+
+    async fn tool_browser_humanize(&self, args: &Value) -> Result<Value> {
+        let session_id = Self::require_str(args, "session_id")?;
+        let level = match args.get("level").and_then(Value::as_str).unwrap_or("low") {
+            "none" => InteractionLevel::None,
+            "medium" => InteractionLevel::Medium,
+            "high" => InteractionLevel::High,
+            _ => InteractionLevel::Low,
+        };
+        let viewport_width = args
+            .get("viewport_width")
+            .and_then(Value::as_f64)
+            .unwrap_or(1366.0);
+        let viewport_height = args
+            .get("viewport_height")
+            .and_then(Value::as_f64)
+            .unwrap_or(768.0);
+
+        let (session_arc, attached_browser_arc, page_arc, nav_url_opt, reddit_profile) =
+            self.session_runtime(&session_id).await?;
+
+        self.ensure_session_page(
+            &session_id,
+            &session_arc,
+            &attached_browser_arc,
+            &page_arc,
+            nav_url_opt.as_deref(),
+            Duration::from_secs(30),
+            reddit_profile,
+        )
+        .await?;
+
+        {
+            let page_guard = page_arc.lock().await;
+            let page = page_guard.as_ref().ok_or_else(|| {
+                BrowserError::ConfigError(format!("Session page unavailable: {session_id}"))
+            })?;
+
+            let mut simulator = InteractionSimulator::new(level);
+            simulator
+                .random_interaction(page.inner(), viewport_width, viewport_height)
+                .await?;
+            drop(page_guard);
+        }
+
+        let level_str = match level {
+            InteractionLevel::None => "none",
+            InteractionLevel::Low => "low",
+            InteractionLevel::Medium => "medium",
+            InteractionLevel::High => "high",
+        };
+
+        Ok(json!({
+            "session_id": session_id,
+            "level": level_str,
+            "viewport_width": viewport_width,
+            "viewport_height": viewport_height,
+            "applied": true
+        }))
     }
 
     async fn tool_browser_query(&self, args: &Value) -> Result<Value> {
@@ -1076,10 +1638,12 @@ impl McpBrowserServer {
                     .collect()
             });
 
-        let (session_arc, page_arc, _, reddit_profile) = self.session_runtime(&session_id).await?;
+        let (session_arc, attached_browser_arc, page_arc, _, reddit_profile) =
+            self.session_runtime(&session_id).await?;
         self.ensure_session_page(
             &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             None,
             Duration::from_secs_f64(timeout_secs),
@@ -1180,10 +1744,12 @@ impl McpBrowserServer {
             })
             .collect();
 
-        let (session_arc, page_arc, _, reddit_profile) = self.session_runtime(&session_id).await?;
+        let (session_arc, attached_browser_arc, page_arc, _, reddit_profile) =
+            self.session_runtime(&session_id).await?;
         self.ensure_session_page(
             &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             None,
             Duration::from_secs_f64(timeout_secs),
@@ -1252,10 +1818,12 @@ impl McpBrowserServer {
             max_results,
         };
 
-        let (session_arc, page_arc, _, reddit_profile) = self.session_runtime(&session_id).await?;
+        let (session_arc, attached_browser_arc, page_arc, _, reddit_profile) =
+            self.session_runtime(&session_id).await?;
         self.ensure_session_page(
             &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             None,
             Duration::from_secs_f64(timeout_secs),
@@ -1339,10 +1907,12 @@ impl McpBrowserServer {
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0);
 
-        let (session_arc, page_arc, _, _) = self.session_runtime(&session_id).await?;
+        let (session_arc, attached_browser_arc, page_arc, _, _) =
+            self.session_runtime(&session_id).await?;
         self.ensure_session_page(
             &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             None,
             Duration::from_millis(timeout_ms),
@@ -1396,10 +1966,12 @@ impl McpBrowserServer {
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(false);
 
-        let (session_arc, page_arc, _, _) = self.session_runtime(&session_id).await?;
+        let (session_arc, attached_browser_arc, page_arc, _, _) =
+            self.session_runtime(&session_id).await?;
         self.ensure_session_page(
             &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             None,
             Duration::from_millis(timeout_ms),
@@ -1433,19 +2005,43 @@ impl McpBrowserServer {
         let session_id = Self::require_str(args, "session_id")?;
 
         // Remove session from the map so further calls immediately fail.
-        let (session_arc, page_arc) = {
+        let (session_arc, attached_browser_arc, attached_handler_task_arc, page_arc) = {
             let mut sessions = self.sessions.lock().await;
             let removed = sessions.remove(&session_id).ok_or_else(|| {
                 BrowserError::ConfigError(format!("Unknown session: {session_id}"))
             })?;
             drop(sessions);
-            (removed.handle, removed.page)
+            (
+                removed.handle,
+                removed.attached_browser,
+                removed.attached_handler_task,
+                removed.page,
+            )
         };
 
         // Take and release the handle without holding the map lock
         let handle = session_arc.lock().await.take();
         if let Some(h) = handle {
             h.release().await;
+        }
+
+        let attached_browser = attached_browser_arc.lock().await.take();
+        if let Some(mut browser) = attached_browser {
+            let close_timeout = Duration::from_secs(5);
+            match tokio::time::timeout(close_timeout, browser.close()).await {
+                Ok(Ok(_)) => {}
+                Ok(Err(error)) => {
+                    tracing::warn!(%session_id, %error, "attached browser close failed during release");
+                }
+                Err(_) => {
+                    tracing::warn!(%session_id, "attached browser close timed out during release");
+                }
+            }
+        }
+
+        let attached_handler_task = attached_handler_task_arc.lock().await.take();
+        if let Some(task) = attached_handler_task {
+            task.abort();
         }
 
         let page = page_arc.lock().await.take();
@@ -1571,7 +2167,9 @@ impl McpBrowserServer {
                     "cdp_fix_mode": s.cdp_fix_mode,
                     "proxy": s.proxy,
                     "target_profile": s.target_profile,
-                    "current_url": s.current_url
+                    "current_url": s.current_url,
+                    "has_saved_snapshot": s.saved_snapshot.is_some(),
+                    "attach_endpoint": s.attach_endpoint
                 })
             })
         };
@@ -1605,6 +2203,7 @@ impl McpBrowserServer {
         session_id: &str,
     ) -> Result<(
         Arc<Mutex<Option<BrowserHandle>>>,
+        Arc<Mutex<Option<Browser>>>,
         Arc<Mutex<Option<crate::page::PageHandle>>>,
         Option<String>,
         bool,
@@ -1616,6 +2215,7 @@ impl McpBrowserServer {
             .map(|s| {
                 (
                     s.handle.clone(),
+                    s.attached_browser.clone(),
                     s.page.clone(),
                     s.current_url.clone(),
                     s.target_profile == "reddit",
@@ -1624,10 +2224,15 @@ impl McpBrowserServer {
             .ok_or_else(|| BrowserError::ConfigError(format!("Unknown session: {session_id}")))
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "session runtime handles and bootstrap options are passed explicitly for clarity"
+    )]
     async fn ensure_session_page(
         &self,
         session_id: &str,
         handle_arc: &Arc<Mutex<Option<BrowserHandle>>>,
+        attached_browser_arc: &Arc<Mutex<Option<Browser>>>,
         page_arc: &Arc<Mutex<Option<crate::page::PageHandle>>>,
         current_url: Option<&str>,
         timeout: Duration,
@@ -1635,19 +2240,8 @@ impl McpBrowserServer {
     ) -> Result<()> {
         let mut page_guard = page_arc.lock().await;
         let created = if page_guard.is_none() {
-            let new_page = handle_arc
-                .lock()
-                .await
-                .as_ref()
-                .ok_or_else(|| {
-                    BrowserError::ConfigError(format!("Session already released: {session_id}"))
-                })?
-                .browser()
-                .ok_or_else(|| {
-                    BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
-                })?
-                .new_page()
-                .await?;
+            let new_page =
+                Self::create_session_page(session_id, handle_arc, attached_browser_arc).await?;
 
             *page_guard = Some(new_page);
             true
@@ -1665,6 +2259,44 @@ impl McpBrowserServer {
         drop(page_guard);
 
         Ok(())
+    }
+
+    async fn create_session_page(
+        session_id: &str,
+        handle_arc: &Arc<Mutex<Option<BrowserHandle>>>,
+        attached_browser_arc: &Arc<Mutex<Option<Browser>>>,
+    ) -> Result<crate::page::PageHandle> {
+        let handle_guard = handle_arc.lock().await;
+        if let Some(handle) = handle_guard.as_ref() {
+            let browser = handle
+                .browser()
+                .ok_or_else(|| {
+                    BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
+                })?;
+            let page = browser.new_page().await?;
+            drop(handle_guard);
+            return Ok(page);
+        }
+        drop(handle_guard);
+
+        let browser_guard = attached_browser_arc.lock().await;
+        let browser = browser_guard.as_ref().ok_or_else(|| {
+            BrowserError::ConfigError(format!("Session already released: {session_id}"))
+        })?;
+        let raw_page =
+            browser
+                .new_page("about:blank")
+                .await
+                .map_err(|e| BrowserError::CdpError {
+                    operation: "Browser.newPage".to_string(),
+                    message: e.to_string(),
+                })?;
+        drop(browser_guard);
+
+        Ok(crate::page::PageHandle::new(
+            raw_page,
+            Duration::from_secs(30),
+        ))
     }
 
     async fn navigate_with_profile(
@@ -1771,10 +2403,12 @@ impl McpBrowserServer {
         let selectors = Self::parse_root_selectors(args)?;
         let schema = Self::parse_extract_schema(args)?;
 
-        let (session_arc, page_arc, _, reddit_profile) = self.session_runtime(&session_id).await?;
+        let (session_arc, attached_browser_arc, page_arc, _, reddit_profile) =
+            self.session_runtime(&session_id).await?;
         self.ensure_session_page(
             &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             None,
             Duration::from_secs_f64(timeout_secs),
@@ -1847,10 +2481,12 @@ impl McpBrowserServer {
             .unwrap_or(30.0);
         let schema = Self::parse_extract_schema(args)?;
 
-        let (session_arc, page_arc, _, reddit_profile) = self.session_runtime(&session_id).await?;
+        let (session_arc, attached_browser_arc, page_arc, _, reddit_profile) =
+            self.session_runtime(&session_id).await?;
         self.ensure_session_page(
             &session_id,
             &session_arc,
+            &attached_browser_arc,
             &page_arc,
             None,
             Duration::from_secs_f64(timeout_secs),
@@ -2268,6 +2904,114 @@ mod tests {
         assert!(
             required.iter().any(|v| v == "session_id"),
             "session_id must be required in browser_refresh"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn tool_defs_include_browser_auth_session() {
+        let defs = &*TOOL_DEFINITIONS;
+        assert!(
+            defs.iter()
+                .any(|t| t.get("name").and_then(|n| n.as_str()) == Some("browser_auth_session")),
+            "TOOL_DEFINITIONS must contain browser_auth_session"
+        );
+    }
+
+    #[test]
+    fn browser_auth_session_required_args() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let defs = &*TOOL_DEFINITIONS;
+        let def = defs
+            .iter()
+            .find(|t| t.get("name").and_then(|n| n.as_str()) == Some("browser_auth_session"))
+            .ok_or("browser_auth_session must be in TOOL_DEFINITIONS")?;
+        let required = def
+            .get("inputSchema")
+            .and_then(|s| s.get("required"))
+            .and_then(Value::as_array)
+            .ok_or("browser_auth_session inputSchema missing 'required' array")?;
+
+        assert!(
+            required.iter().any(|v| v == "session_id"),
+            "session_id must be required in browser_auth_session"
+        );
+        assert!(
+            required.iter().any(|v| v == "mode"),
+            "mode must be required in browser_auth_session"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn tool_defs_include_browser_session_save() {
+        let defs = &*TOOL_DEFINITIONS;
+        assert!(
+            defs.iter()
+                .any(|t| t.get("name").and_then(|n| n.as_str()) == Some("browser_session_save")),
+            "TOOL_DEFINITIONS must contain browser_session_save"
+        );
+    }
+
+    #[test]
+    fn tool_defs_include_browser_session_restore() {
+        let defs = &*TOOL_DEFINITIONS;
+        assert!(
+            defs.iter().any(
+                |t| t.get("name").and_then(|n| n.as_str()) == Some("browser_session_restore")
+            ),
+            "TOOL_DEFINITIONS must contain browser_session_restore"
+        );
+    }
+
+    #[test]
+    fn tool_defs_include_browser_humanize() {
+        let defs = &*TOOL_DEFINITIONS;
+        assert!(
+            defs.iter()
+                .any(|t| t.get("name").and_then(|n| n.as_str()) == Some("browser_humanize")),
+            "TOOL_DEFINITIONS must contain browser_humanize"
+        );
+    }
+
+    #[cfg(feature = "mcp-attach")]
+    #[test]
+    fn tool_defs_include_browser_attach() {
+        let defs = &*TOOL_DEFINITIONS;
+        assert!(
+            defs.iter().any(|t| t.get("name").and_then(|n| n.as_str()) == Some("browser_attach")),
+            "TOOL_DEFINITIONS must contain browser_attach when mcp-attach is enabled"
+        );
+    }
+
+    #[cfg(feature = "mcp-attach")]
+    #[test]
+    fn browser_attach_schema_includes_target_profile(
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let defs = &*TOOL_DEFINITIONS;
+        let def = defs
+            .iter()
+            .find(|t| t.get("name").and_then(|n| n.as_str()) == Some("browser_attach"))
+            .ok_or("browser_attach must be in TOOL_DEFINITIONS")?;
+        let props = def
+            .get("inputSchema")
+            .and_then(|s| s.get("properties"))
+            .and_then(Value::as_object)
+            .ok_or("browser_attach inputSchema missing properties")?;
+        let target_profile = props
+            .get("target_profile")
+            .ok_or("browser_attach inputSchema missing target_profile")?;
+        let enum_values = target_profile
+            .get("enum")
+            .and_then(Value::as_array)
+            .ok_or("browser_attach target_profile missing enum")?;
+
+        assert!(
+            enum_values.iter().any(|v| v == "default"),
+            "browser_attach target_profile enum must include default"
+        );
+        assert!(
+            enum_values.iter().any(|v| v == "reddit"),
+            "browser_attach target_profile enum must include reddit"
         );
         Ok(())
     }

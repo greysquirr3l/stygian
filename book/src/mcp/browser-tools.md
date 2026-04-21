@@ -144,6 +144,155 @@ Retrieve the current page's full outer HTML.
 
 ---
 
+### `browser_attach` *(requires `mcp-attach` feature)*
+
+Attach an MCP session to an existing DevTools websocket endpoint (`cdp_ws`) or
+use the extension bridge contract path (`extension_bridge`, currently not implemented).
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `mode` | string | ✓ | `cdp_ws` \| `extension_bridge` |
+| `endpoint` | string | | Required for `cdp_ws`; DevTools websocket URL |
+| `profile_hint` | string | | Optional label for external profile identity |
+| `target_profile` | string | | Optional tuning profile: `default` \| `reddit` |
+
+`cdp_ws` returns a new MCP `session_id` that can be used with the normal
+browser lifecycle tools (`browser_navigate`, `browser_eval`, `browser_content`,
+`browser_screenshot`, `browser_release`).
+
+**Example (`cdp_ws`):**
+
+```json
+{
+  "mode": "cdp_ws",
+  "endpoint": "ws://127.0.0.1:9222/devtools/browser/abcd1234",
+  "target_profile": "default"
+}
+```
+
+---
+
+### `browser_auth_session`
+
+High-level auth/session wrapper for common login workflows. This tool orchestrates
+`browser_session_save` and `browser_session_restore`, with optional post-step
+human-like interaction via `browser_humanize`.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `session_id` | string | ✓ | Session ID |
+| `mode` | string | ✓ | `capture` \| `resume` |
+| `file_path` | string | | Optional snapshot file path |
+| `ttl_secs` | integer | | Optional TTL in seconds when `mode = capture` |
+| `navigate_to_origin` | boolean | | When resuming, navigate to snapshot origin first (default: `true`) |
+| `interaction_level` | string | | Optional interaction pass: `none` \| `low` \| `medium` \| `high` |
+
+**Capture example:**
+
+```json
+{
+  "session_id": "01HV4...",
+  "mode": "capture",
+  "file_path": "/tmp/reddit-session.json",
+  "ttl_secs": 86400,
+  "interaction_level": "none"
+}
+```
+
+**Resume example:**
+
+```json
+{
+  "session_id": "01HV5...",
+  "mode": "resume",
+  "file_path": "/tmp/reddit-session.json",
+  "navigate_to_origin": true
+}
+```
+
+---
+
+### `browser_session_save`
+
+Capture the current page auth/session state (cookies + localStorage) and store
+it in memory and optionally on disk.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `session_id` | string | ✓ | Session ID |
+| `ttl_secs` | integer | | Optional snapshot TTL |
+| `file_path` | string | | Optional output path for snapshot JSON |
+| `include_snapshot` | boolean | | Include full snapshot payload in response (default: `false`) |
+
+**Returns:**
+
+```json
+{
+  "session_id": "01HV4...",
+  "origin": "https://example.com",
+  "cookie_count": 5,
+  "local_storage_keys": 3,
+  "ttl_secs": 3600,
+  "saved_to_file": "/tmp/session.json"
+}
+```
+
+---
+
+### `browser_session_restore`
+
+Restore session state from one of three sources: inline snapshot payload,
+snapshot file, or the in-memory snapshot saved previously for the same session.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `session_id` | string | ✓ | Session ID |
+| `snapshot` | object | | Inline `SessionSnapshot` JSON |
+| `file_path` | string | | Path to snapshot JSON file |
+| `use_saved` | boolean | | Use in-memory saved snapshot if no inline/file source provided (default: `true`) |
+| `navigate_to_origin` | boolean | | Navigate to snapshot origin before applying state (default: `true`) |
+
+**Returns:**
+
+```json
+{
+  "session_id": "01HV4...",
+  "source": "saved",
+  "origin": "https://example.com",
+  "cookie_count": 5,
+  "local_storage_keys": 3,
+  "snapshot_expired": false
+}
+```
+
+---
+
+### `browser_humanize`
+
+Run a human-like interaction sequence on the current page (scroll, mouse, key
+activity) to reduce robotic behavior patterns.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `session_id` | string | ✓ | Session ID |
+| `level` | string | | `none` \| `low` \| `medium` \| `high` (default: `low`) |
+| `viewport_width` | number | | Viewport width used for interaction simulation (default: `1366`) |
+| `viewport_height` | number | | Viewport height used for interaction simulation (default: `768`) |
+
+**Returns:**
+
+```json
+{
+  "session_id": "01HV4...",
+  "level": "low",
+  "viewport_width": 1366,
+  "viewport_height": 768,
+  "applied": true
+}
+```
+
+---
+
 ### `browser_query`
 
 Query all elements matching a CSS selector and return their text content (and optionally named
@@ -368,6 +517,30 @@ Return current browser pool statistics. No parameters required.
   "available": 6
 }
 ```
+
+---
+
+## Live Attach Test (End-to-End)
+
+Run a local Chrome with remote debugging enabled:
+
+```sh
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
+  --remote-debugging-port=9222 \
+  --user-data-dir=/tmp/stygian-attach-profile
+```
+
+Resolve the websocket endpoint and run the ignored attach integration test:
+
+```sh
+export STYGIAN_ATTACH_WS_ENDPOINT=$(curl -s http://127.0.0.1:9222/json/version | jq -r .webSocketDebuggerUrl)
+cargo test -p stygian-browser \
+  --features "mcp,mcp-attach" \
+  --test mcp_integration \
+  -- --ignored --nocapture
+```
+
+If `STYGIAN_ATTACH_WS_ENDPOINT` is not set, the live attach test is skipped.
 
 ---
 
