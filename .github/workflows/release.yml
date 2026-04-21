@@ -119,10 +119,12 @@ jobs:
           sha="${RELEASE_SHA}"
           repo="${GITHUB_REPOSITORY}"
           api="https://api.github.com/repos/${repo}/actions/runs?head_sha=${sha}&event=push&per_page=50"
+          max_attempts=90
+          sleep_seconds=20
 
           echo "Checking CI status for ${repo}@${sha}"
 
-          for attempt in {1..30}; do
+          for attempt in $(seq 1 "${max_attempts}"); do
             json=$(curl -fsSL \
               -H "Authorization: Bearer ${GITHUB_TOKEN}" \
               -H "Accept: application/vnd.github+json" \
@@ -132,14 +134,14 @@ jobs:
             ci_conclusion=$(echo "${json}" | jq -r '.workflow_runs[] | select(.name == "CI") | .conclusion' | head -n1)
 
             if [[ -z "${ci_status}" ]]; then
-              echo "Attempt ${attempt}/30: CI workflow run not found yet; waiting..."
-              sleep 20
+              echo "Attempt ${attempt}/${max_attempts}: CI workflow run not found yet; waiting..."
+              sleep "${sleep_seconds}"
               continue
             fi
 
             if [[ "${ci_status}" != "completed" ]]; then
-              echo "Attempt ${attempt}/30: CI is ${ci_status}; waiting..."
-              sleep 20
+              echo "Attempt ${attempt}/${max_attempts}: CI is ${ci_status}; waiting..."
+              sleep "${sleep_seconds}"
               continue
             fi
 
@@ -152,7 +154,7 @@ jobs:
             exit 1
           done
 
-          echo "Timed out waiting for CI completion on ${sha}"
+          echo "Timed out waiting for CI completion on ${sha} after $((max_attempts * sleep_seconds)) seconds"
           exit 1
 
   publish:
