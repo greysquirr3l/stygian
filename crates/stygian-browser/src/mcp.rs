@@ -69,9 +69,11 @@ use ulid::Ulid;
 
 use crate::{
     BrowserHandle, BrowserPool,
+    behavior::{InteractionLevel, InteractionSimulator},
     config::StealthLevel,
     error::{BrowserError, Result},
     page::WaitUntil,
+    session::{SessionSnapshot, restore_session, save_session},
 };
 
 // ─── JSON-RPC types ──────────────────────────────────────────────────────────
@@ -165,6 +167,8 @@ struct McpSession {
     target_profile: String,
     /// Last URL successfully navigated to via `browser_navigate`.
     current_url: Option<String>,
+    /// Optional in-memory saved session snapshot for auth/session reuse.
+    saved_snapshot: Option<SessionSnapshot>,
 }
 
 // ─── MCP server ──────────────────────────────────────────────────────────────
@@ -502,6 +506,49 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
             "required": ["session_id"]
         }
     }));
+    tools.push(json!({
+            "name": "browser_session_save",
+            "description": "Save current browser session state (cookies + localStorage) to memory and optionally to disk.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "session_id": { "type": "string" },
+                    "ttl_secs": { "type": "integer", "description": "Optional snapshot TTL in seconds." },
+                    "file_path": { "type": "string", "description": "Optional path to save session snapshot JSON." },
+                    "include_snapshot": { "type": "boolean", "default": false, "description": "When true, include full snapshot payload in response." }
+                },
+                "required": ["session_id"]
+            }
+        }));
+    tools.push(json!({
+            "name": "browser_session_restore",
+            "description": "Restore browser session state from provided snapshot JSON, saved in-memory snapshot, or file.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "session_id": { "type": "string" },
+                    "snapshot": { "type": "object", "description": "Inline SessionSnapshot JSON." },
+                    "file_path": { "type": "string", "description": "Path to a SessionSnapshot JSON file." },
+                    "use_saved": { "type": "boolean", "default": true, "description": "Use in-memory snapshot when no inline/file snapshot is provided." },
+                    "navigate_to_origin": { "type": "boolean", "default": true, "description": "Navigate to snapshot origin before restore when origin is present." }
+                },
+                "required": ["session_id"]
+            }
+        }));
+    tools.push(json!({
+            "name": "browser_humanize",
+            "description": "Apply human-like interaction sequence on current page (scroll, key activity, mouse movement).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "session_id": { "type": "string" },
+                    "level": { "type": "string", "enum": ["none", "low", "medium", "high"], "default": "low" },
+                    "viewport_width": { "type": "number", "default": 1366.0 },
+                    "viewport_height": { "type": "number", "default": 768.0 }
+                },
+                "required": ["session_id"]
+            }
+        }));
     tools
 });
 
@@ -683,6 +730,9 @@ impl McpBrowserServer {
             "browser_eval" => self.tool_browser_eval(&args).await,
             "browser_screenshot" => self.tool_browser_screenshot(&args).await,
             "browser_content" => self.tool_browser_content(&args).await,
+            "browser_session_save" => self.tool_browser_session_save(&args).await,
+            "browser_session_restore" => self.tool_browser_session_restore(&args).await,
+            "browser_humanize" => self.tool_browser_humanize(&args).await,
             #[cfg(feature = "stealth")]
             "browser_verify_stealth" => self.tool_browser_verify_stealth(&args).await,
             #[cfg(not(feature = "stealth"))]
@@ -777,6 +827,7 @@ impl McpBrowserServer {
                 proxy: proxy.clone(),
                 target_profile: target_profile.clone(),
                 current_url: None,
+                saved_snapshot: None,
             },
         );
 
@@ -1045,6 +1096,234 @@ impl McpBrowserServer {
         drop(page_guard);
 
         Ok(json!({ "html": html, "bytes": html.len() }))
+    }
+
+    async fn tool_browser_session_save(&self, args: &Value) -> Result<Value> {
+        let session_id = Self::require_str(args, "session_id")?;
+        let ttl_secs = args.get("ttl_secs").and_then(Value::as_u64);
+        let file_path = args
+            .get("file_path")
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
+        let include_snapshot = args
+            .get("include_snapshot")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
+        let (session_arc, page_arc, nav_url_opt, reddit_profile) =
+            self.session_runtime(&session_id).await?;
+
+        self.ensure_session_page(
+            &session_id,
+            &session_arc,
+            &page_arc,
+            nav_url_opt.as_deref(),
+            Duration::from_secs(30),
+            reddit_profile,
+        )
+        .await?;
+
+        let mut snapshot = {
+            let page_guard = page_arc.lock().await;
+            let page = page_guard.as_ref().ok_or_else(|| {
+                BrowserError::ConfigError(format!("Session page unavailable: {session_id}"))
+            })?;
+            let saved = save_session(page).await?;
+            drop(page_guard);
+            saved
+        };
+
+        snapshot.ttl_secs = ttl_secs;
+        if let Some(path) = &file_path {
+            snapshot.save_to_file(path)?;
+        }
+
+        let cookie_count = snapshot.cookies.len();
+        let local_storage_keys = snapshot.local_storage.len();
+        let origin = snapshot.origin.clone();
+
+        if let Some(session) = self.sessions.lock().await.get_mut(&session_id) {
+            session.saved_snapshot = Some(snapshot.clone());
+        }
+
+        let mut out = json!({
+            "session_id": session_id,
+            "origin": origin,
+            "cookie_count": cookie_count,
+            "local_storage_keys": local_storage_keys,
+            "ttl_secs": ttl_secs,
+            "saved_to_file": file_path
+        });
+
+        if include_snapshot
+            && let Some(obj) = out.as_object_mut()
+        {
+            obj.insert("snapshot".to_string(), serde_json::to_value(&snapshot).map_err(|e| {
+                BrowserError::ConfigError(format!("failed to serialize session snapshot: {e}"))
+            })?);
+        }
+
+        Ok(out)
+    }
+
+    async fn tool_browser_session_restore(&self, args: &Value) -> Result<Value> {
+        let session_id = Self::require_str(args, "session_id")?;
+        let file_path = args
+            .get("file_path")
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
+        let use_saved = args
+            .get("use_saved")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+        let navigate_to_origin = args
+            .get("navigate_to_origin")
+            .and_then(Value::as_bool)
+            .unwrap_or(true);
+
+        let snapshot = if let Some(path) = file_path.as_deref() {
+            SessionSnapshot::load_from_file(path)?
+        } else if let Some(inline) = args.get("snapshot") {
+            serde_json::from_value::<SessionSnapshot>(inline.clone()).map_err(|e| {
+                BrowserError::ConfigError(format!("invalid inline session snapshot: {e}"))
+            })?
+        } else if use_saved {
+            self.sessions
+                .lock()
+                .await
+                .get(&session_id)
+                .and_then(|s| s.saved_snapshot.clone())
+                .ok_or_else(|| {
+                    BrowserError::ConfigError(
+                        "No saved session snapshot found for this session".to_string(),
+                    )
+                })?
+        } else {
+            return Err(BrowserError::ConfigError(
+                "No restore source provided. Set one of: file_path, snapshot, or use_saved=true"
+                    .to_string(),
+            ));
+        };
+
+        let source = if file_path.is_some() {
+            "file"
+        } else if args.get("snapshot").is_some() {
+            "inline"
+        } else {
+            "saved"
+        };
+
+        let (session_arc, page_arc, nav_url_opt, reddit_profile) =
+            self.session_runtime(&session_id).await?;
+
+        self.ensure_session_page(
+            &session_id,
+            &session_arc,
+            &page_arc,
+            nav_url_opt.as_deref(),
+            Duration::from_secs(30),
+            reddit_profile,
+        )
+        .await?;
+
+        {
+            let mut page_guard = page_arc.lock().await;
+            let page = page_guard.as_mut().ok_or_else(|| {
+                BrowserError::ConfigError(format!("Session page unavailable: {session_id}"))
+            })?;
+
+            if navigate_to_origin && !snapshot.origin.is_empty() {
+                Self::navigate_with_profile(
+                    page,
+                    &snapshot.origin,
+                    Duration::from_secs(30),
+                    reddit_profile,
+                )
+                .await?;
+            }
+
+            restore_session(page, &snapshot).await?;
+            drop(page_guard);
+        }
+
+        if let Some(session) = self.sessions.lock().await.get_mut(&session_id) {
+            if !snapshot.origin.is_empty() {
+                session.current_url = Some(snapshot.origin.clone());
+            }
+            session.saved_snapshot = Some(snapshot.clone());
+        }
+
+        Ok(json!({
+            "session_id": session_id,
+            "source": source,
+            "origin": snapshot.origin,
+            "cookie_count": snapshot.cookies.len(),
+            "local_storage_keys": snapshot.local_storage.len(),
+            "snapshot_expired": snapshot.is_expired()
+        }))
+    }
+
+    async fn tool_browser_humanize(&self, args: &Value) -> Result<Value> {
+        let session_id = Self::require_str(args, "session_id")?;
+        let level = match args
+            .get("level")
+            .and_then(Value::as_str)
+            .unwrap_or("low")
+        {
+            "none" => InteractionLevel::None,
+            "medium" => InteractionLevel::Medium,
+            "high" => InteractionLevel::High,
+            _ => InteractionLevel::Low,
+        };
+        let viewport_width = args
+            .get("viewport_width")
+            .and_then(Value::as_f64)
+            .unwrap_or(1366.0);
+        let viewport_height = args
+            .get("viewport_height")
+            .and_then(Value::as_f64)
+            .unwrap_or(768.0);
+
+        let (session_arc, page_arc, nav_url_opt, reddit_profile) =
+            self.session_runtime(&session_id).await?;
+
+        self.ensure_session_page(
+            &session_id,
+            &session_arc,
+            &page_arc,
+            nav_url_opt.as_deref(),
+            Duration::from_secs(30),
+            reddit_profile,
+        )
+        .await?;
+
+        {
+            let page_guard = page_arc.lock().await;
+            let page = page_guard.as_ref().ok_or_else(|| {
+                BrowserError::ConfigError(format!("Session page unavailable: {session_id}"))
+            })?;
+
+            let mut simulator = InteractionSimulator::new(level);
+            simulator
+                .random_interaction(page.inner(), viewport_width, viewport_height)
+                .await?;
+            drop(page_guard);
+        }
+
+        let level_str = match level {
+            InteractionLevel::None => "none",
+            InteractionLevel::Low => "low",
+            InteractionLevel::Medium => "medium",
+            InteractionLevel::High => "high",
+        };
+
+        Ok(json!({
+            "session_id": session_id,
+            "level": level_str,
+            "viewport_width": viewport_width,
+            "viewport_height": viewport_height,
+            "applied": true
+        }))
     }
 
     async fn tool_browser_query(&self, args: &Value) -> Result<Value> {
@@ -1571,7 +1850,8 @@ impl McpBrowserServer {
                     "cdp_fix_mode": s.cdp_fix_mode,
                     "proxy": s.proxy,
                     "target_profile": s.target_profile,
-                    "current_url": s.current_url
+                    "current_url": s.current_url,
+                    "has_saved_snapshot": s.saved_snapshot.is_some()
                 })
             })
         };

@@ -156,3 +156,130 @@ async fn mcp_acquire_navigate_release_round_trip() -> Result<(), Box<dyn std::er
 
     Ok(())
 }
+
+#[tokio::test]
+#[ignore = "requires Chrome and external network"]
+async fn mcp_session_save_restore_and_humanize_round_trip(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let pool = BrowserPool::new(test_config()).await?;
+    let server = McpBrowserServer::new(pool);
+
+    let acquire_resp = server
+        .dispatch(&json!({
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "tools/call",
+            "params": {
+                "name": "browser_acquire",
+                "arguments": {"target_profile": "reddit"}
+            }
+        }))
+        .await;
+    let acquire_payload = parse_tools_call_text(&acquire_resp)?;
+    let session_id = acquire_payload
+        .get("session_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| std::io::Error::other("browser_acquire returned no session_id"))?
+        .to_string();
+
+    let navigate_resp = server
+        .dispatch(&json!({
+            "jsonrpc": "2.0",
+            "id": 12,
+            "method": "tools/call",
+            "params": {
+                "name": "browser_navigate",
+                "arguments": {
+                    "session_id": session_id,
+                    "url": "https://example.com",
+                    "timeout_secs": 30
+                }
+            }
+        }))
+        .await;
+    let _ = parse_tools_call_text(&navigate_resp)?;
+
+    let save_resp = server
+        .dispatch(&json!({
+            "jsonrpc": "2.0",
+            "id": 13,
+            "method": "tools/call",
+            "params": {
+                "name": "browser_session_save",
+                "arguments": {
+                    "session_id": session_id,
+                    "ttl_secs": 3600
+                }
+            }
+        }))
+        .await;
+    let save_payload = parse_tools_call_text(&save_resp)?;
+    assert_eq!(
+        save_payload.get("ttl_secs").and_then(Value::as_u64),
+        Some(3600),
+        "saved snapshot should persist requested ttl"
+    );
+
+    let restore_resp = server
+        .dispatch(&json!({
+            "jsonrpc": "2.0",
+            "id": 14,
+            "method": "tools/call",
+            "params": {
+                "name": "browser_session_restore",
+                "arguments": {
+                    "session_id": session_id,
+                    "use_saved": true,
+                    "navigate_to_origin": false
+                }
+            }
+        }))
+        .await;
+    let restore_payload = parse_tools_call_text(&restore_resp)?;
+    assert_eq!(
+        restore_payload.get("source").and_then(Value::as_str),
+        Some("saved"),
+        "restore should use in-memory saved snapshot by default"
+    );
+
+    let humanize_resp = server
+        .dispatch(&json!({
+            "jsonrpc": "2.0",
+            "id": 15,
+            "method": "tools/call",
+            "params": {
+                "name": "browser_humanize",
+                "arguments": {
+                    "session_id": session_id,
+                    "level": "none"
+                }
+            }
+        }))
+        .await;
+    let humanize_payload = parse_tools_call_text(&humanize_resp)?;
+    assert_eq!(
+        humanize_payload.get("applied").and_then(Value::as_bool),
+        Some(true),
+        "humanize should report applied=true"
+    );
+
+    let release_resp = server
+        .dispatch(&json!({
+            "jsonrpc": "2.0",
+            "id": 16,
+            "method": "tools/call",
+            "params": {
+                "name": "browser_release",
+                "arguments": {"session_id": session_id}
+            }
+        }))
+        .await;
+    let release_payload = parse_tools_call_text(&release_resp)?;
+    assert_eq!(
+        release_payload.get("released").and_then(Value::as_bool),
+        Some(true),
+        "browser_release should return released=true"
+    );
+
+    Ok(())
+}
