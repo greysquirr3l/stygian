@@ -15,7 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `stygian-browser (mcp)`: new `browser_attach` tool contract for future
   extension/CDP attach workflows. The tool validates mode/endpoint intent and
   reports attach capability status in a machine-readable payload for client
-  feature detection
+  feature detection, and is now gated behind the `mcp-attach` compile-time
+  feature flag
 - `stygian-browser`: Tier 1 validator implementations for `CreepJS` and `BrowserScan`
   now run real browser-backed checks (navigate, probe score/block state, capture
   failure screenshot, and release pooled session)

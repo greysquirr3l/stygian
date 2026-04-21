@@ -40,7 +40,7 @@
 //! | `browser_eval` | `session_id, script` | `result: Value` |
 //! | `browser_screenshot` | `session_id` | `data: base64 PNG` |
 //! | `browser_content` | `session_id` | `html: String` |
-//! | `browser_attach` | `mode, endpoint?, profile_hint?` | attach capability contract |
+//! | `browser_attach` *(mcp-attach feature)* | `mode, endpoint?, profile_hint?` | attach capability contract |
 //! | `browser_verify_stealth` | `session_id, url, timeout_secs?` | `DiagnosticReport` JSON |
 //! | `browser_release` | `session_id` | success |
 //! | `pool_stats` | – | `active, max, available` |
@@ -276,6 +276,7 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
                 "required": ["session_id"]
             }
         }),
+        #[cfg(feature = "mcp-attach")]
         json!({
             "name": "browser_attach",
             "description": "Bridge/attach capability contract for connecting MCP workflows to an existing user browser profile or CDP endpoint. Current implementation reports capability and validation hints; direct attach is not yet available.",
@@ -770,7 +771,12 @@ impl McpBrowserServer {
             "browser_eval" => self.tool_browser_eval(&args).await,
             "browser_screenshot" => self.tool_browser_screenshot(&args).await,
             "browser_content" => self.tool_browser_content(&args).await,
+            #[cfg(feature = "mcp-attach")]
             "browser_attach" => self.tool_browser_attach(&args).await,
+            #[cfg(not(feature = "mcp-attach"))]
+            "browser_attach" => Err(BrowserError::ConfigError(
+                "browser_attach requires the 'mcp-attach' feature".to_string(),
+            )),
             "browser_auth_session" => self.tool_browser_auth_session(&args).await,
             "browser_session_save" => self.tool_browser_session_save(&args).await,
             "browser_session_restore" => self.tool_browser_session_restore(&args).await,
@@ -1140,6 +1146,7 @@ impl McpBrowserServer {
         Ok(json!({ "html": html, "bytes": html.len() }))
     }
 
+    #[cfg(feature = "mcp-attach")]
     async fn tool_browser_attach(&self, args: &Value) -> Result<Value> {
         let mode = Self::require_str(args, "mode")?;
         let endpoint = args
