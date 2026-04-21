@@ -62,6 +62,7 @@ use serde_json::{Value, json};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     sync::Mutex,
+    time::sleep,
 };
 use tracing::{debug, info};
 use ulid::Ulid;
@@ -148,6 +149,8 @@ impl JsonRpcResponse {
 struct McpSession {
     /// Pool handle for this session — `None` after [`tool_browser_release`].
     handle: Arc<Mutex<Option<BrowserHandle>>>,
+    /// Persistent page for this session. Reused across tool calls until release.
+    page: Arc<Mutex<Option<crate::page::PageHandle>>>,
     /// Requested stealth level for this session.
     stealth_level: StealthLevel,
     /// Requested TLS profile name (informational — takes effect at browser launch).
@@ -158,6 +161,8 @@ struct McpSession {
     cdp_fix_mode: Option<String>,
     /// Proxy URL for this session (informational — takes effect at browser launch).
     proxy: Option<String>,
+    /// Optional target profile tuning hint used by MCP navigation helpers.
+    target_profile: String,
     /// Last URL successfully navigated to via `browser_navigate`.
     current_url: Option<String>,
 }
@@ -209,6 +214,11 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
                     "proxy": {
                         "type": "string",
                         "description": "HTTP/SOCKS proxy URL, e.g. 'http://user:pass@host:port' (browser-launch-level)."
+                    },
+                    "target_profile": {
+                        "type": "string",
+                        "enum": ["default", "reddit"],
+                        "description": "Optional target tuning profile. 'reddit' enables challenge-aware waits and stabilization tuned for Reddit flows."
                     }
                 },
                 "required": []
@@ -737,6 +747,19 @@ impl McpBrowserServer {
             .get("proxy")
             .and_then(|v| v.as_str())
             .map(ToString::to_string);
+        let target_profile = args
+            .get("target_profile")
+            .and_then(|v| v.as_str())
+            .map_or_else(
+                || "default".to_string(),
+                |s| {
+                    if s.eq_ignore_ascii_case("reddit") {
+                        "reddit".to_string()
+                    } else {
+                        "default".to_string()
+                    }
+                },
+            );
 
         let handle = self.pool.acquire().await?;
         let session_id = Ulid::new().to_string();
@@ -746,11 +769,13 @@ impl McpBrowserServer {
             session_id.clone(),
             McpSession {
                 handle: Arc::new(Mutex::new(Some(handle))),
+                page: Arc::new(Mutex::new(None)),
                 stealth_level,
                 tls_profile: tls_profile.clone(),
                 webrtc_policy: webrtc_policy.clone(),
                 cdp_fix_mode: cdp_fix_mode.clone(),
                 proxy: proxy.clone(),
+                target_profile: target_profile.clone(),
                 current_url: None,
             },
         );
@@ -763,7 +788,8 @@ impl McpBrowserServer {
                 "tls_profile": tls_profile,
                 "webrtc_policy": webrtc_policy,
                 "cdp_fix_mode": cdp_fix_mode,
-                "proxy": proxy
+                "proxy": proxy,
+                "target_profile": target_profile
             }
         }))
     }
@@ -795,37 +821,48 @@ impl McpBrowserServer {
                 .map(ToString::to_string),
         };
 
-        let (session_arc, requested_stealth) = self.session_handle_and_stealth(&session_id).await?;
+        let (session_arc, page_arc, _, reddit_profile) = self.session_runtime(&session_id).await?;
+        let requested_stealth = self.session_handle_and_stealth(&session_id).await?.1;
 
-        let mut page = session_arc
-            .lock()
-            .await
-            .as_ref()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Session already released: {session_id}"))
-            })?
-            .browser()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
-            })?
-            .new_page()
-            .await?;
+        self.ensure_session_page(
+            &session_id,
+            &session_arc,
+            &page_arc,
+            None,
+            Duration::from_secs(timeout_secs),
+            reddit_profile,
+        )
+        .await?;
 
-        if let Err(e) = page
-            .navigate(
-                &url,
-                WaitUntil::DomContentLoaded,
-                Duration::from_secs(timeout_secs),
-            )
-            .await
         {
-            // Ensure the page is closed before propagating the error.
-            page.close().await.ok();
-            return Err(e);
+            let mut page_guard = page_arc.lock().await;
+            let page = page_guard.as_mut().ok_or_else(|| {
+                BrowserError::ConfigError(format!("Session page unavailable: {session_id}"))
+            })?;
+            Self::navigate_with_profile(
+                page,
+                &url,
+                Duration::from_secs(timeout_secs),
+                reddit_profile,
+            )
+            .await?;
+            drop(page_guard);
         }
 
-        let mut result = Self::run_stealth_diagnostic(&page, observed).await;
-        page.close().await?;
+        let mut result = {
+            let page_guard = page_arc.lock().await;
+            let page = page_guard.as_ref().ok_or_else(|| {
+                BrowserError::ConfigError(format!("Session page unavailable: {session_id}"))
+            })?;
+            let result = Self::run_stealth_diagnostic(page, observed).await;
+            drop(page_guard);
+            result
+        };
+
+        if let Some(session) = self.sessions.lock().await.get_mut(&session_id) {
+            session.current_url = Some(url.clone());
+        }
+
         // Annotate with the session's requested stealth level.
         if let Ok(ref mut v) = result
             && let Some(obj) = v.as_object_mut()
@@ -856,32 +893,37 @@ impl McpBrowserServer {
             .and_then(serde_json::Value::as_f64)
             .unwrap_or(30.0);
 
-        let session_arc = self.session_handle(&session_id).await?;
+        let (session_arc, page_arc, _, reddit_profile) = self.session_runtime(&session_id).await?;
 
-        let mut page = session_arc
-            .lock()
-            .await
-            .as_ref()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Session already released: {session_id}"))
-            })?
-            .browser()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
-            })?
-            .new_page()
-            .await?;
-
-        page.navigate(
-            &url,
-            WaitUntil::Selector("body".to_string()),
+        self.ensure_session_page(
+            &session_id,
+            &session_arc,
+            &page_arc,
+            None,
             Duration::from_secs_f64(timeout_secs),
+            reddit_profile,
         )
         .await?;
 
-        let title = page.title().await.unwrap_or_default();
+        let (challenge_detected, challenge_cleared, title) = {
+            let mut page_guard = page_arc.lock().await;
+            let page = page_guard.as_mut().ok_or_else(|| {
+                BrowserError::ConfigError(format!("Session page unavailable: {session_id}"))
+            })?;
+
+            let (challenge_detected, challenge_cleared) = Self::navigate_with_profile(
+                page,
+                &url,
+                Duration::from_secs_f64(timeout_secs),
+                reddit_profile,
+            )
+            .await?;
+            let title = page.title().await.unwrap_or_default();
+            drop(page_guard);
+            (challenge_detected, challenge_cleared, title)
+        };
+
         let current_url = url.clone();
-        page.close().await?;
 
         // Persist the navigated URL so that browser_content / browser_eval /
         // browser_screenshot can use it without the caller having to repeat it.
@@ -889,7 +931,12 @@ impl McpBrowserServer {
             session.current_url = Some(current_url.clone());
         }
 
-        Ok(json!({ "title": title, "url": current_url }))
+        Ok(json!({
+            "title": title,
+            "url": current_url,
+            "challenge_detected": challenge_detected,
+            "challenge_cleared": challenge_cleared
+        }))
     }
 
     async fn tool_browser_eval(&self, args: &Value) -> Result<Value> {
@@ -900,42 +947,30 @@ impl McpBrowserServer {
             .and_then(serde_json::Value::as_f64)
             .unwrap_or(30.0);
 
-        let (session_arc, nav_url_opt) = self
-            .sessions
-            .lock()
-            .await
-            .get(&session_id)
-            .map(|s| (s.handle.clone(), s.current_url.clone()))
-            .ok_or_else(|| BrowserError::ConfigError(format!("Unknown session: {session_id}")))?;
+        let (session_arc, page_arc, nav_url_opt, reddit_profile) =
+            self.session_runtime(&session_id).await?;
         let nav_url = nav_url_opt.ok_or_else(|| {
             BrowserError::ConfigError(
                 "No page loaded — call browser_navigate before browser_eval".to_string(),
             )
         })?;
 
-        let mut page = session_arc
-            .lock()
-            .await
-            .as_ref()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Session already released: {session_id}"))
-            })?
-            .browser()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
-            })?
-            .new_page()
-            .await?;
-
-        page.navigate(
-            &nav_url,
-            WaitUntil::DomContentLoaded,
+        self.ensure_session_page(
+            &session_id,
+            &session_arc,
+            &page_arc,
+            Some(&nav_url),
             Duration::from_secs_f64(timeout_secs),
+            reddit_profile,
         )
         .await?;
 
+        let mut page_guard = page_arc.lock().await;
+        let page = page_guard.as_mut().ok_or_else(|| {
+            BrowserError::ConfigError(format!("Session page unavailable: {session_id}"))
+        })?;
         let result: Value = page.eval(&script).await?;
-        page.close().await?;
+        drop(page_guard);
 
         Ok(json!({ "result": result }))
     }
@@ -948,42 +983,30 @@ impl McpBrowserServer {
             .and_then(serde_json::Value::as_f64)
             .unwrap_or(30.0);
 
-        let (session_arc, nav_url_opt) = self
-            .sessions
-            .lock()
-            .await
-            .get(&session_id)
-            .map(|s| (s.handle.clone(), s.current_url.clone()))
-            .ok_or_else(|| BrowserError::ConfigError(format!("Unknown session: {session_id}")))?;
+        let (session_arc, page_arc, nav_url_opt, reddit_profile) =
+            self.session_runtime(&session_id).await?;
         let nav_url = nav_url_opt.ok_or_else(|| {
             BrowserError::ConfigError(
                 "No page loaded — call browser_navigate before browser_screenshot".to_string(),
             )
         })?;
 
-        let mut page = session_arc
-            .lock()
-            .await
-            .as_ref()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Session already released: {session_id}"))
-            })?
-            .browser()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
-            })?
-            .new_page()
-            .await?;
-
-        page.navigate(
-            &nav_url,
-            WaitUntil::DomContentLoaded,
+        self.ensure_session_page(
+            &session_id,
+            &session_arc,
+            &page_arc,
+            Some(&nav_url),
             Duration::from_secs_f64(timeout_secs),
+            reddit_profile,
         )
         .await?;
 
+        let mut page_guard = page_arc.lock().await;
+        let page = page_guard.as_mut().ok_or_else(|| {
+            BrowserError::ConfigError(format!("Session page unavailable: {session_id}"))
+        })?;
         let png_bytes = page.screenshot().await?;
-        page.close().await?;
+        drop(page_guard);
 
         let encoded = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
         Ok(json!({ "data": encoded, "mimeType": "image/png", "bytes": png_bytes.len() }))
@@ -996,42 +1019,30 @@ impl McpBrowserServer {
             .and_then(serde_json::Value::as_f64)
             .unwrap_or(30.0);
 
-        let (session_arc, nav_url_opt) = self
-            .sessions
-            .lock()
-            .await
-            .get(&session_id)
-            .map(|s| (s.handle.clone(), s.current_url.clone()))
-            .ok_or_else(|| BrowserError::ConfigError(format!("Unknown session: {session_id}")))?;
+        let (session_arc, page_arc, nav_url_opt, reddit_profile) =
+            self.session_runtime(&session_id).await?;
         let nav_url = nav_url_opt.ok_or_else(|| {
             BrowserError::ConfigError(
                 "No page loaded — call browser_navigate before browser_content".to_string(),
             )
         })?;
 
-        let mut page = session_arc
-            .lock()
-            .await
-            .as_ref()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Session already released: {session_id}"))
-            })?
-            .browser()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
-            })?
-            .new_page()
-            .await?;
-
-        page.navigate(
-            &nav_url,
-            WaitUntil::DomContentLoaded,
+        self.ensure_session_page(
+            &session_id,
+            &session_arc,
+            &page_arc,
+            Some(&nav_url),
             Duration::from_secs_f64(timeout_secs),
+            reddit_profile,
         )
         .await?;
 
+        let mut page_guard = page_arc.lock().await;
+        let page = page_guard.as_mut().ok_or_else(|| {
+            BrowserError::ConfigError(format!("Session page unavailable: {session_id}"))
+        })?;
         let html = page.content().await?;
-        page.close().await?;
+        drop(page_guard);
 
         Ok(json!({ "html": html, "bytes": html.len() }))
     }
@@ -1065,25 +1076,27 @@ impl McpBrowserServer {
                     .collect()
             });
 
-        let session_arc = self.session_handle(&session_id).await?;
-        let mut page = session_arc
-            .lock()
-            .await
-            .as_ref()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Session already released: {session_id}"))
-            })?
-            .browser()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
-            })?
-            .new_page()
-            .await?;
-
-        page.navigate(
-            &url,
-            WaitUntil::DomContentLoaded,
+        let (session_arc, page_arc, _, reddit_profile) = self.session_runtime(&session_id).await?;
+        self.ensure_session_page(
+            &session_id,
+            &session_arc,
+            &page_arc,
+            None,
             Duration::from_secs_f64(timeout_secs),
+            reddit_profile,
+        )
+        .await?;
+
+        let mut page_guard = page_arc.lock().await;
+        let page = page_guard.as_mut().ok_or_else(|| {
+            BrowserError::ConfigError(format!("Session page unavailable: {session_id}"))
+        })?;
+
+        Self::navigate_with_profile(
+            page,
+            &url,
+            Duration::from_secs_f64(timeout_secs),
+            reddit_profile,
         )
         .await?;
 
@@ -1111,8 +1124,10 @@ impl McpBrowserServer {
                 results.push(Value::String(text));
             }
         }
-
-        page.close().await?;
+        drop(page_guard);
+        if let Some(session) = self.sessions.lock().await.get_mut(&session_id) {
+            session.current_url = Some(url.clone());
+        }
 
         Ok(json!({
             "url": url,
@@ -1165,25 +1180,27 @@ impl McpBrowserServer {
             })
             .collect();
 
-        let session_arc = self.session_handle(&session_id).await?;
-        let mut page = session_arc
-            .lock()
-            .await
-            .as_ref()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Session already released: {session_id}"))
-            })?
-            .browser()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
-            })?
-            .new_page()
-            .await?;
-
-        page.navigate(
-            &url,
-            WaitUntil::DomContentLoaded,
+        let (session_arc, page_arc, _, reddit_profile) = self.session_runtime(&session_id).await?;
+        self.ensure_session_page(
+            &session_id,
+            &session_arc,
+            &page_arc,
+            None,
             Duration::from_secs_f64(timeout_secs),
+            reddit_profile,
+        )
+        .await?;
+
+        let mut page_guard = page_arc.lock().await;
+        let page = page_guard.as_mut().ok_or_else(|| {
+            BrowserError::ConfigError(format!("Session page unavailable: {session_id}"))
+        })?;
+
+        Self::navigate_with_profile(
+            page,
+            &url,
+            Duration::from_secs_f64(timeout_secs),
+            reddit_profile,
         )
         .await?;
 
@@ -1194,8 +1211,10 @@ impl McpBrowserServer {
                 results.push(Value::Object(obj));
             }
         }
-
-        page.close().await?;
+        drop(page_guard);
+        if let Some(session) = self.sessions.lock().await.get_mut(&session_id) {
+            session.current_url = Some(url.clone());
+        }
 
         Ok(json!({
             "url": url,
@@ -1233,32 +1252,33 @@ impl McpBrowserServer {
             max_results,
         };
 
-        let session_arc = self.session_handle(&session_id).await?;
-        let mut page = session_arc
-            .lock()
-            .await
-            .as_ref()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Session already released: {session_id}"))
-            })?
-            .browser()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
-            })?
-            .new_page()
-            .await?;
-
-        page.navigate(
-            &url,
-            WaitUntil::DomContentLoaded,
+        let (session_arc, page_arc, _, reddit_profile) = self.session_runtime(&session_id).await?;
+        self.ensure_session_page(
+            &session_id,
+            &session_arc,
+            &page_arc,
+            None,
             Duration::from_secs_f64(timeout_secs),
+            reddit_profile,
+        )
+        .await?;
+
+        let mut page_guard = page_arc.lock().await;
+        let page = page_guard.as_mut().ok_or_else(|| {
+            BrowserError::ConfigError(format!("Session page unavailable: {session_id}"))
+        })?;
+
+        Self::navigate_with_profile(
+            page,
+            &url,
+            Duration::from_secs_f64(timeout_secs),
+            reddit_profile,
         )
         .await?;
 
         // Resolve the reference node — first match only.
         let refs = page.query_selector_all(&reference_selector).await?;
         let Some(reference) = refs.into_iter().next() else {
-            page.close().await?;
             return Ok(json!({
                 "isError": true,
                 "error": format!("Reference selector matched no elements: {reference_selector}")
@@ -1279,8 +1299,10 @@ impl McpBrowserServer {
                 "outer_html_snippet": snippet
             }));
         }
-
-        page.close().await?;
+        drop(page_guard);
+        if let Some(session) = self.sessions.lock().await.get_mut(&session_id) {
+            session.current_url = Some(url.clone());
+        }
 
         Ok(json!({
             "url": url,
@@ -1317,20 +1339,21 @@ impl McpBrowserServer {
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0);
 
-        let session_arc = self.session_handle(&session_id).await?;
-        let mut page = session_arc
-            .lock()
-            .await
-            .as_ref()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Session already released: {session_id}"))
-            })?
-            .browser()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
-            })?
-            .new_page()
-            .await?;
+        let (session_arc, page_arc, _, _) = self.session_runtime(&session_id).await?;
+        self.ensure_session_page(
+            &session_id,
+            &session_arc,
+            &page_arc,
+            None,
+            Duration::from_millis(timeout_ms),
+            false,
+        )
+        .await?;
+
+        let mut page_guard = page_arc.lock().await;
+        let page = page_guard.as_mut().ok_or_else(|| {
+            BrowserError::ConfigError(format!("Session page unavailable: {session_id}"))
+        })?;
 
         let report = page
             .warmup(WarmupOptions {
@@ -1340,7 +1363,7 @@ impl McpBrowserServer {
                 stabilize_ms,
             })
             .await?;
-        page.close().await?;
+        drop(page_guard);
 
         Ok(json!({
             "session_id": session_id,
@@ -1373,20 +1396,21 @@ impl McpBrowserServer {
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(false);
 
-        let session_arc = self.session_handle(&session_id).await?;
-        let mut page = session_arc
-            .lock()
-            .await
-            .as_ref()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Session already released: {session_id}"))
-            })?
-            .browser()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
-            })?
-            .new_page()
-            .await?;
+        let (session_arc, page_arc, _, _) = self.session_runtime(&session_id).await?;
+        self.ensure_session_page(
+            &session_id,
+            &session_arc,
+            &page_arc,
+            None,
+            Duration::from_millis(timeout_ms),
+            false,
+        )
+        .await?;
+
+        let mut page_guard = page_arc.lock().await;
+        let page = page_guard.as_mut().ok_or_else(|| {
+            BrowserError::ConfigError(format!("Session page unavailable: {session_id}"))
+        })?;
 
         let report = page
             .refresh(RefreshOptions {
@@ -1395,7 +1419,7 @@ impl McpBrowserServer {
                 reset_connection,
             })
             .await?;
-        page.close().await?;
+        drop(page_guard);
 
         Ok(json!({
             "session_id": session_id,
@@ -1408,19 +1432,25 @@ impl McpBrowserServer {
     async fn tool_browser_release(&self, args: &Value) -> Result<Value> {
         let session_id = Self::require_str(args, "session_id")?;
 
-        // Remove Arc from the map — brief lock
-        let session_arc = {
+        // Remove session from the map so further calls immediately fail.
+        let (session_arc, page_arc) = {
             let mut sessions = self.sessions.lock().await;
-            sessions
-                .remove(&session_id)
-                .ok_or_else(|| BrowserError::ConfigError(format!("Unknown session: {session_id}")))?
-                .handle
+            let removed = sessions.remove(&session_id).ok_or_else(|| {
+                BrowserError::ConfigError(format!("Unknown session: {session_id}"))
+            })?;
+            drop(sessions);
+            (removed.handle, removed.page)
         };
 
         // Take and release the handle without holding the map lock
         let handle = session_arc.lock().await.take();
         if let Some(h) = handle {
             h.release().await;
+        }
+
+        let page = page_arc.lock().await.take();
+        if let Some(page) = page {
+            page.close().await.ok();
         }
 
         info!(%session_id, "MCP session released");
@@ -1539,7 +1569,9 @@ impl McpBrowserServer {
                     "tls_profile": s.tls_profile,
                     "webrtc_policy": s.webrtc_policy,
                     "cdp_fix_mode": s.cdp_fix_mode,
-                    "proxy": s.proxy
+                    "proxy": s.proxy,
+                    "target_profile": s.target_profile,
+                    "current_url": s.current_url
                 })
             })
         };
@@ -1568,15 +1600,144 @@ impl McpBrowserServer {
 
     // ── Helper ────────────────────────────────────────────────────────────────
 
-    async fn session_handle(&self, session_id: &str) -> Result<Arc<Mutex<Option<BrowserHandle>>>> {
-        Ok(self
-            .sessions
+    async fn session_runtime(
+        &self,
+        session_id: &str,
+    ) -> Result<(
+        Arc<Mutex<Option<BrowserHandle>>>,
+        Arc<Mutex<Option<crate::page::PageHandle>>>,
+        Option<String>,
+        bool,
+    )> {
+        self.sessions
             .lock()
             .await
             .get(session_id)
-            .ok_or_else(|| BrowserError::ConfigError(format!("Unknown session: {session_id}")))?
-            .handle
-            .clone())
+            .map(|s| {
+                (
+                    s.handle.clone(),
+                    s.page.clone(),
+                    s.current_url.clone(),
+                    s.target_profile == "reddit",
+                )
+            })
+            .ok_or_else(|| BrowserError::ConfigError(format!("Unknown session: {session_id}")))
+    }
+
+    async fn ensure_session_page(
+        &self,
+        session_id: &str,
+        handle_arc: &Arc<Mutex<Option<BrowserHandle>>>,
+        page_arc: &Arc<Mutex<Option<crate::page::PageHandle>>>,
+        current_url: Option<&str>,
+        timeout: Duration,
+        reddit_profile: bool,
+    ) -> Result<()> {
+        let mut page_guard = page_arc.lock().await;
+        let created = if page_guard.is_none() {
+            let new_page = handle_arc
+                .lock()
+                .await
+                .as_ref()
+                .ok_or_else(|| {
+                    BrowserError::ConfigError(format!("Session already released: {session_id}"))
+                })?
+                .browser()
+                .ok_or_else(|| {
+                    BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
+                })?
+                .new_page()
+                .await?;
+
+            *page_guard = Some(new_page);
+            true
+        } else {
+            false
+        };
+
+        if created
+            && let Some(url) = current_url
+            && let Some(page) = page_guard.as_mut()
+        {
+            Self::navigate_with_profile(page, url, timeout, reddit_profile).await?;
+        }
+
+        drop(page_guard);
+
+        Ok(())
+    }
+
+    async fn navigate_with_profile(
+        page: &mut crate::page::PageHandle,
+        url: &str,
+        timeout: Duration,
+        reddit_profile: bool,
+    ) -> Result<(bool, bool)> {
+        let wait_until = if reddit_profile {
+            WaitUntil::DomContentLoaded
+        } else {
+            WaitUntil::Selector("body".to_string())
+        };
+
+        page.navigate(url, wait_until, timeout).await?;
+
+        if reddit_profile || url.contains("reddit.com") {
+            return Self::wait_for_reddit_challenge(page, timeout).await;
+        }
+
+        Ok((false, true))
+    }
+
+    async fn wait_for_reddit_challenge(
+        page: &crate::page::PageHandle,
+        timeout: Duration,
+    ) -> Result<(bool, bool)> {
+        let max_wait = timeout.min(Duration::from_secs(15));
+        let mut elapsed = Duration::ZERO;
+        let interval = Duration::from_millis(500);
+        let mut challenge_seen = false;
+
+        while elapsed <= max_wait {
+            let challenge_state = page
+                .eval::<Value>(
+                    r#"(() => {
+                        const title = (document.title || "").toLowerCase();
+                        const href = (location.href || "").toLowerCase();
+                        const body = (document.body?.innerText || "").toLowerCase();
+                        const challenge =
+                            title.includes("verification") ||
+                            title.includes("just a moment") ||
+                            href.includes("/js_challenge") ||
+                            body.includes("please wait for verification") ||
+                            body.includes("verify you are human");
+                        return {
+                            challenge,
+                            ready: document.readyState === "complete"
+                        };
+                    })()"#,
+                )
+                .await
+                .unwrap_or_else(|_| json!({"challenge": false, "ready": true}));
+
+            let is_challenge = challenge_state
+                .get("challenge")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let ready = challenge_state
+                .get("ready")
+                .and_then(Value::as_bool)
+                .unwrap_or(true);
+
+            challenge_seen |= is_challenge;
+            if !is_challenge && ready {
+                return Ok((challenge_seen, true));
+            }
+
+            sleep(interval).await;
+            elapsed += interval;
+        }
+
+        Ok((challenge_seen, false))
     }
 
     #[cfg(feature = "stealth")]
@@ -1610,25 +1771,27 @@ impl McpBrowserServer {
         let selectors = Self::parse_root_selectors(args)?;
         let schema = Self::parse_extract_schema(args)?;
 
-        let session_arc = self.session_handle(&session_id).await?;
-        let mut page = session_arc
-            .lock()
-            .await
-            .as_ref()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Session already released: {session_id}"))
-            })?
-            .browser()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
-            })?
-            .new_page()
-            .await?;
-
-        page.navigate(
-            &url,
-            WaitUntil::DomContentLoaded,
+        let (session_arc, page_arc, _, reddit_profile) = self.session_runtime(&session_id).await?;
+        self.ensure_session_page(
+            &session_id,
+            &session_arc,
+            &page_arc,
+            None,
             Duration::from_secs_f64(timeout_secs),
+            reddit_profile,
+        )
+        .await?;
+
+        let mut page_guard = page_arc.lock().await;
+        let page = page_guard.as_mut().ok_or_else(|| {
+            BrowserError::ConfigError(format!("Session page unavailable: {session_id}"))
+        })?;
+
+        Self::navigate_with_profile(
+            page,
+            &url,
+            Duration::from_secs_f64(timeout_secs),
+            reddit_profile,
         )
         .await?;
 
@@ -1656,8 +1819,10 @@ impl McpBrowserServer {
             results = selector_results;
             break;
         }
-
-        page.close().await?;
+        drop(page_guard);
+        if let Some(session) = self.sessions.lock().await.get_mut(&session_id) {
+            session.current_url = Some(url.clone());
+        }
 
         Ok(json!({
             "url":              url,
@@ -1682,25 +1847,27 @@ impl McpBrowserServer {
             .unwrap_or(30.0);
         let schema = Self::parse_extract_schema(args)?;
 
-        let session_arc = self.session_handle(&session_id).await?;
-        let mut page = session_arc
-            .lock()
-            .await
-            .as_ref()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Session already released: {session_id}"))
-            })?
-            .browser()
-            .ok_or_else(|| {
-                BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
-            })?
-            .new_page()
-            .await?;
-
-        page.navigate(
-            &url,
-            WaitUntil::DomContentLoaded,
+        let (session_arc, page_arc, _, reddit_profile) = self.session_runtime(&session_id).await?;
+        self.ensure_session_page(
+            &session_id,
+            &session_arc,
+            &page_arc,
+            None,
             Duration::from_secs_f64(timeout_secs),
+            reddit_profile,
+        )
+        .await?;
+
+        let mut page_guard = page_arc.lock().await;
+        let page = page_guard.as_mut().ok_or_else(|| {
+            BrowserError::ConfigError(format!("Session page unavailable: {session_id}"))
+        })?;
+
+        Self::navigate_with_profile(
+            page,
+            &url,
+            Duration::from_secs_f64(timeout_secs),
+            reddit_profile,
         )
         .await?;
 
@@ -1715,8 +1882,10 @@ impl McpBrowserServer {
                 None => skipped += 1,
             }
         }
-
-        page.close().await?;
+        drop(page_guard);
+        if let Some(session) = self.sessions.lock().await.get_mut(&session_id) {
+            session.current_url = Some(url.clone());
+        }
 
         Ok(json!({
             "url":           url,

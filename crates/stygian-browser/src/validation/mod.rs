@@ -324,8 +324,8 @@ impl ValidationSuite {
     /// ```
     pub async fn run_one(pool: &Arc<BrowserPool>, target: ValidationTarget) -> ValidationResult {
         match target {
-            ValidationTarget::CreepJs => validators::run_creepjs(pool),
-            ValidationTarget::BrowserScan => validators::run_browserscan(pool),
+            ValidationTarget::CreepJs => validators::run_creepjs(pool).await,
+            ValidationTarget::BrowserScan => validators::run_browserscan(pool).await,
             ValidationTarget::Kasada => validators::run_kasada(pool).await,
             ValidationTarget::Cloudflare => validators::run_cloudflare(pool).await,
             ValidationTarget::Akamai => validators::run_akamai(pool).await,
