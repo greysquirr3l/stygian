@@ -110,6 +110,7 @@ jobs:
 
       - name: Generate fix via GitHub Models
         id: generate
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash .github/scripts/generate-stealth-fix.sh probe-report.json
@@ -117,6 +118,46 @@ jobs:
       - name: Validate fix compiles
         id: validate
         run: |
+          if [[ "${{ steps.generate.outcome }}" != "success" ]]; then
+            echo "valid=false" >> "$GITHUB_OUTPUT"
+            echo "Fix generation failed — opening investigation issue instead."
+            if [ ! -f /tmp/issue-body.md ]; then
+              DATE="$(date -u +%Y-%m-%d)"
+              RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+              {
+                echo "## Stealth regression detected"
+                echo
+                echo "**Date**: ${DATE}"
+                echo
+                echo "The stealth canary detected failing checks, but the GitHub Models generation"
+                echo "step failed before a patch could be produced."
+                echo
+                echo "Run: ${RUN_URL}"
+              } > /tmp/issue-body.md
+            fi
+            exit 0
+          fi
+
+          if git diff --quiet -- crates/stygian-browser/src/stealth.rs; then
+            echo "valid=false" >> "$GITHUB_OUTPUT"
+            echo "No changes generated for stealth.rs — opening investigation issue."
+            if [ ! -f /tmp/issue-body.md ]; then
+              DATE="$(date -u +%Y-%m-%d)"
+              RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+              {
+                echo "## Stealth regression detected"
+                echo
+                echo "**Date**: ${DATE}"
+                echo
+                echo "An automated fix was attempted but produced no code changes in"
+                echo "\`crates/stygian-browser/src/stealth.rs\`."
+                echo
+                echo "Run: ${RUN_URL}"
+              } > /tmp/issue-body.md
+            fi
+            exit 0
+          fi
+
           if cargo check --workspace --all-features 2>&1; then
             echo "valid=true" >> "$GITHUB_OUTPUT"
             echo "Fix compiled successfully."

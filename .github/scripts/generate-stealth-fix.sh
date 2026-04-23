@@ -19,7 +19,10 @@ set -euo pipefail
 
 REPORT_FILE="${1:?usage: generate-stealth-fix.sh <probe-report.json>}"
 STEALTH_RS="crates/stygian-browser/src/stealth.rs"
-MODELS_ENDPOINT="https://models.inference.ai.azure.com/chat/completions"
+MODELS_ENDPOINTS=(
+  "https://models.github.ai/inference/chat/completions"
+  "https://models.inference.ai.azure.com/chat/completions"
+)
 MODEL="gpt-4o"
 
 # ── Summarise failing checks ─────────────────────────────────────────────────
@@ -85,11 +88,54 @@ PAYLOAD=$(jq -n \
 # ── Call GitHub Models API ───────────────────────────────────────────────────
 
 echo "Calling GitHub Models (${MODEL})…"
-RESPONSE=$(curl --silent --fail \
-  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d "$PAYLOAD" \
-  "$MODELS_ENDPOINT")
+RESPONSE=""
+LAST_ERR=""
+
+for endpoint in "${MODELS_ENDPOINTS[@]}"; do
+  echo "Trying endpoint: ${endpoint}"
+  if RESPONSE=$(curl --silent --show-error --fail-with-body \
+    -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json" \
+    -d "$PAYLOAD" \
+    "$endpoint" 2>/tmp/models-api-error.log); then
+    break
+  fi
+
+  LAST_ERR=$(cat /tmp/models-api-error.log 2>/dev/null || true)
+  echo "Models API request failed for ${endpoint}: ${LAST_ERR}" >&2
+done
+
+if [[ -z "$RESPONSE" ]]; then
+  echo "ERROR: all GitHub Models endpoints failed" >&2
+  if [[ -n "$LAST_ERR" ]]; then
+    echo "Last API error: ${LAST_ERR}" >&2
+  fi
+
+  # Ensure fallback issue body always exists so workflow can continue.
+  cat >/tmp/issue-body.md <<EOF
+## Stealth regression detected
+
+**Date**: ${DATE}
+
+The stealth canary detected failing fingerprint checks, but the automated
+GitHub Models request failed before a fix could be generated.
+
+### Failing checks
+
+\`\`\`
+${FAILED_SUMMARY}
+\`\`\`
+
+### Full probe report
+
+\`\`\`json
+$(cat "$REPORT_FILE")
+\`\`\`
+EOF
+
+  exit 2
+fi
 
 CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
 
