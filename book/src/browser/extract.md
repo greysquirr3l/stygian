@@ -42,8 +42,10 @@ let browser = handle
     .browser()
     .ok_or_else(|| std::io::Error::other("browser handle already released"))?;
 let mut page = browser.new_page().await?;
-page.navigate("https://example.com", WaitUntil::Load, Duration::from_secs(30)).await?;
-let article: Article = page.extract::<Article>(".article-body").await?;
+page.navigate("https://example.com", WaitUntil::DomContentLoaded, Duration::from_secs(30)).await?;
+// extract_all returns a Vec; take the first matching root element
+let articles = page.extract_all::<Article>(".article-body").await?;
+let article = articles.into_iter().next().ok_or("no matching element")?;
 println!("{:#?}", article);
 ```
 
@@ -180,7 +182,13 @@ struct NewsArticle {
 }
 
 async fn scrape(page: &mut PageHandle) -> Result<NewsArticle, Box<dyn std::error::Error>> {
-    let article = page.extract::<NewsArticle>("article.main").await?;
+    // extract_all returns Vec<T>; take the first matching element
+    let article = page
+        .extract_all::<NewsArticle>("article.main")
+        .await?
+        .into_iter()
+        .next()
+        .ok_or("no matching article element")?;
     Ok(article)
 }
 ```

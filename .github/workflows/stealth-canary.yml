@@ -11,10 +11,7 @@ on:
         default: '0.95'
 
 permissions:
-  contents: write
-  pull-requests: write
   issues: write
-  models: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -25,9 +22,6 @@ jobs:
   probe:
     name: Stealth probe
     runs-on: ubuntu-latest
-
-    outputs:
-      regression: ${{ steps.probe.outputs.regression }}
 
     steps:
       - uses: actions/checkout@v4
@@ -80,116 +74,8 @@ jobs:
             probe-report.json
             probe-stderr.txt
 
-  # ── Stage 2: LLM-assisted fix + PR (only when regression detected) ───────
-  autofix:
-    name: Generate fix
-    needs: probe
-    if: needs.probe.outputs.regression == 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-canary-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-canary-
-
-      - name: Download probe report
-        uses: actions/download-artifact@v4
-        with:
-          name: probe-report
-
-      - name: Generate fix via GitHub Models
-        id: generate
-        continue-on-error: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash .github/scripts/generate-stealth-fix.sh probe-report.json
-
-      - name: Validate fix compiles
-        id: validate
-        run: |
-          if [[ "${{ steps.generate.outcome }}" != "success" ]]; then
-            echo "valid=false" >> "$GITHUB_OUTPUT"
-            echo "Fix generation failed — opening investigation issue instead."
-            if [ ! -f /tmp/issue-body.md ]; then
-              DATE="$(date -u +%Y-%m-%d)"
-              RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-              {
-                echo "## Stealth regression detected"
-                echo
-                echo "**Date**: ${DATE}"
-                echo
-                echo "The stealth canary detected failing checks, but the GitHub Models generation"
-                echo "step failed before a patch could be produced."
-                echo
-                echo "Run: ${RUN_URL}"
-              } > /tmp/issue-body.md
-            fi
-            exit 0
-          fi
-
-          if git diff --quiet -- crates/stygian-browser/src/stealth.rs; then
-            echo "valid=false" >> "$GITHUB_OUTPUT"
-            echo "No changes generated for stealth.rs — opening investigation issue."
-            if [ ! -f /tmp/issue-body.md ]; then
-              DATE="$(date -u +%Y-%m-%d)"
-              RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-              {
-                echo "## Stealth regression detected"
-                echo
-                echo "**Date**: ${DATE}"
-                echo
-                echo "An automated fix was attempted but produced no code changes in"
-                echo "\`crates/stygian-browser/src/stealth.rs\`."
-                echo
-                echo "Run: ${RUN_URL}"
-              } > /tmp/issue-body.md
-            fi
-            exit 0
-          fi
-
-          if cargo check --workspace --all-features 2>&1; then
-            echo "valid=true" >> "$GITHUB_OUTPUT"
-            echo "Fix compiled successfully."
-          else
-            echo "valid=false" >> "$GITHUB_OUTPUT"
-            echo "Fix failed cargo check — reverting."
-            if [ -f crates/stygian-browser/src/stealth.rs.bak ]; then
-              cp crates/stygian-browser/src/stealth.rs.bak \
-                 crates/stygian-browser/src/stealth.rs
-            fi
-          fi
-
-      - name: Create pull request
-        if: steps.validate.outputs.valid == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          DATE=$(date -u +%Y%m%d)
-          BRANCH="fix/stealth-canary-${DATE}"
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
-          git add crates/stygian-browser/src/stealth.rs
-          git commit -m "fix: automated stealth regression patch ${DATE}"
-          git push origin "$BRANCH"
-          gh pr create \
-            --title "fix: stealth canary regression ${DATE}" \
-            --body-file /tmp/pr-body.md \
-            --head "$BRANCH"
-
-      - name: Create investigation issue (compile failed — needs manual review)
-        if: steps.validate.outputs.valid == 'false'
+      - name: Create or update regression issue
+        if: steps.probe.outputs.regression == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -197,18 +83,33 @@ jobs:
           TITLE="Stealth regression detected ${DATE}"
           RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
-          EXISTING_ISSUE_NUMBER=$(gh issue list \
+          FAILED_CHECKS="$(jq -r '.failed_checks[]?' probe-report.json 2>/dev/null | head -20 | sed 's/^/- /' || echo "_(see uploaded probe report)_")"
+
+          BODY="## Stealth regression detected
+
+**Date**: ${DATE}
+
+The daily stealth canary detected failing checks against \`about:blank\`.
+
+### Failed checks
+${FAILED_CHECKS}
+
+### Details
+Run: ${RUN_URL}
+
+Download the \`probe-report\` artifact from the run above for the full JSON report and stderr output."
+
+          EXISTING=$(gh issue list \
             --state open \
             --search '"Stealth regression detected" in:title' \
             --json number \
             --jq '.[0].number // empty')
 
-          if [[ -n "${EXISTING_ISSUE_NUMBER}" ]]; then
-            gh issue comment "${EXISTING_ISSUE_NUMBER}" \
-              --body "Another stealth canary regression was detected on ${DATE}.\n\nRun: ${RUN_URL}\n\nSee attached report in this workflow run for details."
-            echo "Updated existing issue #${EXISTING_ISSUE_NUMBER}"
+          if [[ -n "${EXISTING}" ]]; then
+            gh issue comment "${EXISTING}" \
+              --body "Another regression detected on ${DATE}. Run: ${RUN_URL}"
+            echo "Commented on existing issue #${EXISTING}"
           else
-            gh issue create \
-              --title "${TITLE}" \
-              --body-file /tmp/issue-body.md
+            gh issue create --title "${TITLE}" --body "${BODY}"
           fi
+

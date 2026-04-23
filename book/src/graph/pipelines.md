@@ -149,15 +149,17 @@ token across retries:
 ```rust
 use stygian_graph::domain::idempotency::IdempotencyKey;
 
-// Auto-generated (recommended)
-let key = IdempotencyKey::new();
+// Auto-generated ULID (recommended for one-off executions)
+let key = IdempotencyKey::generate();
 
-// Deterministic from a stable input (replays return the same result)
-let key = IdempotencyKey::from_input("pipeline-1", "https://example.com/product/123");
+// Restore a previously recorded key from its ULID string
+let key: IdempotencyKey = "01HXYZ...".parse()?;
+// key.to_string() round-trips back to the same ULID string
 ```
 
-Pass the key to `execute_idempotent()`. If the same key is seen again within the TTL,
-the cached result is returned immediately without re-executing.
+The key is threaded through work-queue items (`WorkItem { idempotency_key: key.to_string(), … }`)
+and checked by the `IdempotencyStore` port before dispatching. If the same key is seen
+again within the TTL, the stored result is returned without re-executing.
 
 ---
 

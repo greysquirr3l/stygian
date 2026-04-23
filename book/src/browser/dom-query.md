@@ -39,11 +39,15 @@ let html: String = node.outer_html().await?;
 // Inner HTML only (children, not the element itself)
 let inner: String = node.inner_html().await?;
 
-// Tag name — always lowercase
-let tag: String = node.tag_name().await?; // e.g. "div", "a", "li"
+// All attributes as a HashMap<name, value> in one CDP round-trip
+let attrs = node.attr_map().await?;
 
-// CSS classes as a Vec
-let cls: Vec<String> = node.classes().await?;
+// CSS class string (split on whitespace to get individual classes)
+let class_str = node.attr("class").await?.unwrap_or_default();
+let classes: Vec<&str> = class_str.split_whitespace().collect();
+
+// Ancestor tag names as a Vec (nearest first: ["li", "ul", "nav", "body"])
+let ancestors: Vec<String> = node.ancestors().await?;
 ```
 
 ### Reading attributes
@@ -66,7 +70,8 @@ Returns the direct parent element, or `None` if the node is `<body>` or detached
 
 ```rust,no_run
 if let Some(parent) = node.parent().await? {
-    println!("parent tag: {}", parent.tag_name().await?);
+    let html = parent.outer_html().await?;
+    println!("parent: {}", &html[..html.len().min(80)]);
 }
 ```
 
