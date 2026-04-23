@@ -27,7 +27,6 @@
 - [Overview](./browser/overview.md)
 - [Configuration](./browser/configuration.md)
 - [Stealth & Anti-Detection](./browser/stealth.md)
-- [Stealth v2 — TLS & Diagnostics](./browser/stealth-v2.md)
 - [Browser Pool](./browser/pool.md)
 - [Page Operations](./browser/page-operations.md)
 - [Live DOM Query API](./browser/dom-query.md)

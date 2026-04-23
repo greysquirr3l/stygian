@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-04-23
+
+### Added
+
+- `stygian-browser (config)`: added two opinionated high-stealth presets for direct use:
+  `BrowserConfig::stealth_profile_without_proxy()` and
+  `BrowserConfig::stealth_profile_with_proxy(proxy_url)`
+- `stygian-browser (docs)`: `book/src/browser/stealth.md` now includes a preset matrix
+  covering proxy/non-proxy tradeoffs and MCP boot guidance
+
+### Changed
+
+- `book/browser`: stealth documentation consolidated into a single authoritative page
+  (`stealth.md`) covering stealth layers, TLS fingerprinting, diagnostics, and
+  known limitations; `stealth-v2.md` now acts as a moved pointer page
+- `book`: removed duplicate stealth-v2 entry from `book/src/SUMMARY.md`
+- `workspace`: crate versions advanced to `0.9.6` with internal path dependency
+  pins updated to match
+
 ## [0.9.5] - 2026-04-21
 
 ### Added

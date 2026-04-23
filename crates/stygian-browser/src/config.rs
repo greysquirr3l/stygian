@@ -348,6 +348,82 @@ impl BrowserConfig {
         }
     }
 
+    /// Build an opinionated high-stealth profile for direct traffic (no proxy).
+    ///
+    /// This profile maximizes anti-bot resistance while avoiding proxy-specific
+    /// assumptions:
+    ///
+    /// 1. `StealthLevel::Advanced`
+    /// 2. `HeadlessMode::New`
+    /// 3. `CdpFixMode::AddBinding`
+    /// 4. `WebRtcPolicy::BlockAll` (strongest non-proxy IP leak prevention)
+    /// 5. Default deterministic noise layers enabled
+    /// 6. Weighted coherent fingerprint profile
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_browser::BrowserConfig;
+    /// use stygian_browser::config::{HeadlessMode, StealthLevel};
+    ///
+    /// let cfg = BrowserConfig::stealth_profile_without_proxy();
+    /// assert_eq!(cfg.stealth_level, StealthLevel::Advanced);
+    /// assert_eq!(cfg.headless_mode, HeadlessMode::New);
+    /// ```
+    #[cfg(feature = "stealth")]
+    #[must_use]
+    pub fn stealth_profile_without_proxy() -> Self {
+        Self::builder()
+            .stealth_level(StealthLevel::Advanced)
+            .headless_mode(HeadlessMode::New)
+            .cdp_fix_mode(CdpFixMode::AddBinding)
+            .webrtc(crate::webrtc::WebRtcConfig {
+                policy: crate::webrtc::WebRtcPolicy::BlockAll,
+                ..Default::default()
+            })
+            .noise(crate::noise::NoiseConfig::default())
+            .fingerprint_profile(crate::profile::FingerprintProfile::random_weighted())
+            .build()
+    }
+
+    /// Build an opinionated high-stealth profile for proxied traffic.
+    ///
+    /// This profile keeps the same anti-bot posture as
+    /// [`stealth_profile_without_proxy`](Self::stealth_profile_without_proxy)
+    /// and configures proxy-aware WebRTC handling.
+    ///
+    /// 1. `StealthLevel::Advanced`
+    /// 2. `HeadlessMode::New`
+    /// 3. `CdpFixMode::AddBinding`
+    /// 4. `WebRtcPolicy::DisableNonProxied` (prevents direct UDP leaks)
+    /// 5. Default deterministic noise layers enabled
+    /// 6. Weighted coherent fingerprint profile
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_browser::BrowserConfig;
+    ///
+    /// let cfg = BrowserConfig::stealth_profile_with_proxy("http://127.0.0.1:8080");
+    /// assert!(cfg.proxy.is_some());
+    /// ```
+    #[cfg(feature = "stealth")]
+    #[must_use]
+    pub fn stealth_profile_with_proxy(proxy_url: impl Into<String>) -> Self {
+        Self::builder()
+            .proxy(proxy_url.into())
+            .stealth_level(StealthLevel::Advanced)
+            .headless_mode(HeadlessMode::New)
+            .cdp_fix_mode(CdpFixMode::AddBinding)
+            .webrtc(crate::webrtc::WebRtcConfig {
+                policy: crate::webrtc::WebRtcPolicy::DisableNonProxied,
+                ..Default::default()
+            })
+            .noise(crate::noise::NoiseConfig::default())
+            .fingerprint_profile(crate::profile::FingerprintProfile::random_weighted())
+            .build()
+    }
+
     /// Collect the effective Chrome launch arguments.
     ///
     /// Returns the anti-detection baseline args merged with any user-supplied

@@ -1,282 +1,255 @@
-# Stealth & Anti-Detection
+# Stealth, TLS Fingerprints, and Diagnostics
 
-`stygian-browser` implements a layered anti-detection system. Each layer targets a different
-class of bot-detection signal.
+This page is the single source of truth for stygian-browser anti-detection behavior.
+It consolidates browser stealth, TLS fingerprint control, and runtime verification.
 
----
+## Optimal stealth profiles
+
+stygian-browser now provides two reusable high-stealth constructors:
+
+1. `BrowserConfig::stealth_profile_without_proxy()`
+2. `BrowserConfig::stealth_profile_with_proxy(proxy_url)`
+
+### Direct integration without proxy
+
+```rust,no_run
+use stygian_browser::{BrowserConfig, BrowserPool};
+
+let config = BrowserConfig::stealth_profile_without_proxy();
+let pool = BrowserPool::new(config).await?;
+```
+
+### Direct integration with proxy
+
+```rust,no_run
+use stygian_browser::{BrowserConfig, BrowserPool};
+
+let config = BrowserConfig::stealth_profile_with_proxy("http://user:pass@proxy:8080");
+let pool = BrowserPool::new(config).await?;
+```
+
+### What these profiles set
+
+Both profiles set:
+
+1. `StealthLevel::Advanced`
+2. `HeadlessMode::New`
+3. `CdpFixMode::AddBinding`
+4. Default noise stack enabled
+5. Weighted coherent fingerprint profile
+
+Difference:
+
+1. No-proxy profile uses `WebRtcPolicy::BlockAll`
+2. Proxy profile uses `WebRtcPolicy::DisableNonProxied`
+
+### Preset matrix
+
+| Preset | Proxy required | WebRTC policy | Compatibility | Recommended use |
+| --- | --- | --- | --- | --- |
+| `stealth_profile_without_proxy()` | no | `BlockAll` | lower on RTC-heavy sites | direct scraping where no proxy is available and maximum leak prevention is required |
+| `stealth_profile_with_proxy(proxy_url)` | yes | `DisableNonProxied` | higher on modern sites that rely on RTC/media surfaces | production traffic routed through trusted residential/datacenter proxy infrastructure |
+
+Operational guidance:
+
+1. Start with the profile that matches your network path (proxy vs non-proxy).
+2. If pages fail due to RTC features, prefer the proxy profile over weakening non-proxy settings.
+3. Keep `CdpFixMode::AddBinding` and `HeadlessMode::New` unchanged unless you have a
+   compatibility break you can reproduce.
+4. Validate each target with `verify_stealth_with_transport()` after navigation.
+
+### MCP usage caveat
+
+For browser_acquire, optional fields like stealth_level, webrtc_policy, cdp_fix_mode,
+tls_profile, and proxy are metadata labels for session attribution and response echoing.
+They do not reconfigure an already pooled browser instance at runtime.
+
+To get true max-stealth behavior through MCP, start the MCP server with a BrowserPool
+already configured using one of the profile constructors above.
+
+Example server boot (non-proxy):
+
+```rust,no_run
+use stygian_browser::{BrowserConfig, BrowserPool};
+use stygian_browser::mcp::McpBrowserServer;
+
+let pool = BrowserPool::new(BrowserConfig::stealth_profile_without_proxy()).await?;
+McpBrowserServer::new(pool).run().await?;
+```
+
+Example server boot (proxy):
+
+```rust,no_run
+use stygian_browser::{BrowserConfig, BrowserPool};
+use stygian_browser::mcp::McpBrowserServer;
+
+let pool = BrowserPool::new(BrowserConfig::stealth_profile_with_proxy("http://user:pass@proxy:8080")).await?;
+McpBrowserServer::new(pool).run().await?;
+```
 
 ## Stealth levels
 
-| Level | `navigator` spoof | Canvas noise | WebGL random | CDP protection | Human behaviour |
+| Level | Navigator and CDP baseline | Fingerprint injection | Noise layers | WebRTC protection | Coherence/peripheral/timing |
 | --- | --- | --- | --- | --- | --- |
-| `None` | — | — | — | — | — |
-| `Basic` | ✓ | — | — | ✓ | — |
-| `Advanced` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| none | no | no | no | no | no |
+| basic | yes | no | no | no | no |
+| advanced | yes | yes | yes | yes | yes |
 
-**Trade-offs:**
+Notes:
 
-- `None` — maximum performance; no evasion. Suitable for internal services or sites
-  with no bot detection.
-- `Basic` — hides `navigator.webdriver`, masks the headless User-Agent, enables CDP
-  protection. Adds < 1 ms overhead. Appropriate for most scraping workloads.
-- `Advanced` — full fingerprint injection (canvas, WebGL, audio, fonts, hardware
-  concurrency, device memory) plus human-like mouse and keyboard events. Adds 10–30 ms
-  per page but passes all major detection suites.
+1. Basic uses minimal navigator spoof plus CDP mitigation.
+2. Advanced enables the full injection stack in apply_stealth_to_page.
+3. The human behavior APIs are available, but are not automatically injected by
+   apply_stealth_to_page.
 
----
+## What advanced actually injects
+
+When stealth_level is advanced, stygian-browser injects the following at new-document time:
+
+1. CDP hardening script.
+2. CDP protection script (mode-driven).
+3. Navigator spoof script.
+4. Fingerprint script.
+5. WebRTC script.
+6. Canvas noise.
+7. WebGL noise.
+8. Audio noise.
+9. Rects/TextMetrics noise.
+10. Navigator coherence script.
+11. Timing noise.
+12. Peripheral stealth script.
 
 ## Headless mode
 
-The classic `--headless` flag (`HeadlessMode::Legacy`) is a well-known detection signal:
-sites like X/Twitter and LinkedIn inspect the Chrome renderer version string and reject
-old-headless sessions before any session state is even checked.
-
-Since Chrome 112, `stygian-browser` defaults to `--headless=new` (`HeadlessMode::New`),
-which shares the **same rendering pipeline as headed Chrome** and is significantly
-harder to fingerprint-detect.
+Use HeadlessMode::New unless you are forced onto old Chromium builds.
 
 ```rust,no_run
 use stygian_browser::{BrowserConfig, HeadlessMode};
 
-// Default: HeadlessMode::New — no change needed for existing code
-let config = BrowserConfig::builder()
+let cfg = BrowserConfig::builder()
     .headless_mode(HeadlessMode::New)
     .build();
-
-// Legacy mode: only needed for Chromium < 112
-let config = BrowserConfig::builder()
-    .headless_mode(HeadlessMode::Legacy)
-    .build();
 ```
 
-Or via env var (no recompilation):
+Environment override:
 
 ```sh
-STYGIAN_HEADLESS_MODE=legacy cargo run   # opt back to old behaviour
+STYGIAN_HEADLESS_MODE=new cargo run
 ```
 
----
+## CDP leak mitigation
 
-## `navigator` spoofing
+Set via BrowserConfig::cdp_fix_mode or STYGIAN_CDP_FIX_MODE.
 
-Executed on every new document context before any page script runs.
-
-- Sets `navigator.webdriver` → `undefined`
-- Patches `navigator.plugins` with a realistic `PluginArray`
-- Sets `navigator.languages`, `navigator.language`, `navigator.vendor`
-- Aligns `navigator.hardwareConcurrency` and `navigator.deviceMemory` with the
-  chosen device fingerprint
-
-Two layers of protection prevent `webdriver` detection:
-
-1. **Instance patch** — `Object.defineProperty(navigator, 'webdriver', { get: () => undefined })` hides the flag from direct access (`navigator.webdriver === undefined`).
-2. **Prototype patch** — `Object.defineProperty(Navigator.prototype, 'webdriver', { enumerable: false, ... })` hides the underlying getter from `Object.getOwnPropertyDescriptor(Navigator.prototype, 'webdriver')`, which some scanners (e.g. pixelscan.net, Akamai, Cloudflare Turnstile) probe directly. The `enumerable: false` descriptor matches real Chrome — `enumerable: true` is itself a detectable signal.
-
-Both patches are injected into every new document context before any page script runs.
-
-As of v0.8.2, the following additional signals are also patched:
-
-- **UA version alignment** — all `NavigatorProfile` UA strings use `Chrome/131`, matching the
-  default `chrome131` TLS profile. Cloudflare cross-references `navigator.userAgent` against the
-  JA3/JA4 TLS fingerprint; a version mismatch (e.g. `Chrome/120` UA with a Chrome 131 TLS
-  handshake) is a primary bot signal.
-- **`window.chrome` object** — `chrome.runtime`, `chrome.csi`, and `chrome.loadTimes` are
-  stubbed. These properties are present in every real Chrome session but absent in headless;
-  their absence is directly checked by Turnstile and pixel-scanner suites.
-- **`navigator.userAgentData`** — the `brands` array and `uaFullVersion` are spoofed to match
-  the `navigator.userAgent` Chrome version. Without this, `userAgentData.brands` reflects the
-  actual binary version (e.g. `Chromium/139`) while `userAgent` reports `Chrome/131`,
-  creating a cross-referenceable mismatch.
-
-The fingerprint is drawn from statistically-weighted device profiles:
-
-```rust
-use stygian_browser::fingerprint::{DeviceProfile, Platform};
-
-let profile = DeviceProfile::random();   // weighted: Windows 60%, Mac 25%, Linux 15%
-println!("Platform:    {:?}", profile.platform);
-println!("CPU cores:   {}",   profile.hardware_concurrency);
-println!("Device RAM:  {} GB", profile.device_memory);
-println!("Screen:      {}×{}", profile.screen_width, profile.screen_height);
-```
-
----
-
-## Canvas fingerprint noise
-
-`HTMLCanvasElement.toDataURL()` and `CanvasRenderingContext2D.getImageData()` are patched
-to add sub-pixel noise (< 1 px) — visually indistinguishable but unique per page load,
-preventing cross-site canvas fingerprint correlation.
-
-The noise function is applied via JavaScript injection into each document:
-
-```javascript
-// Simplified representation of the injected script
-const origToDataURL = HTMLCanvasElement.prototype.toDataURL;
-HTMLCanvasElement.prototype.toDataURL = function(...args) {
-    const result = origToDataURL.apply(this, args);
-    return injectNoise(result, sessionNoiseSeed);
-};
-```
-
----
-
-## WebGL randomisation
-
-GPU-based fingerprinting reads `RENDERER` and `VENDOR` strings from WebGL. These are
-intercepted and replaced with plausible — but randomised — GPU family names:
-
-| Real value | Spoofed value (example) |
+| Mode | Summary |
 | --- | --- |
-| `ANGLE (Apple, ANGLE Metal Renderer: Apple M4 Pro, Unspecified Version)` | `ANGLE (NVIDIA, ANGLE Metal Renderer: NVIDIA GeForce RTX 3070 Ti)` |
-| `Google SwiftShader` | `ANGLE (Intel, ANGLE Metal Renderer: Intel Iris Pro)` |
+| addBinding | recommended default; best overall |
+| isolatedWorld | compatibility fallback |
+| enableDisable | broad fallback |
+| none | no mitigation |
 
-The spoofed values are consistent within a session and coherent with the chosen
-device profile.
+## WebRTC policy
 
----
+Set via BrowserConfig::webrtc.
 
-## CDP leak protection
+| Policy | Effect |
+| --- | --- |
+| allow_all | no restriction |
+| disable_non_proxied | force disable_non_proxied_udp |
+| block_all | strongest leakage prevention; may break RTC apps |
 
-The Chrome DevTools Protocol itself can expose automation. Three modes are available,
-set via `STYGIAN_CDP_FIX_MODE` or `BrowserConfig::cdp_fix_mode`:
+For highest non-proxy stealth, prefer block_all unless target compatibility requires otherwise.
 
-| Mode | Protection | Compatibility |
-| --- | --- | --- |
-| `AddBinding` (default) | Wraps calls to hide `Runtime.enable` side-effects | Best overall |
-| `IsolatedWorld` | Runs injection in a separate execution context | Moderate |
-| `EnableDisable` | Toggles enable/disable around each command | Broad |
+## Fingerprint coherence
 
----
+Advanced mode derives identity from one coherent profile per browser instance.
+If you do not set fingerprint_profile explicitly, a weighted fallback profile is chosen.
 
-## Human behaviour simulation (`Advanced` only)
+Current weighted fallback mapping:
 
-### Mouse movement — `MouseSimulator`
+1. Windows: 65%
+2. macOS: 20%
+3. Linux: 5%
+4. Android: 10%
 
-Generates Bézier-curve paths with natural arc shapes:
+## TLS fingerprint control
 
-- Distance-aware step counts (12 steps for < 100 px, up to 120 for > 1 000 px)
-- Perpendicular control-point offsets for curved trajectories
-- Sub-pixel micro-tremor jitter (± 0.3 px per step)
-- 10–50 ms inter-event delays
+TLS fingerprint control is orthogonal to browser JS stealth and requires feature tls-config.
+Use it for HTTP clients where JA3/JA4 consistency matters.
+
+Built-in profiles:
+
+1. CHROME_131
+2. FIREFOX_133
+3. SAFARI_18
+4. EDGE_131
 
 ```rust,no_run
-use stygian_browser::behavior::MouseSimulator;
+use stygian_browser::tls::{build_profiled_client, CHROME_131};
 
-let sim = MouseSimulator::new();
-// Move from (100, 200) to (450, 380) with realistic arc
-sim.move_to(&page, 100.0, 200.0, 450.0, 380.0).await?;
-sim.click(&page, 450.0, 380.0).await?;
+let client = build_profiled_client(&CHROME_131, None)?;
+let response = client.get("https://example.com").send().await?;
 ```
 
-### Keyboard — `TypingSimulator`
+For browser contexts, chrome_tls_args can constrain TLS version behavior, but exact Chrome
+cipher ordering remains tied to the browser binary.
 
-Models realistic typing cadence:
+## Runtime stealth diagnostics
 
-- Per-key WPM variation (70–130 WPM base rate)
-- Configurable typo-and-correct probability
-- Burst/pause rhythm typical of human typists
+Run diagnostics from a live page handle:
 
 ```rust,no_run
-use stygian_browser::behavior::TypingSimulator;
-
-let typer = TypingSimulator::new()
-    .wpm(90)
-    .typo_rate(0.03);   // 3% typo probability
-
-typer.type_into(&page, "#search-input", "rust async web scraping").await?;
+let report = page.verify_stealth().await?;
+let report_with_transport = page.verify_stealth_with_transport(None).await?;
 ```
 
----
+DiagnosticReport includes:
 
-## Network Information API spoofing
+1. checks
+2. passed_count
+3. failed_count
+4. known_limitations
+5. transport
 
-`navigator.connection` (Network Information API) reveals connection quality and type.  
-Headless browsers return `null` here, which is an immediate headless signal on connection-aware scanners.
+There are currently 25 built-in JS checks.
 
-`Advanced` stealth injects a realistic `NetworkInformation`-like object:
+Known limitation probes currently include:
 
-| Property | Spoofed value |
+1. WebGPU surface exposure
+2. performance.memory exposure
+
+Treat known_limitations as visible surfaces not yet fully spoofed/validated.
+
+## Detection vectors covered
+
+| Vector | Primary layer |
 | --- | --- |
-| `effectiveType` | `"4g"` |
-| `type` | `"wifi"` |
-| `downlink` | Seeded from `performance.timeOrigin` (stable per session, ≈ 10 Mbps range) |
-| `rtt` | Seeded jitter (50–100 ms range) |
-| `saveData` | `false` |
+| navigator.webdriver and descriptor shape | navigator spoof and diagnostic checks |
+| chrome runtime/csi/loadTimes shape | navigator/chrome object spoof |
+| plugins, languages, UA data coherence | fingerprint and navigator coherence |
+| canvas, webgl, audio, rects fingerprints | noise modules and checks |
+| CDP protocol leakage | cdp_hardening and cdp_protection |
+| headless UA marker | headless new + spoofing checks |
+| WebRTC leak surface | webrtc policy and script |
+| JA3/JA4 and HTTP3 coherence | tls profiles + transport diagnostics |
 
----
+## Human interaction APIs
 
-## Battery Status API spoofing
+These are available as explicit APIs and MCP interaction controls.
 
-`navigator.getBattery()` returns `null` in headless Chrome — a clear automation signal
-for scanners that enumerate battery state.
+1. MouseSimulator
+2. TypingSimulator
+3. InteractionSimulator
+4. RequestPacer
 
-`Advanced` stealth overrides `getBattery()` to resolve with a plausible disconnected-battery state:
+Use them when the target expects user-like interaction cadence. They are not automatically
+invoked by apply_stealth_to_page.
 
-| Property | Spoofed value |
-| --- | --- |
-| `charging` | `false` |
-| `chargingTime` | `Infinity` |
-| `dischargingTime` | Seeded (≈ 3600–7200 s) |
-| `level` | Seeded (0.65–0.95) |
+## Cloudflare Turnstile reality check
 
-The seed values are derived from `performance.timeOrigin` so they are stable within a page
-load but differ across sessions, preventing replay detection.
+1. Invisible/non-interactive modes are primarily fingerprint-driven.
+2. Managed mode may require explicit user interaction and cannot be bypassed solely
+   by improving fingerprint quality.
 
----
-
-## Fingerprint consistency
-
-All spoofed signals are derived from a single `DeviceProfile` generated at browser
-launch. The profile is consistent across tabs and across the entire session, preventing
-inconsistency-based detection (e.g. a Windows User-Agent combined with macOS font metrics).
-
----
-
-## Cloudflare Turnstile
-
-Cloudflare Turnstile operates in three challenge modes. They have fundamentally different
-bypass characteristics and it is important to understand which mode a target site uses.
-
-### Non-Interactive and Invisible modes
-
-In these modes Turnstile makes a pass/fail decision based on the request fingerprint alone
-— no user action is required and no visible widget appears. The fingerprint checks include
-(among others) TLS/JA3 profile vs `navigator.userAgent` version alignment, `webdriver`
-descriptor properties, presence of `window.chrome.runtime`, and consistency of
-`navigator.userAgentData`.
-
-`stygian-browser` v0.8.2 addresses all four of these primary signals (see
-[`navigator` spoofing](#navigator-spoofing) above). Sites using Invisible or Non-Interactive
-Turnstile should pass without any additional configuration beyond `StealthLevel::Basic`.
-
-A scheduled canary (`.github/workflows/stealth-canary.yml`) runs `verify_stealth()` daily
-against the built-in check suite to detect regressions automatically. On failure it calls
-GitHub Models to propose and validate a fix, then opens a pull request.
-
-### Managed mode (requires user interaction)
-
-Managed mode displays a visible checkbox widget that **must be clicked by a human**,
-regardless of fingerprint quality. Even a perfect, undetectable fingerprint will not
-bypass a Managed-mode challenge — Turnstile will present the checkbox and wait.
-
-This is an explicit site operator choice, not a fingerprinting failure. Sites like
-`help.ui.com` use Managed mode as a deliberate security policy.
-
-> **stygian-browser cannot bypass Managed-mode Turnstile automatically.**
-> The stealth improvements in v0.8.2 have no effect on Managed-mode challenges.
-
-Options for sites using Managed mode:
-
-1. **Cookie injection** — if you have obtained a valid clearance cookie from a prior
-   human session, inject it with `inject_cookies()` before navigating. The clearance
-   cookie has a TTL (typically 30 minutes–24 hours) and may be reused until it expires.
-2. **CAPTCHA solver integration** — third-party services (2captcha, CapSolver, etc.) can
-   interact with the Turnstile iframe on your behalf. Integrate via their REST API before
-   the page load completes.
-3. **Residential proxy with pre-warmed cookies** — some residential proxy providers
-   bundle Turnstile cookie caches; check your provider's documentation.
-
-To determine which mode a site uses, inspect the `<div data-sitekey="...">` widget
-attributes: `data-appearance="always"` indicates Managed; `data-appearance="interaction-only"`
-or `data-appearance="never"` indicates Non-Interactive or Invisible respectively.
+For managed flows, rely on sanctioned session bootstrap methods such as prior trusted
+clearance state, human-in-the-loop, or site-approved challenge workflows.

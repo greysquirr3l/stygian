@@ -42,7 +42,7 @@ futures = { workspace = true }
 rand = { workspace = true }
 
 # Browser integration (optional)
-stygian-browser = { path = "../stygian-browser", version = "0.9.5", optional = true }
+stygian-browser = { path = "../stygian-browser", version = "0.9.6", optional = true }
 
 [dev-dependencies]
 tokio       = { workspace = true }
