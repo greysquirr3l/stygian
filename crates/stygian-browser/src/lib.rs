@@ -67,6 +67,7 @@
 //! | [`webrtc`] | [`WebRtcConfig`], [`WebRtcPolicy`], [`ProxyLocation`] |
 //! | [`cdp_protection`] | CDP leak protection modes |
 
+pub mod behavior_adapter;
 pub mod browser;
 pub mod cdp_protection;
 pub mod config;
@@ -150,6 +151,10 @@ pub mod session;
 
 pub mod recorder;
 
+pub use behavior_adapter::{
+    AdapterKind, AppliedBehaviorPlan, BehaviorInteractionLevel, BrowserBehaviorAdapter,
+    ExecutionMode, PolymorphicBehaviorAdapter, SessionMode, TelemetryLevel,
+};
 pub use browser::BrowserInstance;
 pub use config::{BrowserConfig, HeadlessMode, StealthLevel};
 pub use error::{BrowserError, Result};

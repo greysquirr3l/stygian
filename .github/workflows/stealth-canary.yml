@@ -82,22 +82,25 @@ jobs:
           DATE="$(date -u +%Y-%m-%d)"
           TITLE="Stealth regression detected ${DATE}"
           RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          ISSUE_BODY_FILE="/tmp/stealth-regression-issue.md"
 
           FAILED_CHECKS="$(jq -r '.failed_checks[]?' probe-report.json 2>/dev/null | head -20 | sed 's/^/- /' || echo "_(see uploaded probe report)_")"
 
-          BODY="## Stealth regression detected
+          cat > "${ISSUE_BODY_FILE}" <<EOF
+          ## Stealth regression detected
 
-**Date**: ${DATE}
+          **Date**: ${DATE}
 
-The daily stealth canary detected failing checks against \`about:blank\`.
+          The daily stealth canary detected failing checks against \`about:blank\`.
 
-### Failed checks
-${FAILED_CHECKS}
+          ### Failed checks
+          ${FAILED_CHECKS}
 
-### Details
-Run: ${RUN_URL}
+          ### Details
+          Run: ${RUN_URL}
 
-Download the \`probe-report\` artifact from the run above for the full JSON report and stderr output."
+          Download the \`probe-report\` artifact from the run above for the full JSON report and stderr output.
+          EOF
 
           EXISTING=$(gh issue list \
             --state open \
@@ -110,6 +113,6 @@ Download the \`probe-report\` artifact from the run above for the full JSON repo
               --body "Another regression detected on ${DATE}. Run: ${RUN_URL}"
             echo "Commented on existing issue #${EXISTING}"
           else
-            gh issue create --title "${TITLE}" --body "${BODY}"
+            gh issue create --title "${TITLE}" --body-file "${ISSUE_BODY_FILE}"
           fi
 

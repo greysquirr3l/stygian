@@ -51,6 +51,7 @@
 //! | `browser_auth_session` | `session_id, mode, file_path?, ttl_secs?, navigate_to_origin?, interaction_level?` | auth/session workflow result |
 //! | `browser_session_save` | `session_id, ttl_secs?, file_path?, include_snapshot?` | saved session state metadata |
 //! | `browser_session_restore` | `session_id, snapshot?, file_path?, use_saved?, navigate_to_origin?` | restored session state metadata |
+//! | `browser_apply_behavior_json` | `behavior, session_id?` | applied behavior plan + effective config |
 //! | `browser_humanize` | `session_id, level?, viewport_width?, viewport_height?` | humanization result |
 //! | `browser_verify_stealth` | `session_id, url, timeout_secs?` | `DiagnosticReport` JSON |
 //! | `browser_release` | `session_id` | success |
@@ -85,8 +86,9 @@ use ulid::Ulid;
 use futures::StreamExt;
 
 use crate::{
-    BrowserHandle, BrowserPool,
+    BrowserConfig, BrowserHandle, BrowserPool,
     behavior::{InteractionLevel, InteractionSimulator},
+    behavior_adapter::{BehaviorInteractionLevel, PolymorphicBehaviorAdapter},
     config::StealthLevel,
     error::{BrowserError, Result},
     page::WaitUntil,
@@ -192,6 +194,8 @@ struct McpSession {
     saved_snapshot: Option<SessionSnapshot>,
     /// Endpoint used by an attached browser session.
     attach_endpoint: Option<String>,
+    /// Optional behavior plan applied via `browser_apply_behavior_json`.
+    behavior_plan: Option<crate::behavior_adapter::AppliedBehaviorPlan>,
 }
 
 // ─── MCP server ──────────────────────────────────────────────────────────────
@@ -617,6 +621,24 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
                 "required": ["session_id"]
             }
         }));
+    tools.push(json!({
+            "name": "browser_apply_behavior_json",
+            "description": "Apply structured behavior JSON (runtime policy, investigation bundle, or direct overrides) using the polymorphic behavior adapter. Returns an applied plan and effective browser config. If session_id is provided, session metadata is updated for downstream tools.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "behavior": {
+                        "type": "object",
+                        "description": "Structured behavior input: RuntimePolicy object, InvestigationBundle object with nested policy, or direct override object."
+                    },
+                    "session_id": {
+                        "type": "string",
+                        "description": "Optional active session to annotate with the applied behavior plan."
+                    }
+                },
+                "required": ["behavior"]
+            }
+        }));
     tools
 });
 
@@ -807,6 +829,7 @@ impl McpBrowserServer {
             "browser_auth_session" => self.tool_browser_auth_session(&args).await,
             "browser_session_save" => self.tool_browser_session_save(&args).await,
             "browser_session_restore" => self.tool_browser_session_restore(&args).await,
+            "browser_apply_behavior_json" => self.tool_browser_apply_behavior_json(&args).await,
             "browser_humanize" => self.tool_browser_humanize(&args).await,
             #[cfg(feature = "stealth")]
             "browser_verify_stealth" => self.tool_browser_verify_stealth(&args).await,
@@ -906,6 +929,7 @@ impl McpBrowserServer {
                 current_url: None,
                 saved_snapshot: None,
                 attach_endpoint: None,
+                behavior_plan: None,
             },
         );
 
@@ -1266,6 +1290,7 @@ impl McpBrowserServer {
                         current_url: None,
                         saved_snapshot: None,
                         attach_endpoint: Some(endpoint.clone()),
+                        behavior_plan: None,
                     },
                 );
 
@@ -1549,13 +1574,87 @@ impl McpBrowserServer {
         }))
     }
 
+    async fn tool_browser_apply_behavior_json(&self, args: &Value) -> Result<Value> {
+        let behavior = args.get("behavior").cloned().ok_or_else(|| {
+            BrowserError::ConfigError("Missing required 'behavior' object".to_string())
+        })?;
+
+        if !behavior.is_object() {
+            return Err(BrowserError::ConfigError(
+                "'behavior' must be a JSON object".to_string(),
+            ));
+        }
+
+        let adapter = PolymorphicBehaviorAdapter::from_json_value(behavior)?;
+        let mut effective_config = BrowserConfig::default();
+        let plan = adapter.apply(&mut effective_config);
+        let adapter_kind = adapter.kind();
+
+        let session_id = args
+            .get("session_id")
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
+
+        let session_updated = if let Some(sid) = &session_id {
+            let mut sessions = self.sessions.lock().await;
+            let session = sessions
+                .get_mut(sid)
+                .ok_or_else(|| BrowserError::ConfigError(format!("Unknown session_id: {sid}")))?;
+
+            session.behavior_plan = Some(plan.clone());
+            session.stealth_level = effective_config.stealth_level;
+            session.cdp_fix_mode = Some(format!("{:?}", effective_config.cdp_fix_mode));
+            session.proxy.clone_from(&effective_config.proxy);
+
+            #[cfg(feature = "stealth")]
+            {
+                session.webrtc_policy = Some(format!("{:?}", effective_config.webrtc.policy));
+            }
+
+            drop(sessions);
+            true
+        } else {
+            false
+        };
+
+        let effective_view = json!({
+            "headless": effective_config.headless,
+            "stealth_level": effective_config.stealth_level,
+            "proxy": effective_config.proxy,
+            "window_size": effective_config.window_size,
+            "cdp_fix_mode": effective_config.cdp_fix_mode,
+            "args": effective_config.args
+        });
+
+        Ok(json!({
+            "adapter_kind": adapter_kind,
+            "plan": plan,
+            "effective_config": effective_view,
+            "session_id": session_id,
+            "session_updated": session_updated
+        }))
+    }
+
     async fn tool_browser_humanize(&self, args: &Value) -> Result<Value> {
         let session_id = Self::require_str(args, "session_id")?;
-        let level = match args.get("level").and_then(Value::as_str).unwrap_or("low") {
-            "none" => InteractionLevel::None,
-            "medium" => InteractionLevel::Medium,
-            "high" => InteractionLevel::High,
-            _ => InteractionLevel::Low,
+        let default_level = {
+            let sessions = self.sessions.lock().await;
+            sessions
+                .get(&session_id)
+                .and_then(|s| s.behavior_plan.as_ref())
+                .map_or(InteractionLevel::Low, |plan| match plan.interaction_level {
+                    BehaviorInteractionLevel::None => InteractionLevel::None,
+                    BehaviorInteractionLevel::Low => InteractionLevel::Low,
+                    BehaviorInteractionLevel::Medium => InteractionLevel::Medium,
+                    BehaviorInteractionLevel::High => InteractionLevel::High,
+                })
+        };
+        let level = match args.get("level").and_then(Value::as_str) {
+            Some("none") => InteractionLevel::None,
+            Some("medium") => InteractionLevel::Medium,
+            Some("high") => InteractionLevel::High,
+            Some("low" | _) => InteractionLevel::Low,
+            None => default_level,
         };
         let viewport_width = args
             .get("viewport_width")
@@ -2169,7 +2268,9 @@ impl McpBrowserServer {
                     "target_profile": s.target_profile,
                     "current_url": s.current_url,
                     "has_saved_snapshot": s.saved_snapshot.is_some(),
-                    "attach_endpoint": s.attach_endpoint
+                    "attach_endpoint": s.attach_endpoint,
+                    "has_behavior_plan": s.behavior_plan.is_some(),
+                    "behavior_plan": s.behavior_plan.as_ref()
                 })
             })
         };
@@ -2968,6 +3069,37 @@ mod tests {
                 .any(|t| t.get("name").and_then(|n| n.as_str()) == Some("browser_humanize")),
             "TOOL_DEFINITIONS must contain browser_humanize"
         );
+    }
+
+    #[test]
+    fn tool_defs_include_browser_apply_behavior_json() {
+        let defs = &*TOOL_DEFINITIONS;
+        assert!(
+            defs.iter()
+                .any(|t| t.get("name").and_then(|n| n.as_str())
+                    == Some("browser_apply_behavior_json")),
+            "TOOL_DEFINITIONS must contain browser_apply_behavior_json"
+        );
+    }
+
+    #[test]
+    fn browser_apply_behavior_json_requires_behavior()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let defs = &*TOOL_DEFINITIONS;
+        let def = defs
+            .iter()
+            .find(|t| t.get("name").and_then(|n| n.as_str()) == Some("browser_apply_behavior_json"))
+            .ok_or("browser_apply_behavior_json must be in TOOL_DEFINITIONS")?;
+        let required = def
+            .get("inputSchema")
+            .and_then(|s| s.get("required"))
+            .and_then(Value::as_array)
+            .ok_or("browser_apply_behavior_json inputSchema missing required array")?;
+        assert!(
+            required.iter().any(|v| v == "behavior"),
+            "behavior must be required in browser_apply_behavior_json"
+        );
+        Ok(())
     }
 
     #[cfg(feature = "mcp-attach")]

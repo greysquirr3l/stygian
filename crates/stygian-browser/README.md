@@ -346,6 +346,138 @@ any IP addresses from leaking via WebRTC peer connections.
 
 ---
 
+## MCP Behavior Policy Usage
+
+When compiled with the `mcp` feature, you can apply structured anti-bot behavior
+plans at runtime using `browser_apply_behavior_json`.
+
+Accepted `behavior` shapes:
+
+- `RuntimePolicy` object (direct policy payload)
+- `InvestigationBundle` object (uses nested `policy`)
+- `Direct override` object (for simple `headless` / `stealth_level` tuning)
+
+Example: `RuntimePolicy` payload
+
+```json
+{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+        "name": "browser_apply_behavior_json",
+        "arguments": {
+            "behavior": {
+                "execution_mode": "Browser",
+                "session_mode": "Sticky",
+                "telemetry_level": "Deep",
+                "rate_limit_rps": 0.8,
+                "max_retries": 4,
+                "backoff_base_ms": 1200,
+                "enable_warmup": true,
+                "enforce_webrtc_proxy_only": true,
+                "sticky_session_ttl_secs": 1800,
+                "required_stygian_features": ["browser", "stealth"],
+                "config_hints": {
+                    "proxy_url": "http://127.0.0.1:8080",
+                    "viewport_width": "1366",
+                    "viewport_height": "768"
+                },
+                "risk_score": 0.92
+            }
+        }
+    }
+}
+```
+
+Example: `InvestigationBundle` payload
+
+```json
+{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+        "name": "browser_apply_behavior_json",
+        "arguments": {
+            "behavior": {
+                "report": {
+                    "page_title": "example",
+                    "total_requests": 42,
+                    "blocked_requests": 4,
+                    "status_histogram": {"200": 38, "403": 4},
+                    "resource_type_histogram": {"document": 1, "script": 12},
+                    "provider_histogram": {"Cloudflare": 4},
+                    "top_markers": [],
+                    "hosts": [],
+                    "suspicious_requests": [],
+                    "aggregate": {
+                        "provider": "Cloudflare",
+                        "confidence": 0.87,
+                        "markers": ["turnstile"]
+                    }
+                },
+                "requirements": {
+                    "provider": "Cloudflare",
+                    "confidence": 0.87,
+                    "requirements": [],
+                    "recommendation": {
+                        "strategy": "StickyProxy",
+                        "rationale": "bot challenge observed",
+                        "required_stygian_features": ["browser", "stealth"],
+                        "config_hints": {"proxy_url": "http://127.0.0.1:8080"}
+                    }
+                },
+                "policy": {
+                    "execution_mode": "Browser",
+                    "session_mode": "Sticky",
+                    "telemetry_level": "Standard",
+                    "rate_limit_rps": 1.0,
+                    "max_retries": 3,
+                    "backoff_base_ms": 800,
+                    "enable_warmup": true,
+                    "enforce_webrtc_proxy_only": true,
+                    "sticky_session_ttl_secs": 1200,
+                    "required_stygian_features": ["browser", "stealth"],
+                    "config_hints": {"proxy_url": "http://127.0.0.1:8080"},
+                    "risk_score": 0.78
+                }
+            }
+        }
+    }
+}
+```
+
+Bind behavior to an active session by also passing `session_id`:
+
+```json
+{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+        "name": "browser_apply_behavior_json",
+        "arguments": {
+            "session_id": "01JXYZ...",
+            "behavior": {
+                "headless": false,
+                "stealth_level": "basic",
+                "interaction_level": "medium"
+            }
+        }
+    }
+}
+```
+
+Response includes:
+
+- `adapter_kind` (`RuntimePolicy`, `InvestigationBundle`, or `DirectOverrides`)
+- `plan` (normalized behavior plan)
+- `effective_config` (resolved browser config view)
+- `session_updated` flag
+
+---
+
 ## FAQ
 
 **Q: Does this work on macOS / Linux / Windows?**  

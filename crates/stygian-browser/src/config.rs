@@ -1040,8 +1040,19 @@ mod tests {
 
     #[test]
     fn validate_default_config_is_valid() {
-        let cfg = BrowserConfig::default();
-        assert!(cfg.validate().is_ok(), "default config must be valid");
+        temp_env::with_vars(
+            [
+                ("STYGIAN_POOL_MIN", None::<&str>),
+                ("STYGIAN_POOL_MAX", None::<&str>),
+                ("STYGIAN_LAUNCH_TIMEOUT_SECS", None::<&str>),
+                ("STYGIAN_CDP_TIMEOUT_SECS", None::<&str>),
+                ("STYGIAN_PROXY", None::<&str>),
+            ],
+            || {
+                let cfg = BrowserConfig::default();
+                assert!(cfg.validate().is_ok(), "default config must be valid");
+            },
+        );
     }
 
     #[test]
@@ -1079,16 +1090,27 @@ mod tests {
 
     #[test]
     fn validate_detects_zero_timeouts() {
-        let cfg = BrowserConfig {
-            launch_timeout: std::time::Duration::ZERO,
-            cdp_timeout: std::time::Duration::ZERO,
-            ..BrowserConfig::default()
-        };
-        let result = cfg.validate();
-        assert!(result.is_err());
-        if let Err(errors) = result {
-            assert_eq!(errors.len(), 2);
-        }
+        temp_env::with_vars(
+            [
+                ("STYGIAN_POOL_MIN", None::<&str>),
+                ("STYGIAN_POOL_MAX", None::<&str>),
+                ("STYGIAN_LAUNCH_TIMEOUT_SECS", None::<&str>),
+                ("STYGIAN_CDP_TIMEOUT_SECS", None::<&str>),
+                ("STYGIAN_PROXY", None::<&str>),
+            ],
+            || {
+                let cfg = BrowserConfig {
+                    launch_timeout: std::time::Duration::ZERO,
+                    cdp_timeout: std::time::Duration::ZERO,
+                    ..BrowserConfig::default()
+                };
+                let result = cfg.validate();
+                assert!(result.is_err());
+                if let Err(errors) = result {
+                    assert_eq!(errors.len(), 2);
+                }
+            },
+        );
     }
 
     #[test]
