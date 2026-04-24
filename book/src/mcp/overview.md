@@ -139,3 +139,48 @@ channel. Control verbosity via the `RUST_LOG` environment variable:
 ```sh
 RUST_LOG=stygian_mcp=debug,stygian_graph=info ./stygian-mcp
 ```
+
+---
+
+## Production Security Baseline
+
+Production MCP deployments should enforce controls at the gateway/server boundary, not only
+inside individual agents.
+
+### 1) PII redaction before model context
+
+- Redact or pseudonymize sensitive fields on tool outputs before they enter model context.
+- Apply centrally so every agent/tool path gets the same treatment.
+- Keep an auditable trail of redaction events for compliance reviews.
+
+### 2) Input guardrails (prompt-injection resistance)
+
+- Scan untrusted content (user input, retrieved pages, tool outputs) for instruction-like payloads.
+- Flag jailbreak-style text and imperative operation prompts in data channels.
+- Use stricter checks for low-trust sources (scraped/public content).
+
+### 3) Output guardrails (egress control)
+
+- Validate tool call parameters before write/send/delete operations.
+- Enforce output schema and content policy checks.
+- Block PII leakage in agent-visible responses and outbound tool payloads.
+
+### 4) Data exfiltration prevention (session-level)
+
+- Monitor tool-call sequences, not only single calls.
+- Alert on unusual read volume and cross-tool data movement (read -> send/write).
+- Restrict communication destinations to approved allow-lists.
+
+### 5) Access and incident readiness
+
+- Apply least-privilege RBAC per tool.
+- Log each tool call with agent identity, request, response, and guardrail outcome.
+- Maintain a runbook to quickly suspend agent/tool access without full downtime.
+
+Operational checklist:
+
+- PII redaction active for sensitive tool outputs.
+- Input guardrails enabled and tuned for source trust levels.
+- Output guardrails enabled for all write-capable tools.
+- Destination allow-lists enforced for outbound channels.
+- Session traceability enabled for exfiltration/anomaly investigations.

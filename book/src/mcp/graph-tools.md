@@ -215,9 +215,9 @@ service lists, detected cycles, and computed topological execution order.
 Parse, validate, and execute a TOML pipeline DAG.
 
 - Nodes of kind `http`, `rest`, `graphql`, `sitemap`, and `rss` are executed directly.
-- Nodes of kind `ai` or `browser` are recorded in the `skipped` list (they require credentials
-  and a live browser that are not available inside the MCP server). Pass their output as
-  pre-computed `params` if needed, or use `browser_acquire` + `browser_navigate` directly.
+- Nodes of kind `ai` are recorded in the `skipped` list.
+- Nodes of kind `browser` are executed only when the node includes an opt-in `acquisition` block
+  and `stygian-graph` is built with the `acquisition-runner` feature; otherwise they are skipped.
 
 | Parameter | Type | Required | Description |
 | --------- | ---- | -------- | ----------- |
@@ -235,6 +235,28 @@ Parse, validate, and execute a TOML pipeline DAG.
   "errors": {}
 }
 ```
+
+Browser acquisition opt-in example:
+
+```toml
+[[services]]
+name = "browser_service"
+kind = "browser"
+
+[[nodes]]
+name = "render"
+service = "browser_service"
+url = "https://example.com"
+
+[nodes.params.acquisition]
+enabled = true
+mode = "resilient"
+wait_for_selector = "main"
+total_timeout_secs = 45
+```
+
+If the `acquisition` block is omitted, browser nodes remain non-breaking and are added to
+`skipped` as before.
 
 **Example pipeline TOML:**
 
