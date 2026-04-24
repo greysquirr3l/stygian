@@ -43,6 +43,7 @@
 //! | Tool | Parameters | Returns |
 //! | ------ | ----------- | --------- |
 //! | `browser_acquire` | `stealth_level?`, `tls_profile?`, `webrtc_policy?`, `cdp_fix_mode?`, `proxy?` | `session_id`, `requested_metadata` |
+//! | `browser_acquire_and_extract` | `url, mode, wait_for_selector?, extraction_js?, total_timeout_secs?` | `strategy_used, final_url, status_code, extracted?, html_excerpt?, diagnostics` |
 //! | `browser_navigate` | `session_id, url, timeout_secs?` | `title, url` |
 //! | `browser_eval` | `session_id, script` | `result: Value` |
 //! | `browser_screenshot` | `session_id` | `data: base64 PNG` |
@@ -86,7 +87,8 @@ use ulid::Ulid;
 use futures::StreamExt;
 
 use crate::{
-    BrowserConfig, BrowserHandle, BrowserPool,
+    AcquisitionMode, AcquisitionRequest, AcquisitionResult, AcquisitionRunner, BrowserConfig,
+    BrowserHandle, BrowserPool,
     behavior::{InteractionLevel, InteractionSimulator},
     behavior_adapter::{BehaviorInteractionLevel, PolymorphicBehaviorAdapter},
     config::StealthLevel,
@@ -266,6 +268,39 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
                     "timeout_secs": { "type": "integer", "default": 30 }
                 },
                 "required": ["session_id", "url"]
+            }
+        }),
+        json!({
+            "name": "browser_acquire_and_extract",
+            "description": "Run the opinionated acquisition ladder and return structured extraction/content output in one call. Uses AcquisitionRunner facade with deterministic strategy escalation.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "url": { "type": "string", "description": "Target URL to acquire." },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["fast", "resilient", "hostile", "investigate"],
+                        "description": "Acquisition ladder mode."
+                    },
+                    "wait_for_selector": {
+                        "type": "string",
+                        "description": "Optional selector wait gate for browser-stage success."
+                    },
+                    "selector_wait": {
+                        "type": "string",
+                        "description": "Alias for wait_for_selector."
+                    },
+                    "extraction_js": {
+                        "type": "string",
+                        "description": "Optional JavaScript extraction expression evaluated in browser stages."
+                    },
+                    "total_timeout_secs": {
+                        "type": "number",
+                        "default": 45,
+                        "description": "Optional wall-clock timeout for the full acquisition run."
+                    }
+                },
+                "required": ["url", "mode"]
             }
         }),
         json!({
@@ -816,6 +851,7 @@ impl McpBrowserServer {
 
         let result = match name.as_str() {
             "browser_acquire" => self.tool_browser_acquire(&args).await,
+            "browser_acquire_and_extract" => self.tool_browser_acquire_and_extract(&args).await,
             "browser_navigate" => self.tool_browser_navigate(&args).await,
             "browser_eval" => self.tool_browser_eval(&args).await,
             "browser_screenshot" => self.tool_browser_screenshot(&args).await,
@@ -945,6 +981,13 @@ impl McpBrowserServer {
                 "target_profile": target_profile
             }
         }))
+    }
+
+    async fn tool_browser_acquire_and_extract(&self, args: &Value) -> Result<Value> {
+        let request = Self::parse_acquisition_request(args)?;
+        let runner = AcquisitionRunner::new(self.pool.clone());
+        let result = runner.run(request).await;
+        Ok(Self::acquisition_result_to_tool_output(&result))
     }
 
     #[cfg(feature = "stealth")]
@@ -2677,6 +2720,75 @@ impl McpBrowserServer {
             .ok_or_else(|| BrowserError::ConfigError(format!("Missing required argument: {key}")))
     }
 
+    fn parse_acquisition_mode(mode: &str) -> Result<AcquisitionMode> {
+        match mode {
+            "fast" => Ok(AcquisitionMode::Fast),
+            "resilient" => Ok(AcquisitionMode::Resilient),
+            "hostile" => Ok(AcquisitionMode::Hostile),
+            "investigate" => Ok(AcquisitionMode::Investigate),
+            other => Err(BrowserError::ConfigError(format!(
+                "Invalid mode '{other}'. Use one of: fast, resilient, hostile, investigate"
+            ))),
+        }
+    }
+
+    fn parse_acquisition_request(args: &Value) -> Result<AcquisitionRequest> {
+        let url = Self::require_str(args, "url")?;
+        let mode_raw = Self::require_str(args, "mode")?;
+        let mode = Self::parse_acquisition_mode(&mode_raw)?;
+
+        let wait_for_selector = args
+            .get("wait_for_selector")
+            .or_else(|| args.get("selector_wait"))
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
+
+        let extraction_js = args
+            .get("extraction_js")
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
+
+        let total_timeout = match args.get("total_timeout_secs").and_then(Value::as_f64) {
+            Some(value) if value.is_finite() && value > 0.0 => Duration::from_secs_f64(value),
+            Some(_) => {
+                return Err(BrowserError::ConfigError(
+                    "total_timeout_secs must be a positive finite number".to_string(),
+                ));
+            }
+            None => AcquisitionRequest::default().total_timeout,
+        };
+
+        Ok(AcquisitionRequest {
+            url,
+            mode,
+            wait_for_selector,
+            extraction_js,
+            total_timeout,
+            ..AcquisitionRequest::default()
+        })
+    }
+
+    fn acquisition_result_to_tool_output(result: &AcquisitionResult) -> Value {
+        let strategy_used = serde_json::to_value(result.strategy_used).unwrap_or(Value::Null);
+        let attempted = serde_json::to_value(&result.attempted).unwrap_or(Value::Array(Vec::new()));
+        let failures = serde_json::to_value(&result.failures).unwrap_or(Value::Array(Vec::new()));
+
+        json!({
+            "success": result.success,
+            "strategy_used": strategy_used,
+            "final_url": result.final_url,
+            "status_code": result.status_code,
+            "extracted": result.extracted,
+            "html_excerpt": result.html_excerpt,
+            "diagnostics": {
+                "attempted": attempted,
+                "timed_out": result.timed_out,
+                "failure_count": result.failures.len(),
+                "failures": failures
+            }
+        })
+    }
+
     fn parse_root_selectors(args: &Value) -> Result<Vec<String>> {
         let selectors: Vec<String> = args
             .get("root_selectors")
@@ -2769,6 +2881,17 @@ mod tests {
             defs.iter()
                 .any(|t| t.get("name").and_then(|n| n.as_str()) == Some("browser_extract")),
             "TOOL_DEFINITIONS must contain browser_extract"
+        );
+    }
+
+    #[test]
+    fn tool_defs_include_browser_acquire_and_extract() {
+        let defs = &*TOOL_DEFINITIONS;
+        assert!(
+            defs.iter()
+                .any(|t| t.get("name").and_then(|n| n.as_str())
+                    == Some("browser_acquire_and_extract")),
+            "TOOL_DEFINITIONS must contain browser_acquire_and_extract"
         );
     }
 
@@ -2868,6 +2991,125 @@ mod tests {
                 .is_some_and(|a| a.iter().any(|v| v == "schema"))
         );
         Ok(())
+    }
+
+    #[test]
+    fn browser_acquire_and_extract_required_args()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let defs = &*TOOL_DEFINITIONS;
+        let def = defs
+            .iter()
+            .find(|t| t.get("name").and_then(|n| n.as_str()) == Some("browser_acquire_and_extract"))
+            .ok_or("browser_acquire_and_extract must be in TOOL_DEFINITIONS")?;
+
+        let required = def
+            .get("inputSchema")
+            .and_then(|s| s.get("required"))
+            .and_then(Value::as_array)
+            .ok_or("browser_acquire_and_extract inputSchema missing 'required' array")?;
+        assert!(required.iter().any(|v| v == "url"));
+        assert!(required.iter().any(|v| v == "mode"));
+
+        let mode_values = def
+            .get("inputSchema")
+            .and_then(|s| s.get("properties"))
+            .and_then(|p| p.get("mode"))
+            .and_then(|m| m.get("enum"))
+            .and_then(Value::as_array)
+            .ok_or("browser_acquire_and_extract mode enum missing")?;
+        assert!(mode_values.iter().any(|v| v == "fast"));
+        assert!(mode_values.iter().any(|v| v == "resilient"));
+        assert!(mode_values.iter().any(|v| v == "hostile"));
+        assert!(mode_values.iter().any(|v| v == "investigate"));
+        Ok(())
+    }
+
+    #[test]
+    fn acquisition_mode_parsing_accepts_all_supported_values()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        assert_eq!(
+            McpBrowserServer::parse_acquisition_mode("fast")?,
+            AcquisitionMode::Fast
+        );
+        assert_eq!(
+            McpBrowserServer::parse_acquisition_mode("resilient")?,
+            AcquisitionMode::Resilient
+        );
+        assert_eq!(
+            McpBrowserServer::parse_acquisition_mode("hostile")?,
+            AcquisitionMode::Hostile
+        );
+        assert_eq!(
+            McpBrowserServer::parse_acquisition_mode("investigate")?,
+            AcquisitionMode::Investigate
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn acquisition_mode_parsing_rejects_unknown() {
+        let err = McpBrowserServer::parse_acquisition_mode("invalid").err();
+        assert!(err.is_some(), "invalid mode should return an error");
+    }
+
+    #[test]
+    fn acquisition_request_validation_missing_url_fails() {
+        let err = McpBrowserServer::parse_acquisition_request(&json!({"mode": "fast"})).err();
+        assert!(err.is_some(), "missing url should fail validation");
+    }
+
+    #[test]
+    fn acquisition_request_validation_invalid_timeout_fails() {
+        let err = McpBrowserServer::parse_acquisition_request(&json!({
+            "url": "https://example.com",
+            "mode": "resilient",
+            "total_timeout_secs": 0
+        }))
+        .err();
+        assert!(err.is_some(), "zero timeout should fail validation");
+    }
+
+    #[test]
+    fn acquisition_result_output_has_stable_top_level_shape() {
+        let result = AcquisitionResult {
+            success: false,
+            strategy_used: None,
+            attempted: vec![crate::StrategyUsed::DirectHttp],
+            final_url: Some("https://example.com".to_string()),
+            status_code: Some(429),
+            html_excerpt: Some("<html>blocked</html>".to_string()),
+            extracted: None,
+            failures: vec![crate::StageFailure {
+                strategy: crate::StrategyUsed::DirectHttp,
+                kind: crate::StageFailureKind::Blocked,
+                message: "blocked status".to_string(),
+            }],
+            timed_out: false,
+        };
+
+        let payload = McpBrowserServer::acquisition_result_to_tool_output(&result);
+        assert!(payload.get("success").is_some());
+        assert!(payload.get("strategy_used").is_some());
+        assert!(payload.get("final_url").is_some());
+        assert!(payload.get("status_code").is_some());
+        assert!(payload.get("html_excerpt").is_some());
+        assert!(payload.get("diagnostics").is_some());
+
+        let diagnostics = payload.get("diagnostics");
+        assert!(
+            diagnostics
+                .and_then(|d| d.get("attempted"))
+                .and_then(Value::as_array)
+                .is_some(),
+            "diagnostics.attempted should be an array"
+        );
+        assert!(
+            diagnostics
+                .and_then(|d| d.get("failures"))
+                .and_then(Value::as_array)
+                .is_some(),
+            "diagnostics.failures should be an array"
+        );
     }
 
     #[test]

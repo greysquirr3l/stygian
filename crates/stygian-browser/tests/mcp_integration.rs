@@ -367,6 +367,51 @@ async fn mcp_acquire_navigate_release_round_trip() -> Result<(), Box<dyn std::er
 
 #[tokio::test]
 #[ignore = "requires Chrome and external network"]
+async fn mcp_browser_acquire_and_extract_returns_structured_payload() -> Result<(), DynError> {
+    let pool = BrowserPool::new(test_config()).await?;
+    let server = McpBrowserServer::new(pool);
+
+    let payload = call_tool(
+        &server,
+        200,
+        "browser_acquire_and_extract",
+        json!({
+            "url": "https://example.com",
+            "mode": "resilient",
+            "total_timeout_secs": 20
+        }),
+    )
+    .await?;
+
+    assert!(payload.get("success").is_some());
+    assert!(payload.get("strategy_used").is_some());
+    assert!(payload.get("final_url").is_some());
+    assert!(payload.get("status_code").is_some());
+    assert!(payload.get("diagnostics").is_some());
+
+    let diagnostics = payload
+        .get("diagnostics")
+        .ok_or_else(|| std::io::Error::other("missing diagnostics bundle"))?;
+    assert!(
+        diagnostics
+            .get("attempted")
+            .and_then(Value::as_array)
+            .is_some(),
+        "diagnostics.attempted should be an array"
+    );
+    assert!(
+        diagnostics
+            .get("failures")
+            .and_then(Value::as_array)
+            .is_some(),
+        "diagnostics.failures should be an array"
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+#[ignore = "requires Chrome and external network"]
 async fn mcp_session_save_restore_and_humanize_round_trip() -> Result<(), Box<dyn std::error::Error>>
 {
     let pool = BrowserPool::new(test_config()).await?;
