@@ -124,7 +124,7 @@
 | T59 — Acquisition runner core in stygian-browser | `[x]` | Added `acquisition` runner facade, deterministic ladders, and stage failure bundles |
 | T60 — Map charon runtime policy to acquisition strategy | `[x]` | Added deterministic policy-to-acquisition mapping layer in stygian-charon |
 | T61 — Add browser_acquire_and_extract MCP tool | `[x]` | Added `browser_acquire_and_extract` MCP tool wired to `AcquisitionRunner` with schema + validation + output-shape tests |
-| T62 — Optional stygian-graph acquisition bridge | `[ ]` | Additive and opt-in only; defined in `tasks/T62-graph-optional-bridge.md` |
+| T62 — Optional stygian-graph acquisition bridge | `[x]` | Additive and opt-in only; feature-gated `acquisition-runner` bridge for browser nodes via opt-in `acquisition` block |
 | T63 — Runner-first docs and compatibility checks | `[ ]` | Defined in `tasks/T63-runner-docs-compat.md` |
 
 ---
@@ -148,3 +148,4 @@
 - T59: `AcquisitionRunner::run` should return a terminal result object instead of `Result` so timeout/setup-failure paths can be represented as deterministic failure bundles. For sticky browser retries, `BrowserPool::acquire_for(host)` gives opt-in context pinning without changing pool internals.
 - T60: keep runtime-policy mapping pure and deterministic (`map_policy_hints`), with explicit defaults for partial input and clamped risk score to prevent undefined strategy transitions.
 - T61: MCP tool wrappers around runner enums should parse string modes with explicit validation and emit a compact `diagnostics` bundle (`attempted`, `timed_out`, `failure_count`, `failures`) to keep failure paths stable for downstream automation.
+- T62: Keep graph bridge behavior opt-in by requiring a node-level `acquisition` table for `browser` services; without that block, legacy `pipeline_run` skip semantics stay unchanged.

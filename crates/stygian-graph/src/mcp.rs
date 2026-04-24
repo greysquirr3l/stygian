@@ -49,10 +49,17 @@
 //! | `pipeline_run` | `toml`, `timeout_secs?` | per-node `outputs`, `skipped`, `errors` |
 
 use std::collections::HashMap;
+use std::future::Future;
+use std::time::Duration;
 
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tracing::{debug, info, warn};
+
+#[cfg(feature = "acquisition-runner")]
+use stygian_browser::{
+    AcquisitionMode, AcquisitionRequest, AcquisitionRunner, BrowserConfig, BrowserPool,
+};
 
 use crate::{
     adapters::{
@@ -338,7 +345,7 @@ impl McpGraphServer {
             }),
             json!({
                 "name": "pipeline_run",
-                "description": "Parse, validate, and execute a TOML pipeline DAG. HTTP, REST, GraphQL, sitemap, and RSS nodes are executed. AI/browser nodes are recorded in the skipped list.",
+                "description": "Parse, validate, and execute a TOML pipeline DAG. HTTP, REST, GraphQL, sitemap, and RSS nodes are executed. AI nodes and browser nodes without opt-in acquisition config are recorded in the skipped list.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -1106,6 +1113,148 @@ fn build_graphql_node_request(
     )
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct AcquisitionNodeConfig {
+    mode: String,
+    wait_for_selector: Option<String>,
+    extraction_js: Option<String>,
+    total_timeout: Option<Duration>,
+}
+
+fn parse_optional_positive_secs(value: &toml::Value) -> Result<Duration, String> {
+    if let Some(seconds) = value.as_float() {
+        if seconds.is_finite() && seconds > 0.0 {
+            return Ok(Duration::from_secs_f64(seconds));
+        }
+        return Err("acquisition.total_timeout_secs must be a positive finite number".to_string());
+    }
+
+    if let Some(seconds) = value.as_integer() {
+        if seconds > 0 {
+            return Ok(Duration::from_secs(
+                u64::try_from(seconds).unwrap_or(u64::MAX),
+            ));
+        }
+        return Err("acquisition.total_timeout_secs must be greater than 0".to_string());
+    }
+
+    Err("acquisition.total_timeout_secs must be a number".to_string())
+}
+
+fn acquisition_config_from_node(node: &NodeDecl) -> Result<Option<AcquisitionNodeConfig>, String> {
+    let Some(raw) = node.params.get("acquisition") else {
+        return Ok(None);
+    };
+
+    let table = raw
+        .as_table()
+        .ok_or_else(|| "acquisition must be a TOML table".to_string())?;
+
+    let enabled = table
+        .get("enabled")
+        .and_then(toml::Value::as_bool)
+        .unwrap_or(true);
+
+    if !enabled {
+        return Ok(None);
+    }
+
+    let mode = table
+        .get("mode")
+        .and_then(toml::Value::as_str)
+        .unwrap_or("resilient")
+        .to_string();
+
+    let wait_for_selector = table
+        .get("wait_for_selector")
+        .or_else(|| table.get("selector_wait"))
+        .and_then(toml::Value::as_str)
+        .map(ToString::to_string);
+
+    let extraction_js = table
+        .get("extraction_js")
+        .and_then(toml::Value::as_str)
+        .map(ToString::to_string);
+
+    let total_timeout = table
+        .get("total_timeout_secs")
+        .map(parse_optional_positive_secs)
+        .transpose()?;
+
+    Ok(Some(AcquisitionNodeConfig {
+        mode,
+        wait_for_selector,
+        extraction_js,
+        total_timeout,
+    }))
+}
+
+#[cfg(feature = "acquisition-runner")]
+fn parse_acquisition_mode(raw: &str) -> Result<AcquisitionMode, String> {
+    match raw {
+        "fast" => Ok(AcquisitionMode::Fast),
+        "resilient" => Ok(AcquisitionMode::Resilient),
+        "hostile" => Ok(AcquisitionMode::Hostile),
+        "investigate" => Ok(AcquisitionMode::Investigate),
+        other => Err(format!(
+            "Invalid acquisition mode '{other}'. Use one of: fast, resilient, hostile, investigate"
+        )),
+    }
+}
+
+#[cfg(feature = "acquisition-runner")]
+async fn run_acquisition_bridge(url: &str, cfg: &AcquisitionNodeConfig) -> Result<Value, String> {
+    let mode = parse_acquisition_mode(&cfg.mode)?;
+    let pool = BrowserPool::new(BrowserConfig::default())
+        .await
+        .map_err(|e| format!("acquisition bridge browser pool init failed: {e}"))?;
+
+    let runner = AcquisitionRunner::new(pool);
+    let request = AcquisitionRequest {
+        url: url.to_string(),
+        mode,
+        wait_for_selector: cfg.wait_for_selector.clone(),
+        extraction_js: cfg.extraction_js.clone(),
+        total_timeout: cfg
+            .total_timeout
+            .unwrap_or(AcquisitionRequest::default().total_timeout),
+        ..AcquisitionRequest::default()
+    };
+
+    let result = runner.run(request).await;
+    let strategy_used = serde_json::to_value(result.strategy_used).unwrap_or(Value::Null);
+    let attempted = serde_json::to_value(&result.attempted).unwrap_or(Value::Array(Vec::new()));
+    let failures = serde_json::to_value(&result.failures).unwrap_or(Value::Array(Vec::new()));
+
+    Ok(json!({
+        "data": {
+            "success": result.success,
+            "strategy_used": strategy_used,
+            "final_url": result.final_url,
+            "status_code": result.status_code,
+            "extracted": result.extracted,
+            "html_excerpt": result.html_excerpt,
+        },
+        "metadata": {
+            "acquisition_runner": true,
+            "diagnostics": {
+                "attempted": attempted,
+                "timed_out": result.timed_out,
+                "failure_count": result.failures.len(),
+                "failures": failures,
+            }
+        }
+    }))
+}
+
+#[cfg(not(feature = "acquisition-runner"))]
+async fn run_acquisition_bridge(_url: &str, _cfg: &AcquisitionNodeConfig) -> Result<Value, String> {
+    Err(
+        "acquisition bridge requested but stygian-graph was built without feature 'acquisition-runner'"
+            .to_string(),
+    )
+}
+
 /// Execute a single pipeline node of a given service kind.
 ///
 /// Returns `None` if the kind is not supported (node is skipped);
@@ -1117,10 +1266,33 @@ async fn execute_pipeline_node(
     node: &NodeDecl,
     timeout_secs: u64,
 ) -> Option<Result<Value, String>> {
+    execute_pipeline_node_with(
+        kind,
+        url,
+        node_name,
+        node,
+        timeout_secs,
+        |bridge_url, cfg| async move { run_acquisition_bridge(&bridge_url, &cfg).await },
+    )
+    .await
+}
+
+async fn execute_pipeline_node_with<F, Fut>(
+    kind: &str,
+    url: &str,
+    node_name: &str,
+    node: &NodeDecl,
+    timeout_secs: u64,
+    run_acquisition: F,
+) -> Option<Result<Value, String>>
+where
+    F: Fn(String, AcquisitionNodeConfig) -> Fut,
+    Fut: Future<Output = Result<Value, String>>,
+{
     match kind {
         "http" => {
             let config = HttpConfig {
-                timeout: std::time::Duration::from_secs(timeout_secs),
+                timeout: Duration::from_secs(timeout_secs),
                 ..HttpConfig::default()
             };
             let adapter = HttpAdapter::with_config(config);
@@ -1195,6 +1367,19 @@ async fn execute_pipeline_node(
                     .map(|out| json!({ "data": out.data, "metadata": out.metadata }))
                     .map_err(|e| e.to_string()),
             )
+        }
+        "browser" => {
+            let cfg = match acquisition_config_from_node(node) {
+                Ok(Some(cfg)) => cfg,
+                Ok(None) => return None,
+                Err(err) => {
+                    return Some(Err(format!(
+                        "Invalid acquisition config for node '{node_name}': {err}"
+                    )));
+                }
+            };
+
+            Some(run_acquisition(url.to_string(), cfg).await)
         }
         other => {
             warn!(
@@ -1352,5 +1537,130 @@ depends_on = ["fetch"]
         // so just verify the tool_pipeline_validate path for missing param.
         let resp = McpGraphServer::tool_pipeline_validate(&id, &args);
         assert!(resp.get("error").is_some_and(Value::is_object));
+    }
+
+    #[tokio::test]
+    async fn pipeline_browser_node_without_acquisition_is_skipped() {
+        let node = NodeDecl {
+            name: "render".to_string(),
+            service: "browser".to_string(),
+            depends_on: Vec::new(),
+            url: Some("https://example.com".to_string()),
+            params: HashMap::new(),
+        };
+
+        let result = execute_pipeline_node_with(
+            "browser",
+            "https://example.com",
+            "render",
+            &node,
+            30,
+            |_url, _cfg| async { Ok(json!({"data": "should-not-run"})) },
+        )
+        .await;
+
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn pipeline_browser_node_with_acquisition_uses_bridge_path() {
+        let mut acquisition = toml::map::Map::new();
+        acquisition.insert("mode".to_string(), toml::Value::String("fast".to_string()));
+        acquisition.insert(
+            "wait_for_selector".to_string(),
+            toml::Value::String("main".to_string()),
+        );
+
+        let mut params = HashMap::new();
+        params.insert("acquisition".to_string(), toml::Value::Table(acquisition));
+
+        let node = NodeDecl {
+            name: "render".to_string(),
+            service: "browser".to_string(),
+            depends_on: Vec::new(),
+            url: Some("https://example.com".to_string()),
+            params,
+        };
+
+        let result = execute_pipeline_node_with(
+            "browser",
+            "https://example.com",
+            "render",
+            &node,
+            30,
+            |url, cfg| async move {
+                Ok(json!({
+                    "data": {
+                        "url": url,
+                        "mode": cfg.mode,
+                        "wait_for_selector": cfg.wait_for_selector,
+                    },
+                    "metadata": {"bridge": "mock"}
+                }))
+            },
+        )
+        .await;
+
+        let output = result.expect("browser acquisition should be attempted");
+        let payload = output.expect("mock bridge should succeed");
+
+        assert_eq!(
+            payload
+                .pointer("/data/url")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+            "https://example.com"
+        );
+        assert_eq!(
+            payload
+                .pointer("/data/mode")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+            "fast"
+        );
+        assert_eq!(
+            payload
+                .pointer("/data/wait_for_selector")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+            "main"
+        );
+    }
+
+    #[tokio::test]
+    async fn pipeline_browser_node_invalid_acquisition_timeout_returns_error() {
+        let mut acquisition = toml::map::Map::new();
+        acquisition.insert("mode".to_string(), toml::Value::String("fast".to_string()));
+        acquisition.insert("total_timeout_secs".to_string(), toml::Value::Integer(0));
+
+        let mut params = HashMap::new();
+        params.insert("acquisition".to_string(), toml::Value::Table(acquisition));
+
+        let node = NodeDecl {
+            name: "render".to_string(),
+            service: "browser".to_string(),
+            depends_on: Vec::new(),
+            url: Some("https://example.com".to_string()),
+            params,
+        };
+
+        let result = execute_pipeline_node_with(
+            "browser",
+            "https://example.com",
+            "render",
+            &node,
+            30,
+            |_url, _cfg| async { Ok(json!({"data": "unexpected"})) },
+        )
+        .await;
+
+        let err = result
+            .expect("invalid config should return Some(Err)")
+            .expect_err("invalid timeout must fail validation");
+
+        assert!(
+            err.contains("total_timeout_secs") || err.contains("Invalid acquisition config"),
+            "unexpected error: {err}"
+        );
     }
 }
