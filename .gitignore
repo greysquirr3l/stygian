@@ -82,6 +82,8 @@ Temporary Items
 *.swo
 *~
 
+
+*.har
 tasks/
 .vscode/
 

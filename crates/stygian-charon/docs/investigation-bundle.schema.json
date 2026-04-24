@@ -1,0 +1,414 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stygian.dev/schemas/stygian-charon/investigation-bundle.schema.json",
+  "title": "InvestigationBundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["report", "requirements", "policy"],
+  "properties": {
+    "report": {
+      "$ref": "#/$defs/InvestigationReport"
+    },
+    "requirements": {
+      "$ref": "#/$defs/RequirementsProfile"
+    },
+    "policy": {
+      "$ref": "#/$defs/RuntimePolicy"
+    }
+  },
+  "$defs": {
+    "AntiBotProvider": {
+      "type": "string",
+      "enum": [
+        "None",
+        "Cloudflare",
+        "Akamai",
+        "DataDome",
+        "PerimeterX",
+        "Kasada",
+        "Fingerprint",
+        "Unknown"
+      ]
+    },
+    "AdapterStrategy": {
+      "type": "string",
+      "enum": [
+        "DirectHttp",
+        "BrowserStealth",
+        "StickyProxy",
+        "SessionWarmup",
+        "InvestigateOnly"
+      ]
+    },
+    "RequirementLevel": {
+      "type": "string",
+      "enum": ["Low", "Medium", "High"]
+    },
+    "ExecutionMode": {
+      "type": "string",
+      "enum": ["Http", "Browser"]
+    },
+    "SessionMode": {
+      "type": "string",
+      "enum": ["Stateless", "Sticky"]
+    },
+    "TelemetryLevel": {
+      "type": "string",
+      "enum": ["Basic", "Standard", "Deep"]
+    },
+    "Detection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "confidence", "markers"],
+      "properties": {
+        "provider": {
+          "$ref": "#/$defs/AntiBotProvider"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "markers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "MarkerCount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["marker", "count"],
+      "properties": {
+        "marker": {
+          "type": "string"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "HostSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["host", "total_requests", "blocked_requests"],
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "total_requests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blocked_requests": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "HarRequestSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "status", "resource_type", "detection"],
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "status": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "resource_type": {
+          "type": ["string", "null"]
+        },
+        "detection": {
+          "$ref": "#/$defs/Detection"
+        }
+      }
+    },
+    "InvestigationReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "page_title",
+        "total_requests",
+        "blocked_requests",
+        "status_histogram",
+        "resource_type_histogram",
+        "provider_histogram",
+        "top_markers",
+        "hosts",
+        "suspicious_requests",
+        "aggregate"
+      ],
+      "properties": {
+        "page_title": {
+          "type": ["string", "null"]
+        },
+        "total_requests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blocked_requests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status_histogram": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "patternProperties": {
+            "^[0-9]+$": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "resource_type_histogram": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "provider_histogram": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "propertyNames": {
+            "$ref": "#/$defs/AntiBotProvider"
+          }
+        },
+        "top_markers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MarkerCount"
+          }
+        },
+        "hosts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HostSummary"
+          }
+        },
+        "suspicious_requests": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/HarRequestSummary"
+          }
+        },
+        "aggregate": {
+          "$ref": "#/$defs/Detection"
+        }
+      }
+    },
+    "InvestigationDiff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseline_total_requests",
+        "candidate_total_requests",
+        "baseline_blocked_requests",
+        "candidate_blocked_requests",
+        "blocked_ratio_delta",
+        "likely_regression",
+        "provider_delta",
+        "new_markers"
+      ],
+      "properties": {
+        "baseline_total_requests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidate_total_requests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "baseline_blocked_requests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidate_blocked_requests": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blocked_ratio_delta": {
+          "type": "number"
+        },
+        "likely_regression": {
+          "type": "boolean"
+        },
+        "provider_delta": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "propertyNames": {
+            "$ref": "#/$defs/AntiBotProvider"
+          }
+        },
+        "new_markers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "AntiBotRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "why", "evidence", "level"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "why": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "level": {
+          "$ref": "#/$defs/RequirementLevel"
+        }
+      }
+    },
+    "IntegrationRecommendation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategy",
+        "rationale",
+        "required_stygian_features",
+        "config_hints"
+      ],
+      "properties": {
+        "strategy": {
+          "$ref": "#/$defs/AdapterStrategy"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "required_stygian_features": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "config_hints": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "RequirementsProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "confidence", "requirements", "recommendation"],
+      "properties": {
+        "provider": {
+          "$ref": "#/$defs/AntiBotProvider"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AntiBotRequirement"
+          }
+        },
+        "recommendation": {
+          "$ref": "#/$defs/IntegrationRecommendation"
+        }
+      }
+    },
+    "RuntimePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "execution_mode",
+        "session_mode",
+        "telemetry_level",
+        "rate_limit_rps",
+        "max_retries",
+        "backoff_base_ms",
+        "enable_warmup",
+        "enforce_webrtc_proxy_only",
+        "sticky_session_ttl_secs",
+        "required_stygian_features",
+        "config_hints",
+        "risk_score"
+      ],
+      "properties": {
+        "execution_mode": {
+          "$ref": "#/$defs/ExecutionMode"
+        },
+        "session_mode": {
+          "$ref": "#/$defs/SessionMode"
+        },
+        "telemetry_level": {
+          "$ref": "#/$defs/TelemetryLevel"
+        },
+        "rate_limit_rps": {
+          "type": "number"
+        },
+        "max_retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "backoff_base_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "enable_warmup": {
+          "type": "boolean"
+        },
+        "enforce_webrtc_proxy_only": {
+          "type": "boolean"
+        },
+        "sticky_session_ttl_secs": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "required_stygian_features": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "config_hints": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "risk_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    }
+  }
+}
