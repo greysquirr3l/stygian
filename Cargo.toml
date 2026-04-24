@@ -6,6 +6,7 @@ members = [
     "crates/stygian-extract-derive",
     "crates/stygian-proxy",
     "crates/stygian-mcp",
+    "crates/stygian-charon",
 ]
 
 [workspace.package]

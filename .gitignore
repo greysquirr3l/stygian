@@ -82,6 +82,8 @@ Temporary Items
 *.swo
 *~
 
+
+*.har
 tasks/
 .vscode/
 
@@ -92,3 +94,6 @@ PROGRESS-*.md
 docs/spider-gap-analysis.md
 .papertowelignore
 reference_projects/
+stygian-technical-assessment.md
+docs/stygian-local-refactor-plan.md
+docs/technical-assessment.md

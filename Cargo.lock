@@ -4193,6 +4193,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "stygian-charon"
+version = "0.9.6"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "stygian-extract-derive"
 version = "0.9.6"
 dependencies = [

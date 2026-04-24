@@ -1,0 +1,20 @@
+[package]
+name = "stygian-charon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Anti-bot provider fingerprinting and HAR forensics for Stygian"
+keywords = ["antibot", "forensics", "har", "scraping", "security"]
+categories = ["web-programming", "network-programming"]
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
