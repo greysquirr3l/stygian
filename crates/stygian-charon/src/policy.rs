@@ -173,6 +173,7 @@ mod tests {
             status_histogram: BTreeMap::from([(403, 30)]),
             resource_type_histogram: BTreeMap::new(),
             provider_histogram: BTreeMap::new(),
+            marker_histogram: BTreeMap::from([("x-datadome".to_string(), 30)]),
             top_markers: vec![MarkerCount {
                 marker: "x-datadome".to_string(),
                 count: 30,

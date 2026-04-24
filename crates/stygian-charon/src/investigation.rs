@@ -85,8 +85,11 @@ pub fn investigate_har(har_json: &str) -> Result<InvestigationReport, har::HarEr
     let aggregate = aggregate_detection(&all_requests);
 
     let mut top_markers = marker_histogram
-        .into_iter()
-        .map(|(marker, count)| MarkerCount { marker, count })
+        .iter()
+        .map(|(marker, count)| MarkerCount {
+            marker: marker.clone(),
+            count: *count,
+        })
         .collect::<Vec<_>>();
     top_markers.sort_by_key(|marker| std::cmp::Reverse(marker.count));
     if top_markers.len() > 25 {
@@ -108,6 +111,7 @@ pub fn investigate_har(har_json: &str) -> Result<InvestigationReport, har::HarEr
         status_histogram,
         resource_type_histogram,
         provider_histogram,
+        marker_histogram,
         top_markers,
         hosts,
         suspicious_requests,
@@ -147,14 +151,14 @@ pub fn compare_reports(
     }
 
     let baseline_markers = baseline
-        .top_markers
-        .iter()
-        .map(|marker| marker.marker.clone())
+        .marker_histogram
+        .keys()
+        .cloned()
         .collect::<BTreeSet<_>>();
     let candidate_markers = candidate
-        .top_markers
-        .iter()
-        .map(|marker| marker.marker.clone())
+        .marker_histogram
+        .keys()
+        .cloned()
         .collect::<BTreeSet<_>>();
     let new_markers = candidate_markers
         .difference(&baseline_markers)
@@ -433,6 +437,7 @@ mod tests {
             status_histogram: BTreeMap::new(),
             resource_type_histogram: BTreeMap::new(),
             provider_histogram: BTreeMap::new(),
+            marker_histogram: BTreeMap::new(),
             top_markers: Vec::new(),
             hosts: Vec::new(),
             suspicious_requests: Vec::new(),
@@ -468,6 +473,10 @@ mod tests {
             status_histogram,
             resource_type_histogram: resource_histogram,
             provider_histogram: BTreeMap::new(),
+            marker_histogram: BTreeMap::from([
+                ("cf-ray".to_string(), 5),
+                ("__cf_bm".to_string(), 5),
+            ]),
             top_markers: vec![
                 MarkerCount {
                     marker: "cf-ray".to_string(),

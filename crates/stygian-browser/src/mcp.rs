@@ -1601,9 +1601,13 @@ impl McpBrowserServer {
                 .get_mut(sid)
                 .ok_or_else(|| BrowserError::ConfigError(format!("Unknown session_id: {sid}")))?;
 
+            let cdp_fix_mode = serde_json::to_value(effective_config.cdp_fix_mode)
+                .ok()
+                .and_then(|value| value.as_str().map(ToString::to_string));
+
             session.behavior_plan = Some(plan.clone());
             session.stealth_level = effective_config.stealth_level;
-            session.cdp_fix_mode = Some(format!("{:?}", effective_config.cdp_fix_mode));
+            session.cdp_fix_mode = cdp_fix_mode;
             session.proxy.clone_from(&effective_config.proxy);
 
             #[cfg(feature = "stealth")]

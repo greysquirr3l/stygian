@@ -115,6 +115,8 @@ pub struct InvestigationReport {
     pub resource_type_histogram: BTreeMap<String, u64>,
     /// Provider histogram inferred from signatures.
     pub provider_histogram: BTreeMap<AntiBotProvider, u64>,
+    /// Full marker histogram inferred from signatures.
+    pub marker_histogram: BTreeMap<String, u64>,
     /// Most frequent signature markers.
     pub top_markers: Vec<MarkerCount>,
     /// Top hosts by request volume.
