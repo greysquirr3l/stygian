@@ -217,7 +217,8 @@ Parse, validate, and execute a TOML pipeline DAG.
 - Nodes of kind `http`, `rest`, `graphql`, `sitemap`, and `rss` are executed directly.
 - Nodes of kind `ai` are recorded in the `skipped` list.
 - Nodes of kind `browser` are executed only when the node includes an opt-in `acquisition` block
-  and `stygian-graph` is built with the `acquisition-runner` feature; otherwise they are skipped.
+  **and** `stygian-graph` is built with the `acquisition-runner` feature. If either condition is
+  missing — no `acquisition` block, or the feature is not enabled — the node is skipped.
 
 | Parameter | Type | Required | Description |
 | --------- | ---- | -------- | ----------- |

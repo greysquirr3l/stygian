@@ -162,7 +162,9 @@ Bridge activation requires both:
 - acquisition-runner feature in stygian-graph build
 - node-level acquisition opt-in block in pipeline TOML
 
-Without both conditions, behavior remains legacy and non-breaking.
+Without both conditions, the browser node is skipped — behavior remains legacy and non-breaking.
+If the feature is not compiled in but a node carries an `acquisition` block, the block is ignored
+and the node is still recorded in the `skipped` list, not `errors`.
 
 ## Migration Guidance for Developers
 

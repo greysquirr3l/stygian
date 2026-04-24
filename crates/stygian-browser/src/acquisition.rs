@@ -489,7 +489,12 @@ impl AcquisitionRunner {
             }
         };
 
-        let response = match client.get(&request.url).send().await {
+        let response = match client
+            .get(&request.url)
+            .timeout(request.request_timeout)
+            .send()
+            .await
+        {
             Ok(response) => response,
             Err(err) => {
                 return StageOutcome::Failure(StageFailure {

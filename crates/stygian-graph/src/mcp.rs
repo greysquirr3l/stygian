@@ -1405,6 +1405,7 @@ where
     }
 }
 
+#[cfg(feature = "acquisition-runner")]
 async fn execute_browser_pipeline_node<F, Fut>(
     node: &NodeDecl,
     node_name: &str,
@@ -1426,6 +1427,20 @@ where
     };
 
     Some(run_acquisition(url.to_string(), cfg).await)
+}
+
+#[cfg(not(feature = "acquisition-runner"))]
+async fn execute_browser_pipeline_node<F, Fut>(
+    _node: &NodeDecl,
+    _node_name: &str,
+    _url: &str,
+    _run_acquisition: &F,
+) -> Option<Result<Value, String>>
+where
+    F: Fn(String, AcquisitionNodeConfig) -> Fut + Send + Sync,
+    Fut: Future<Output = Result<Value, String>> + Send,
+{
+    None
 }
 
 /// Convert a [`toml::Value`] to a [`serde_json::Value`] for adapter params.
