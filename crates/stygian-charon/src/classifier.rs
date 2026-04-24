@@ -41,7 +41,7 @@ const SIGNATURES: &[Signature] = &[
         weight: 4,
     },
     Signature {
-        needle: "server: cloudflare",
+        needle: "server:cloudflare",
         provider: AntiBotProvider::Cloudflare,
         weight: 3,
     },

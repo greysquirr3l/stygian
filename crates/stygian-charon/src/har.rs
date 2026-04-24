@@ -95,13 +95,13 @@ pub fn parse_har_transactions(har_json: &str) -> Result<ParsedHar, HarError> {
             .get("url")
             .and_then(Value::as_str)
             .map(str::to_owned)
-            .unwrap_or_default();
+            .ok_or(HarError::InvalidStructure("entry request missing url"))?;
 
         let status = response
             .get("status")
             .and_then(Value::as_u64)
             .and_then(|x| u16::try_from(x).ok())
-            .unwrap_or(0);
+            .ok_or(HarError::InvalidStructure("entry response missing status"))?;
 
         let headers = response
             .get("headers")

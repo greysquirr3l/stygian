@@ -20,13 +20,12 @@
     "AntiBotProvider": {
       "type": "string",
       "enum": [
-        "None",
+        "DataDome",
         "Cloudflare",
         "Akamai",
-        "DataDome",
         "PerimeterX",
         "Kasada",
-        "Fingerprint",
+        "FingerprintCom",
         "Unknown"
       ]
     },

@@ -472,6 +472,7 @@ Bind behavior to an active session by also passing `session_id`:
 Response includes:
 
 - `adapter_kind` (`RuntimePolicy`, `InvestigationBundle`, or `DirectOverrides`)
+- `adapter_kind` (`runtime_policy`, `investigation_bundle`, or `direct_overrides`)
 - `plan` (normalized behavior plan)
 - `effective_config` (resolved browser config view)
 - `session_updated` flag
