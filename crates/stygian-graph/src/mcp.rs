@@ -1125,6 +1125,7 @@ struct AcquisitionNodeConfig {
     total_timeout: Option<Duration>,
 }
 
+#[cfg(feature = "acquisition-runner")]
 fn parse_optional_positive_secs(value: &toml::Value) -> Result<Duration, String> {
     const MAX_ACQUISITION_TIMEOUT_SECS: u64 = 86_400;
     const MAX_ACQUISITION_TIMEOUT_SECS_F64: f64 = 86_400.0;
@@ -1153,6 +1154,7 @@ fn parse_optional_positive_secs(value: &toml::Value) -> Result<Duration, String>
     Err("acquisition.total_timeout_secs must be a number".to_string())
 }
 
+#[cfg(feature = "acquisition-runner")]
 fn acquisition_config_from_node(node: &NodeDecl) -> Result<Option<AcquisitionNodeConfig>, String> {
     let Some(raw) = node.params.get("acquisition") else {
         return Ok(None);
@@ -1613,6 +1615,7 @@ depends_on = ["fetch"]
         assert!(result.is_none());
     }
 
+    #[cfg(feature = "acquisition-runner")]
     #[tokio::test]
     async fn pipeline_browser_node_with_acquisition_uses_bridge_path() {
         let mut acquisition = toml::map::Map::new();
@@ -1679,6 +1682,37 @@ depends_on = ["fetch"]
         );
     }
 
+    #[cfg(not(feature = "acquisition-runner"))]
+    #[tokio::test]
+    async fn pipeline_browser_node_with_acquisition_is_skipped_without_feature() {
+        let mut acquisition = toml::map::Map::new();
+        acquisition.insert("mode".to_string(), toml::Value::String("fast".to_string()));
+
+        let mut params = HashMap::new();
+        params.insert("acquisition".to_string(), toml::Value::Table(acquisition));
+
+        let node = NodeDecl {
+            name: "render".to_string(),
+            service: "browser".to_string(),
+            depends_on: Vec::new(),
+            url: Some("https://example.com".to_string()),
+            params,
+        };
+
+        let result = execute_pipeline_node_with(
+            "browser",
+            "https://example.com",
+            "render",
+            &node,
+            30,
+            |_url, _cfg| async { Ok(json!({"data": "should-not-run"})) },
+        )
+        .await;
+
+        assert!(result.is_none());
+    }
+
+    #[cfg(feature = "acquisition-runner")]
     #[tokio::test]
     async fn pipeline_browser_node_invalid_acquisition_timeout_returns_error() {
         let mut acquisition = toml::map::Map::new();
