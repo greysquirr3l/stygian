@@ -50,6 +50,7 @@
 
 use std::collections::HashMap;
 use std::future::Future;
+#[cfg(feature = "acquisition-runner")]
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -1126,10 +1127,10 @@ struct AcquisitionNodeConfig {
 
 fn parse_optional_positive_secs(value: &toml::Value) -> Result<Duration, String> {
     const MAX_ACQUISITION_TIMEOUT_SECS: u64 = 86_400;
+    const MAX_ACQUISITION_TIMEOUT_SECS_F64: f64 = 86_400.0;
 
     if let Some(seconds) = value.as_float() {
-        if seconds.is_finite() && seconds > 0.0 && seconds <= MAX_ACQUISITION_TIMEOUT_SECS as f64
-        {
+        if seconds.is_finite() && seconds > 0.0 && seconds <= MAX_ACQUISITION_TIMEOUT_SECS_F64 {
             return Ok(Duration::from_secs_f64(seconds));
         }
         return Err(format!(
@@ -1140,11 +1141,9 @@ fn parse_optional_positive_secs(value: &toml::Value) -> Result<Duration, String>
     if let Some(seconds) = value.as_integer() {
         if seconds > 0 && seconds <= i64::try_from(MAX_ACQUISITION_TIMEOUT_SECS).unwrap_or(i64::MAX)
         {
-            return Ok(Duration::from_secs(
-                u64::try_from(seconds).map_err(|_| {
-                    "acquisition.total_timeout_secs must fit into an unsigned integer".to_string()
-                })?,
-            ));
+            return Ok(Duration::from_secs(u64::try_from(seconds).map_err(
+                |_| "acquisition.total_timeout_secs must fit into an unsigned integer".to_string(),
+            )?));
         }
         return Err(format!(
             "acquisition.total_timeout_secs must be an integer in 1..={MAX_ACQUISITION_TIMEOUT_SECS}"
