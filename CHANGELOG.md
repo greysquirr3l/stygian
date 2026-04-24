@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `stygian-browser`: opinionated acquisition runner core with deterministic escalation
+  ladders and terminal failure bundles for timeout/setup-failure paths
+- `stygian-charon`: deterministic runtime-policy mapping layer for acquisition strategy
+  selection
+- `stygian-browser (mcp)`: new high-level tool `browser_acquire_and_extract` with
+  explicit mode validation and compact diagnostics payloads
+- `stygian-graph`: optional acquisition bridge for browser nodes, gated behind the
+  `acquisition-runner` feature and node-level `acquisition` opt-in block
+- `docs`: new developer handoff document
+  `docs/acquisition-runner-refactor-guide.md` covering T59-T63 architecture,
+  contracts, compatibility boundaries, and migration guidance
+
+### Changed
+
+- `book/mcp`: `pipeline_run` documentation now reflects post-refactor browser behavior:
+  browser nodes execute only when acquisition opt-in is configured and the feature is
+  enabled; otherwise they remain non-breaking and are skipped
+- `book/mcp`: added production MCP security baseline guidance (PII redaction,
+  input/output guardrails, exfiltration controls, RBAC/logging/runbook)
+- `docs/progress`: consolidated browser/integrations/stealth-v3 progress visibility
+  into workspace-level `PROGRESS.md` and reconciled stale open task statuses where
+  implementation evidence exists
+- `workspace`: `.gitignore` updated as part of branch housekeeping
+
+### Fixed
+
+- `stygian-browser` and `stygian-graph`: strict clippy compliance fixes across
+  acquisition-runner and graph bridge implementation paths
+- `stygian-graph`: callback future Send/Sync bound issues resolved in MCP pipeline
+  execution paths for acquisition bridge integration
+
+### Documentation
+
+- `README`/guides: runner-first acquisition mode guidance and compatibility notes
+  updated across workspace docs, including graph and MCP references
+- `examples`: added runner-focused usage references for mode selection and graph
+  opt-in integration (`examples/acquisition-runner-modes.md`,
+  `examples/acquisition-runner-graph-opt-in.toml`)
+
 ## [0.9.6] - 2026-04-23
 
 ### Added
