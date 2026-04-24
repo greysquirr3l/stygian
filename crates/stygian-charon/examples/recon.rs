@@ -19,6 +19,23 @@ fn print_bundle(bundle: &InvestigationBundle) {
         bundle.requirements.recommendation.strategy
     );
     println!("risk_score={:.3}", bundle.policy.risk_score);
+    println!("provider_histogram={:?}", bundle.report.provider_histogram);
+
+    println!("top_markers_count={}", bundle.report.top_markers.len());
+    for marker in bundle.report.top_markers.iter().take(10) {
+        println!("top_marker.{}={}", marker.marker, marker.count);
+    }
+
+    println!(
+        "suspicious_requests_count={}",
+        bundle.report.suspicious_requests.len()
+    );
+    for request in bundle.report.suspicious_requests.iter().take(5) {
+        println!(
+            "suspicious_request.status={} provider={:?} url={}",
+            request.status, request.detection.provider, request.url
+        );
+    }
 
     for (key, value) in &bundle.requirements.recommendation.config_hints {
         println!("config_hint.{key}={value}");

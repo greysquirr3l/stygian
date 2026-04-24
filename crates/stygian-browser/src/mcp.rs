@@ -1657,10 +1657,7 @@ impl McpBrowserServer {
             Some("none") => InteractionLevel::None,
             Some("medium") => InteractionLevel::Medium,
             Some("high") => InteractionLevel::High,
-            Some(level) => match level {
-                "low" => InteractionLevel::Low,
-                _ => InteractionLevel::Low,
-            },
+            Some(_) => InteractionLevel::Low,
             None => default_level,
         };
         let viewport_width = args
