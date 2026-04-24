@@ -71,6 +71,7 @@ pub mod behavior_adapter;
 pub mod browser;
 pub mod cdp_protection;
 pub mod config;
+pub mod acquisition;
 pub mod error;
 pub mod page;
 pub mod pool;
@@ -154,6 +155,10 @@ pub mod recorder;
 pub use behavior_adapter::{
     AdapterKind, AppliedBehaviorPlan, BehaviorInteractionLevel, BrowserBehaviorAdapter,
     ExecutionMode, PolymorphicBehaviorAdapter, SessionMode, TelemetryLevel,
+};
+pub use acquisition::{
+    AcquisitionMode, AcquisitionRequest, AcquisitionResult, AcquisitionRunner, StageFailure,
+    StageFailureKind, StrategyUsed,
 };
 pub use browser::BrowserInstance;
 pub use config::{BrowserConfig, HeadlessMode, StealthLevel};

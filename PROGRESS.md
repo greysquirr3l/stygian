@@ -115,6 +115,20 @@
 
 ---
 
+## Phase 10 — Opinionated Acquisition Runner Refactor
+
+> Depends on: branch scaffolding complete (`feat/acquisition-runner-refactor` + phase branches)
+
+| Task | Status | Notes |
+|---|---|---|
+| T59 — Acquisition runner core in stygian-browser | `[x]` | Added `acquisition` runner facade, deterministic ladders, and stage failure bundles |
+| T60 — Map charon runtime policy to acquisition strategy | `[ ]` | Defined in `tasks/T60-charon-policy-mapping.md` |
+| T61 — Add browser_acquire_and_extract MCP tool | `[ ]` | Defined in `tasks/T61-mcp-acquire-extract-tool.md` |
+| T62 — Optional stygian-graph acquisition bridge | `[ ]` | Additive and opt-in only; defined in `tasks/T62-graph-optional-bridge.md` |
+| T63 — Runner-first docs and compatibility checks | `[ ]` | Defined in `tasks/T63-runner-docs-compat.md` |
+
+---
+
 ## Accumulated Learnings
 
 - T49: strict clippy settings (`-D warnings`, pedantic profile) require `writeln!` over `write!(...\n)`, const-friendly constructors, and panic/index-safe tests even under `#[ignore]`.
@@ -131,3 +145,4 @@
 - T53: `#[serde(untagged)]` on an enum is the cleanest way to handle multiple JSON envelope shapes. Use `Option<u16>` for port fields and `Option<String>` for address fields with `#[serde(default)]` to be tolerant of partial records. Builder methods on a fetcher (`.with_limit()`, `.with_protocol_filter()`, `.with_country_filter()`) should each carry `#[must_use]` and append query params lazily in a `request_url()` helper — keeps the `fetch()` impl clean.
 - T54: `extract_all_with_fallback` and `extract_resilient` live inside the `#[cfg(feature = "extract")] impl PageHandle` block in `page.rs`. For resilient skipping, match on `ExtractionError::Missing { .. }` and `continue`; propagate all other variants as hard `BrowserError::ExtractionFailed`. Unit tests for the new methods can be `#[cfg(feature = "extract")]` inside the existing `mod tests` block — no live browser needed for error-variant classification tests.
 - T52: `ProxyCapabilities` cannot derive `Eq` when it includes `Option<f32>` (use `PartialEq` only). Capability filtering should reuse the same candidate construction path as normal proxy selection (`storage.list_with_metrics()` + health/circuit maps) to avoid stale or non-existent manager fields. Strict clippy (`-D warnings`) requires explicit `ProxyCapabilities::default()` in proxy literals and panic-safe assertions (`first()` over indexing) in tests.
+- T59: `AcquisitionRunner::run` should return a terminal result object instead of `Result` so timeout/setup-failure paths can be represented as deterministic failure bundles. For sticky browser retries, `BrowserPool::acquire_for(host)` gives opt-in context pinning without changing pool internals.
