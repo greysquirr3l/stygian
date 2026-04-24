@@ -2733,6 +2733,8 @@ impl McpBrowserServer {
     }
 
     fn parse_acquisition_request(args: &Value) -> Result<AcquisitionRequest> {
+        const MAX_ACQUISITION_TIMEOUT_SECS: f64 = 86_400.0;
+
         let url = Self::require_str(args, "url")?;
         let mode_raw = Self::require_str(args, "mode")?;
         let mode = Self::parse_acquisition_mode(&mode_raw)?;
@@ -2749,10 +2751,16 @@ impl McpBrowserServer {
             .map(ToString::to_string);
 
         let total_timeout = match args.get("total_timeout_secs").and_then(Value::as_f64) {
-            Some(value) if value.is_finite() && value > 0.0 => Duration::from_secs_f64(value),
+            Some(value)
+                if value.is_finite() && value > 0.0 && value <= MAX_ACQUISITION_TIMEOUT_SECS =>
+            {
+                Duration::from_secs_f64(value)
+            }
             Some(_) => {
                 return Err(BrowserError::ConfigError(
-                    "total_timeout_secs must be a positive finite number".to_string(),
+                    format!(
+                        "total_timeout_secs must be a positive finite number <= {MAX_ACQUISITION_TIMEOUT_SECS}"
+                    ),
                 ));
             }
             None => AcquisitionRequest::default().total_timeout,

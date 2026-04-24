@@ -50,10 +50,13 @@
 
 use std::collections::HashMap;
 use std::future::Future;
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+#[cfg(feature = "acquisition-runner")]
+use tokio::sync::OnceCell;
 use tracing::{debug, info, warn};
 
 #[cfg(feature = "acquisition-runner")]
@@ -1122,20 +1125,30 @@ struct AcquisitionNodeConfig {
 }
 
 fn parse_optional_positive_secs(value: &toml::Value) -> Result<Duration, String> {
+    const MAX_ACQUISITION_TIMEOUT_SECS: u64 = 86_400;
+
     if let Some(seconds) = value.as_float() {
-        if seconds.is_finite() && seconds > 0.0 {
+        if seconds.is_finite() && seconds > 0.0 && seconds <= MAX_ACQUISITION_TIMEOUT_SECS as f64
+        {
             return Ok(Duration::from_secs_f64(seconds));
         }
-        return Err("acquisition.total_timeout_secs must be a positive finite number".to_string());
+        return Err(format!(
+            "acquisition.total_timeout_secs must be a positive finite number <= {MAX_ACQUISITION_TIMEOUT_SECS}"
+        ));
     }
 
     if let Some(seconds) = value.as_integer() {
-        if seconds > 0 {
+        if seconds > 0 && seconds <= i64::try_from(MAX_ACQUISITION_TIMEOUT_SECS).unwrap_or(i64::MAX)
+        {
             return Ok(Duration::from_secs(
-                u64::try_from(seconds).unwrap_or(u64::MAX),
+                u64::try_from(seconds).map_err(|_| {
+                    "acquisition.total_timeout_secs must fit into an unsigned integer".to_string()
+                })?,
             ));
         }
-        return Err("acquisition.total_timeout_secs must be greater than 0".to_string());
+        return Err(format!(
+            "acquisition.total_timeout_secs must be an integer in 1..={MAX_ACQUISITION_TIMEOUT_SECS}"
+        ));
     }
 
     Err("acquisition.total_timeout_secs must be a number".to_string())
@@ -1203,11 +1216,24 @@ fn parse_acquisition_mode(raw: &str) -> Result<AcquisitionMode, String> {
 }
 
 #[cfg(feature = "acquisition-runner")]
+static ACQUISITION_BRIDGE_POOL: OnceCell<Arc<BrowserPool>> = OnceCell::const_new();
+
+#[cfg(feature = "acquisition-runner")]
+async fn acquisition_bridge_pool() -> Result<Arc<BrowserPool>, String> {
+    let pool = ACQUISITION_BRIDGE_POOL
+        .get_or_try_init(|| async {
+            BrowserPool::new(BrowserConfig::default())
+                .await
+                .map_err(|e| format!("acquisition bridge browser pool init failed: {e}"))
+        })
+        .await?;
+    Ok(Arc::clone(pool))
+}
+
+#[cfg(feature = "acquisition-runner")]
 async fn run_acquisition_bridge(url: &str, cfg: &AcquisitionNodeConfig) -> Result<Value, String> {
     let mode = parse_acquisition_mode(&cfg.mode)?;
-    let pool = BrowserPool::new(BrowserConfig::default())
-        .await
-        .map_err(|e| format!("acquisition bridge browser pool init failed: {e}"))?;
+    let pool = acquisition_bridge_pool().await?;
 
     let runner = AcquisitionRunner::new(pool);
     let request = AcquisitionRequest {

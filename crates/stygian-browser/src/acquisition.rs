@@ -159,6 +159,7 @@ struct StageSuccess {
 
 #[derive(Debug, Clone)]
 enum StageOutcome {
+    Marker,
     Success(StageSuccess),
     Failure(StageFailure),
 }
@@ -253,13 +254,17 @@ impl AcquisitionRunner {
     /// ```
     pub async fn run(&self, request: AcquisitionRequest) -> AcquisitionResult {
         let timeout = request.total_timeout;
+        let timeout_strategy = Self::strategy_ladder(request.mode, request.investigate_start)
+            .into_iter()
+            .find(|strategy| *strategy != StrategyUsed::InvestigateEntry)
+            .unwrap_or(StrategyUsed::DirectHttp);
         let mut result = tokio::time::timeout(timeout, self.run_inner(&request))
             .await
             .unwrap_or_else(|_| {
                 let mut timed_out = AcquisitionResult::empty();
                 timed_out.timed_out = true;
                 timed_out.failures.push(StageFailure {
-                    strategy: StrategyUsed::InvestigateEntry,
+                    strategy: timeout_strategy,
                     kind: StageFailureKind::Timeout,
                     message: format!("acquisition timed out after {}ms", timeout.as_millis()),
                 });
@@ -270,7 +275,7 @@ impl AcquisitionRunner {
             // Guarantee deterministic terminal output for all unsuccessful runs.
             if result.failures.is_empty() {
                 result.failures.push(StageFailure {
-                    strategy: StrategyUsed::InvestigateEntry,
+                    strategy: timeout_strategy,
                     kind: StageFailureKind::Transport,
                     message: "acquisition ended without stage output".to_string(),
                 });
@@ -298,6 +303,7 @@ impl AcquisitionRunner {
 
             result.attempted.push(strategy);
             match self.execute_stage(strategy, request).await {
+                StageOutcome::Marker => {}
                 StageOutcome::Success(success) => {
                     result.success = true;
                     result.strategy_used = Some(strategy);
@@ -324,11 +330,7 @@ impl AcquisitionRunner {
             StrategyUsed::TlsProfiledHttp => self.run_http_stage(request, true).await,
             StrategyUsed::BrowserLightStealth => self.run_browser_stage(request, false).await,
             StrategyUsed::StickyProxyBrowserSession => self.run_browser_stage(request, true).await,
-            StrategyUsed::InvestigateEntry => StageOutcome::Failure(StageFailure {
-                strategy,
-                kind: StageFailureKind::Setup,
-                message: "investigate entry marker: awaiting policy-guided start".to_string(),
-            }),
+            StrategyUsed::InvestigateEntry => StageOutcome::Marker,
         }
     }
 
