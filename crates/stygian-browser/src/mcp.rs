@@ -2757,11 +2757,9 @@ impl McpBrowserServer {
                 Duration::from_secs_f64(value)
             }
             Some(_) => {
-                return Err(BrowserError::ConfigError(
-                    format!(
-                        "total_timeout_secs must be a positive finite number <= {MAX_ACQUISITION_TIMEOUT_SECS}"
-                    ),
-                ));
+                return Err(BrowserError::ConfigError(format!(
+                    "total_timeout_secs must be a positive finite number <= {MAX_ACQUISITION_TIMEOUT_SECS}"
+                )));
             }
             None => AcquisitionRequest::default().total_timeout,
         };
