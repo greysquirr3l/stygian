@@ -85,14 +85,20 @@ pub fn build_runtime_policy(
 /// Returns [`har::HarError`] when the HAR payload is invalid or malformed.
 pub fn analyze_and_plan(har_json: &str) -> Result<InvestigationBundle, har::HarError> {
     let report = investigate_har(har_json)?;
+    Ok(plan_from_report(report))
+}
+
+/// Infer requirements and build a runtime policy from an existing investigation report.
+#[must_use]
+pub fn plan_from_report(report: InvestigationReport) -> InvestigationBundle {
     let requirements = infer_requirements(&report);
     let policy = build_runtime_policy(&report, &requirements);
 
-    Ok(InvestigationBundle {
+    InvestigationBundle {
         report,
         requirements,
         policy,
-    })
+    }
 }
 
 fn apply_strategy_defaults(policy: &mut RuntimePolicy, recommendation: &IntegrationRecommendation) {
@@ -204,5 +210,43 @@ mod tests {
         assert_eq!(policy.session_mode, SessionMode::Sticky);
         assert!(policy.sticky_session_ttl_secs.is_some());
         assert!(policy.risk_score > 0.0);
+    }
+
+    #[test]
+    fn plan_from_report_preserves_report_and_builds_bundle() {
+        let report = InvestigationReport {
+            page_title: Some("https://example.com".to_string()),
+            total_requests: 10,
+            blocked_requests: 4,
+            status_histogram: BTreeMap::from([(200, 6), (403, 4)]),
+            resource_type_histogram: BTreeMap::from([("document".to_string(), 10)]),
+            provider_histogram: BTreeMap::from([(AntiBotProvider::Cloudflare, 4)]),
+            marker_histogram: BTreeMap::from([
+                ("cf-ray".to_string(), 4),
+                ("__cf_bm".to_string(), 4),
+            ]),
+            top_markers: vec![
+                MarkerCount {
+                    marker: "cf-ray".to_string(),
+                    count: 4,
+                },
+                MarkerCount {
+                    marker: "__cf_bm".to_string(),
+                    count: 4,
+                },
+            ],
+            hosts: Vec::new(),
+            suspicious_requests: Vec::new(),
+            aggregate: Detection {
+                provider: AntiBotProvider::Cloudflare,
+                confidence: 0.8,
+                markers: vec!["cf-ray".to_string(), "__cf_bm".to_string()],
+            },
+        };
+
+        let bundle = plan_from_report(report.clone());
+        assert_eq!(bundle.report, report);
+        assert_eq!(bundle.requirements.provider, AntiBotProvider::Cloudflare);
+        assert_eq!(bundle.policy.execution_mode, ExecutionMode::Browser);
     }
 }

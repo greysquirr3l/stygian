@@ -20,7 +20,7 @@ pub mod types;
 
 pub use classifier::{classify_har, classify_transaction};
 pub use investigation::{compare_reports, infer_requirements, investigate_har};
-pub use policy::{analyze_and_plan, build_runtime_policy};
+pub use policy::{analyze_and_plan, build_runtime_policy, plan_from_report};
 pub use types::{
     AdapterStrategy, AntiBotProvider, AntiBotRequirement, Detection, ExecutionMode,
     HarClassificationReport, HarRequestSummary, HostSummary, IntegrationRecommendation,
