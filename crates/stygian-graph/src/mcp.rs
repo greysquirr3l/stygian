@@ -1286,8 +1286,8 @@ async fn execute_pipeline_node_with<F, Fut>(
     run_acquisition: F,
 ) -> Option<Result<Value, String>>
 where
-    F: Fn(String, AcquisitionNodeConfig) -> Fut,
-    Fut: Future<Output = Result<Value, String>>,
+    F: Fn(String, AcquisitionNodeConfig) -> Fut + Send + Sync,
+    Fut: Future<Output = Result<Value, String>> + Send,
 {
     match kind {
         "http" => {
@@ -1387,8 +1387,8 @@ async fn execute_browser_pipeline_node<F, Fut>(
     run_acquisition: &F,
 ) -> Option<Result<Value, String>>
 where
-    F: Fn(String, AcquisitionNodeConfig) -> Fut,
-    Fut: Future<Output = Result<Value, String>>,
+    F: Fn(String, AcquisitionNodeConfig) -> Fut + Send + Sync,
+    Fut: Future<Output = Result<Value, String>> + Send,
 {
     let cfg = match acquisition_config_from_node(node) {
         Ok(Some(cfg)) => cfg,
