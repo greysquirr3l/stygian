@@ -1217,7 +1217,7 @@ async fn run_acquisition_bridge(url: &str, cfg: &AcquisitionNodeConfig) -> Resul
         extraction_js: cfg.extraction_js.clone(),
         total_timeout: cfg
             .total_timeout
-            .unwrap_or(AcquisitionRequest::default().total_timeout),
+            .unwrap_or_else(|| AcquisitionRequest::default().total_timeout),
         ..AcquisitionRequest::default()
     };
 
@@ -1368,19 +1368,7 @@ where
                     .map_err(|e| e.to_string()),
             )
         }
-        "browser" => {
-            let cfg = match acquisition_config_from_node(node) {
-                Ok(Some(cfg)) => cfg,
-                Ok(None) => return None,
-                Err(err) => {
-                    return Some(Err(format!(
-                        "Invalid acquisition config for node '{node_name}': {err}"
-                    )));
-                }
-            };
-
-            Some(run_acquisition(url.to_string(), cfg).await)
-        }
+        "browser" => execute_browser_pipeline_node(node, node_name, url, &run_acquisition).await,
         other => {
             warn!(
                 kind = other,
@@ -1390,6 +1378,29 @@ where
             None
         }
     }
+}
+
+async fn execute_browser_pipeline_node<F, Fut>(
+    node: &NodeDecl,
+    node_name: &str,
+    url: &str,
+    run_acquisition: &F,
+) -> Option<Result<Value, String>>
+where
+    F: Fn(String, AcquisitionNodeConfig) -> Fut,
+    Fut: Future<Output = Result<Value, String>>,
+{
+    let cfg = match acquisition_config_from_node(node) {
+        Ok(Some(cfg)) => cfg,
+        Ok(None) => return None,
+        Err(err) => {
+            return Some(Err(format!(
+                "Invalid acquisition config for node '{node_name}': {err}"
+            )));
+        }
+    };
+
+    Some(run_acquisition(url.to_string(), cfg).await)
 }
 
 /// Convert a [`toml::Value`] to a [`serde_json::Value`] for adapter params.
@@ -1601,29 +1612,30 @@ depends_on = ["fetch"]
         )
         .await;
 
-        let output = result.expect("browser acquisition should be attempted");
-        let payload = output.expect("mock bridge should succeed");
+        let payload = match result {
+            Some(Ok(payload)) => payload,
+            other => {
+                assert!(
+                    matches!(other, Some(Ok(_))),
+                    "browser acquisition should return Some(Ok(_))"
+                );
+                return;
+            }
+        };
 
         assert_eq!(
-            payload
-                .pointer("/data/url")
-                .and_then(Value::as_str)
-                .unwrap_or_default(),
-            "https://example.com"
+            payload.pointer("/data/url").and_then(Value::as_str),
+            Some("https://example.com")
         );
         assert_eq!(
-            payload
-                .pointer("/data/mode")
-                .and_then(Value::as_str)
-                .unwrap_or_default(),
-            "fast"
+            payload.pointer("/data/mode").and_then(Value::as_str),
+            Some("fast")
         );
         assert_eq!(
             payload
                 .pointer("/data/wait_for_selector")
-                .and_then(Value::as_str)
-                .unwrap_or_default(),
-            "main"
+                .and_then(Value::as_str),
+            Some("main")
         );
     }
 
@@ -1654,9 +1666,16 @@ depends_on = ["fetch"]
         )
         .await;
 
-        let err = result
-            .expect("invalid config should return Some(Err)")
-            .expect_err("invalid timeout must fail validation");
+        let err = match result {
+            Some(Err(err)) => err,
+            other => {
+                assert!(
+                    matches!(other, Some(Err(_))),
+                    "invalid config should return Some(Err(_))"
+                );
+                return;
+            }
+        };
 
         assert!(
             err.contains("total_timeout_secs") || err.contains("Invalid acquisition config"),

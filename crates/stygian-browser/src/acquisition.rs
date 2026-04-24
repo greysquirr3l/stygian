@@ -10,9 +10,9 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::BrowserPool;
 use crate::error::BrowserError;
 use crate::page::WaitUntil;
-use crate::BrowserPool;
 
 /// Opinionated acquisition mode for the escalation ladder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -184,7 +184,7 @@ impl AcquisitionRunner {
     /// # }
     /// ```
     #[must_use]
-    pub fn new(pool: Arc<BrowserPool>) -> Self {
+    pub const fn new(pool: Arc<BrowserPool>) -> Self {
         Self { pool }
     }
 
@@ -253,9 +253,9 @@ impl AcquisitionRunner {
     /// ```
     pub async fn run(&self, request: AcquisitionRequest) -> AcquisitionResult {
         let timeout = request.total_timeout;
-        let mut result = match tokio::time::timeout(timeout, self.run_inner(&request)).await {
-            Ok(inner) => inner,
-            Err(_) => {
+        let mut result = tokio::time::timeout(timeout, self.run_inner(&request))
+            .await
+            .unwrap_or_else(|_| {
                 let mut timed_out = AcquisitionResult::empty();
                 timed_out.timed_out = true;
                 timed_out.failures.push(StageFailure {
@@ -264,12 +264,9 @@ impl AcquisitionRunner {
                     message: format!("acquisition timed out after {}ms", timeout.as_millis()),
                 });
                 timed_out
-            }
-        };
+            });
 
-        if result.success {
-            result
-        } else {
+        if !result.success {
             // Guarantee deterministic terminal output for all unsuccessful runs.
             if result.failures.is_empty() {
                 result.failures.push(StageFailure {
@@ -278,8 +275,9 @@ impl AcquisitionRunner {
                     message: "acquisition ended without stage output".to_string(),
                 });
             }
-            result
         }
+
+        result
     }
 
     async fn run_inner(&self, request: &AcquisitionRequest) -> AcquisitionResult {
@@ -316,7 +314,11 @@ impl AcquisitionRunner {
         result
     }
 
-    async fn execute_stage(&self, strategy: StrategyUsed, request: &AcquisitionRequest) -> StageOutcome {
+    async fn execute_stage(
+        &self,
+        strategy: StrategyUsed,
+        request: &AcquisitionRequest,
+    ) -> StageOutcome {
         match strategy {
             StrategyUsed::DirectHttp => self.run_http_stage(request, false).await,
             StrategyUsed::TlsProfiledHttp => self.run_http_stage(request, true).await,
@@ -356,7 +358,9 @@ impl AcquisitionRunner {
         };
 
         let page_result = async {
-            let browser = handle.browser().ok_or_else(|| BrowserError::ConfigError("browser handle already released".to_string()))?;
+            let browser = handle.browser().ok_or_else(|| {
+                BrowserError::ConfigError("browser handle already released".to_string())
+            })?;
             let mut page = browser.new_page().await?;
             page.navigate(
                 &request.url,
@@ -371,9 +375,11 @@ impl AcquisitionRunner {
             }
 
             let extracted = match request.extraction_js.as_deref() {
-                Some(script) => Some(page.eval::<Value>(script).await.map_err(|err| BrowserError::ScriptExecutionFailed {
-                    script: script.to_string(),
-                    reason: err.to_string(),
+                Some(script) => Some(page.eval::<Value>(script).await.map_err(|err| {
+                    BrowserError::ScriptExecutionFailed {
+                        script: script.to_string(),
+                        reason: err.to_string(),
+                    }
                 })?),
                 None => None,
             };
@@ -402,7 +408,10 @@ impl AcquisitionRunner {
                     StageOutcome::Failure(StageFailure {
                         strategy,
                         kind: StageFailureKind::Blocked,
-                        message: format!("blocked status during browser stage: {:?}", success.status_code),
+                        message: format!(
+                            "blocked status during browser stage: {:?}",
+                            success.status_code
+                        ),
                     })
                 } else {
                     StageOutcome::Success(success)
@@ -416,7 +425,11 @@ impl AcquisitionRunner {
         }
     }
 
-    async fn run_http_stage(&self, request: &AcquisitionRequest, tls_profiled: bool) -> StageOutcome {
+    async fn run_http_stage(
+        &self,
+        request: &AcquisitionRequest,
+        tls_profiled: bool,
+    ) -> StageOutcome {
         if request.wait_for_selector.is_some() || request.extraction_js.is_some() {
             return StageOutcome::Failure(StageFailure {
                 strategy: if tls_profiled {
@@ -433,8 +446,12 @@ impl AcquisitionRunner {
     }
 
     #[cfg(feature = "tls-config")]
-    async fn run_http_stage_impl(&self, request: &AcquisitionRequest, tls_profiled: bool) -> StageOutcome {
-        use crate::tls::{build_profiled_client_preset, CHROME_131};
+    async fn run_http_stage_impl(
+        &self,
+        request: &AcquisitionRequest,
+        tls_profiled: bool,
+    ) -> StageOutcome {
+        use crate::tls::{CHROME_131, build_profiled_client_preset};
 
         let strategy = if tls_profiled {
             StrategyUsed::TlsProfiledHttp
@@ -515,7 +532,11 @@ impl AcquisitionRunner {
     }
 
     #[cfg(not(feature = "tls-config"))]
-    async fn run_http_stage_impl(&self, _request: &AcquisitionRequest, tls_profiled: bool) -> StageOutcome {
+    async fn run_http_stage_impl(
+        &self,
+        _request: &AcquisitionRequest,
+        tls_profiled: bool,
+    ) -> StageOutcome {
         let strategy = if tls_profiled {
             StrategyUsed::TlsProfiledHttp
         } else {
@@ -548,20 +569,22 @@ fn classify_browser_error(error: &BrowserError) -> StageFailureKind {
             StageFailureKind::Blocked
         }
         BrowserError::ScriptExecutionFailed { .. } => StageFailureKind::Extraction,
-        BrowserError::ConfigError(_) | BrowserError::PoolExhausted { .. } => StageFailureKind::Setup,
+        BrowserError::ConfigError(_) | BrowserError::PoolExhausted { .. } => {
+            StageFailureKind::Setup
+        }
         BrowserError::ProxyUnavailable { .. }
         | BrowserError::ConnectionError { .. }
         | BrowserError::CdpError { .. }
         | BrowserError::LaunchFailed { .. }
         | BrowserError::NavigationFailed { .. }
-        | BrowserError::Io(_) 
+        | BrowserError::Io(_)
         | BrowserError::StaleNode { .. } => StageFailureKind::Transport,
         #[cfg(feature = "extract")]
         BrowserError::ExtractionFailed(_) => StageFailureKind::Extraction,
     }
 }
 
-fn is_block_status(status: Option<u16>) -> bool {
+const fn is_block_status(status: Option<u16>) -> bool {
     matches!(status, Some(401 | 403 | 407 | 429 | 503))
 }
 

@@ -143,8 +143,14 @@ pub fn map_policy_hints(hints: &RuntimePolicyHints) -> AcquisitionPolicy {
     }
 }
 
-fn clamp_unit(value: f64) -> f64 {
-    value.clamp(0.0, 1.0)
+const fn clamp_unit(value: f64) -> f64 {
+    if value < 0.0 {
+        0.0
+    } else if value > 1.0 {
+        1.0
+    } else {
+        value
+    }
 }
 
 #[cfg(test)]
@@ -198,7 +204,7 @@ mod tests {
         assert!(!mapped.enable_warmup);
         assert!(!mapped.sticky_session);
         assert_eq!(mapped.telemetry_level, TelemetryLevel::Standard);
-        assert_eq!(mapped.risk_score, 0.5);
+        assert!((mapped.risk_score - 0.5).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -214,7 +220,7 @@ mod tests {
             enforce_webrtc_proxy_only: true,
             sticky_session_ttl_secs: Some(300),
             required_stygian_features: vec![],
-            config_hints: Default::default(),
+            config_hints: std::collections::BTreeMap::default(),
             risk_score: 0.81,
         };
 
