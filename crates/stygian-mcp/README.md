@@ -61,6 +61,11 @@ All tools from the three underlying crates are available under their respective 
 
 \* `browser_attach` requires the `mcp-attach` feature.
 
+Runner-first tool:
+
+- `browser_acquire_and_extract` is the recommended high-level browser path for acquisition + extraction in one call.
+- Supported `mode` values are `fast`, `resilient`, `hostile`, and `investigate`.
+
 The aggregator also adds two cross-crate tools:
 
 | Tool | Description |
@@ -187,6 +192,84 @@ With `extract` feature enabled, use `browser_extract`:
   }
 }
 ```
+
+### Runner-First Acquisition by Mode
+
+Use `browser_acquire_and_extract` when you want deterministic strategy escalation with minimal orchestration code.
+
+`fast` mode:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "browser_acquire_and_extract",
+    "arguments": {
+      "url": "https://example.com",
+      "mode": "fast"
+    }
+  }
+}
+```
+
+`resilient` mode:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "browser_acquire_and_extract",
+    "arguments": {
+      "url": "https://example.com/catalog",
+      "mode": "resilient",
+      "wait_for_selector": "article.item"
+    }
+  }
+}
+```
+
+`hostile` mode:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "browser_acquire_and_extract",
+    "arguments": {
+      "url": "https://example.com/challenged",
+      "mode": "hostile",
+      "wait_for_selector": "main",
+      "total_timeout_secs": 60
+    }
+  }
+}
+```
+
+`investigate` mode:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "browser_acquire_and_extract",
+    "arguments": {
+      "url": "https://example.com",
+      "mode": "investigate",
+      "extraction_js": "({ title: document.title, href: location.href })"
+    }
+  }
+}
+```
+
+Migration note (old low-level path vs new runner path):
+
+- Old low-level MCP path: `browser_acquire` -> `browser_navigate` -> `browser_eval` or `browser_extract` -> `browser_release`.
+- New runner path: `browser_acquire_and_extract` with one call and explicit `mode`.
+- The low-level path remains supported for custom multi-step interactions.
 
 ## License
 

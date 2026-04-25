@@ -64,7 +64,7 @@ MCP tool matrix (aggregator surface):
 | Namespace | Representative tools | Purpose |
 | --------- | -------------------- | ------- |
 | `graph_*` | `graph_scrape`, `graph_scrape_rest`, `graph_scrape_graphql`, `graph_pipeline_validate`, `graph_pipeline_run` | HTTP/API/feed scraping and DAG execution |
-| `browser_*` | `browser_acquire`, `browser_navigate`, `browser_query`, `browser_extract`, `browser_extract_with_fallback`, `browser_extract_resilient`, `browser_release` | Headless browser automation and structured extraction |
+| `browser_*` | `browser_acquire`, `browser_acquire_and_extract`, `browser_navigate`, `browser_query`, `browser_extract`, `browser_extract_with_fallback`, `browser_extract_resilient`, `browser_release` | Headless browser automation and structured extraction |
 | `proxy_*` | `proxy_add`, `proxy_remove`, `proxy_pool_stats`, `proxy_acquire`, `proxy_acquire_for_domain`, `proxy_acquire_with_capabilities`, `proxy_fetch_freelist`, `proxy_fetch_freeapiproxies`, `proxy_release` | Proxy pool management, capability-aware leasing, and feed bootstrap |
 | cross-crate | `scrape_proxied`, `browser_proxied` | End-to-end orchestration across graph/browser/proxy |
 
@@ -202,6 +202,44 @@ stygian-graph = { version = "*", features = ["full"] }
 stygian-browser = { version = "*", features = ["stealth", "tls-config"] }
 stygian-proxy = { version = "*", features = ["browser", "socks"] }
 ```
+
+### Runner-First Acquisition (Recommended)
+
+For hostile or variable targets, prefer a single `browser_acquire_and_extract` call over manually chaining low-level browser tools.
+
+Mode guide:
+
+| Mode | When to use |
+| ---- | ----------- |
+| `fast` | Low-friction pages where speed matters most |
+| `resilient` | Default for general production scraping with moderate anti-bot pressure |
+| `hostile` | High-friction targets needing heavier escalation and retries |
+| `investigate` | Diagnostics-first runs to understand which strategy tier succeeds |
+
+End-to-end example:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "browser_acquire_and_extract",
+    "arguments": {
+      "url": "https://example.com/products",
+      "mode": "resilient",
+      "wait_for_selector": "article.product",
+      "extraction_js": "Array.from(document.querySelectorAll('article.product h2')).map(n => n.textContent?.trim()).filter(Boolean)",
+      "total_timeout_secs": 45
+    }
+  }
+}
+```
+
+Migration note (old path vs runner path):
+
+- Old low-level path: `browser_acquire` -> `browser_navigate` -> `browser_eval`/`browser_extract` -> `browser_release`.
+- New runner path: one `browser_acquire_and_extract` call with `mode` and optional `wait_for_selector`/`extraction_js`.
+- Keep low-level tools when you need custom multi-step interaction. Use runner-first for deterministic escalation with fewer moving parts.
 
 ---
 

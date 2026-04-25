@@ -1,0 +1,25 @@
+# acquisition-runner-graph-opt-in.toml
+#
+# Demonstrates optional stygian-graph bridge usage for browser nodes.
+#
+# Important:
+# - Build stygian-graph with feature `acquisition-runner`.
+# - The bridge runs only when [nodes.params.acquisition] is present.
+# - Without this block, browser nodes keep legacy skip behavior in graph_pipeline_run.
+
+[[services]]
+name = "browser"
+kind = "browser"
+
+[[nodes]]
+name = "acquire-example"
+service = "browser"
+url = "https://example.com"
+
+[nodes.params.acquisition]
+mode = "resilient"
+wait_for_selector = "body"
+total_timeout_secs = 45
+
+# Optional extraction expression evaluated in browser stages.
+# extraction_js = "({ title: document.title, href: location.href })"

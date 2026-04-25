@@ -175,7 +175,7 @@ pub struct AntiBotRequirement {
 }
 
 /// High-level integration strategy for Stygian execution.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AdapterStrategy {
     /// Standard HTTP adapter path appears sufficient.
     DirectHttp,

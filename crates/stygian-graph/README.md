@@ -56,6 +56,7 @@ stygian-graph = { version = "*", features = ["browser", "redis", "extract"] }
 | `wasm-plugins` | wasmtime | WASM plugin system |
 | `escalation` | — | Tiered escalation policy adapter |
 | `mcp` | — | MCP (Model Context Protocol) tools |
+| `acquisition-runner` | `browser` | Optional bridge that lets browser pipeline nodes opt into `stygian-browser` acquisition runner |
 | `full` | *all of above* | All features enabled |
 
 ---
@@ -358,6 +359,62 @@ Adapters requiring live external services (HTTP, browser) are tested with mock p
 Benchmarks (Apple M4 Pro):
 
 - DAG executor: ~50µs overhead per wave
+
+---
+
+## Optional Acquisition Runner Bridge (Opt-In)
+
+The `stygian-graph` bridge to the browser acquisition runner is optional and disabled unless you explicitly opt in.
+
+Opt-in requirements:
+
+- Build with feature `acquisition-runner`.
+- Add a node-level `acquisition` table on `browser` nodes.
+
+Without that node-level `acquisition` table, browser nodes keep legacy behavior in `graph_pipeline_run` and are reported as skipped.
+
+Example (`pipeline_run` TOML):
+
+```toml
+[[services]]
+name = "browser"
+kind = "browser"
+
+[[nodes]]
+name = "target"
+service = "browser"
+url = "https://example.com"
+
+[nodes.params.acquisition]
+mode = "resilient"
+wait_for_selector = "main"
+total_timeout_secs = 45
+```
+
+Supported `acquisition.mode` values are `fast`, `resilient`, `hostile`, and `investigate`.
+
+Migration note (old low-level path vs runner path):
+
+- Old path: browser node behavior relied on existing low-level execution/skip flow only.
+- New path: add `[nodes.params.acquisition]` to opt into runner execution for that node.
+- No migration is required for existing pipelines unless you want runner behavior.
+
+### Downstream Compatibility Checklist
+
+- Confirm pipelines without `[nodes.params.acquisition]` still produce expected skipped browser nodes.
+- Confirm pipelines with `[nodes.params.acquisition]` return acquisition metadata (`acquisition_runner`, diagnostics) as expected.
+- Validate both feature sets in CI to prevent accidental behavior changes.
+
+Suggested CI matrix guidance:
+
+```bash
+# Legacy behavior surface
+cargo test -p stygian-graph --no-default-features --features mcp
+
+# Opt-in bridge surface
+cargo test -p stygian-graph --no-default-features --features "mcp,browser,acquisition-runner"
+```
+
 - HTTP adapter: ~2ms per request (cached DNS)
 - Browser adapter: <100ms acquisition (warm pool)
 

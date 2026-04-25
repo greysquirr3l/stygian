@@ -1,6 +1,6 @@
 # Browser MCP Tools
 
-`stygian-browser` exposes thirteen tools for headless browser automation plus a pool stats tool.
+`stygian-browser` exposes browser automation tools including a runner-first acquisition path plus pool stats.
 
 ---
 
@@ -31,6 +31,15 @@ browser_acquire → browser_navigate → browser_eval / browser_screenshot / bro
 
 Always call `browser_release` when done; unreleased sessions hold a browser process open
 against the pool's `max` limit.
+
+Runner-first alternative:
+
+```
+browser_acquire_and_extract
+```
+
+Use this tool when you want acquisition strategy escalation and extraction in one call.
+The `mode` field accepts `fast`, `resilient`, `hostile`, and `investigate`.
 
 ---
 
@@ -517,6 +526,101 @@ Return current browser pool statistics. No parameters required.
   "available": 6
 }
 ```
+
+---
+
+### `browser_acquire_and_extract`
+
+Run the opinionated acquisition ladder and return extraction/content output from one call.
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `url` | string | ✓ | Target URL |
+| `mode` | string | ✓ | `fast` \| `resilient` \| `hostile` \| `investigate` |
+| `wait_for_selector` | string | | Optional selector gate for browser-stage success |
+| `selector_wait` | string | | Alias for `wait_for_selector` |
+| `extraction_js` | string | | Optional JavaScript extraction expression |
+| `total_timeout_secs` | number | | Optional wall-clock timeout for full run (must be > 0) |
+
+**Returns:**
+
+```json
+{
+  "success": true,
+  "strategy_used": "browser_light_stealth",
+  "final_url": "https://example.com",
+  "status_code": 200,
+  "extracted": {
+    "title": "Example Domain"
+  },
+  "html_excerpt": "<!doctype html><html>...",
+  "diagnostics": {
+    "attempted": ["direct_http", "browser_light_stealth"],
+    "timed_out": false,
+    "failure_count": 0,
+    "failures": []
+  }
+}
+```
+
+Mode examples:
+
+`fast`
+
+```json
+{
+  "name": "browser_acquire_and_extract",
+  "arguments": {
+    "url": "https://example.com",
+    "mode": "fast"
+  }
+}
+```
+
+`resilient`
+
+```json
+{
+  "name": "browser_acquire_and_extract",
+  "arguments": {
+    "url": "https://example.com/catalog",
+    "mode": "resilient",
+    "wait_for_selector": "article.item"
+  }
+}
+```
+
+`hostile`
+
+```json
+{
+  "name": "browser_acquire_and_extract",
+  "arguments": {
+    "url": "https://example.com/challenge",
+    "mode": "hostile",
+    "wait_for_selector": "main",
+    "total_timeout_secs": 60
+  }
+}
+```
+
+`investigate`
+
+```json
+{
+  "name": "browser_acquire_and_extract",
+  "arguments": {
+    "url": "https://example.com",
+    "mode": "investigate",
+    "extraction_js": "({ title: document.title, url: location.href })"
+  }
+}
+```
+
+Migration note:
+
+- Old low-level path: `browser_acquire` -> `browser_navigate` -> `browser_eval`/`browser_extract` -> `browser_release`.
+- New runner path: one `browser_acquire_and_extract` call with explicit `mode`.
 
 ---
 

@@ -67,6 +67,7 @@
 //! | [`webrtc`] | [`WebRtcConfig`], [`WebRtcPolicy`], [`ProxyLocation`] |
 //! | [`cdp_protection`] | CDP leak protection modes |
 
+pub mod acquisition;
 pub mod behavior_adapter;
 pub mod browser;
 pub mod cdp_protection;
@@ -151,6 +152,10 @@ pub mod session;
 
 pub mod recorder;
 
+pub use acquisition::{
+    AcquisitionMode, AcquisitionRequest, AcquisitionResult, AcquisitionRunner, StageFailure,
+    StageFailureKind, StrategyUsed,
+};
 pub use behavior_adapter::{
     AdapterKind, AppliedBehaviorPlan, BehaviorInteractionLevel, BrowserBehaviorAdapter,
     ExecutionMode, PolymorphicBehaviorAdapter, SessionMode, TelemetryLevel,
