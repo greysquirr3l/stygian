@@ -19,9 +19,9 @@ tracing     = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 anyhow      = { workspace = true }
 
-stygian-graph   = { path = "../stygian-graph",   version = "0.9.6", default-features = false, features = ["mcp", "browser"] }
-stygian-browser = { path = "../stygian-browser",  version = "0.9.6", default-features = false, features = ["mcp", "stealth"] }
-stygian-proxy   = { path = "../stygian-proxy",    version = "0.9.6", features = ["mcp", "browser", "tls-profiled"] }
+stygian-graph   = { path = "../stygian-graph",   version = "0.10.0", default-features = false, features = ["mcp", "browser"] }
+stygian-browser = { path = "../stygian-browser",  version = "0.10.0", default-features = false, features = ["mcp", "stealth"] }
+stygian-proxy   = { path = "../stygian-proxy",    version = "0.10.0", features = ["mcp", "browser", "tls-profiled"] }
 
 [features]
 # Structured data extraction via derive macros
