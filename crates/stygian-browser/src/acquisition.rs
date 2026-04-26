@@ -379,6 +379,7 @@ impl AcquisitionRunner {
     }
 
     #[cfg(feature = "browserbase")]
+    #[allow(clippy::too_many_lines)]
     async fn run_browserbase_stage(request: &AcquisitionRequest) -> StageOutcome {
         if !request.browserbase_enabled {
             return StageOutcome::Failure(StageFailure {
