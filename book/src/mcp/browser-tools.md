@@ -541,6 +541,11 @@ Run the opinionated acquisition ladder and return extraction/content output from
 | `selector_wait` | string | | Alias for `wait_for_selector` |
 | `extraction_js` | string | | Optional JavaScript extraction expression |
 | `total_timeout_secs` | number | | Optional wall-clock timeout for full run (must be > 0) |
+| `browserbase_enabled` | boolean | | Optional Browserbase stage opt-in (requires `stygian-browser` feature `browserbase`) |
+| `use_browserbase` | boolean | | Alias for `browserbase_enabled` |
+
+`browserbase_enabled`/`use_browserbase` require runtime environment variables
+`BROWSERBASE_API_KEY` and `BROWSERBASE_PROJECT_ID`.
 
 **Returns:**
 
@@ -599,7 +604,8 @@ Mode examples:
     "url": "https://example.com/challenge",
     "mode": "hostile",
     "wait_for_selector": "main",
-    "total_timeout_secs": 60
+    "total_timeout_secs": 60,
+    "browserbase_enabled": true
   }
 }
 ```
@@ -620,7 +626,7 @@ Mode examples:
 Migration note:
 
 - Old low-level path: `browser_acquire` -> `browser_navigate` -> `browser_eval`/`browser_extract` -> `browser_release`.
-- New runner path: one `browser_acquire_and_extract` call with explicit `mode`.
+- New runner path: one `browser_acquire_and_extract` call with explicit `mode` and optional `browserbase_enabled`.
 
 ---
 

@@ -17,8 +17,22 @@
 
 use stygian_graph::application::api_server::ApiServer;
 
+fn maybe_print_version_and_exit() -> bool {
+    match std::env::args().nth(1).as_deref() {
+        Some("--version" | "-V") => {
+            println!("stygian-api {}", env!("CARGO_PKG_VERSION"));
+            true
+        }
+        _ => false,
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if maybe_print_version_and_exit() {
+        return Ok(());
+    }
+
     // Initialise tracing
     let log_filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
     tracing_subscriber::fmt()

@@ -2750,6 +2750,12 @@ impl McpBrowserServer {
             .and_then(Value::as_str)
             .map(ToString::to_string);
 
+        let browserbase_enabled = args
+            .get("browserbase_enabled")
+            .or_else(|| args.get("use_browserbase"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
         let total_timeout = match args.get("total_timeout_secs").and_then(Value::as_f64) {
             Some(value)
                 if value.is_finite() && value > 0.0 && value <= MAX_ACQUISITION_TIMEOUT_SECS =>
@@ -2770,6 +2776,7 @@ impl McpBrowserServer {
             wait_for_selector,
             extraction_js,
             total_timeout,
+            browserbase_enabled,
             ..AcquisitionRequest::default()
         })
     }

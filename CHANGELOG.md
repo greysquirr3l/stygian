@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `stygian-browser`: optional feature-gated Browserbase acquisition stage scaffold
+  (`browserbase`) with request-level opt-in flags (`browserbase_enabled` /
+  `use_browserbase`) and credential-gated setup checks
+
+### Documentation
+
+- `README`/guides: runner-first acquisition docs updated to include Browserbase
+  opt-in behavior, request arguments, and required runtime environment variables
+  (`BROWSERBASE_API_KEY`, `BROWSERBASE_PROJECT_ID`)
+
 ## [0.10.0] - 2026-04-25
 
 ### Added

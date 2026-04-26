@@ -7,8 +7,14 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+#[cfg(feature = "browserbase")]
+use chromiumoxide::Browser;
+#[cfg(feature = "browserbase")]
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+#[cfg(feature = "browserbase")]
+use tokio::time::timeout;
 
 use crate::BrowserPool;
 use crate::error::BrowserError;
@@ -40,6 +46,9 @@ pub enum StrategyUsed {
     BrowserLightStealth,
     /// Browser session scoped to a sticky context id.
     StickyProxyBrowserSession,
+    /// Managed remote browser session routed through Browserbase.
+    #[cfg(feature = "browserbase")]
+    BrowserbaseManagedSession,
     /// Policy-guided entry marker for investigation mode.
     InvestigateEntry,
 }
@@ -65,6 +74,8 @@ pub struct AcquisitionRequest {
     pub html_excerpt_bytes: usize,
     /// Optional policy-guided stage that `Investigate` mode starts from.
     pub investigate_start: Option<StrategyUsed>,
+    /// Opt into the optional Browserbase-managed stage when available.
+    pub browserbase_enabled: bool,
 }
 
 impl Default for AcquisitionRequest {
@@ -79,6 +90,7 @@ impl Default for AcquisitionRequest {
             request_timeout: Duration::from_secs(15),
             html_excerpt_bytes: 4_096,
             investigate_start: None,
+            browserbase_enabled: false,
         }
     }
 }
@@ -287,7 +299,17 @@ impl AcquisitionRunner {
 
     async fn run_inner(&self, request: &AcquisitionRequest) -> AcquisitionResult {
         let mut result = AcquisitionResult::empty();
+
+        #[cfg(feature = "browserbase")]
+        let mut ladder = Self::strategy_ladder(request.mode, request.investigate_start);
+
+        #[cfg(not(feature = "browserbase"))]
         let ladder = Self::strategy_ladder(request.mode, request.investigate_start);
+
+        #[cfg(feature = "browserbase")]
+        {
+            maybe_insert_browserbase_stage(&mut ladder, request.browserbase_enabled);
+        }
         let started = Instant::now();
 
         for strategy in ladder {
@@ -326,11 +348,187 @@ impl AcquisitionRunner {
         request: &AcquisitionRequest,
     ) -> StageOutcome {
         match strategy {
-            StrategyUsed::DirectHttp => self.run_http_stage(request, false).await,
-            StrategyUsed::TlsProfiledHttp => self.run_http_stage(request, true).await,
+            StrategyUsed::DirectHttp => {
+                #[cfg(feature = "tls-config")]
+                {
+                    self.run_http_stage(request, false).await
+                }
+
+                #[cfg(not(feature = "tls-config"))]
+                {
+                    self.run_http_stage(request, false)
+                }
+            }
+            StrategyUsed::TlsProfiledHttp => {
+                #[cfg(feature = "tls-config")]
+                {
+                    self.run_http_stage(request, true).await
+                }
+
+                #[cfg(not(feature = "tls-config"))]
+                {
+                    self.run_http_stage(request, true)
+                }
+            }
             StrategyUsed::BrowserLightStealth => self.run_browser_stage(request, false).await,
             StrategyUsed::StickyProxyBrowserSession => self.run_browser_stage(request, true).await,
+            #[cfg(feature = "browserbase")]
+            StrategyUsed::BrowserbaseManagedSession => Self::run_browserbase_stage(request).await,
             StrategyUsed::InvestigateEntry => StageOutcome::Marker,
+        }
+    }
+
+    #[cfg(feature = "browserbase")]
+    async fn run_browserbase_stage(request: &AcquisitionRequest) -> StageOutcome {
+        if !request.browserbase_enabled {
+            return StageOutcome::Failure(StageFailure {
+                strategy: StrategyUsed::BrowserbaseManagedSession,
+                kind: StageFailureKind::Setup,
+                message: "browserbase stage disabled for this request".to_string(),
+            });
+        }
+
+        let api_key = match std::env::var("BROWSERBASE_API_KEY") {
+            Ok(value) if !value.trim().is_empty() => value,
+            _ => {
+                return StageOutcome::Failure(StageFailure {
+                    strategy: StrategyUsed::BrowserbaseManagedSession,
+                    kind: StageFailureKind::Setup,
+                    message: "browserbase requires BROWSERBASE_API_KEY".to_string(),
+                });
+            }
+        };
+
+        let project_id = match std::env::var("BROWSERBASE_PROJECT_ID") {
+            Ok(value) if !value.trim().is_empty() => value,
+            _ => {
+                return StageOutcome::Failure(StageFailure {
+                    strategy: StrategyUsed::BrowserbaseManagedSession,
+                    kind: StageFailureKind::Setup,
+                    message: "browserbase requires BROWSERBASE_PROJECT_ID".to_string(),
+                });
+            }
+        };
+
+        let session = match create_browserbase_session(request, &api_key, &project_id).await {
+            Ok(session) => session,
+            Err(err) => {
+                return StageOutcome::Failure(StageFailure {
+                    strategy: StrategyUsed::BrowserbaseManagedSession,
+                    kind: classify_browser_error(&err),
+                    message: err.to_string(),
+                });
+            }
+        };
+
+        let connect_timeout = request.request_timeout.min(request.total_timeout);
+        let (mut browser, mut handler) = match timeout(
+            connect_timeout,
+            Browser::connect(session.connect_url.clone()),
+        )
+        .await
+        {
+            Ok(Ok(pair)) => pair,
+            Ok(Err(err)) => {
+                let _ = delete_browserbase_session(request, &api_key, &session.id).await;
+                return StageOutcome::Failure(StageFailure {
+                    strategy: StrategyUsed::BrowserbaseManagedSession,
+                    kind: StageFailureKind::Transport,
+                    message: format!("browserbase connect failed: {err}"),
+                });
+            }
+            Err(_) => {
+                let _ = delete_browserbase_session(request, &api_key, &session.id).await;
+                return StageOutcome::Failure(StageFailure {
+                    strategy: StrategyUsed::BrowserbaseManagedSession,
+                    kind: StageFailureKind::Timeout,
+                    message: format!(
+                        "browserbase connect timed out after {}ms",
+                        connect_timeout.as_millis()
+                    ),
+                });
+            }
+        };
+
+        let handler_task = tokio::spawn(async move {
+            while let Some(event) = handler.next().await {
+                if let Err(error) = event {
+                    tracing::warn!(%error, "browserbase handler error");
+                    break;
+                }
+            }
+        });
+
+        let run_result =
+            async {
+                let raw_page = browser.new_page("about:blank").await.map_err(|err| {
+                    BrowserError::CdpError {
+                        operation: "Browser.newPage".to_string(),
+                        message: err.to_string(),
+                    }
+                })?;
+
+                let mut page = crate::page::PageHandle::new(raw_page, request.navigation_timeout);
+
+                page.navigate(
+                    &request.url,
+                    WaitUntil::DomContentLoaded,
+                    request.navigation_timeout,
+                )
+                .await?;
+
+                if let Some(selector) = &request.wait_for_selector {
+                    page.wait_for_selector(selector, request.navigation_timeout)
+                        .await?;
+                }
+
+                let extracted = match request.extraction_js.as_deref() {
+                    Some(script) => Some(page.eval::<Value>(script).await.map_err(|err| {
+                        BrowserError::ScriptExecutionFailed {
+                            script: script.to_string(),
+                            reason: err.to_string(),
+                        }
+                    })?),
+                    None => None,
+                };
+
+                let html = page.content().await?;
+                let final_url = page.url().await.ok();
+                let status_code = page.status_code().ok().flatten();
+
+                Ok::<StageSuccess, BrowserError>(StageSuccess {
+                    final_url,
+                    status_code,
+                    html_excerpt: Some(truncate_html(&html, request.html_excerpt_bytes)),
+                    extracted,
+                })
+            }
+            .await;
+
+        let _ = timeout(Duration::from_secs(5), browser.close()).await;
+        handler_task.abort();
+        let _ = delete_browserbase_session(request, &api_key, &session.id).await;
+
+        match run_result {
+            Ok(success) => {
+                if is_block_status(success.status_code) {
+                    StageOutcome::Failure(StageFailure {
+                        strategy: StrategyUsed::BrowserbaseManagedSession,
+                        kind: StageFailureKind::Blocked,
+                        message: format!(
+                            "blocked status during browserbase stage: {:?}",
+                            success.status_code
+                        ),
+                    })
+                } else {
+                    StageOutcome::Success(success)
+                }
+            }
+            Err(err) => StageOutcome::Failure(StageFailure {
+                strategy: StrategyUsed::BrowserbaseManagedSession,
+                kind: classify_browser_error(&err),
+                message: err.to_string(),
+            }),
         }
     }
 
@@ -427,6 +625,7 @@ impl AcquisitionRunner {
         }
     }
 
+    #[cfg(feature = "tls-config")]
     async fn run_http_stage(
         &self,
         request: &AcquisitionRequest,
@@ -445,6 +644,23 @@ impl AcquisitionRunner {
         }
 
         self.run_http_stage_impl(request, tls_profiled).await
+    }
+
+    #[cfg(not(feature = "tls-config"))]
+    fn run_http_stage(&self, request: &AcquisitionRequest, tls_profiled: bool) -> StageOutcome {
+        if request.wait_for_selector.is_some() || request.extraction_js.is_some() {
+            return StageOutcome::Failure(StageFailure {
+                strategy: if tls_profiled {
+                    StrategyUsed::TlsProfiledHttp
+                } else {
+                    StrategyUsed::DirectHttp
+                },
+                kind: StageFailureKind::Extraction,
+                message: "HTTP stages cannot satisfy selector/extraction requirements".to_string(),
+            });
+        }
+
+        self.run_http_stage_impl(request, tls_profiled)
     }
 
     #[cfg(feature = "tls-config")]
@@ -539,7 +755,7 @@ impl AcquisitionRunner {
     }
 
     #[cfg(not(feature = "tls-config"))]
-    async fn run_http_stage_impl(
+    fn run_http_stage_impl(
         &self,
         _request: &AcquisitionRequest,
         tls_profiled: bool,
@@ -557,6 +773,160 @@ impl AcquisitionRunner {
     }
 }
 
+#[cfg(feature = "browserbase")]
+#[derive(Debug, Clone)]
+struct BrowserbaseSession {
+    id: String,
+    connect_url: String,
+}
+
+#[cfg(feature = "browserbase")]
+async fn create_browserbase_session(
+    request: &AcquisitionRequest,
+    api_key: &str,
+    project_id: &str,
+) -> Result<BrowserbaseSession, BrowserError> {
+    let client = reqwest::Client::builder()
+        .timeout(request.request_timeout)
+        .build()
+        .map_err(|err| {
+            BrowserError::ConfigError(format!("browserbase client setup failed: {err}"))
+        })?;
+
+    let create_url = format!("{}/sessions", browserbase_api_base());
+    let response = client
+        .post(create_url.clone())
+        .bearer_auth(api_key)
+        .header("x-bb-api-key", api_key)
+        .json(&serde_json::json!({ "projectId": project_id }))
+        .send()
+        .await
+        .map_err(|err| BrowserError::ConnectionError {
+            url: create_url.clone(),
+            reason: err.to_string(),
+        })?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(BrowserError::ConnectionError {
+            url: create_url,
+            reason: format!("session create failed ({status}): {body}"),
+        });
+    }
+
+    let payload: Value = response
+        .json()
+        .await
+        .map_err(|err| BrowserError::ConnectionError {
+            url: browserbase_api_base(),
+            reason: format!("session create response parse failed: {err}"),
+        })?;
+
+    let connect_url = browserbase_connect_url(&payload).ok_or_else(|| {
+        BrowserError::ConfigError("browserbase response missing connect URL".to_string())
+    })?;
+    let session_id = browserbase_session_id(&payload).ok_or_else(|| {
+        BrowserError::ConfigError("browserbase response missing session id".to_string())
+    })?;
+
+    Ok(BrowserbaseSession {
+        id: session_id,
+        connect_url,
+    })
+}
+
+#[cfg(feature = "browserbase")]
+async fn delete_browserbase_session(
+    request: &AcquisitionRequest,
+    api_key: &str,
+    session_id: &str,
+) -> Result<(), BrowserError> {
+    let client = reqwest::Client::builder()
+        .timeout(request.request_timeout)
+        .build()
+        .map_err(|err| {
+            BrowserError::ConfigError(format!("browserbase client setup failed: {err}"))
+        })?;
+
+    let delete_url = format!("{}/sessions/{session_id}", browserbase_api_base());
+    let response = client
+        .delete(delete_url.clone())
+        .bearer_auth(api_key)
+        .header("x-bb-api-key", api_key)
+        .send()
+        .await
+        .map_err(|err| BrowserError::ConnectionError {
+            url: delete_url.clone(),
+            reason: err.to_string(),
+        })?;
+
+    if response.status().is_success() {
+        Ok(())
+    } else {
+        Err(BrowserError::ConnectionError {
+            url: delete_url,
+            reason: format!("session delete failed with status {}", response.status()),
+        })
+    }
+}
+
+#[cfg(feature = "browserbase")]
+fn browserbase_api_base() -> String {
+    std::env::var("BROWSERBASE_API_BASE")
+        .unwrap_or_else(|_| "https://api.browserbase.com/v1".to_string())
+        .trim_end_matches('/')
+        .to_string()
+}
+
+#[cfg(feature = "browserbase")]
+fn browserbase_session_id(payload: &Value) -> Option<String> {
+    payload
+        .get("id")
+        .or_else(|| payload.get("sessionId"))
+        .or_else(|| payload.get("session_id"))
+        .or_else(|| payload.get("data").and_then(|v| v.get("id")))
+        .or_else(|| payload.get("data").and_then(|v| v.get("sessionId")))
+        .or_else(|| payload.get("data").and_then(|v| v.get("session_id")))
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+}
+
+#[cfg(feature = "browserbase")]
+fn browserbase_connect_url(payload: &Value) -> Option<String> {
+    [
+        "connectUrl",
+        "connect_url",
+        "wsUrl",
+        "ws_url",
+        "websocketUrl",
+        "websocket_url",
+        "browserWSEndpoint",
+        "wsEndpoint",
+        "ws_endpoint",
+    ]
+    .iter()
+    .find_map(|key| payload.get(*key).and_then(Value::as_str))
+    .or_else(|| {
+        payload.get("data").and_then(|data| {
+            [
+                "connectUrl",
+                "connect_url",
+                "wsUrl",
+                "ws_url",
+                "websocketUrl",
+                "websocket_url",
+                "browserWSEndpoint",
+                "wsEndpoint",
+                "ws_endpoint",
+            ]
+            .iter()
+            .find_map(|key| data.get(*key).and_then(Value::as_str))
+        })
+    })
+    .map(ToString::to_string)
+}
+
 fn dedupe_preserve_order(stages: &mut Vec<StrategyUsed>) {
     let mut seen = Vec::new();
     stages.retain(|stage| {
@@ -567,6 +937,22 @@ fn dedupe_preserve_order(stages: &mut Vec<StrategyUsed>) {
             true
         }
     });
+}
+
+#[cfg(feature = "browserbase")]
+fn maybe_insert_browserbase_stage(stages: &mut Vec<StrategyUsed>, enabled: bool) {
+    if !enabled || stages.contains(&StrategyUsed::BrowserbaseManagedSession) {
+        return;
+    }
+
+    if let Some(pos) = stages
+        .iter()
+        .position(|stage| *stage == StrategyUsed::StickyProxyBrowserSession)
+    {
+        stages.insert(pos, StrategyUsed::BrowserbaseManagedSession);
+    } else {
+        stages.push(StrategyUsed::BrowserbaseManagedSession);
+    }
 }
 
 fn classify_browser_error(error: &BrowserError) -> StageFailureKind {
@@ -670,5 +1056,42 @@ mod tests {
         let src = "abc😀def";
         let out = truncate_html(src, 5);
         assert_eq!(out, "abc");
+    }
+
+    #[cfg(feature = "browserbase")]
+    #[test]
+    fn browserbase_connect_url_is_extracted_from_nested_data() {
+        let payload = serde_json::json!({
+            "data": {
+                "connectUrl": "wss://connect.browserbase.example/devtools/browser/abc"
+            }
+        });
+
+        assert_eq!(
+            browserbase_connect_url(&payload),
+            Some("wss://connect.browserbase.example/devtools/browser/abc".to_string())
+        );
+    }
+
+    #[cfg(feature = "browserbase")]
+    #[test]
+    fn browserbase_stage_is_inserted_before_sticky_stage() {
+        let mut ladder = vec![
+            StrategyUsed::DirectHttp,
+            StrategyUsed::StickyProxyBrowserSession,
+            StrategyUsed::TlsProfiledHttp,
+        ];
+
+        maybe_insert_browserbase_stage(&mut ladder, true);
+
+        assert_eq!(
+            ladder,
+            vec![
+                StrategyUsed::DirectHttp,
+                StrategyUsed::BrowserbaseManagedSession,
+                StrategyUsed::StickyProxyBrowserSession,
+                StrategyUsed::TlsProfiledHttp,
+            ]
+        );
     }
 }

@@ -207,6 +207,12 @@ stygian-proxy = { version = "*", features = ["browser", "socks"] }
 
 For hostile or variable targets, prefer a single `browser_acquire_and_extract` call over manually chaining low-level browser tools.
 
+Optional Browserbase integration:
+
+- Build `stygian-browser` with feature `browserbase` to enable the Browserbase-managed stage.
+- Per request, set `browserbase_enabled` (or alias `use_browserbase`) to `true`.
+- Provide runtime credentials via `BROWSERBASE_API_KEY` and `BROWSERBASE_PROJECT_ID`.
+
 Mode guide:
 
 | Mode | When to use |
@@ -229,7 +235,8 @@ End-to-end example:
       "mode": "resilient",
       "wait_for_selector": "article.product",
       "extraction_js": "Array.from(document.querySelectorAll('article.product h2')).map(n => n.textContent?.trim()).filter(Boolean)",
-      "total_timeout_secs": 45
+      "total_timeout_secs": 45,
+      "browserbase_enabled": true
     }
   }
 }
@@ -238,7 +245,7 @@ End-to-end example:
 Migration note (old path vs runner path):
 
 - Old low-level path: `browser_acquire` -> `browser_navigate` -> `browser_eval`/`browser_extract` -> `browser_release`.
-- New runner path: one `browser_acquire_and_extract` call with `mode` and optional `wait_for_selector`/`extraction_js`.
+- New runner path: one `browser_acquire_and_extract` call with `mode` and optional `wait_for_selector`/`extraction_js`/`browserbase_enabled`.
 - Keep low-level tools when you need custom multi-step interaction. Use runner-first for deterministic escalation with fewer moving parts.
 
 ---

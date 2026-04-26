@@ -65,6 +65,8 @@ Runner-first tool:
 
 - `browser_acquire_and_extract` is the recommended high-level browser path for acquisition + extraction in one call.
 - Supported `mode` values are `fast`, `resilient`, `hostile`, and `investigate`.
+- Optional Browserbase request flags are `browserbase_enabled` and `use_browserbase` (alias).
+- Browserbase execution requires `stygian-browser` built with `browserbase` plus `BROWSERBASE_API_KEY` and `BROWSERBASE_PROJECT_ID`.
 
 The aggregator also adds two cross-crate tools:
 
@@ -197,6 +199,9 @@ With `extract` feature enabled, use `browser_extract`:
 
 Use `browser_acquire_and_extract` when you want deterministic strategy escalation with minimal orchestration code.
 
+Optional Browserbase integration is request-scoped: set `browserbase_enabled` (or alias
+`use_browserbase`) to `true` and provide `BROWSERBASE_API_KEY` + `BROWSERBASE_PROJECT_ID`.
+
 `fast` mode:
 
 ```json
@@ -242,7 +247,8 @@ Use `browser_acquire_and_extract` when you want deterministic strategy escalatio
       "url": "https://example.com/challenged",
       "mode": "hostile",
       "wait_for_selector": "main",
-      "total_timeout_secs": 60
+      "total_timeout_secs": 60,
+      "browserbase_enabled": true
     }
   }
 }
@@ -269,6 +275,7 @@ Migration note (old low-level path vs new runner path):
 
 - Old low-level MCP path: `browser_acquire` -> `browser_navigate` -> `browser_eval` or `browser_extract` -> `browser_release`.
 - New runner path: `browser_acquire_and_extract` with one call and explicit `mode`.
+- Optional Browserbase stage opt-in: add `browserbase_enabled` (or `use_browserbase`) per request.
 - The low-level path remains supported for custom multi-step interactions.
 
 ## License

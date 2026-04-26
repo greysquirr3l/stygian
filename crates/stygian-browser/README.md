@@ -22,6 +22,7 @@ for bypassing modern anti-bot systems: Cloudflare, `DataDome`, `PerimeterX`, Aka
 | `metrics` | Prometheus metrics exporter | — |
 | `extract` | Structured data extraction via `#[derive(Extract)]` | — |
 | `similarity` | Similarity scoring for duplicate detection | — |
+| `browserbase` | Optional Browserbase-managed acquisition stage integration (requires MCP/runtime opt-in) | — |
 | `full` | All features enabled | — |
 
 ---
@@ -41,6 +42,16 @@ Enable (or disable) stealth features:
 # stealth is the default feature; disable for a minimal build
 stygian-browser = { version = "*", default-features = false }
 ```
+
+Enable optional Browserbase acquisition integration:
+
+```toml
+[dependencies]
+stygian-browser = { version = "*", features = ["browserbase"] }
+```
+
+When enabled, runner-first acquisition can opt into a Browserbase-managed stage via request flags.
+Set `BROWSERBASE_API_KEY` and `BROWSERBASE_PROJECT_ID` in the runtime environment.
 
 ---
 

@@ -19,8 +19,22 @@ use tracing_subscriber::EnvFilter;
 
 use stygian_mcp::aggregator::McpAggregator;
 
+fn maybe_print_version_and_exit() -> bool {
+    match std::env::args().nth(1).as_deref() {
+        Some("--version" | "-V") => {
+            println!("stygian-mcp {}", env!("CARGO_PKG_VERSION"));
+            true
+        }
+        _ => false,
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    if maybe_print_version_and_exit() {
+        return Ok(());
+    }
+
     // Initialise logging.  Writes to stderr so it does not pollute the
     // stdout MCP channel.  Control verbosity via `RUST_LOG`.
     tracing_subscriber::fmt()
