@@ -83,8 +83,6 @@ pub enum CheckId {
     UserAgentDataPresent,
     /// `navigator.connection` should expose plausible network information.
     ConnectionPresent,
-    /// `navigator.storage.estimate` should exist for quota/usage probing.
-    StorageEstimatePresent,
     /// Hidden font-probe elements should yield non-zero layout measurements.
     HiddenFontProbeRect,
     /// `screen` metrics and `devicePixelRatio` should be plausible and coherent.
@@ -101,6 +99,8 @@ pub enum LimitationId {
     WebGpuSurface,
     /// `performance.memory` is exposed but not yet spoofed or validated.
     PerformanceMemorySurface,
+    /// `navigator.storage` may be unavailable on opaque origins (e.g. `about:blank`).
+    OpaqueOriginStorage,
 }
 
 // ── CheckResult ───────────────────────────────────────────────────────────────
@@ -602,9 +602,9 @@ const SCRIPT_CONNECTION: &str = concat!(
 const SCRIPT_STORAGE_ESTIMATE: &str = concat!(
     "(function(){",
     "var s=navigator.storage;",
-    "var ok=!!s&&typeof s.estimate==='function';",
+    "var limited=!s||typeof s.estimate!=='function';",
     "var detail=!s?'storage unavailable':typeof s.estimate;",
-    "return JSON.stringify({passed:ok,details:detail});",
+    "return JSON.stringify({limited:limited,details:detail});",
     "})()"
 );
 
@@ -781,11 +781,6 @@ static CHECKS: &[DetectionCheck] = &[
         script: SCRIPT_CONNECTION,
     },
     DetectionCheck {
-        id: CheckId::StorageEstimatePresent,
-        description: "navigator.storage.estimate must exist",
-        script: SCRIPT_STORAGE_ESTIMATE,
-    },
-    DetectionCheck {
         id: CheckId::HiddenFontProbeRect,
         description: "hidden font probes must yield non-zero layout measurements",
         script: SCRIPT_HIDDEN_FONT_PROBE,
@@ -813,6 +808,11 @@ static LIMITATION_PROBES: &[LimitationProbe] = &[
         description: "performance.memory is exposed but not yet spoofed or validated",
         script: SCRIPT_PERFORMANCE_MEMORY_LIMITATION,
     },
+    LimitationProbe {
+        id: LimitationId::OpaqueOriginStorage,
+        description: "navigator.storage is unavailable or incomplete on this origin",
+        script: SCRIPT_STORAGE_ESTIMATE,
+    },
 ];
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -825,12 +825,12 @@ mod tests {
 
     #[test]
     fn all_checks_returns_eighteen_entries() {
-        assert_eq!(all_checks().len(), 25);
+        assert_eq!(all_checks().len(), 24);
     }
 
     #[test]
     fn all_limitation_probes_returns_two_entries() {
-        assert_eq!(all_limitation_probes().len(), 2);
+        assert_eq!(all_limitation_probes().len(), 3);
     }
 
     #[test]
@@ -910,7 +910,7 @@ mod tests {
             .collect();
         let report = DiagnosticReport::new(results);
         assert!(report.is_clean());
-        assert_eq!(report.passed_count, 25);
+        assert_eq!(report.passed_count, 24);
         assert!(report.known_limitations.is_empty());
         assert_eq!(report.failed_count, 0);
         assert!((report.coverage_pct() - 100.0).abs() < 0.001);
@@ -928,7 +928,7 @@ mod tests {
         let report = DiagnosticReport::new(results);
         assert!(!report.is_clean());
         assert_eq!(report.failed_count, 2);
-        assert_eq!(report.passed_count, 23);
+        assert_eq!(report.passed_count, 22);
         assert_eq!(report.failures().count(), 2);
     }
 
