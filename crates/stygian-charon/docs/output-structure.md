@@ -86,6 +86,10 @@ Fields:
 
 ## Requirements layer
 
+Coverage and ownership for inferred requirement signals is tracked in:
+
+- `docs/signal-coverage-matrix.md`
+
 ### RequirementsProfile
 
 Inferred operational requirements and strategic recommendation.
