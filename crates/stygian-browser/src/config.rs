@@ -1016,9 +1016,19 @@ mod tests {
 
     #[test]
     fn pool_config_defaults() {
-        let p = PoolConfig::default();
-        assert_eq!(p.min_size, 2);
-        assert_eq!(p.max_size, 10);
+        temp_env::with_vars(
+            [
+                ("STYGIAN_POOL_MIN", None::<&str>),
+                ("STYGIAN_POOL_MAX", None::<&str>),
+                ("STYGIAN_POOL_IDLE_SECS", None::<&str>),
+                ("STYGIAN_POOL_ACQUIRE_SECS", None::<&str>),
+            ],
+            || {
+                let p = PoolConfig::default();
+                assert_eq!(p.min_size, 2);
+                assert_eq!(p.max_size, 10);
+            },
+        );
     }
 
     #[test]
