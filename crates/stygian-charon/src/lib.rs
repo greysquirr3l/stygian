@@ -17,6 +17,8 @@ pub mod har;
 pub mod investigation;
 /// Runtime policy planning based on investigation output.
 pub mod policy;
+/// Normalized fingerprint snapshot schema types and compatibility checks.
+pub mod snapshot;
 /// Public types for transaction and report models.
 pub mod types;
 
@@ -27,6 +29,11 @@ pub use acquisition::{
 pub use classifier::{classify_har, classify_transaction};
 pub use investigation::{compare_reports, infer_requirements, investigate_har};
 pub use policy::{analyze_and_plan, build_runtime_policy, plan_from_report};
+pub use snapshot::{
+    FingerprintSignals, NormalizedFingerprintSnapshot, ScreenFingerprint,
+    SnapshotCompatibilityError, SnapshotMode, TlsFingerprint, WebGlFingerprint,
+    validate_snapshot_compatibility,
+};
 pub use types::{
     AdapterStrategy, AntiBotProvider, AntiBotRequirement, Detection, ExecutionMode,
     HarClassificationReport, HarRequestSummary, HostSummary, IntegrationRecommendation,

@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0.0",
+  "snapshot_id": "snapshot-browser-0001",
+  "mode": "Browser",
+  "captured_at": "2026-04-26T23:05:00Z",
+  "signals": {
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15",
+    "accept_language": "en-US,en;q=0.8",
+    "platform": "MacIntel",
+    "timezone": "America/Los_Angeles",
+    "headers": {
+      "accept": "text/html,application/xhtml+xml",
+      "sec-fetch-site": "none"
+    },
+    "features": {
+      "cookies_enabled": true,
+      "webdriver": false,
+      "webgl_debug_renderer_info": false
+    },
+    "screen": {
+      "width": 1512,
+      "height": 982,
+      "device_pixel_ratio": 2.0
+    },
+    "webgl": {
+      "vendor": "Google Inc. (Intel)",
+      "renderer": "ANGLE (Intel, Intel(R) Iris(TM) Plus Graphics, OpenGL 4.1)"
+    },
+    "tls": {
+      "ja3_hash": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+      "ja4": "t13d1516h2_8daaf6152771_02713d6af862"
+    }
+  },
+  "metadata": {
+    "collector": "charon",
+    "target": "example-browser"
+  }
+}

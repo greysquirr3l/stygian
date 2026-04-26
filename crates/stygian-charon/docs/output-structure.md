@@ -9,6 +9,43 @@ This document specifies the full output contract for Charon's analysis and plann
 
 `InvestigationBundle` is the canonical top-level output.
 
+## Normalized fingerprint snapshots
+
+Charon also defines a versioned normalized fingerprint snapshot schema for
+cross-mode compatibility checks.
+
+- Schema: `docs/normalized-fingerprint-snapshot.schema.json`
+- Compatible examples:
+  - `docs/examples/fingerprint-snapshot-v1-http.json`
+  - `docs/examples/fingerprint-snapshot-v1-browser.json`
+
+Required top-level fields:
+
+- `schema_version`
+- `snapshot_id`
+- `mode`
+- `captured_at`
+- `signals`
+
+Optional top-level fields:
+
+- `metadata`
+
+Deprecated top-level fields:
+
+- `legacy_user_agent` (deprecated mirror of `signals.user_agent`)
+- `legacy_ja3_hash` (deprecated mirror of `signals.tls.ja3_hash`)
+
+Canonical ordering and type constraints:
+
+- Canonical key order is defined in schema metadata (`x-canonical-order`)
+  for top-level and nested objects.
+- Type constraints use JSON Schema definitions and conditional rules:
+  - `mode = Http` requires `signals.tls`
+  - `mode = Browser` requires `signals.webgl`
+- Snapshot compatibility checks are implemented in
+  `src/snapshot.rs::validate_snapshot_compatibility`.
+
 ## Top-level type
 
 ### InvestigationBundle
