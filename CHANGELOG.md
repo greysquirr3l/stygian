@@ -7,17 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-04-26
+
 ### Added
 
-- `stygian-browser`: optional feature-gated Browserbase acquisition stage scaffold
-  (`browserbase`) with request-level opt-in flags (`browserbase_enabled` /
-  `use_browserbase`) and credential-gated setup checks
+- `stygian-browser`: optional Browserbase managed acquisition stage (`browserbase`
+  feature) with full runtime session lifecycle (create, connect, execute, cleanup),
+  request-level opt-in flags (`browserbase_enabled` / `use_browserbase` alias),
+  and credential-gated environment validation (`BROWSERBASE_API_KEY`,
+  `BROWSERBASE_PROJECT_ID`)
+- `stygian-browser`: Browserbase stage integrates into deterministic escalation
+  ladder, positioned before sticky proxy stage, with comprehensive error handling
+  for setup, transport, timeout, and blocked-status scenarios
+- `stygian-browser`: test coverage for Browserbase helper functions (connect URL
+  extraction from nested API response, ladder insertion behavior)
+- `stygian-mcp`: MCP request parser updated to support `browserbase_enabled` flag
+  and `use_browserbase` request alias
 
 ### Documentation
 
-- `README`/guides: runner-first acquisition docs updated to include Browserbase
-  opt-in behavior, request arguments, and required runtime environment variables
-  (`BROWSERBASE_API_KEY`, `BROWSERBASE_PROJECT_ID`)
+- `README`/guides: acquisition runner docs updated with Browserbase opt-in behavior,
+  request arguments, required environment variables, and integration notes
+- `book/mcp/browser-tools.md`: browser acquisition reference updated to document
+  Browserbase strategy stage placement, setup requirements, and per-request opt-in
+  mechanics
 
 ## [0.10.0] - 2026-04-25
 
