@@ -310,7 +310,6 @@ fn default_extensions() -> Vec<String> {
         "WEBGL_color_buffer_float",
         "WEBGL_compressed_texture_s3tc",
         "WEBGL_compressed_texture_s3tc_srgb",
-        "WEBGL_debug_renderer_info",
         "WEBGL_debug_shaders",
         "WEBGL_depth_texture",
         "WEBGL_draw_buffers",
