@@ -6,10 +6,15 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
+readme = "README.md"
 description = "Anti-bot provider fingerprinting and HAR forensics for Stygian"
 keywords = ["antibot", "forensics", "har", "scraping", "security"]
 categories = ["web-programming", "network-programming"]
+exclude = [
+	"docs/incident-runbook.md",
+	"docs/p1-backlog.md",
+	"tests/runbook_diagnostics.rs",
+]
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
