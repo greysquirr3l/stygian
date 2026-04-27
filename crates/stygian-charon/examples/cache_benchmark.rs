@@ -83,7 +83,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let har = make_har(1000, 120);
     let cache = MemoryInvestigationCache::new(
         NonZeroUsize::new(128).ok_or("cache capacity must be non-zero")?,
-        Duration::from_secs(5 * 60),
+        Duration::from_mins(5),
     );
 
     for _ in 0..warmup_runs {

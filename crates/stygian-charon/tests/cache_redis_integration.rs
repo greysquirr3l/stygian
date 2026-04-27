@@ -67,7 +67,7 @@ fn redis_cache_round_trip_and_invalidation() {
         return;
     };
 
-    let cache_result = RedisInvestigationCache::new(&redis_url, Duration::from_secs(60));
+    let cache_result = RedisInvestigationCache::new(&redis_url, Duration::from_mins(1));
     assert!(cache_result.is_ok(), "redis cache should initialize");
     let Ok(cache) = cache_result else {
         return;
