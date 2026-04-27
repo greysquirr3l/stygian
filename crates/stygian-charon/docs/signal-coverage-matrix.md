@@ -27,3 +27,15 @@ Source of truth for current requirement IDs:
 1. ✅ Add a `CODEOWNERS` entry for `crates/stygian-charon/src/investigation.rs` and this matrix. (**CHR-006 — Completed**)
 2. ✅ Record a primary and secondary owner for shared-surface signals. (**CHR-006 — Completed**)
 3. ⏳ Link this matrix to the stealth/regression incident runbook once CHR-017 is completed. (**CHR-017 — Pending**)
+
+## Charon P0 Backlog Progress
+
+- ✅ **CHR-001**: Signal coverage matrix and ownership
+- ✅ **CHR-002**: Normalized fingerprint snapshot schema and compatibility checks
+- ✅ **CHR-003**: Deterministic snapshot collector
+- ✅ **CHR-004**: Baseline fixture generation workflow
+- ✅ **CHR-005**: Snapshot drift test suite
+- ✅ **CHR-006**: CODEOWNERS codification and explicit ownership
+- ✅ **CHR-007**: Blocked ratio SLOs by target class (API, ContentSite, HighSecurity)
+- ✅ **CHR-008**: SLO usage documentation and integration tests
+- ⏳ **CHR-017**: Stealth/regression incident runbook (pending)
