@@ -1,12 +1,13 @@
+---
 name: Charon Fixtures
-
-on:
+"on":
   pull_request:
-    branches: [main]
+    branches:
+      - main
     paths:
-      - "crates/stygian-charon/**"
-      - ".github/scripts/generate-charon-fixtures.sh"
-      - ".github/workflows/charon-fixtures.yml"
+      - crates/stygian-charon/**
+      - .github/scripts/generate-charon-fixtures.sh
+      - .github/workflows/charon-fixtures.yml
   workflow_dispatch:
 
 permissions:
