@@ -1,0 +1,41 @@
+{
+  "title": "Stygian Charon SLO",
+  "description": "Starter dashboard for SLO assessment and escalation monitoring",
+  "panels": [
+    {
+      "title": "SLO Assessments Total",
+      "type": "stat",
+      "query": "slo_assessment_total"
+    },
+    {
+      "title": "Warning Escalations",
+      "type": "stat",
+      "query": "slo_escalation_warning_total"
+    },
+    {
+      "title": "Critical Escalations",
+      "type": "stat",
+      "query": "slo_escalation_critical_total"
+    },
+    {
+      "title": "Blocked Ratio Average",
+      "type": "timeseries",
+      "query": "slo_blocked_ratio_avg"
+    },
+    {
+      "title": "Blocked Ratio Extremes",
+      "type": "timeseries",
+      "queries": ["slo_blocked_ratio_min", "slo_blocked_ratio_max"]
+    },
+    {
+      "title": "Assessments by Target Class",
+      "type": "bar",
+      "query": "slo_target_class_total"
+    },
+    {
+      "title": "Assessments by Escalation Level",
+      "type": "bar",
+      "query": "slo_escalation_level_total"
+    }
+  ]
+}

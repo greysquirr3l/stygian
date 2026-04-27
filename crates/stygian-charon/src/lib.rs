@@ -9,6 +9,11 @@
 
 /// Mapping layer from runtime policy to acquisition strategy hints.
 pub mod acquisition;
+/// Adaptive SLO policy interfaces and regression-history implementation.
+pub mod adaptive;
+/// Investigation report cache backends and cache key helpers.
+#[cfg(feature = "caching")]
+pub mod cache;
 /// Provider signature classification logic.
 pub mod classifier;
 /// HAR parsing and extraction utilities.
@@ -29,10 +34,17 @@ pub use acquisition::{
     AcquisitionModeHint, AcquisitionPolicy, AcquisitionStartHint, RuntimePolicyHints,
     map_adapter_strategy, map_policy_hints, map_runtime_policy,
 };
+pub use adaptive::{AdaptivePolicyError, AdaptiveSloPolicy, RegressionHistoryPolicy};
+#[cfg(feature = "redis-cache")]
+pub use cache::RedisInvestigationCache;
+#[cfg(feature = "caching")]
+pub use cache::{InvestigationReportCache, MemoryInvestigationCache, investigation_cache_key};
 pub use classifier::{classify_har, classify_transaction};
 pub use investigation::{
     compare_reports, infer_requirements, infer_requirements_with_target_class, investigate_har,
 };
+#[cfg(feature = "caching")]
+pub use investigation::{investigate_har_cached, investigate_har_cached_with_target_class};
 pub use policy::{analyze_and_plan, build_runtime_policy, plan_from_report};
 pub use snapshot::{
     FingerprintSignals, NormalizedFingerprintSnapshot, ScreenFingerprint, SnapshotCollectionError,

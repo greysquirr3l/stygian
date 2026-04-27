@@ -84,8 +84,6 @@
 
 ---
 
----
-
 ## Phase 8 — Browser DOM Query & Typed Extraction
 
 > Depends on: none (self-contained stygian-browser changes)
@@ -126,6 +124,40 @@
 | T61 — Add browser_acquire_and_extract MCP tool | `[x]` | Added `browser_acquire_and_extract` MCP tool wired to `AcquisitionRunner` with schema + validation + output-shape tests |
 | T62 — Optional stygian-graph acquisition bridge | `[x]` | Additive and opt-in only; feature-gated `acquisition-runner` bridge for browser nodes via opt-in `acquisition` block |
 | T63 — Runner-first docs and compatibility checks | `[x]` | Added runner-first mode docs/examples, migration notes, and downstream graph compatibility checklist/CI guidance |
+
+---
+
+## Charon Track — Runtime Policy, Validation, and Diagnostics
+
+> Depends on: none (self-contained stygian-charon changes)
+
+| Task | Status | Notes |
+|---|---|---|
+| CHR-011 — Integration test baseline and requirement inference coverage | `[x]` | Added integration coverage and stabilized inference assertions |
+| CHR-012 — Metrics integration for investigation/inference flow | `[x]` | Added metrics plumbing and strict-clippy-clean tests |
+| CHR-013 — Live SLO validation workflow and example | `[x]` | Added `live_slo_validator` example, docs, and feature-gated runtime paths |
+| CHR-014 — Investigation report caching (memory + optional Redis) | `[x]` | Added cache trait/backends, cached wrappers, exports, and integration docs |
+| CHR-014a — Cache-hit improvement benchmark | `[x]` | Added timing-focused `cache_benchmark` example to quantify cache-hit gains |
+| CHR-014b — Redis cache integration test (env-gated) | `[x]` | Added ignored `redis-cache` integration test gated by env var |
+| CHR-017a — Incident runbook diagnostics executable tests | `[x]` | Added Category A/B/C diagnostics tests in `runbook_diagnostics.rs` |
+
+---
+
+## Phase 11 — Charon P1 Backlog Closure
+
+> Depends on: Charon track CHR-011/012/013/014/017a implemented; focuses on remaining backlog closure and follow-on execution.
+> Validation: strict clippy reruns for `stygian-charon` and `stygian-graph` passed on 2026-04-27.
+> Closure note: `crates/stygian-charon/docs/p1-backlog.md` updated on 2026-04-27 with execution evidence and two accepted exceptions (CHR-011 timing gate, CHR-013 live-target gate).
+
+| Task | Status | Notes |
+|---|---|---|
+| T64 — Charon metrics observability pack | `[x]` | Added monitoring assets (`prometheus-scrape-example.yml`, `slo-dashboard.json`) and metric interpretation docs |
+| T65 — Live validator baseline storage and diffing | `[x]` | Added baseline write/compare flow and output deltas (`baseline_comparison`, ratio/risk deltas, recommended action) |
+| T66 — Cache benchmark target validation | `[x]` | Executed benchmark; observed `improvement_pct=88.98` |
+| T67 — Runbook diagnostics output contract | `[x]` | Added output-contract assertions and resolution-path checks in runbook diagnostics tests |
+| T68 — Adaptive SLO policy framework | `[x]` | Added `AdaptiveSloPolicy` + `RegressionHistoryPolicy` with bounded tuning and JSON persistence |
+| T69 — Graph-level SLO bridge | `[x]` | Added `target_class` acquisition config and SLO-informed bridge escalation path in graph MCP |
+| T70 — Comprehensive P0→P1 E2E suite | `[x]` | Added E2E suite with class coverage, edge cases, and latency assertions/docs |
 
 ---
 

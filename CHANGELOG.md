@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `stygian-charon`: adaptive SLO framework (`AdaptiveSloPolicy`,
+  `RegressionHistoryPolicy`) with bounded threshold drift and optional JSON
+  persistence for historical observations
+- `stygian-charon`: investigation-report caching APIs with in-memory LRU backend
+  (`MemoryInvestigationCache`), optional Redis backend (`RedisInvestigationCache`),
+  cache-key helper (`investigation_cache_key`), and cached investigation entry points
+- `stygian-charon`: live validator baseline workflows (`--baseline-out`,
+  `--baseline-compare`) with regression deltas and recommended action output
+- `stygian-charon/tests`: comprehensive P0→P1 end-to-end suite covering target-class
+  happy paths, zone transitions, and mixed/boundary edge cases with sub-second
+  latency assertions
+- `stygian-graph`: SLO-aware acquisition bridge support for optional
+  `acquisition.target_class` and recommendation-driven mode escalation diagnostics
+
+### Changed
+
+- `stygian-graph`: `acquisition-runner` feature now includes optional
+  `stygian-charon` integration for SLO-informed acquisition decisions
+- `examples`: graph acquisition opt-in example now demonstrates
+  `target_class = "content-site"` for bridge-aware mode selection
+- `stygian-charon/docs`: P1 backlog closure now records explicit command evidence,
+  checks remaining phase-level validation gates, and documents accepted exceptions
+  for CHR-011 timing and CHR-013 live-target execution scope
+
+### Fixed
+
+- `stygian-charon`: adaptive history averaging path corrected after clippy-driven
+  refactor (`let...else` branch now diverges correctly with `return None`)
+- `stygian-graph`: addressed strict clippy `missing_const_for_fn` by promoting
+  acquisition hint mapping helper to `const fn`
+
 ### Fixed
 
 - `stygian-browser`: stealth diagnostic scoring no longer treats

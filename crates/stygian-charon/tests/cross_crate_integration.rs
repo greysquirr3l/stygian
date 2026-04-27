@@ -1,17 +1,24 @@
-#![allow(clippy::expect_used, clippy::cast_precision_loss, clippy::float_cmp)]
+#![allow(
+    clippy::expect_used,
+    clippy::cast_precision_loss,
+    clippy::float_cmp,
+    clippy::cast_lossless,
+    clippy::format_push_string,
+    clippy::uninlined_format_args
+)]
 
 use stygian_charon::{
-    BlockedRatioSlo, TargetClass, investigate_har, infer_requirements_with_target_class,
-    build_runtime_policy, RequirementLevel,
+    BlockedRatioSlo, RequirementLevel, TargetClass, build_runtime_policy,
+    infer_requirements_with_target_class, investigate_har,
 };
 
 /// Helper to construct a synthetic HAR with configurable blocked ratio.
-/// 
+///
 /// This is used for testing the full SLO pipeline without needing real network calls.
 fn make_test_har(total_requests: u32, blocked_requests: u32) -> String {
     let total_ms = total_requests as u64 * 100;
     let mut entries = String::new();
-    
+
     for i in 0..total_requests {
         let status = if i < blocked_requests { 403 } else { 200 };
         entries.push_str(&format!(
@@ -47,7 +54,7 @@ fn make_test_har(total_requests: u32, blocked_requests: u32) -> String {
             status,
             if status == 403 { "Forbidden" } else { "OK" }
         ));
-        
+
         if i < total_requests - 1 {
             entries.push(',');
         }
@@ -94,7 +101,10 @@ fn chr011_api_target_acceptable_zone() {
         .requirements
         .iter()
         .any(|r| r.id == "adaptive_rate_and_retry_budget");
-    assert!(!has_adaptive, "acceptable SLO should not trigger adaptive requirement");
+    assert!(
+        !has_adaptive,
+        "acceptable SLO should not trigger adaptive requirement"
+    );
 }
 
 #[test]
@@ -119,7 +129,11 @@ fn chr011_api_target_warning_zone() {
         .iter()
         .find(|r| r.id == "adaptive_rate_and_retry_budget")
         .expect("adaptive requirement should be present");
-    assert_eq!(adaptive.level, RequirementLevel::Medium, "warning zone should trigger Medium level");
+    assert_eq!(
+        adaptive.level,
+        RequirementLevel::Medium,
+        "warning zone should trigger Medium level"
+    );
 }
 
 #[test]
@@ -144,7 +158,11 @@ fn chr011_api_target_critical_zone() {
         .iter()
         .find(|r| r.id == "adaptive_rate_and_retry_budget")
         .expect("adaptive requirement should be present");
-    assert_eq!(adaptive.level, RequirementLevel::High, "critical zone should trigger High level");
+    assert_eq!(
+        adaptive.level,
+        RequirementLevel::High,
+        "critical zone should trigger High level"
+    );
 }
 
 #[test]
@@ -167,7 +185,10 @@ fn chr011_content_site_target_acceptable_zone() {
         .requirements
         .iter()
         .any(|r| r.id == "adaptive_rate_and_retry_budget");
-    assert!(!has_adaptive, "acceptable SLO should not trigger adaptive requirement");
+    assert!(
+        !has_adaptive,
+        "acceptable SLO should not trigger adaptive requirement"
+    );
 }
 
 #[test]
@@ -191,7 +212,11 @@ fn chr011_content_site_target_warning_zone() {
         .iter()
         .find(|r| r.id == "adaptive_rate_and_retry_budget")
         .expect("adaptive requirement should be present");
-    assert_eq!(adaptive.level, RequirementLevel::Medium, "warning zone should trigger Medium level");
+    assert_eq!(
+        adaptive.level,
+        RequirementLevel::Medium,
+        "warning zone should trigger Medium level"
+    );
 }
 
 #[test]
@@ -215,7 +240,11 @@ fn chr011_content_site_target_critical_zone() {
         .iter()
         .find(|r| r.id == "adaptive_rate_and_retry_budget")
         .expect("adaptive requirement should be present");
-    assert_eq!(adaptive.level, RequirementLevel::High, "critical zone should trigger High level");
+    assert_eq!(
+        adaptive.level,
+        RequirementLevel::High,
+        "critical zone should trigger High level"
+    );
 }
 
 #[test]
@@ -238,7 +267,10 @@ fn chr011_high_security_target_acceptable_zone() {
         .requirements
         .iter()
         .any(|r| r.id == "adaptive_rate_and_retry_budget");
-    assert!(!has_adaptive, "acceptable SLO should not trigger adaptive requirement");
+    assert!(
+        !has_adaptive,
+        "acceptable SLO should not trigger adaptive requirement"
+    );
 }
 
 #[test]
@@ -262,7 +294,11 @@ fn chr011_high_security_target_warning_zone() {
         .iter()
         .find(|r| r.id == "adaptive_rate_and_retry_budget")
         .expect("adaptive requirement should be present");
-    assert_eq!(adaptive.level, RequirementLevel::Medium, "warning zone should trigger Medium level");
+    assert_eq!(
+        adaptive.level,
+        RequirementLevel::Medium,
+        "warning zone should trigger Medium level"
+    );
 }
 
 #[test]
@@ -286,7 +322,11 @@ fn chr011_high_security_target_critical_zone() {
         .iter()
         .find(|r| r.id == "adaptive_rate_and_retry_budget")
         .expect("adaptive requirement should be present");
-    assert_eq!(adaptive.level, RequirementLevel::High, "critical zone should trigger High level");
+    assert_eq!(
+        adaptive.level,
+        RequirementLevel::High,
+        "critical zone should trigger High level"
+    );
 }
 
 #[test]
@@ -300,7 +340,7 @@ fn chr011_escalation_policy_builds_correctly() {
     let policy = build_runtime_policy(&report, &requirements);
 
     // In critical zone, escalation should:
-    // - Reduce rate_limit_rps to min(1.5) 
+    // - Reduce rate_limit_rps to min(1.5)
     // - Increase max_retries
     // - Increase backoff_base_ms
     // - Enable sticky session
@@ -331,7 +371,8 @@ fn chr011_boundary_acceptable_to_warning_transition() {
     let har_boundary = make_test_har(1000, 50); // 5% exactly
     let report_boundary = investigate_har(&har_boundary).expect("investigation failed");
     let slo = BlockedRatioSlo::api();
-    let blocked_ratio = report_boundary.blocked_requests as f64 / report_boundary.total_requests as f64;
+    let blocked_ratio =
+        report_boundary.blocked_requests as f64 / report_boundary.total_requests as f64;
     let (acceptable, warning, _) = slo.assess(blocked_ratio);
 
     assert!(acceptable, "exactly 5% should be acceptable (<=)");
@@ -340,7 +381,8 @@ fn chr011_boundary_acceptable_to_warning_transition() {
     // Now test just over: 51/1000 = 5.1%
     let har_over = make_test_har(1000, 51);
     let report_over = investigate_har(&har_over).expect("investigation failed");
-    let blocked_ratio_over = report_over.blocked_requests as f64 / report_over.total_requests as f64;
+    let blocked_ratio_over =
+        report_over.blocked_requests as f64 / report_over.total_requests as f64;
     let (acceptable_over, warning_over, _) = slo.assess(blocked_ratio_over);
 
     assert!(!acceptable_over, "5.1% should exceed acceptable");
@@ -389,5 +431,8 @@ fn chr011_mixed_status_codes_counted_correctly() {
 
     let report = investigate_har(har).expect("investigation failed");
     assert_eq!(report.total_requests, 4);
-    assert_eq!(report.blocked_requests, 2, "only 403 and 429 should count as blocked (not 500)");
+    assert_eq!(
+        report.blocked_requests, 2,
+        "only 403 and 429 should count as blocked (not 500)"
+    );
 }

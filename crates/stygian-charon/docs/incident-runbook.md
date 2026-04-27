@@ -24,12 +24,14 @@
 
 **Signals affected**: `fingerprint_and_identity_consistency`, `js_runtime_and_cookie_lifecycle`
 
-**Detection**: 
+**Detection**:
+
 - DataDome markers (`x-datadome`, `x-dd-b`, `captcha-delivery.com`) no longer appear in investigation reports
 - HTTP status shifts from 200/206 to 403/401 for previously passing URLs
 - WebRTC IP leaks detected in browser stealth validation tests
 
 **Root cause candidates**:
+
 1. Browser fingerprint injection disabled or broken
    - Check: `stygian-browser` fingerprint generation pipeline
    - Check: CDP binding injection (Runtime.AddBinding) for WebGL/Canvas overrides
@@ -41,11 +43,12 @@
    - Check: IP geolocation alignment with proxy
 
 **Escalation procedure**:
+
 1. **Immediate** (first 15 min):
    - Run diagnostic: `browser_stealth_validate` MCP tool against target URL
    - Capture full HAR and stealth report
    - Check if regression is target-specific or systematic
-   
+
 2. **Investigation** (15-60 min):
    - If `browser_stealth_validate` passes: fingerprint/identity issue is stealth-layer isolated
      - Escalate to stygian-browser team (@stygian-charon-on-call)
@@ -54,13 +57,14 @@
      - Check for CDP mode conflicts (cdp_source vs. browser_source)
      - Check FingerprintProfile selection logic
      - Escalate to browser stealth specialist
-   
+
 3. **Resolution** (60+ min):
    - Browser team patches fingerprint injection or CDP binding
    - Validate with `browser_stealth_validate` before rollback
    - Update learnings to downstream acquisition/extraction code
 
 **Validation test**:
+
 ```bash
 # Quick validation: Check fingerprint coherence
 cargo test -p stygian-browser --test browser_stealth -- --nocapture 2>&1 | grep "Tier1\|PASS\|FAIL"
@@ -76,11 +80,13 @@ cargo run --example stealth_benchmark -- --target https://example.com --profile 
 **Signals affected**: `adaptive_rate_and_retry_budget`, `rate_limit_backoff`
 
 **Detection**:
+
 - Blocked ratio (from `investigate_har()`) exceeds SLO thresholds for target class
 - HTTP 429 responses increase suddenly (where previously at 0%)
 - SLO assessment shifts from acceptable→warning/critical
 
 **Root cause candidates**:
+
 1. Acquisition pacing degraded
    - Check: Rate limit RPS setting in RuntimePolicy
    - Check: Backoff base milliseconds and multiplier in escalation logic
@@ -93,11 +99,12 @@ cargo run --example stealth_benchmark -- --target https://example.com --profile 
    - Check: TLS fingerprint alignment with user-agent
 
 **Escalation procedure**:
+
 1. **Immediate** (first 10 min):
    - Check blocked_ratio in latest investigation report
    - Run `infer_requirements_with_target_class(report, target_class)` to assess SLO level
    - If critical: apply emergency escalation (reduce RPS, enable sticky session)
-   
+
 2. **Investigation** (10-45 min):
    - Collect metrics: blocked_ratio, 429_count, response_time_p95
    - If target_class = HighSecurity and blocked_ratio >= 0.30:
@@ -106,13 +113,14 @@ cargo run --example stealth_benchmark -- --target https://example.com --profile 
    - If target_class = ContentSite and blocked_ratio is new:
      - Check proxy pool health and IP reputation
      - Check request delays for human-like distribution
-   
+
 3. **Resolution** (45+ min):
    - If proxy root cause: rotate to fresh IP pool or add whitelist delay
    - If pacing root cause: apply SLO-based escalation settings from policy.rs
    - If fingerprint root cause: coordinate with browser team for coherence fix
 
 **Validation test**:
+
 ```bash
 # Run SLO assessment test
 cargo test -p stygian-charon --test slo_integration -- --nocapture 2>&1
@@ -128,11 +136,13 @@ cargo test -p stygian-charon slo_assessment_for_each_target_class -- --nocapture
 **Signals affected**: `cors_and_header_fidelity`
 
 **Detection**:
+
 - Preflight request count increases in HAR entries
 - `Access-Control-Allow-*` headers missing or mismatched
 - Simple POST requests fail (should be preflight-free)
 
 **Root cause candidates**:
+
 1. Request header spoofing broken
    - Check: User-Agent, Referer, Origin headers match fingerprint profile
    - Check: Accept, Accept-Language, Accept-Encoding consistency
@@ -144,10 +154,11 @@ cargo test -p stygian-charon slo_assessment_for_each_target_class -- --nocapture
    - Check: Middleware layer stripping or reordering headers
 
 **Escalation procedure**:
+
 1. **Immediate** (first 10 min):
    - Capture full HAR and identify preflight entries
    - Check if target requires special CORS handling (old API versions, JSONP fallbacks)
-   
+
 2. **Investigation** (10-40 min):
    - Run `investigate_har(har_content).unwrap()` and check `preflight` count
    - If preflight > 0 and request is simple (GET/POST with standard headers):
@@ -155,13 +166,14 @@ cargo test -p stygian-charon slo_assessment_for_each_target_class -- --nocapture
      - Compare HAR request headers with browser default behavior
    - If all graph adapters affected: escalate to graph team
    - If adapter-specific: check adapter request builder
-   
+
 3. **Resolution** (40+ min):
    - Update header spoofing rules or browser profile
    - Validate with `investigate_har()` preflight count returning to baseline
    - Add regression test for affected URL pattern
 
 **Validation test**:
+
 ```bash
 # Quick header fidelity check
 cargo test -p stygian-charon infer_requirements -- --nocapture 2>&1 | grep "cors_and_header_fidelity\|PASS"
@@ -271,6 +283,7 @@ cargo test -p stygian-browser stealth_validation -- --nocapture
 | Fingerprint/Identity | `js_runtime_and_cookie_lifecycle` | Page 0 (Slack + SMS) | @greysquirr3l | 15 min acknowledgment |
 
 **Immediate actions**:
+
 1. Acknowledge in #stygian-incidents channel
 2. Collect HAR and investigation report
 3. Run `browser_stealth_validate` to isolate scope
@@ -286,6 +299,7 @@ cargo test -p stygian-browser stealth_validation -- --nocapture
 | Preflight/Headers | `cors_and_header_fidelity` | Slack + triage meeting | @greysquirr3l + graph team | 60 min acknowledgment |
 
 **Immediate actions**:
+
 1. Post in #stygian-incidents with signal ID and blocking_ratio/429_count
 2. Run `infer_requirements_with_target_class()` to confirm SLO level
 3. Apply temporary escalation if critical SLO zone (reduce RPS, enable sticky session)

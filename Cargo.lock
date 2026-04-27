@@ -4196,9 +4196,13 @@ dependencies = [
 name = "stygian-charon"
 version = "0.11.0"
 dependencies = [
+ "lru",
+ "redis",
+ "reqwest 0.13.2",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
@@ -4249,6 +4253,7 @@ dependencies = [
  "sha2",
  "sqlx",
  "stygian-browser",
+ "stygian-charon",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",

@@ -64,6 +64,11 @@ use tracing::{debug, info, warn};
 use stygian_browser::{
     AcquisitionMode, AcquisitionRequest, AcquisitionRunner, BrowserConfig, BrowserPool,
 };
+#[cfg(feature = "acquisition-runner")]
+use stygian_charon::{
+    AcquisitionModeHint, TargetClass, build_runtime_policy, infer_requirements_with_target_class,
+    investigate_har, map_runtime_policy,
+};
 
 use crate::{
     adapters::{
@@ -1123,6 +1128,27 @@ struct AcquisitionNodeConfig {
     wait_for_selector: Option<String>,
     extraction_js: Option<String>,
     total_timeout: Option<Duration>,
+    #[cfg(feature = "acquisition-runner")]
+    target_class: Option<TargetClass>,
+}
+
+#[cfg(feature = "acquisition-runner")]
+fn parse_optional_target_class(value: &toml::Value) -> Result<TargetClass, String> {
+    let raw = value
+        .as_str()
+        .ok_or_else(|| "acquisition.target_class must be a string".to_string())?;
+    match raw {
+        "api" => Ok(TargetClass::Api),
+        "content-site" | "content_site" | "contentsite" | "content" => Ok(TargetClass::ContentSite),
+        "high-security" | "high_security" | "highsecurity" | "high" => {
+            Ok(TargetClass::HighSecurity)
+        }
+        "unknown" => Ok(TargetClass::Unknown),
+        _ => Err(
+            "acquisition.target_class must be one of: api, content-site, high-security, unknown"
+                .to_string(),
+        ),
+    }
 }
 
 #[cfg(feature = "acquisition-runner")]
@@ -1195,11 +1221,17 @@ fn acquisition_config_from_node(node: &NodeDecl) -> Result<Option<AcquisitionNod
         .map(parse_optional_positive_secs)
         .transpose()?;
 
+    let target_class = table
+        .get("target_class")
+        .map(parse_optional_target_class)
+        .transpose()?;
+
     Ok(Some(AcquisitionNodeConfig {
         mode,
         wait_for_selector,
         extraction_js,
         total_timeout,
+        target_class,
     }))
 }
 
@@ -1214,6 +1246,96 @@ fn parse_acquisition_mode(raw: &str) -> Result<AcquisitionMode, String> {
             "Invalid acquisition mode '{other}'. Use one of: fast, resilient, hostile, investigate"
         )),
     }
+}
+
+#[cfg(feature = "acquisition-runner")]
+const fn mode_rank(mode: AcquisitionMode) -> u8 {
+    match mode {
+        AcquisitionMode::Fast => 0,
+        AcquisitionMode::Resilient => 1,
+        AcquisitionMode::Hostile => 2,
+        AcquisitionMode::Investigate => 3,
+    }
+}
+
+#[cfg(feature = "acquisition-runner")]
+const fn mode_from_hint(hint: AcquisitionModeHint) -> AcquisitionMode {
+    match hint {
+        AcquisitionModeHint::Fast => AcquisitionMode::Fast,
+        AcquisitionModeHint::Resilient => AcquisitionMode::Resilient,
+        AcquisitionModeHint::Hostile => AcquisitionMode::Hostile,
+        AcquisitionModeHint::Investigate => AcquisitionMode::Investigate,
+    }
+}
+
+#[cfg(feature = "acquisition-runner")]
+fn build_status_only_har(url: &str, status: u16, body_excerpt: Option<&str>) -> String {
+    let text = body_excerpt.unwrap_or_default();
+    json!({
+        "log": {
+            "version": "1.2",
+            "creator": {"name": "stygian-graph-acquisition-bridge", "version": "1.0"},
+            "pages": [{
+                "id": "page_1",
+                "title": url,
+                "startedDateTime": "2026-01-01T00:00:00.000Z",
+                "pageTimings": {"onLoad": 0}
+            }],
+            "entries": [{
+                "pageref": "page_1",
+                "startedDateTime": "2026-01-01T00:00:00.000Z",
+                "time": 0,
+                "request": {
+                    "method": "GET",
+                    "url": url,
+                    "httpVersion": "HTTP/2",
+                    "headers": [],
+                    "queryString": [],
+                    "cookies": [],
+                    "headersSize": -1,
+                    "bodySize": 0
+                },
+                "response": {
+                    "status": status,
+                    "statusText": "bridge",
+                    "httpVersion": "HTTP/2",
+                    "headers": [],
+                    "cookies": [],
+                    "content": {"size": text.len(), "mimeType": "text/html", "text": text},
+                    "redirectURL": "",
+                    "headersSize": -1,
+                    "bodySize": 0
+                },
+                "cache": {},
+                "timings": {
+                    "blocked": 0,
+                    "dns": 0,
+                    "connect": 0,
+                    "send": 0,
+                    "wait": 0,
+                    "receive": 0,
+                    "ssl": 0
+                }
+            }]
+        }
+    })
+    .to_string()
+}
+
+#[cfg(feature = "acquisition-runner")]
+fn suggest_mode_from_slo(
+    url: &str,
+    status_code: Option<u16>,
+    html_excerpt: Option<&str>,
+    target_class: TargetClass,
+) -> Option<AcquisitionMode> {
+    let status = status_code.unwrap_or(200);
+    let har = build_status_only_har(url, status, html_excerpt);
+    let report = investigate_har(&har).ok()?;
+    let requirements = infer_requirements_with_target_class(&report, target_class);
+    let policy = build_runtime_policy(&report, &requirements);
+    let mapped = map_runtime_policy(&policy);
+    Some(mode_from_hint(mapped.mode))
 }
 
 #[cfg(feature = "acquisition-runner")]
@@ -1233,22 +1355,57 @@ async fn acquisition_bridge_pool() -> Result<Arc<BrowserPool>, String> {
 
 #[cfg(feature = "acquisition-runner")]
 async fn run_acquisition_bridge(url: &str, cfg: &AcquisitionNodeConfig) -> Result<Value, String> {
-    let mode = parse_acquisition_mode(&cfg.mode)?;
+    let configured_mode = parse_acquisition_mode(&cfg.mode)?;
     let pool = acquisition_bridge_pool().await?;
 
     let runner = AcquisitionRunner::new(pool);
-    let request = AcquisitionRequest {
-        url: url.to_string(),
-        mode,
-        wait_for_selector: cfg.wait_for_selector.clone(),
-        extraction_js: cfg.extraction_js.clone(),
-        total_timeout: cfg
-            .total_timeout
-            .unwrap_or_else(|| AcquisitionRequest::default().total_timeout),
-        ..AcquisitionRequest::default()
-    };
+    let total_timeout = cfg
+        .total_timeout
+        .unwrap_or_else(|| AcquisitionRequest::default().total_timeout);
 
-    let result = runner.run(request).await;
+    let mut result = runner
+        .run(AcquisitionRequest {
+            url: url.to_string(),
+            mode: configured_mode,
+            wait_for_selector: cfg.wait_for_selector.clone(),
+            extraction_js: cfg.extraction_js.clone(),
+            total_timeout,
+            ..AcquisitionRequest::default()
+        })
+        .await;
+
+    let mut effective_mode = configured_mode;
+    let mut slo_recommended_mode: Option<AcquisitionMode> = None;
+    let mut slo_bridge_applied = false;
+
+    if let Some(target_class) = cfg.target_class
+        && let Some(recommended_mode) = suggest_mode_from_slo(
+            result.final_url.as_deref().unwrap_or(url),
+            result.status_code,
+            result.html_excerpt.as_deref(),
+            target_class,
+        )
+    {
+        slo_recommended_mode = Some(recommended_mode);
+        if mode_rank(recommended_mode) > mode_rank(configured_mode) {
+            let retried = runner
+                .run(AcquisitionRequest {
+                    url: url.to_string(),
+                    mode: recommended_mode,
+                    wait_for_selector: cfg.wait_for_selector.clone(),
+                    extraction_js: cfg.extraction_js.clone(),
+                    total_timeout,
+                    ..AcquisitionRequest::default()
+                })
+                .await;
+            if retried.success || !result.success {
+                result = retried;
+                effective_mode = recommended_mode;
+                slo_bridge_applied = true;
+            }
+        }
+    }
+
     let strategy_used = serde_json::to_value(result.strategy_used).unwrap_or(Value::Null);
     let attempted = serde_json::to_value(&result.attempted).unwrap_or(Value::Array(Vec::new()));
     let failures = serde_json::to_value(&result.failures).unwrap_or(Value::Array(Vec::new()));
@@ -1269,6 +1426,11 @@ async fn run_acquisition_bridge(url: &str, cfg: &AcquisitionNodeConfig) -> Resul
                 "timed_out": result.timed_out,
                 "failure_count": result.failures.len(),
                 "failures": failures,
+                "configured_mode": format!("{configured_mode:?}"),
+                "effective_mode": format!("{effective_mode:?}"),
+                "slo_target_class": cfg.target_class.map(|tc| format!("{tc:?}")),
+                "slo_recommended_mode": slo_recommended_mode.map(|mode| format!("{mode:?}")),
+                "slo_bridge_applied": slo_bridge_applied,
             }
         }
     }))
@@ -1679,6 +1841,58 @@ depends_on = ["fetch"]
                 .pointer("/data/wait_for_selector")
                 .and_then(Value::as_str),
             Some("main")
+        );
+    }
+
+    #[cfg(feature = "acquisition-runner")]
+    #[test]
+    fn acquisition_config_parses_target_class() {
+        let mut acquisition = toml::map::Map::new();
+        acquisition.insert(
+            "mode".to_string(),
+            toml::Value::String("resilient".to_string()),
+        );
+        acquisition.insert(
+            "target_class".to_string(),
+            toml::Value::String("content-site".to_string()),
+        );
+
+        let mut params = HashMap::new();
+        params.insert("acquisition".to_string(), toml::Value::Table(acquisition));
+
+        let node = NodeDecl {
+            name: "render".to_string(),
+            service: "browser".to_string(),
+            depends_on: Vec::new(),
+            url: Some("https://example.com".to_string()),
+            params,
+        };
+
+        let parsed = acquisition_config_from_node(&node);
+        assert!(parsed.is_ok(), "target_class should parse");
+        let Ok(Some(cfg)) = parsed else {
+            return;
+        };
+        assert_eq!(cfg.target_class, Some(TargetClass::ContentSite));
+    }
+
+    #[cfg(feature = "acquisition-runner")]
+    #[test]
+    fn slo_bridge_can_recommend_stronger_mode_for_blocked_status() {
+        let recommended = suggest_mode_from_slo(
+            "https://example.com/challenge",
+            Some(403),
+            Some("captcha-delivery.com"),
+            TargetClass::Api,
+        );
+
+        assert!(recommended.is_some(), "SLO bridge should return a mode");
+        let Some(mode) = recommended else {
+            return;
+        };
+        assert!(
+            mode_rank(mode) >= mode_rank(AcquisitionMode::Resilient),
+            "blocked scenarios should not downshift below resilient"
         );
     }
 

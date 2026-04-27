@@ -88,6 +88,7 @@ indexmap.workspace = true
 
 # Browser automation (optional)
 stygian-browser = { path = "../stygian-browser", version = "0.11.0", optional = true }
+stygian-charon = { path = "../stygian-charon", version = "0.11.0", optional = true }
 
 # WASM plugins (optional)
 wasmtime = { workspace = true, optional = true }
@@ -140,7 +141,7 @@ escalation = []
 # MCP (Model Context Protocol) server — exposes scraping & pipeline tools over stdin/stdout JSON-RPC 2.0
 mcp = []
 # Optional bridge for running stygian-browser AcquisitionRunner from graph pipeline nodes
-acquisition-runner = ["browser"]
+acquisition-runner = ["browser", "dep:stygian-charon"]
 # Structured data extraction via derive macros (requires browser)
 extract = ["browser", "stygian-browser/extract"]
 

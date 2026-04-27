@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+#[cfg(feature = "caching")]
+use crate::cache::{InvestigationReportCache, investigation_cache_key};
 use crate::classifier::classify_transaction;
 use crate::har;
 use crate::types::{
@@ -118,6 +120,41 @@ pub fn investigate_har(har_json: &str) -> Result<InvestigationReport, har::HarEr
         aggregate,
         target_class: None,
     })
+}
+
+/// Build an investigation report from a HAR payload using an external cache and explicit target class.
+///
+/// # Errors
+///
+/// Returns [`har::HarError`] when the HAR payload is invalid or malformed.
+#[cfg(feature = "caching")]
+pub fn investigate_har_cached_with_target_class(
+    har_json: &str,
+    target_class: TargetClass,
+    cache: &dyn InvestigationReportCache,
+) -> Result<InvestigationReport, har::HarError> {
+    let key = investigation_cache_key(har_json, target_class);
+    if let Some(report) = cache.get(&key) {
+        return Ok(report);
+    }
+
+    let mut report = investigate_har(har_json)?;
+    report.target_class = Some(target_class);
+    cache.put(key, report.clone());
+    Ok(report)
+}
+
+/// Build an investigation report from a HAR payload using a cache and the conservative Unknown class.
+///
+/// # Errors
+///
+/// Returns [`har::HarError`] when the HAR payload is invalid or malformed.
+#[cfg(feature = "caching")]
+pub fn investigate_har_cached(
+    har_json: &str,
+    cache: &dyn InvestigationReportCache,
+) -> Result<InvestigationReport, har::HarError> {
+    investigate_har_cached_with_target_class(har_json, TargetClass::Unknown, cache)
 }
 
 /// Compare a baseline and candidate investigation report.
@@ -483,6 +520,12 @@ fn recommend_strategy(
 mod tests {
     use super::*;
 
+    #[cfg(feature = "caching")]
+    use std::{num::NonZeroUsize, time::Duration};
+
+    #[cfg(feature = "caching")]
+    use crate::cache::MemoryInvestigationCache;
+
     #[test]
     fn compare_reports_flags_block_ratio_regression() {
         let baseline = InvestigationReport {
@@ -686,5 +729,41 @@ mod tests {
             .iter()
             .find(|r| r.id == "adaptive_rate_and_retry_budget");
         assert!(adaptive_req.is_none());
+    }
+
+    #[cfg(feature = "caching")]
+    #[test]
+    fn cached_investigation_sets_target_class_and_reuses_cached_report() {
+        let capacity = NonZeroUsize::new(8).unwrap_or(NonZeroUsize::MIN);
+        let cache = MemoryInvestigationCache::new(capacity, Duration::from_mins(1));
+        let har_json = r#"{
+            "log": {
+                "version": "1.2.0",
+                "creator": {"name": "test", "version": "1.0"},
+                "pages": [{"id": "page1", "title": "test", "startedDateTime": "2025-01-01T00:00:00Z", "pageTimings": {"onLoad": 0}}],
+                "entries": []
+            }
+        }"#;
+
+        let first_result =
+            investigate_har_cached_with_target_class(har_json, TargetClass::Api, &cache);
+        assert!(first_result.is_ok(), "cached investigation should succeed");
+        let second_result =
+            investigate_har_cached_with_target_class(har_json, TargetClass::Api, &cache);
+        assert!(
+            second_result.is_ok(),
+            "cached investigation should hit cache"
+        );
+
+        let Ok(first) = first_result else {
+            return;
+        };
+        let Ok(second) = second_result else {
+            return;
+        };
+
+        assert_eq!(first.target_class, Some(TargetClass::Api));
+        assert_eq!(second.target_class, Some(TargetClass::Api));
+        assert_eq!(first, second);
     }
 }

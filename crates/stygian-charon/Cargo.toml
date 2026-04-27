@@ -15,6 +15,10 @@ categories = ["web-programming", "network-programming"]
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
+reqwest = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true, features = ["macros", "rt-multi-thread", "time"] }
+lru = { workspace = true, optional = true }
+redis = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json.workspace = true
@@ -23,4 +27,10 @@ serde_json.workspace = true
 default = []
 ## Enable telemetry metrics collection for SLO assessment and escalation operations
 metrics = []
+## Enable live URL validation example and ignored integration smoke test
+live-validation = ["dep:reqwest", "dep:tokio"]
+## Enable investigation report caching backends and cached analysis APIs
+caching = ["dep:lru"]
+## Optional Redis-backed investigation report cache
+redis-cache = ["caching", "dep:redis"]
 

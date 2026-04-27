@@ -31,9 +31,10 @@
 //! println!("{}", collector.to_prometheus());
 //! ```
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::fmt::Write;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Global metrics collector for SLO assessment operations.
 ///
@@ -100,7 +101,7 @@ impl MetricsCollector {
 
         // Update blocked ratio histogram
         if total_requests > 0 {
-            let blocked_ratio = blocked_requests as f64 / total_requests as f64;
+            let blocked_ratio = to_f64(blocked_requests) / to_f64(total_requests);
             let ratio_bits = blocked_ratio.to_bits();
 
             // Update min
@@ -156,18 +157,18 @@ impl MetricsCollector {
         let total = self.assessments_total.load(Ordering::Relaxed);
         output.push_str("# HELP slo_assessment_total Total SLO assessments performed\n");
         output.push_str("# TYPE slo_assessment_total counter\n");
-        output.push_str(&format!("slo_assessment_total {}\n\n", total));
+        let _ = writeln!(output, "slo_assessment_total {total}\n");
 
         // Escalation counters
         let warnings = self.escalations_warning.load(Ordering::Relaxed);
         let criticals = self.escalations_critical.load(Ordering::Relaxed);
         output.push_str("# HELP slo_escalation_warning_total SLO escalations in warning zone\n");
         output.push_str("# TYPE slo_escalation_warning_total counter\n");
-        output.push_str(&format!("slo_escalation_warning_total {}\n\n", warnings));
+        let _ = writeln!(output, "slo_escalation_warning_total {warnings}\n");
 
         output.push_str("# HELP slo_escalation_critical_total SLO escalations in critical zone\n");
         output.push_str("# TYPE slo_escalation_critical_total counter\n");
-        output.push_str(&format!("slo_escalation_critical_total {}\n\n", criticals));
+        let _ = writeln!(output, "slo_escalation_critical_total {criticals}\n");
 
         // Blocked ratio histogram
         let count = self.blocked_ratio_count.load(Ordering::Relaxed);
@@ -178,47 +179,48 @@ impl MetricsCollector {
 
             let min = f64::from_bits(min_bits);
             let max = f64::from_bits(max_bits);
-            let avg = f64::from_bits(sum_bits / count);
+            let avg_bits = sum_bits.checked_div(count).unwrap_or_default();
+            let avg = f64::from_bits(avg_bits);
 
             output.push_str("# HELP slo_blocked_ratio_min Minimum blocked ratio observed\n");
             output.push_str("# TYPE slo_blocked_ratio_min gauge\n");
-            output.push_str(&format!("slo_blocked_ratio_min {}\n\n", min));
+            let _ = writeln!(output, "slo_blocked_ratio_min {min}\n");
 
             output.push_str("# HELP slo_blocked_ratio_max Maximum blocked ratio observed\n");
             output.push_str("# TYPE slo_blocked_ratio_max gauge\n");
-            output.push_str(&format!("slo_blocked_ratio_max {}\n\n", max));
+            let _ = writeln!(output, "slo_blocked_ratio_max {max}\n");
 
             output.push_str("# HELP slo_blocked_ratio_avg Average blocked ratio\n");
             output.push_str("# TYPE slo_blocked_ratio_avg gauge\n");
-            output.push_str(&format!("slo_blocked_ratio_avg {}\n\n", avg));
+            let _ = writeln!(output, "slo_blocked_ratio_avg {avg}\n");
         }
 
         // Target class distribution
-        if let Ok(counts) = self.target_class_counts.lock() {
-            if !counts.is_empty() {
-                output.push_str("# HELP slo_target_class_total Assessments by target class\n");
-                output.push_str("# TYPE slo_target_class_total counter\n");
-                for (class, count) in counts.iter() {
-                    output.push_str(&format!(
-                        "slo_target_class_total{{class=\"{}\"}} {}\n",
-                        class, count
-                    ));
-                }
-                output.push('\n');
+        if let Ok(counts) = self.target_class_counts.lock()
+            && !counts.is_empty()
+        {
+            output.push_str("# HELP slo_target_class_total Assessments by target class\n");
+            output.push_str("# TYPE slo_target_class_total counter\n");
+            for (class, count) in counts.iter() {
+                let _ = writeln!(
+                    output,
+                    "slo_target_class_total{{class=\"{class}\"}} {count}"
+                );
             }
+            output.push('\n');
         }
 
         // Escalation level distribution
-        if let Ok(counts) = self.escalation_level_counts.lock() {
-            if !counts.is_empty() {
-                output.push_str("# HELP slo_escalation_level_total Assessments by escalation level\n");
-                output.push_str("# TYPE slo_escalation_level_total counter\n");
-                for (level, count) in counts.iter() {
-                    output.push_str(&format!(
-                        "slo_escalation_level_total{{level=\"{}\"}} {}\n",
-                        level, count
-                    ));
-                }
+        if let Ok(counts) = self.escalation_level_counts.lock()
+            && !counts.is_empty()
+        {
+            output.push_str("# HELP slo_escalation_level_total Assessments by escalation level\n");
+            output.push_str("# TYPE slo_escalation_level_total counter\n");
+            for (level, count) in counts.iter() {
+                let _ = writeln!(
+                    output,
+                    "slo_escalation_level_total{{level=\"{level}\"}} {count}"
+                );
             }
         }
 
@@ -248,6 +250,11 @@ impl Default for MetricsCollector {
     fn default() -> Self {
         Self::new()
     }
+}
+
+#[allow(clippy::cast_precision_loss)]
+const fn to_f64(value: u64) -> f64 {
+    value as f64
 }
 
 #[cfg(test)]
@@ -293,7 +300,7 @@ mod tests {
     fn metrics_collector_reset() {
         let collector = MetricsCollector::new();
         collector.record_assessment(50, 1000, "Api", "Acceptable");
-        
+
         collector.reset();
         let prometheus = collector.to_prometheus();
         // After reset, metrics should show 0 counts
