@@ -60,6 +60,9 @@ jobs:
         # and will not run here. Unit tests run in full.
         run: cargo test --workspace --all-features
 
+      - name: Run Charon snapshot drift tests
+        run: cargo test -p stygian-charon --test snapshot_drift -- --nocapture
+
   clippy:
     name: Clippy
     runs-on: ubuntu-latest

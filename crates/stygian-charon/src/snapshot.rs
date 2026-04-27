@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -125,6 +125,76 @@ pub enum SnapshotCollectionError {
     Serialization(String),
 }
 
+/// Kind of signal-level drift detected between baseline and candidate snapshots.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SnapshotSignalDriftKind {
+    /// A signal path exists only in candidate.
+    Added,
+    /// A signal path exists only in baseline.
+    Removed,
+    /// A signal path exists in both snapshots but the value changed.
+    Changed,
+}
+
+/// Focused signal-level drift entry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SnapshotSignalDrift {
+    /// Dot-path to the changed signal key, rooted at `signals`.
+    pub path: String,
+    /// Difference kind for this path.
+    pub kind: SnapshotSignalDriftKind,
+    /// Baseline value encoded as compact JSON when present.
+    pub baseline: Option<String>,
+    /// Candidate value encoded as compact JSON when present.
+    pub candidate: Option<String>,
+}
+
+/// Signal-focused drift report for baseline vs candidate snapshots.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SnapshotDriftReport {
+    /// Signal-level differences discovered after deterministic normalization.
+    pub diffs: Vec<SnapshotSignalDrift>,
+}
+
+impl SnapshotDriftReport {
+    /// Return `true` when any signal drift was detected.
+    #[must_use]
+    pub fn has_drift(&self) -> bool {
+        !self.diffs.is_empty()
+    }
+
+    /// Render a focused, line-oriented diff for changed signal paths.
+    #[must_use]
+    pub fn render_focused_diff(&self) -> String {
+        if self.diffs.is_empty() {
+            return "no signal drift detected".to_string();
+        }
+
+        self.diffs
+            .iter()
+            .map(|entry| match entry.kind {
+                SnapshotSignalDriftKind::Added => format!(
+                    "{} added: {}",
+                    entry.path,
+                    entry.candidate.as_deref().unwrap_or("null")
+                ),
+                SnapshotSignalDriftKind::Removed => format!(
+                    "{} removed: {}",
+                    entry.path,
+                    entry.baseline.as_deref().unwrap_or("null")
+                ),
+                SnapshotSignalDriftKind::Changed => format!(
+                    "{} changed: {} -> {}",
+                    entry.path,
+                    entry.baseline.as_deref().unwrap_or("null"),
+                    entry.candidate.as_deref().unwrap_or("null")
+                ),
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
 /// Options controlling deterministic snapshot collection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SnapshotDeterminismOptions {
@@ -185,6 +255,89 @@ pub fn collect_deterministic_snapshot_bytes(
 
     serde_json::to_vec(&normalized)
         .map_err(|error| SnapshotCollectionError::Serialization(error.to_string()))
+}
+
+/// Compare baseline and candidate snapshots for deterministic, signal-focused drift.
+///
+/// The comparison validates both snapshots, applies deterministic normalization,
+/// and reports only differences under the `signals` subtree.
+///
+/// # Errors
+///
+/// Returns [`SnapshotCollectionError`] when either snapshot fails compatibility
+/// validation or deterministic serialization.
+pub fn compare_snapshot_signal_drift(
+    baseline: &NormalizedFingerprintSnapshot,
+    candidate: &NormalizedFingerprintSnapshot,
+    options: &SnapshotDeterminismOptions,
+) -> Result<SnapshotDriftReport, SnapshotCollectionError> {
+    let baseline_bytes = collect_deterministic_snapshot_bytes(baseline, options)?;
+    let candidate_bytes = collect_deterministic_snapshot_bytes(candidate, options)?;
+
+    let baseline_normalized: NormalizedFingerprintSnapshot =
+        serde_json::from_slice(&baseline_bytes)
+            .map_err(|error| SnapshotCollectionError::Serialization(error.to_string()))?;
+    let candidate_normalized: NormalizedFingerprintSnapshot =
+        serde_json::from_slice(&candidate_bytes)
+            .map_err(|error| SnapshotCollectionError::Serialization(error.to_string()))?;
+
+    let baseline_signals = serde_json::to_value(&baseline_normalized.signals)
+        .map_err(|error| SnapshotCollectionError::Serialization(error.to_string()))?;
+    let candidate_signals = serde_json::to_value(&candidate_normalized.signals)
+        .map_err(|error| SnapshotCollectionError::Serialization(error.to_string()))?;
+
+    let mut diffs = Vec::new();
+    collect_signal_diffs("signals", &baseline_signals, &candidate_signals, &mut diffs);
+
+    Ok(SnapshotDriftReport { diffs })
+}
+
+fn collect_signal_diffs(
+    path: &str,
+    baseline: &serde_json::Value,
+    candidate: &serde_json::Value,
+    diffs: &mut Vec<SnapshotSignalDrift>,
+) {
+    match (baseline, candidate) {
+        (serde_json::Value::Object(left), serde_json::Value::Object(right)) => {
+            let keys: BTreeSet<&String> = left.keys().chain(right.keys()).collect();
+            for key in keys {
+                let next_path = format!("{path}.{key}");
+                match (left.get(key), right.get(key)) {
+                    (Some(left_value), Some(right_value)) => {
+                        collect_signal_diffs(&next_path, left_value, right_value, diffs);
+                    }
+                    (Some(left_value), None) => {
+                        diffs.push(SnapshotSignalDrift {
+                            path: next_path,
+                            kind: SnapshotSignalDriftKind::Removed,
+                            baseline: Some(left_value.to_string()),
+                            candidate: None,
+                        });
+                    }
+                    (None, Some(right_value)) => {
+                        diffs.push(SnapshotSignalDrift {
+                            path: next_path,
+                            kind: SnapshotSignalDriftKind::Added,
+                            baseline: None,
+                            candidate: Some(right_value.to_string()),
+                        });
+                    }
+                    (None, None) => {}
+                }
+            }
+        }
+        _ => {
+            if baseline != candidate {
+                diffs.push(SnapshotSignalDrift {
+                    path: path.to_string(),
+                    kind: SnapshotSignalDriftKind::Changed,
+                    baseline: Some(baseline.to_string()),
+                    candidate: Some(candidate.to_string()),
+                });
+            }
+        }
+    }
 }
 
 fn parse_schema_major(version: &str) -> Result<u64, SnapshotCompatibilityError> {
@@ -404,5 +557,68 @@ mod tests {
                 signal: "webgl"
             })
         );
+    }
+
+    #[test]
+    fn compare_snapshot_signal_drift_reports_focused_paths() {
+        let baseline = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-http.json"
+        ));
+        let mut candidate = baseline.clone();
+        candidate.signals.user_agent = "Mozilla/5.0 (X11; Linux x86_64)".to_string();
+        candidate.legacy_user_agent = Some(candidate.signals.user_agent.clone());
+        candidate
+            .signals
+            .features
+            .insert("new_flag".to_string(), true);
+
+        let report = compare_snapshot_signal_drift(
+            &baseline,
+            &candidate,
+            &SnapshotDeterminismOptions::default(),
+        )
+        .expect("drift comparison must succeed");
+
+        assert!(report.has_drift());
+        assert!(
+            report
+                .diffs
+                .iter()
+                .any(|d| d.path == "signals.user_agent"
+                    && d.kind == SnapshotSignalDriftKind::Changed)
+        );
+        assert!(
+            report
+                .diffs
+                .iter()
+                .any(|d| d.path == "signals.features.new_flag"
+                    && d.kind == SnapshotSignalDriftKind::Added)
+        );
+    }
+
+    #[test]
+    fn compare_snapshot_signal_drift_ignores_volatile_only_changes() {
+        let mut baseline = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-http.json"
+        ));
+        baseline.captured_at = "2026-04-26T00:00:00Z".to_string();
+        baseline
+            .metadata
+            .insert("trace_id".to_string(), "trace-a".to_string());
+
+        let mut candidate = baseline.clone();
+        candidate.captured_at = "2026-04-27T00:00:00Z".to_string();
+        candidate
+            .metadata
+            .insert("trace_id".to_string(), "trace-b".to_string());
+
+        let report = compare_snapshot_signal_drift(
+            &baseline,
+            &candidate,
+            &SnapshotDeterminismOptions::default(),
+        )
+        .expect("drift comparison must succeed");
+
+        assert!(!report.has_drift());
     }
 }
