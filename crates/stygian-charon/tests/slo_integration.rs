@@ -1,4 +1,4 @@
-#![allow(clippy::expect_used)]
+#![allow(clippy::expect_used, clippy::cast_precision_loss)]
 
 use stygian_charon::{BlockedRatioSlo, investigate_har};
 
