@@ -37,9 +37,9 @@ pub use snapshot::{
     normalize_snapshot_for_determinism, validate_snapshot_compatibility,
 };
 pub use types::{
-    AdapterStrategy, AntiBotProvider, AntiBotRequirement, Detection, ExecutionMode,
-    HarClassificationReport, HarRequestSummary, HostSummary, IntegrationRecommendation,
-    InvestigationBundle, InvestigationDiff, InvestigationReport, MarkerCount, ProviderScore,
-    RequirementLevel, RequirementsProfile, RuntimePolicy, SessionMode, TelemetryLevel,
-    TransactionView,
+    AdapterStrategy, AntiBotProvider, AntiBotRequirement, BlockedRatioSlo, Detection,
+    ExecutionMode, HarClassificationReport, HarRequestSummary, HostSummary,
+    IntegrationRecommendation, InvestigationBundle, InvestigationDiff, InvestigationReport,
+    MarkerCount, ProviderScore, RequirementLevel, RequirementsProfile, RuntimePolicy, SessionMode,
+    TelemetryLevel, TargetClass, TransactionView,
 };
