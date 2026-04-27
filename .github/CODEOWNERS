@@ -1,0 +1,41 @@
+# Stygian Codeowners
+# This file defines code review assignment and on-call ownership for critical components.
+# Syntax: `<path> <owner1> <owner2>` assigns review/on-call to named maintainers.
+
+# Root project configuration
+.github/ @greysquirr3l
+Cargo.toml @greysquirr3l
+PROGRESS.md @greysquirr3l
+plan.toml @greysquirr3l
+
+# Stygian Charon — Anti-Bot Requirement Inference & Signal Coverage
+# Primary: @greysquirr3l
+# Secondary (on-call continuity): Community maintainers
+crates/stygian-charon/ @greysquirr3l
+crates/stygian-charon/src/investigation.rs @greysquirr3l @stygian-charon-on-call
+crates/stygian-charon/src/snapshot.rs @greysquirr3l @stygian-charon-on-call
+crates/stygian-charon/docs/signal-coverage-matrix.md @greysquirr3l @stygian-charon-on-call
+
+# Shared Surface: Fingerprint & Identity Consistency (DataDome, Datadome-style defenses)
+# Shared owners: stygian-charon (primary) + stygian-browser (secondary)
+crates/stygian-browser/src/fingerprint.rs @greysquirr3l @stygian-charon-on-call
+crates/stygian-browser/src/stealth/ @greysquirr3l @stygian-charon-on-call
+
+# Shared Surface: CORS & Header Fidelity (Preflight request choreography)
+# Shared owners: stygian-charon (primary) + runtime adapters (secondary)
+crates/stygian-graph/src/adapters/ @greysquirr3l
+
+# Stygian Browser — Stealth & Fingerprint Injection
+# Primary: browser implementation team
+crates/stygian-browser/ @greysquirr3l
+
+# Stygian Graph — Runtime Orchestration
+crates/stygian-graph/ @greysquirr3l
+
+# Documentation
+book/src/charon/ @greysquirr3l
+docs/ @greysquirr3l
+
+# Testing & CI/CD
+.github/workflows/ @greysquirr3l
+tests/ @greysquirr3l
