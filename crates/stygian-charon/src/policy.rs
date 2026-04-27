@@ -168,8 +168,8 @@ fn apply_slo_escalation(policy: &mut RuntimePolicy, requirements: &RequirementsP
         .iter()
         .find(|r| r.id == "adaptive_rate_and_retry_budget");
 
-    match adaptive_req {
-        Some(req) => match req.level {
+    if let Some(req) = adaptive_req {
+        match req.level {
             RequirementLevel::Medium => {
                 // Warning zone: increase retries and enable warmup for resilience
                 policy.max_retries = policy.max_retries.max(4);
@@ -206,9 +206,6 @@ fn apply_slo_escalation(policy: &mut RuntimePolicy, requirements: &RequirementsP
             RequirementLevel::Low => {
                 // Below threshold: no escalation needed
             }
-        },
-        None => {
-            // No adaptive requirement: policy stands as-is
         }
     }
 }

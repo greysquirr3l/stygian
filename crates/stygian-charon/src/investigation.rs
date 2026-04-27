@@ -186,12 +186,13 @@ pub fn compare_reports(
 /// # Arguments
 ///
 /// * `report` — Investigation report with metrics and provider signatures
-/// * `target_class` — Website classification for SLO thresholds (API, ContentSite, HighSecurity, Unknown)
+/// * `target_class` — Website classification for SLO thresholds (`Api`, `ContentSite`, `HighSecurity`, `Unknown`)
 ///
 /// # Returns
 ///
 /// Requirements profile incorporating SLO-based assessment for adaptive rate requirements.
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn infer_requirements_with_target_class(
     report: &InvestigationReport,
     target_class: TargetClass,
@@ -595,7 +596,9 @@ mod tests {
             .iter()
             .find(|r| r.id == "adaptive_rate_and_retry_budget");
         assert!(adaptive_req.is_some());
-        assert_eq!(adaptive_req.unwrap().level, RequirementLevel::High);
+        if let Some(req) = adaptive_req {
+            assert_eq!(req.level, RequirementLevel::High);
+        }
     }
 
     #[test]
@@ -627,7 +630,9 @@ mod tests {
             .iter()
             .find(|r| r.id == "adaptive_rate_and_retry_budget");
         assert!(api_req.is_some());
-        assert_eq!(api_req.unwrap().level, RequirementLevel::High); // Critical
+        if let Some(req) = api_req {
+            assert_eq!(req.level, RequirementLevel::High); // Critical
+        }
 
         // For ContentSite: 20% is in warning zone (acceptable 15%, warning 25%)
         let content_profile =
@@ -637,7 +642,9 @@ mod tests {
             .iter()
             .find(|r| r.id == "adaptive_rate_and_retry_budget");
         assert!(content_req.is_some());
-        assert_eq!(content_req.unwrap().level, RequirementLevel::Medium); // Warning
+        if let Some(req) = content_req {
+            assert_eq!(req.level, RequirementLevel::Medium); // Warning
+        }
 
         // For HighSecurity: 20% is acceptable (threshold 30%)
         let high_sec_profile =
