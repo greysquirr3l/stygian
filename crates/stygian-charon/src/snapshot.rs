@@ -419,9 +419,11 @@ pub fn validate_snapshot_compatibility(
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 
+    #[allow(clippy::missing_const_for_fn)]
     fn parse_snapshot(path: &str) -> NormalizedFingerprintSnapshot {
         serde_json::from_str::<NormalizedFingerprintSnapshot>(path)
             .expect("example snapshot should deserialize")
