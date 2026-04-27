@@ -57,6 +57,16 @@ Deterministic collector behavior:
 - Canonical byte stability is verified in unit tests by collecting snapshots with
   identical semantic input but different volatile values and asserting equal bytes.
 
+Baseline fixture generation workflow:
+
+- Reproducible command: `.github/scripts/generate-charon-fixtures.sh`
+- Baseline fixtures are committed under `docs/examples/fixtures/`
+- Required fixture metadata:
+  - `metadata.fixture_source`
+  - `metadata.fixture_generation_version`
+- Review process is defined in `docs/examples/fixtures/README.md` and enforced by
+  `.github/workflows/charon-fixtures.yml`
+
 ## Top-level type
 
 ### InvestigationBundle
