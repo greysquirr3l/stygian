@@ -46,6 +46,17 @@ Canonical ordering and type constraints:
 - Snapshot compatibility checks are implemented in
   `src/snapshot.rs::validate_snapshot_compatibility`.
 
+Deterministic collector behavior:
+
+- `collect_deterministic_snapshot_bytes` performs compatibility validation,
+  deterministic normalization, then canonical serialization.
+- Nondeterministic fields are normalized/excluded by default:
+  - `captured_at` is normalized to `1970-01-01T00:00:00Z`
+  - volatile metadata keys are removed:
+    `capture_nonce`, `generated_at`, `request_id`, `run_id`, `session_id`, `trace_id`
+- Canonical byte stability is verified in unit tests by collecting snapshots with
+  identical semantic input but different volatile values and asserting equal bytes.
+
 ## Top-level type
 
 ### InvestigationBundle

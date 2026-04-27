@@ -114,6 +114,79 @@ pub enum SnapshotCompatibilityError {
     },
 }
 
+/// Error returned when building deterministic snapshot bytes.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum SnapshotCollectionError {
+    /// Snapshot failed compatibility validation.
+    #[error("compatibility validation failed: {0}")]
+    Compatibility(#[from] SnapshotCompatibilityError),
+    /// Snapshot serialization failed.
+    #[error("serialization failed: {0}")]
+    Serialization(String),
+}
+
+/// Options controlling deterministic snapshot collection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SnapshotDeterminismOptions {
+    /// Normalize `captured_at` to a stable placeholder timestamp.
+    pub normalize_captured_at: bool,
+    /// Remove volatile metadata keys before serialization.
+    pub strip_volatile_metadata: bool,
+}
+
+impl Default for SnapshotDeterminismOptions {
+    fn default() -> Self {
+        Self {
+            normalize_captured_at: true,
+            strip_volatile_metadata: true,
+        }
+    }
+}
+
+const DETERMINISTIC_CAPTURED_AT: &str = "1970-01-01T00:00:00Z";
+const VOLATILE_METADATA_KEYS: &[&str] = &[
+    "capture_nonce",
+    "generated_at",
+    "request_id",
+    "run_id",
+    "session_id",
+    "trace_id",
+];
+
+/// Normalize a snapshot in-place for deterministic collection.
+pub fn normalize_snapshot_for_determinism(
+    snapshot: &mut NormalizedFingerprintSnapshot,
+    options: &SnapshotDeterminismOptions,
+) {
+    if options.normalize_captured_at {
+        snapshot.captured_at = DETERMINISTIC_CAPTURED_AT.to_string();
+    }
+
+    if options.strip_volatile_metadata {
+        for key in VOLATILE_METADATA_KEYS {
+            snapshot.metadata.remove(*key);
+        }
+    }
+}
+
+/// Serialize a snapshot into deterministic JSON bytes.
+///
+/// The function first validates snapshot compatibility, then applies
+/// deterministic normalization rules, and finally serializes with a stable
+/// field order (provided by struct declaration order + `BTreeMap` keys).
+pub fn collect_deterministic_snapshot_bytes(
+    snapshot: &NormalizedFingerprintSnapshot,
+    options: &SnapshotDeterminismOptions,
+) -> Result<Vec<u8>, SnapshotCollectionError> {
+    validate_snapshot_compatibility(snapshot)?;
+
+    let mut normalized = snapshot.clone();
+    normalize_snapshot_for_determinism(&mut normalized, options);
+
+    serde_json::to_vec(&normalized)
+        .map_err(|error| SnapshotCollectionError::Serialization(error.to_string()))
+}
+
 fn parse_schema_major(version: &str) -> Result<u64, SnapshotCompatibilityError> {
     let mut parts = version.split('.');
     let Some(major) = parts.next() else {
@@ -203,21 +276,25 @@ mod tests {
 
     #[test]
     fn example_http_snapshot_is_compatible() {
-        let snap = parse_snapshot(include_str!("../docs/examples/fingerprint-snapshot-v1-http.json"));
+        let snap = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-http.json"
+        ));
         assert!(validate_snapshot_compatibility(&snap).is_ok());
     }
 
     #[test]
     fn example_browser_snapshot_is_compatible() {
-        let snap =
-            parse_snapshot(include_str!("../docs/examples/fingerprint-snapshot-v1-browser.json"));
+        let snap = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-browser.json"
+        ));
         assert!(validate_snapshot_compatibility(&snap).is_ok());
     }
 
     #[test]
     fn http_mode_requires_tls_signal() {
-        let mut snap =
-            parse_snapshot(include_str!("../docs/examples/fingerprint-snapshot-v1-http.json"));
+        let mut snap = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-http.json"
+        ));
         snap.signals.tls = None;
         let err = validate_snapshot_compatibility(&snap).expect_err("must fail without tls");
         assert_eq!(
@@ -231,8 +308,9 @@ mod tests {
 
     #[test]
     fn browser_mode_requires_webgl_signal() {
-        let mut snap =
-            parse_snapshot(include_str!("../docs/examples/fingerprint-snapshot-v1-browser.json"));
+        let mut snap = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-browser.json"
+        ));
         snap.signals.webgl = None;
         let err = validate_snapshot_compatibility(&snap).expect_err("must fail without webgl");
         assert_eq!(
@@ -246,10 +324,88 @@ mod tests {
 
     #[test]
     fn unsupported_schema_major_fails_compatibility() {
-        let mut snap = parse_snapshot(include_str!("../docs/examples/fingerprint-snapshot-v1-http.json"));
+        let mut snap = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-http.json"
+        ));
         snap.schema_version = "2.0.0".to_string();
-        let err =
-            validate_snapshot_compatibility(&snap).expect_err("must fail unsupported major");
+        let err = validate_snapshot_compatibility(&snap).expect_err("must fail unsupported major");
         assert_eq!(err, SnapshotCompatibilityError::UnsupportedSchemaMajor(2));
+    }
+
+    #[test]
+    fn deterministic_collector_produces_identical_bytes_for_volatile_differences() {
+        let mut first = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-http.json"
+        ));
+        first.captured_at = "2026-04-26T23:11:11Z".to_string();
+        first
+            .metadata
+            .insert("trace_id".to_string(), "trace-a".to_string());
+        first
+            .metadata
+            .insert("request_id".to_string(), "request-a".to_string());
+
+        let mut second = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-http.json"
+        ));
+        second.captured_at = "2026-04-27T01:22:33Z".to_string();
+        second
+            .metadata
+            .insert("request_id".to_string(), "request-b".to_string());
+        second
+            .metadata
+            .insert("trace_id".to_string(), "trace-b".to_string());
+
+        let options = SnapshotDeterminismOptions::default();
+        let left =
+            collect_deterministic_snapshot_bytes(&first, &options).expect("must serialize");
+        let right =
+            collect_deterministic_snapshot_bytes(&second, &options).expect("must serialize");
+        assert_eq!(left, right);
+    }
+
+    #[test]
+    fn deterministic_collector_keeps_nonvolatile_metadata() {
+        let mut snap = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-http.json"
+        ));
+        snap.metadata
+            .insert("collector".to_string(), "charon-v2".to_string());
+        snap.metadata
+            .insert("trace_id".to_string(), "volatile".to_string());
+
+        let options = SnapshotDeterminismOptions::default();
+        let bytes = collect_deterministic_snapshot_bytes(&snap, &options).expect("must collect");
+        let collected: NormalizedFingerprintSnapshot =
+            serde_json::from_slice(&bytes).expect("bytes should deserialize");
+
+        assert_eq!(collected.captured_at, DETERMINISTIC_CAPTURED_AT);
+        assert_eq!(
+            collected.metadata.get("collector"),
+            Some(&"charon-v2".to_string())
+        );
+        assert!(!collected.metadata.contains_key("trace_id"));
+    }
+
+    #[test]
+    fn deterministic_collector_rejects_incompatible_snapshot() {
+        let mut snap = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-browser.json"
+        ));
+        snap.signals.webgl = None;
+
+        let options = SnapshotDeterminismOptions::default();
+        let err = collect_deterministic_snapshot_bytes(&snap, &options)
+            .expect_err("incompatible snapshot must fail");
+
+        assert_eq!(
+            err,
+            SnapshotCollectionError::Compatibility(
+                SnapshotCompatibilityError::MissingModeSignal {
+                    mode: SnapshotMode::Browser,
+                    signal: "webgl"
+                }
+            )
+        );
     }
 }
