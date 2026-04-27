@@ -191,6 +191,7 @@ mod tests {
                 confidence: 0.9,
                 markers: vec!["x-datadome".to_string()],
             },
+            target_class: None,
         };
 
         let requirements = RequirementsProfile {
@@ -242,6 +243,7 @@ mod tests {
                 confidence: 0.8,
                 markers: vec!["cf-ray".to_string(), "__cf_bm".to_string()],
             },
+            target_class: None,
         };
 
         let bundle = plan_from_report(report.clone());

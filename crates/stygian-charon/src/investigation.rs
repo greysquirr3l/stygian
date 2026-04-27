@@ -3,9 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::classifier::classify_transaction;
 use crate::har;
 use crate::types::{
-    AdapterStrategy, AntiBotProvider, AntiBotRequirement, Detection, HarRequestSummary,
-    HostSummary, IntegrationRecommendation, InvestigationDiff, InvestigationReport, MarkerCount,
-    RequirementLevel, RequirementsProfile,
+    AdapterStrategy, AntiBotProvider, AntiBotRequirement, BlockedRatioSlo, Detection,
+    HarRequestSummary, HostSummary, IntegrationRecommendation, InvestigationDiff,
+    InvestigationReport, MarkerCount, RequirementLevel, RequirementsProfile, TargetClass,
 };
 
 /// Build an investigation report from a HAR payload.
@@ -116,6 +116,7 @@ pub fn investigate_har(har_json: &str) -> Result<InvestigationReport, har::HarEr
         hosts,
         suspicious_requests,
         aggregate,
+        target_class: None,
     })
 }
 
@@ -177,9 +178,24 @@ pub fn compare_reports(
     }
 }
 
-/// Infer operational requirements and adapter strategy from an investigation report.
+/// Infer operational requirements from an investigation report using explicit SLO thresholds.
+///
+/// Uses the provided `target_class` to determine acceptable block ratios and applies SLO-aware
+/// assessment to requirement inference.
+///
+/// # Arguments
+///
+/// * `report` — Investigation report with metrics and provider signatures
+/// * `target_class` — Website classification for SLO thresholds (API, ContentSite, HighSecurity, Unknown)
+///
+/// # Returns
+///
+/// Requirements profile incorporating SLO-based assessment for adaptive rate requirements.
 #[must_use]
-pub fn infer_requirements(report: &InvestigationReport) -> RequirementsProfile {
+pub fn infer_requirements_with_target_class(
+    report: &InvestigationReport,
+    target_class: TargetClass,
+) -> RequirementsProfile {
     let mut requirements = Vec::new();
 
     let blocked_ratio = blocked_ratio(report.blocked_requests, report.total_requests);
@@ -219,13 +235,41 @@ pub fn infer_requirements(report: &InvestigationReport) -> RequirementsProfile {
         });
     }
 
-    if blocked_ratio >= 0.10 {
+    // Use SLO framework for adaptive rate requirement based on target class
+    let slo = BlockedRatioSlo::for_class(target_class);
+    let (_acceptable, warning, critical) = slo.assess(blocked_ratio);
+
+    if warning || critical {
+        let level = if critical {
+            RequirementLevel::High
+        } else {
+            RequirementLevel::Medium
+        };
+        let why = if critical {
+            format!(
+                "Block ratio {:.1}% exceeds critical SLO threshold ({:.1}%) for {:?}",
+                blocked_ratio * 100.0,
+                slo.critical * 100.0,
+                target_class
+            )
+        } else {
+            format!(
+                "Block ratio {:.1}% exceeds warning SLO threshold ({:.1}%) for {:?}",
+                blocked_ratio * 100.0,
+                slo.warning * 100.0,
+                target_class
+            )
+        };
+
         requirements.push(AntiBotRequirement {
             id: "adaptive_rate_and_retry_budget".to_string(),
             title: "Apply adaptive pacing and bounded retries".to_string(),
-            why: "Elevated block ratio suggests aggressive concurrency or retry behavior is increasing risk scoring.".to_string(),
-            evidence: vec![format!("blocked_ratio={blocked_ratio:.4}")],
-            level: RequirementLevel::High,
+            why,
+            evidence: vec![format!(
+                "blocked_ratio={blocked_ratio:.4}, slo_acceptable={:.4}",
+                slo.acceptable
+            )],
+            level,
         });
     }
 
@@ -269,6 +313,16 @@ pub fn infer_requirements(report: &InvestigationReport) -> RequirementsProfile {
         requirements,
         recommendation,
     }
+}
+
+/// Infer operational requirements and adapter strategy from an investigation report.
+///
+/// Uses the `target_class` from the report if available; otherwise defaults to `Unknown`.
+/// For explicit SLO control, use [`infer_requirements_with_target_class`] instead.
+#[must_use]
+pub fn infer_requirements(report: &InvestigationReport) -> RequirementsProfile {
+    let target_class = report.target_class.unwrap_or(TargetClass::Unknown);
+    infer_requirements_with_target_class(report, target_class)
 }
 
 fn aggregate_detection(requests: &[HarRequestSummary]) -> Detection {
@@ -446,6 +500,7 @@ mod tests {
                 confidence: 0.0,
                 markers: Vec::new(),
             },
+            target_class: None,
         };
 
         let candidate = InvestigationReport {
@@ -494,6 +549,7 @@ mod tests {
                 confidence: 0.9,
                 markers: vec!["cf-ray".to_string()],
             },
+            target_class: None,
         };
 
         let profile = infer_requirements(&report);
@@ -503,5 +559,125 @@ mod tests {
             profile.recommendation.strategy,
             AdapterStrategy::BrowserStealth
         );
+    }
+
+    #[test]
+    fn infer_requirements_applies_slo_for_api_target() {
+        // 20% blocked ratio is critical for API targets (critical at 15%)
+        let mut status_histogram = BTreeMap::new();
+        let _ = status_histogram.insert(403, 2);
+        let _ = status_histogram.insert(429, 3);
+
+        let report = InvestigationReport {
+            page_title: None,
+            total_requests: 25,
+            blocked_requests: 5,
+            status_histogram,
+            resource_type_histogram: BTreeMap::new(),
+            provider_histogram: BTreeMap::new(),
+            marker_histogram: BTreeMap::new(),
+            top_markers: Vec::new(),
+            hosts: Vec::new(),
+            suspicious_requests: Vec::new(),
+            aggregate: Detection {
+                provider: AntiBotProvider::Unknown,
+                confidence: 0.0,
+                markers: Vec::new(),
+            },
+            target_class: Some(TargetClass::Api),
+        };
+
+        let profile = infer_requirements(&report);
+
+        // Should find adaptive_rate_and_retry_budget requirement with High level (critical)
+        let adaptive_req = profile
+            .requirements
+            .iter()
+            .find(|r| r.id == "adaptive_rate_and_retry_budget");
+        assert!(adaptive_req.is_some());
+        assert_eq!(adaptive_req.unwrap().level, RequirementLevel::High);
+    }
+
+    #[test]
+    fn infer_requirements_with_target_class_respects_slo_thresholds() {
+        // 20% blocked ratio assessment differs by target class
+        let report = InvestigationReport {
+            page_title: None,
+            total_requests: 100,
+            blocked_requests: 20,
+            status_histogram: BTreeMap::from([(403, 20)]),
+            resource_type_histogram: BTreeMap::new(),
+            provider_histogram: BTreeMap::new(),
+            marker_histogram: BTreeMap::new(),
+            top_markers: Vec::new(),
+            hosts: Vec::new(),
+            suspicious_requests: Vec::new(),
+            aggregate: Detection {
+                provider: AntiBotProvider::Unknown,
+                confidence: 0.0,
+                markers: Vec::new(),
+            },
+            target_class: None,
+        };
+
+        // For API: 20% is critical (threshold 15%)
+        let api_profile = infer_requirements_with_target_class(&report, TargetClass::Api);
+        let api_req = api_profile
+            .requirements
+            .iter()
+            .find(|r| r.id == "adaptive_rate_and_retry_budget");
+        assert!(api_req.is_some());
+        assert_eq!(api_req.unwrap().level, RequirementLevel::High); // Critical
+
+        // For ContentSite: 20% is in warning zone (acceptable 15%, warning 25%)
+        let content_profile =
+            infer_requirements_with_target_class(&report, TargetClass::ContentSite);
+        let content_req = content_profile
+            .requirements
+            .iter()
+            .find(|r| r.id == "adaptive_rate_and_retry_budget");
+        assert!(content_req.is_some());
+        assert_eq!(content_req.unwrap().level, RequirementLevel::Medium); // Warning
+
+        // For HighSecurity: 20% is acceptable (threshold 30%)
+        let high_sec_profile =
+            infer_requirements_with_target_class(&report, TargetClass::HighSecurity);
+        let high_sec_req = high_sec_profile
+            .requirements
+            .iter()
+            .find(|r| r.id == "adaptive_rate_and_retry_budget");
+        assert!(high_sec_req.is_none()); // Below acceptable, no requirement
+    }
+
+    #[test]
+    fn infer_requirements_below_slo_has_no_adaptive_requirement() {
+        // 5% blocked ratio is acceptable for API targets
+        let report = InvestigationReport {
+            page_title: None,
+            total_requests: 100,
+            blocked_requests: 5,
+            status_histogram: BTreeMap::from([(403, 5)]),
+            resource_type_histogram: BTreeMap::new(),
+            provider_histogram: BTreeMap::new(),
+            marker_histogram: BTreeMap::new(),
+            top_markers: Vec::new(),
+            hosts: Vec::new(),
+            suspicious_requests: Vec::new(),
+            aggregate: Detection {
+                provider: AntiBotProvider::Unknown,
+                confidence: 0.0,
+                markers: Vec::new(),
+            },
+            target_class: None,
+        };
+
+        let profile = infer_requirements_with_target_class(&report, TargetClass::Api);
+
+        // Should NOT find adaptive_rate_and_retry_budget requirement (acceptable for API)
+        let adaptive_req = profile
+            .requirements
+            .iter()
+            .find(|r| r.id == "adaptive_rate_and_retry_budget");
+        assert!(adaptive_req.is_none());
     }
 }

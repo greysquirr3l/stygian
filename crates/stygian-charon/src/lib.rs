@@ -27,7 +27,9 @@ pub use acquisition::{
     map_adapter_strategy, map_policy_hints, map_runtime_policy,
 };
 pub use classifier::{classify_har, classify_transaction};
-pub use investigation::{compare_reports, infer_requirements, investigate_har};
+pub use investigation::{
+    compare_reports, infer_requirements, infer_requirements_with_target_class, investigate_har,
+};
 pub use policy::{analyze_and_plan, build_runtime_policy, plan_from_report};
 pub use snapshot::{
     FingerprintSignals, NormalizedFingerprintSnapshot, ScreenFingerprint, SnapshotCollectionError,
@@ -41,5 +43,5 @@ pub use types::{
     ExecutionMode, HarClassificationReport, HarRequestSummary, HostSummary,
     IntegrationRecommendation, InvestigationBundle, InvestigationDiff, InvestigationReport,
     MarkerCount, ProviderScore, RequirementLevel, RequirementsProfile, RuntimePolicy, SessionMode,
-    TelemetryLevel, TargetClass, TransactionView,
+    TargetClass, TelemetryLevel, TransactionView,
 };
