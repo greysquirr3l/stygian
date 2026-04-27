@@ -50,7 +50,7 @@ pub struct MetricsCollector {
     // Histograms (simplified: min/max/sum/count)
     blocked_ratio_min: Arc<AtomicU64>, // Stored as u64 bits of f64
     blocked_ratio_max: Arc<AtomicU64>,
-    blocked_ratio_sum: Arc<AtomicU64>,
+    blocked_ratio_sum: Arc<std::sync::Mutex<f64>>,
     blocked_ratio_count: Arc<AtomicU64>,
 
     // Distributions (use Arc<Mutex> for interior mutability)
@@ -67,7 +67,7 @@ impl MetricsCollector {
             escalations_critical: Arc::new(AtomicU64::new(0)),
             blocked_ratio_min: Arc::new(AtomicU64::new(u64::MAX)),
             blocked_ratio_max: Arc::new(AtomicU64::new(0)),
-            blocked_ratio_sum: Arc::new(AtomicU64::new(0)),
+            blocked_ratio_sum: Arc::new(std::sync::Mutex::new(0.0)),
             blocked_ratio_count: Arc::new(AtomicU64::new(0)),
             target_class_counts: Arc::new(std::sync::Mutex::new(HashMap::new())),
             escalation_level_counts: Arc::new(std::sync::Mutex::new(HashMap::new())),
@@ -132,9 +132,9 @@ impl MetricsCollector {
                 }
             }
 
-            // Update sum (approximate, may overflow but that's ok for this use)
-            self.blocked_ratio_sum
-                .fetch_add(ratio_bits, Ordering::Relaxed);
+            if let Ok(mut sum) = self.blocked_ratio_sum.lock() {
+                *sum += blocked_ratio;
+            }
             self.blocked_ratio_count.fetch_add(1, Ordering::Relaxed);
         }
 
@@ -175,12 +175,14 @@ impl MetricsCollector {
         if count > 0 {
             let min_bits = self.blocked_ratio_min.load(Ordering::Relaxed);
             let max_bits = self.blocked_ratio_max.load(Ordering::Relaxed);
-            let sum_bits = self.blocked_ratio_sum.load(Ordering::Relaxed);
 
             let min = f64::from_bits(min_bits);
             let max = f64::from_bits(max_bits);
-            let avg_bits = sum_bits.checked_div(count).unwrap_or_default();
-            let avg = f64::from_bits(avg_bits);
+            let avg = self
+                .blocked_ratio_sum
+                .lock()
+                .map(|sum| *sum / to_f64(count))
+                .unwrap_or_default();
 
             output.push_str("# HELP slo_blocked_ratio_min Minimum blocked ratio observed\n");
             output.push_str("# TYPE slo_blocked_ratio_min gauge\n");
@@ -234,7 +236,9 @@ impl MetricsCollector {
         self.escalations_critical.store(0, Ordering::Relaxed);
         self.blocked_ratio_min.store(u64::MAX, Ordering::Relaxed);
         self.blocked_ratio_max.store(0, Ordering::Relaxed);
-        self.blocked_ratio_sum.store(0, Ordering::Relaxed);
+        if let Ok(mut sum) = self.blocked_ratio_sum.lock() {
+            *sum = 0.0;
+        }
         self.blocked_ratio_count.store(0, Ordering::Relaxed);
 
         if let Ok(mut counts) = self.target_class_counts.lock() {
@@ -294,6 +298,16 @@ mod tests {
         let prometheus = collector.to_prometheus();
         assert!(prometheus.contains("class=\"Api\""));
         assert!(prometheus.contains("class=\"ContentSite\""));
+    }
+
+    #[test]
+    fn metrics_collector_tracks_numeric_average() {
+        let collector = MetricsCollector::new();
+        collector.record_assessment(1, 4, "Api", "Acceptable");
+        collector.record_assessment(3, 4, "Api", "High");
+
+        let prometheus = collector.to_prometheus();
+        assert!(prometheus.contains("slo_blocked_ratio_avg 0.5"));
     }
 
     #[test]

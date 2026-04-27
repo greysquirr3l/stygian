@@ -5,7 +5,7 @@
   ],
   "generation_version": "v1",
   "sources": [
-    "/Users/nickcampbell/Projects/rust/stygian/crates/stygian-charon/docs/examples/fingerprint-snapshot-v1-browser.json",
-    "/Users/nickcampbell/Projects/rust/stygian/crates/stygian-charon/docs/examples/fingerprint-snapshot-v1-http.json"
+    "crates/stygian-charon/docs/examples/fingerprint-snapshot-v1-browser.json",
+    "crates/stygian-charon/docs/examples/fingerprint-snapshot-v1-http.json"
   ]
 }

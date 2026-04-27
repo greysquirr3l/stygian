@@ -341,19 +341,22 @@ fn collect_signal_diffs(
 }
 
 fn parse_schema_major(version: &str) -> Result<u64, SnapshotCompatibilityError> {
-    let mut parts = version.split('.');
-    let Some(major) = parts.next() else {
+    let parts = version.split('.').collect::<Vec<_>>();
+    let [major, minor, patch] = parts.as_slice() else {
         return Err(SnapshotCompatibilityError::InvalidSchemaVersion(
             version.to_string(),
         ));
     };
-    let has_minor = parts.next().is_some();
-    let has_patch = parts.next().is_some();
-    if !(has_minor && has_patch) {
+
+    if major.parse::<u64>().is_err()
+        || minor.parse::<u64>().is_err()
+        || patch.parse::<u64>().is_err()
+    {
         return Err(SnapshotCompatibilityError::InvalidSchemaVersion(
             version.to_string(),
         ));
     }
+
     major
         .parse::<u64>()
         .map_err(|_| SnapshotCompatibilityError::InvalidSchemaVersion(version.to_string()))
@@ -485,6 +488,20 @@ mod tests {
         snap.schema_version = "2.0.0".to_string();
         let err = validate_snapshot_compatibility(&snap).expect_err("must fail unsupported major");
         assert_eq!(err, SnapshotCompatibilityError::UnsupportedSchemaMajor(2));
+    }
+
+    #[test]
+    fn schema_version_requires_exact_semver_triplet() {
+        let mut snap = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-http.json"
+        ));
+        snap.schema_version = "1.0.0.1".to_string();
+
+        let err = validate_snapshot_compatibility(&snap).expect_err("must reject extra segments");
+        assert_eq!(
+            err,
+            SnapshotCompatibilityError::InvalidSchemaVersion("1.0.0.1".to_string())
+        );
     }
 
     #[test]

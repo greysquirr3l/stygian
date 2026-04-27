@@ -61,14 +61,15 @@ for src in "${SOURCES[@]}"; do
   normalize_one "$src" "$OUT_DIR/${base_name}.fixture.json"
 done
 
-python3 - "$OUT_DIR" "$GEN_VERSION" "${SOURCES[@]}" <<'PY'
+python3 - "$OUT_DIR" "$ROOT_DIR" "$GEN_VERSION" "${SOURCES[@]}" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 out_dir = Path(sys.argv[1])
-generation_version = sys.argv[2]
-sources = [Path(s).as_posix() for s in sys.argv[3:]]
+root_dir = Path(sys.argv[2])
+generation_version = sys.argv[3]
+sources = [Path(s).relative_to(root_dir).as_posix() for s in sys.argv[4:]]
 
 manifest = {
     "generation_version": generation_version,

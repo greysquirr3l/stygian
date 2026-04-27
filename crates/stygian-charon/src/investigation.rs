@@ -734,8 +734,10 @@ mod tests {
     #[cfg(feature = "caching")]
     #[test]
     fn cached_investigation_sets_target_class_and_reuses_cached_report() {
+        const TEST_CACHE_TTL_SECS: u64 = 60;
+
         let capacity = NonZeroUsize::new(8).unwrap_or(NonZeroUsize::MIN);
-        let cache = MemoryInvestigationCache::new(capacity, Duration::from_mins(1));
+        let cache = MemoryInvestigationCache::new(capacity, Duration::from_secs(TEST_CACHE_TTL_SECS));
         let har_json = r#"{
             "log": {
                 "version": "1.2.0",

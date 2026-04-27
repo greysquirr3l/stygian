@@ -39,9 +39,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refactor (`let...else` branch now diverges correctly with `return None`)
 - `stygian-graph`: addressed strict clippy `missing_const_for_fn` by promoting
   acquisition hint mapping helper to `const fn`
-
-### Fixed
-
 - `stygian-browser`: stealth diagnostic scoring no longer treats
   `navigator.storage.estimate` absence on opaque origins (for example `about:blank`)
   as a hard failure; it is now reported as a known limitation probe

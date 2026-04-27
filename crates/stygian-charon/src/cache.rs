@@ -210,8 +210,10 @@ mod tests {
 
     #[test]
     fn memory_cache_round_trips_report() {
+        const TEST_CACHE_TTL_SECS: u64 = 60;
+
         let capacity = NonZeroUsize::new(2).unwrap_or(NonZeroUsize::MIN);
-        let cache = MemoryInvestigationCache::new(capacity, Duration::from_mins(1));
+        let cache = MemoryInvestigationCache::new(capacity, Duration::from_secs(TEST_CACHE_TTL_SECS));
         let key = investigation_cache_key("{\"log\":{}}", TargetClass::Api);
         let report = sample_report();
 
