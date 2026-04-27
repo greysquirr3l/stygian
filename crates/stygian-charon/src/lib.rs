@@ -30,10 +30,9 @@ pub use classifier::{classify_har, classify_transaction};
 pub use investigation::{compare_reports, infer_requirements, investigate_har};
 pub use policy::{analyze_and_plan, build_runtime_policy, plan_from_report};
 pub use snapshot::{
-    FingerprintSignals, NormalizedFingerprintSnapshot, ScreenFingerprint,
-    SnapshotCollectionError, SnapshotCompatibilityError, SnapshotDeterminismOptions,
-    SnapshotMode, TlsFingerprint, WebGlFingerprint,
-    collect_deterministic_snapshot_bytes, normalize_snapshot_for_determinism,
+    FingerprintSignals, NormalizedFingerprintSnapshot, ScreenFingerprint, SnapshotCollectionError,
+    SnapshotCompatibilityError, SnapshotDeterminismOptions, SnapshotMode, TlsFingerprint,
+    WebGlFingerprint, collect_deterministic_snapshot_bytes, normalize_snapshot_for_determinism,
     validate_snapshot_compatibility,
 };
 pub use types::{

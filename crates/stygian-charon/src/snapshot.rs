@@ -357,8 +357,7 @@ mod tests {
             .insert("trace_id".to_string(), "trace-b".to_string());
 
         let options = SnapshotDeterminismOptions::default();
-        let left =
-            collect_deterministic_snapshot_bytes(&first, &options).expect("must serialize");
+        let left = collect_deterministic_snapshot_bytes(&first, &options).expect("must serialize");
         let right =
             collect_deterministic_snapshot_bytes(&second, &options).expect("must serialize");
         assert_eq!(left, right);
@@ -400,12 +399,10 @@ mod tests {
 
         assert_eq!(
             err,
-            SnapshotCollectionError::Compatibility(
-                SnapshotCompatibilityError::MissingModeSignal {
-                    mode: SnapshotMode::Browser,
-                    signal: "webgl"
-                }
-            )
+            SnapshotCollectionError::Compatibility(SnapshotCompatibilityError::MissingModeSignal {
+                mode: SnapshotMode::Browser,
+                signal: "webgl"
+            })
         );
     }
 }

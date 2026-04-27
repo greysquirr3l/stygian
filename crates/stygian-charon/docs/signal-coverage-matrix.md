@@ -3,6 +3,7 @@
 This document tracks all currently inferred anti-bot requirement signals in Charon.
 
 Source of truth for current requirement IDs:
+
 - `crates/stygian-charon/src/investigation.rs` in `infer_requirements`
 
 ## Coverage Matrix

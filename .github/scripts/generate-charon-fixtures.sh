@@ -16,7 +16,7 @@ normalize_one() {
   local src="$1"
   local dst="$2"
   local source_rel
-  source_rel="${src#$ROOT_DIR/}"
+  source_rel="${src#"$ROOT_DIR"/}"
 
   python3 - "$src" "$dst" "$source_rel" "$GEN_VERSION" <<'PY'
 import json

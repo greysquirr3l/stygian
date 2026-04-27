@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `stygian-browser`: stealth diagnostic scoring no longer treats
+  `navigator.storage.estimate` absence on opaque origins (for example `about:blank`)
+  as a hard failure; it is now reported as a known limitation probe
+- `stygian-browser`: WebGL noise default extension surface no longer advertises
+  `WEBGL_debug_renderer_info`, preventing SwiftShader renderer leakage in
+  no-GPU CI canary environments and stabilizing stealth canary scoring
+
 ## [0.11.0] - 2026-04-26
 
 ### Added
