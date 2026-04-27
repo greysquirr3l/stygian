@@ -15,6 +15,9 @@ pub mod classifier;
 pub mod har;
 /// Investigation reports and baseline/candidate diffing.
 pub mod investigation;
+/// Telemetry and metrics collection (feature-gated).
+#[cfg(feature = "metrics")]
+pub mod metrics;
 /// Runtime policy planning based on investigation output.
 pub mod policy;
 /// Normalized fingerprint snapshot schema types and compatibility checks.

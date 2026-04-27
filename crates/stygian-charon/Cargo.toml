@@ -18,3 +18,9 @@ thiserror.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
+
+[features]
+default = []
+## Enable telemetry metrics collection for SLO assessment and escalation operations
+metrics = []
+
