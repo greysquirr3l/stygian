@@ -38,4 +38,6 @@ Source of truth for current requirement IDs:
 - ✅ **CHR-006**: CODEOWNERS codification and explicit ownership
 - ✅ **CHR-007**: Blocked ratio SLOs by target class (API, ContentSite, HighSecurity)
 - ✅ **CHR-008**: SLO usage documentation and integration tests
+- ✅ **CHR-009**: SLO integration into requirement inference
+- ✅ **CHR-010**: SLO-based acquisition strategy escalation
 - ⏳ **CHR-017**: Stealth/regression incident runbook (pending)
