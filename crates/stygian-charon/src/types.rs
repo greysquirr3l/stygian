@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 /// anti-bot posture. Different sites have different security requirements:
 ///
 /// - **API**: Machine-to-machine communication; expects very low block ratio.
-/// - **ContentSite**: Public web content; moderate block tolerance.
-/// - **HighSecurity**: Banking, auth, sensitive data; higher block ratio acceptable.
+/// - **`ContentSite`**: Public web content; moderate block tolerance.
+/// - **`HighSecurity`**: Banking, auth, sensitive data; higher block ratio acceptable.
 /// - **Unknown**: Default classification when unable to determine target type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TargetClass {
@@ -78,7 +78,7 @@ impl BlockedRatioSlo {
     pub const fn unknown() -> Self {
         Self {
             target_class: TargetClass::Unknown,
-            acceptable: 0.05,  // Same as API
+            acceptable: 0.05, // Same as API
             warning: 0.10,
             critical: 0.15,
         }
@@ -86,7 +86,7 @@ impl BlockedRatioSlo {
 
     /// Get SLO for a target class.
     #[must_use]
-    pub fn for_class(class: TargetClass) -> Self {
+    pub const fn for_class(class: TargetClass) -> Self {
         match class {
             TargetClass::Api => Self::api(),
             TargetClass::ContentSite => Self::content_site(),
@@ -231,6 +231,9 @@ pub struct InvestigationReport {
     pub suspicious_requests: Vec<HarRequestSummary>,
     /// Aggregate provider classification.
     pub aggregate: Detection,
+    /// Target website class for SLO assessment (optional; defaults to Unknown).
+    #[serde(default)]
+    pub target_class: Option<TargetClass>,
 }
 
 /// Delta between a baseline report and a candidate report.
@@ -398,50 +401,50 @@ mod tests {
     fn test_blocked_ratio_slo_api_thresholds() {
         let slo = BlockedRatioSlo::api();
         assert_eq!(slo.target_class, TargetClass::Api);
-        assert_eq!(slo.acceptable, 0.05);
-        assert_eq!(slo.warning, 0.10);
-        assert_eq!(slo.critical, 0.15);
+        assert!((slo.acceptable - 0.05).abs() < f64::EPSILON);
+        assert!((slo.warning - 0.10).abs() < f64::EPSILON);
+        assert!((slo.critical - 0.15).abs() < f64::EPSILON);
     }
 
     #[test]
     fn test_blocked_ratio_slo_content_site_thresholds() {
         let slo = BlockedRatioSlo::content_site();
         assert_eq!(slo.target_class, TargetClass::ContentSite);
-        assert_eq!(slo.acceptable, 0.15);
-        assert_eq!(slo.warning, 0.25);
-        assert_eq!(slo.critical, 0.40);
+        assert!((slo.acceptable - 0.15).abs() < f64::EPSILON);
+        assert!((slo.warning - 0.25).abs() < f64::EPSILON);
+        assert!((slo.critical - 0.40).abs() < f64::EPSILON);
     }
 
     #[test]
     fn test_blocked_ratio_slo_high_security_thresholds() {
         let slo = BlockedRatioSlo::high_security();
         assert_eq!(slo.target_class, TargetClass::HighSecurity);
-        assert_eq!(slo.acceptable, 0.30);
-        assert_eq!(slo.warning, 0.50);
-        assert_eq!(slo.critical, 0.70);
+        assert!((slo.acceptable - 0.30).abs() < f64::EPSILON);
+        assert!((slo.warning - 0.50).abs() < f64::EPSILON);
+        assert!((slo.critical - 0.70).abs() < f64::EPSILON);
     }
 
     #[test]
     fn test_blocked_ratio_slo_unknown_defaults_to_api() {
         let slo = BlockedRatioSlo::unknown();
         assert_eq!(slo.target_class, TargetClass::Unknown);
-        assert_eq!(slo.acceptable, 0.05); // Same thresholds as API
-        assert_eq!(slo.warning, 0.10);
-        assert_eq!(slo.critical, 0.15);
+        assert!((slo.acceptable - 0.05).abs() < f64::EPSILON); // Same thresholds as API
+        assert!((slo.warning - 0.10).abs() < f64::EPSILON);
+        assert!((slo.critical - 0.15).abs() < f64::EPSILON);
     }
 
     #[test]
     fn test_blocked_ratio_slo_for_class_api() {
         let slo = BlockedRatioSlo::for_class(TargetClass::Api);
         assert_eq!(slo.target_class, TargetClass::Api);
-        assert_eq!(slo.acceptable, 0.05);
+        assert!((slo.acceptable - 0.05).abs() < f64::EPSILON);
     }
 
     #[test]
     fn test_blocked_ratio_slo_for_class_content_site() {
         let slo = BlockedRatioSlo::for_class(TargetClass::ContentSite);
         assert_eq!(slo.target_class, TargetClass::ContentSite);
-        assert_eq!(slo.acceptable, 0.15);
+        assert!((slo.acceptable - 0.15).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -535,9 +538,8 @@ mod tests {
     #[test]
     fn test_blocked_ratio_slo_serialization() {
         let slo = BlockedRatioSlo::content_site();
-        let json = serde_json::to_string(&slo).expect("serialize");
-        let deserialized: BlockedRatioSlo =
-            serde_json::from_str(&json).expect("deserialize");
+        let json = serde_json::to_string(&slo).unwrap();
+        let deserialized: BlockedRatioSlo = serde_json::from_str(&json).unwrap();
 
         assert_eq!(slo, deserialized);
     }
@@ -545,10 +547,9 @@ mod tests {
     #[test]
     fn test_target_class_serialization() {
         let target = TargetClass::HighSecurity;
-        let json = serde_json::to_string(&target).expect("serialize");
-        let deserialized: TargetClass = serde_json::from_str(&json).expect("deserialize");
+        let json = serde_json::to_string(&target).unwrap();
+        let deserialized: TargetClass = serde_json::from_str(&json).unwrap();
 
         assert_eq!(target, deserialized);
     }
 }
-

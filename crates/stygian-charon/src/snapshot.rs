@@ -159,7 +159,7 @@ pub struct SnapshotDriftReport {
 impl SnapshotDriftReport {
     /// Return `true` when any signal drift was detected.
     #[must_use]
-    pub fn has_drift(&self) -> bool {
+    pub const fn has_drift(&self) -> bool {
         !self.diffs.is_empty()
     }
 
