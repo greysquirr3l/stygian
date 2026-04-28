@@ -1,11 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+#[cfg(feature = "caching")]
+use crate::cache::{InvestigationReportCache, investigation_cache_key};
 use crate::classifier::classify_transaction;
 use crate::har;
 use crate::types::{
-    AdapterStrategy, AntiBotProvider, AntiBotRequirement, Detection, HarRequestSummary,
-    HostSummary, IntegrationRecommendation, InvestigationDiff, InvestigationReport, MarkerCount,
-    RequirementLevel, RequirementsProfile,
+    AdapterStrategy, AntiBotProvider, AntiBotRequirement, BlockedRatioSlo, Detection,
+    HarRequestSummary, HostSummary, IntegrationRecommendation, InvestigationDiff,
+    InvestigationReport, MarkerCount, RequirementLevel, RequirementsProfile, TargetClass,
 };
 
 /// Build an investigation report from a HAR payload.
@@ -116,7 +118,43 @@ pub fn investigate_har(har_json: &str) -> Result<InvestigationReport, har::HarEr
         hosts,
         suspicious_requests,
         aggregate,
+        target_class: None,
     })
+}
+
+/// Build an investigation report from a HAR payload using an external cache and explicit target class.
+///
+/// # Errors
+///
+/// Returns [`har::HarError`] when the HAR payload is invalid or malformed.
+#[cfg(feature = "caching")]
+pub fn investigate_har_cached_with_target_class(
+    har_json: &str,
+    target_class: TargetClass,
+    cache: &dyn InvestigationReportCache,
+) -> Result<InvestigationReport, har::HarError> {
+    let key = investigation_cache_key(har_json, target_class);
+    if let Some(report) = cache.get(&key) {
+        return Ok(report);
+    }
+
+    let mut report = investigate_har(har_json)?;
+    report.target_class = Some(target_class);
+    cache.put(key, report.clone());
+    Ok(report)
+}
+
+/// Build an investigation report from a HAR payload using a cache and the conservative Unknown class.
+///
+/// # Errors
+///
+/// Returns [`har::HarError`] when the HAR payload is invalid or malformed.
+#[cfg(feature = "caching")]
+pub fn investigate_har_cached(
+    har_json: &str,
+    cache: &dyn InvestigationReportCache,
+) -> Result<InvestigationReport, har::HarError> {
+    investigate_har_cached_with_target_class(har_json, TargetClass::Unknown, cache)
 }
 
 /// Compare a baseline and candidate investigation report.
@@ -177,9 +215,25 @@ pub fn compare_reports(
     }
 }
 
-/// Infer operational requirements and adapter strategy from an investigation report.
+/// Infer operational requirements from an investigation report using explicit SLO thresholds.
+///
+/// Uses the provided `target_class` to determine acceptable block ratios and applies SLO-aware
+/// assessment to requirement inference.
+///
+/// # Arguments
+///
+/// * `report` — Investigation report with metrics and provider signatures
+/// * `target_class` — Website classification for SLO thresholds (`Api`, `ContentSite`, `HighSecurity`, `Unknown`)
+///
+/// # Returns
+///
+/// Requirements profile incorporating SLO-based assessment for adaptive rate requirements.
 #[must_use]
-pub fn infer_requirements(report: &InvestigationReport) -> RequirementsProfile {
+#[allow(clippy::too_many_lines)]
+pub fn infer_requirements_with_target_class(
+    report: &InvestigationReport,
+    target_class: TargetClass,
+) -> RequirementsProfile {
     let mut requirements = Vec::new();
 
     let blocked_ratio = blocked_ratio(report.blocked_requests, report.total_requests);
@@ -219,13 +273,41 @@ pub fn infer_requirements(report: &InvestigationReport) -> RequirementsProfile {
         });
     }
 
-    if blocked_ratio >= 0.10 {
+    // Use SLO framework for adaptive rate requirement based on target class
+    let slo = BlockedRatioSlo::for_class(target_class);
+    let (_acceptable, warning, critical) = slo.assess(blocked_ratio);
+
+    if warning || critical {
+        let level = if critical {
+            RequirementLevel::High
+        } else {
+            RequirementLevel::Medium
+        };
+        let why = if critical {
+            format!(
+                "Block ratio {:.1}% exceeds critical SLO threshold ({:.1}%) for {:?}",
+                blocked_ratio * 100.0,
+                slo.critical * 100.0,
+                target_class
+            )
+        } else {
+            format!(
+                "Block ratio {:.1}% exceeds warning SLO threshold ({:.1}%) for {:?}",
+                blocked_ratio * 100.0,
+                slo.warning * 100.0,
+                target_class
+            )
+        };
+
         requirements.push(AntiBotRequirement {
             id: "adaptive_rate_and_retry_budget".to_string(),
             title: "Apply adaptive pacing and bounded retries".to_string(),
-            why: "Elevated block ratio suggests aggressive concurrency or retry behavior is increasing risk scoring.".to_string(),
-            evidence: vec![format!("blocked_ratio={blocked_ratio:.4}")],
-            level: RequirementLevel::High,
+            why,
+            evidence: vec![format!(
+                "blocked_ratio={blocked_ratio:.4}, slo_acceptable={:.4}",
+                slo.acceptable
+            )],
+            level,
         });
     }
 
@@ -269,6 +351,16 @@ pub fn infer_requirements(report: &InvestigationReport) -> RequirementsProfile {
         requirements,
         recommendation,
     }
+}
+
+/// Infer operational requirements and adapter strategy from an investigation report.
+///
+/// Uses the `target_class` from the report if available; otherwise defaults to `Unknown`.
+/// For explicit SLO control, use [`infer_requirements_with_target_class`] instead.
+#[must_use]
+pub fn infer_requirements(report: &InvestigationReport) -> RequirementsProfile {
+    let target_class = report.target_class.unwrap_or(TargetClass::Unknown);
+    infer_requirements_with_target_class(report, target_class)
 }
 
 fn aggregate_detection(requests: &[HarRequestSummary]) -> Detection {
@@ -428,6 +520,12 @@ fn recommend_strategy(
 mod tests {
     use super::*;
 
+    #[cfg(feature = "caching")]
+    use std::{num::NonZeroUsize, time::Duration};
+
+    #[cfg(feature = "caching")]
+    use crate::cache::MemoryInvestigationCache;
+
     #[test]
     fn compare_reports_flags_block_ratio_regression() {
         let baseline = InvestigationReport {
@@ -446,6 +544,7 @@ mod tests {
                 confidence: 0.0,
                 markers: Vec::new(),
             },
+            target_class: None,
         };
 
         let candidate = InvestigationReport {
@@ -494,6 +593,7 @@ mod tests {
                 confidence: 0.9,
                 markers: vec!["cf-ray".to_string()],
             },
+            target_class: None,
         };
 
         let profile = infer_requirements(&report);
@@ -503,5 +603,167 @@ mod tests {
             profile.recommendation.strategy,
             AdapterStrategy::BrowserStealth
         );
+    }
+
+    #[test]
+    fn infer_requirements_applies_slo_for_api_target() {
+        // 20% blocked ratio is critical for API targets (critical at 15%)
+        let mut status_histogram = BTreeMap::new();
+        let _ = status_histogram.insert(403, 2);
+        let _ = status_histogram.insert(429, 3);
+
+        let report = InvestigationReport {
+            page_title: None,
+            total_requests: 25,
+            blocked_requests: 5,
+            status_histogram,
+            resource_type_histogram: BTreeMap::new(),
+            provider_histogram: BTreeMap::new(),
+            marker_histogram: BTreeMap::new(),
+            top_markers: Vec::new(),
+            hosts: Vec::new(),
+            suspicious_requests: Vec::new(),
+            aggregate: Detection {
+                provider: AntiBotProvider::Unknown,
+                confidence: 0.0,
+                markers: Vec::new(),
+            },
+            target_class: Some(TargetClass::Api),
+        };
+
+        let profile = infer_requirements(&report);
+
+        // Should find adaptive_rate_and_retry_budget requirement with High level (critical)
+        let adaptive_req = profile
+            .requirements
+            .iter()
+            .find(|r| r.id == "adaptive_rate_and_retry_budget");
+        assert!(adaptive_req.is_some());
+        if let Some(req) = adaptive_req {
+            assert_eq!(req.level, RequirementLevel::High);
+        }
+    }
+
+    #[test]
+    fn infer_requirements_with_target_class_respects_slo_thresholds() {
+        // 20% blocked ratio assessment differs by target class
+        let report = InvestigationReport {
+            page_title: None,
+            total_requests: 100,
+            blocked_requests: 20,
+            status_histogram: BTreeMap::from([(403, 20)]),
+            resource_type_histogram: BTreeMap::new(),
+            provider_histogram: BTreeMap::new(),
+            marker_histogram: BTreeMap::new(),
+            top_markers: Vec::new(),
+            hosts: Vec::new(),
+            suspicious_requests: Vec::new(),
+            aggregate: Detection {
+                provider: AntiBotProvider::Unknown,
+                confidence: 0.0,
+                markers: Vec::new(),
+            },
+            target_class: None,
+        };
+
+        // For API: 20% is critical (threshold 15%)
+        let api_profile = infer_requirements_with_target_class(&report, TargetClass::Api);
+        let api_req = api_profile
+            .requirements
+            .iter()
+            .find(|r| r.id == "adaptive_rate_and_retry_budget");
+        assert!(api_req.is_some());
+        if let Some(req) = api_req {
+            assert_eq!(req.level, RequirementLevel::High); // Critical
+        }
+
+        // For ContentSite: 20% is in warning zone (acceptable 15%, warning 25%)
+        let content_profile =
+            infer_requirements_with_target_class(&report, TargetClass::ContentSite);
+        let content_req = content_profile
+            .requirements
+            .iter()
+            .find(|r| r.id == "adaptive_rate_and_retry_budget");
+        assert!(content_req.is_some());
+        if let Some(req) = content_req {
+            assert_eq!(req.level, RequirementLevel::Medium); // Warning
+        }
+
+        // For HighSecurity: 20% is acceptable (threshold 30%)
+        let high_sec_profile =
+            infer_requirements_with_target_class(&report, TargetClass::HighSecurity);
+        let high_sec_req = high_sec_profile
+            .requirements
+            .iter()
+            .find(|r| r.id == "adaptive_rate_and_retry_budget");
+        assert!(high_sec_req.is_none()); // Below acceptable, no requirement
+    }
+
+    #[test]
+    fn infer_requirements_below_slo_has_no_adaptive_requirement() {
+        // 5% blocked ratio is acceptable for API targets
+        let report = InvestigationReport {
+            page_title: None,
+            total_requests: 100,
+            blocked_requests: 5,
+            status_histogram: BTreeMap::from([(403, 5)]),
+            resource_type_histogram: BTreeMap::new(),
+            provider_histogram: BTreeMap::new(),
+            marker_histogram: BTreeMap::new(),
+            top_markers: Vec::new(),
+            hosts: Vec::new(),
+            suspicious_requests: Vec::new(),
+            aggregate: Detection {
+                provider: AntiBotProvider::Unknown,
+                confidence: 0.0,
+                markers: Vec::new(),
+            },
+            target_class: None,
+        };
+
+        let profile = infer_requirements_with_target_class(&report, TargetClass::Api);
+
+        // Should NOT find adaptive_rate_and_retry_budget requirement (acceptable for API)
+        let adaptive_req = profile
+            .requirements
+            .iter()
+            .find(|r| r.id == "adaptive_rate_and_retry_budget");
+        assert!(adaptive_req.is_none());
+    }
+
+    #[cfg(feature = "caching")]
+    #[test]
+    fn cached_investigation_sets_target_class_and_reuses_cached_report() {
+        let capacity = NonZeroUsize::new(8).unwrap_or(NonZeroUsize::MIN);
+        let cache = MemoryInvestigationCache::new(capacity, Duration::from_mins(1));
+        let har_json = r#"{
+            "log": {
+                "version": "1.2.0",
+                "creator": {"name": "test", "version": "1.0"},
+                "pages": [{"id": "page1", "title": "test", "startedDateTime": "2025-01-01T00:00:00Z", "pageTimings": {"onLoad": 0}}],
+                "entries": []
+            }
+        }"#;
+
+        let first_result =
+            investigate_har_cached_with_target_class(har_json, TargetClass::Api, &cache);
+        assert!(first_result.is_ok(), "cached investigation should succeed");
+        let second_result =
+            investigate_har_cached_with_target_class(har_json, TargetClass::Api, &cache);
+        assert!(
+            second_result.is_ok(),
+            "cached investigation should hit cache"
+        );
+
+        let Ok(first) = first_result else {
+            return;
+        };
+        let Ok(second) = second_result else {
+            return;
+        };
+
+        assert_eq!(first.target_class, Some(TargetClass::Api));
+        assert_eq!(second.target_class, Some(TargetClass::Api));
+        assert_eq!(first, second);
     }
 }

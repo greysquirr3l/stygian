@@ -9,6 +9,64 @@ This document specifies the full output contract for Charon's analysis and plann
 
 `InvestigationBundle` is the canonical top-level output.
 
+## Normalized fingerprint snapshots
+
+Charon also defines a versioned normalized fingerprint snapshot schema for
+cross-mode compatibility checks.
+
+- Schema: `docs/normalized-fingerprint-snapshot.schema.json`
+- Compatible examples:
+  - `docs/examples/fingerprint-snapshot-v1-http.json`
+  - `docs/examples/fingerprint-snapshot-v1-browser.json`
+
+Required top-level fields:
+
+- `schema_version`
+- `snapshot_id`
+- `mode`
+- `captured_at`
+- `signals`
+
+Optional top-level fields:
+
+- `metadata`
+
+Deprecated top-level fields:
+
+- `legacy_user_agent` (deprecated mirror of `signals.user_agent`)
+- `legacy_ja3_hash` (deprecated mirror of `signals.tls.ja3_hash`)
+
+Canonical ordering and type constraints:
+
+- Canonical key order is defined in schema metadata (`x-canonical-order`)
+  for top-level and nested objects.
+- Type constraints use JSON Schema definitions and conditional rules:
+  - `mode = Http` requires `signals.tls`
+  - `mode = Browser` requires `signals.webgl`
+- Snapshot compatibility checks are implemented in
+  `src/snapshot.rs::validate_snapshot_compatibility`.
+
+Deterministic collector behavior:
+
+- `collect_deterministic_snapshot_bytes` performs compatibility validation,
+  deterministic normalization, then canonical serialization.
+- Nondeterministic fields are normalized/excluded by default:
+  - `captured_at` is normalized to `1970-01-01T00:00:00Z`
+  - volatile metadata keys are removed:
+    `capture_nonce`, `generated_at`, `request_id`, `run_id`, `session_id`, `trace_id`
+- Canonical byte stability is verified in unit tests by collecting snapshots with
+  identical semantic input but different volatile values and asserting equal bytes.
+
+Baseline fixture generation workflow:
+
+- Reproducible command: `.github/scripts/generate-charon-fixtures.sh`
+- Baseline fixtures are committed under `docs/examples/fixtures/`
+- Required fixture metadata:
+  - `metadata.fixture_source`
+  - `metadata.fixture_generation_version`
+- Review process is defined in `docs/examples/fixtures/README.md` and enforced by
+  `.github/workflows/charon-fixtures.yml`
+
 ## Top-level type
 
 ### InvestigationBundle
@@ -85,6 +143,10 @@ Fields:
 ---
 
 ## Requirements layer
+
+Coverage and ownership for inferred requirement signals is tracked in:
+
+- `docs/signal-coverage-matrix.md`
 
 ### RequirementsProfile
 

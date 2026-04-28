@@ -1,0 +1,38 @@
+{
+  "captured_at": "2026-04-26T23:00:00Z",
+  "legacy_ja3_hash": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+  "legacy_user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+  "metadata": {
+    "collector": "charon",
+    "fixture_generation_version": "v1",
+    "fixture_source": "crates/stygian-charon/docs/examples/fingerprint-snapshot-v1-http.json",
+    "target": "example-http"
+  },
+  "mode": "Http",
+  "schema_version": "1.0.0",
+  "signals": {
+    "accept_language": "en-US,en;q=0.9",
+    "features": {
+      "cookies_enabled": true,
+      "webdriver": false
+    },
+    "headers": {
+      "accept": "text/html,application/xhtml+xml",
+      "sec-fetch-site": "none"
+    },
+    "platform": "Win32",
+    "screen": {
+      "device_pixel_ratio": 1.0,
+      "height": 1080,
+      "width": 1920
+    },
+    "timezone": "America/New_York",
+    "tls": {
+      "ja3_hash": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+      "ja4": "t13d1516h2_8daaf6152771_02713d6af862"
+    },
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "webgl": null
+  },
+  "snapshot_id": "snapshot-http-0001"
+}

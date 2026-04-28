@@ -18,6 +18,7 @@ url = "https://example.com"
 
 [nodes.params.acquisition]
 mode = "resilient"
+target_class = "content-site"
 wait_for_selector = "body"
 total_timeout_secs = 45
 

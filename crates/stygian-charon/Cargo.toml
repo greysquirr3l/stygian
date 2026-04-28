@@ -6,15 +6,36 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
+readme = "README.md"
 description = "Anti-bot provider fingerprinting and HAR forensics for Stygian"
 keywords = ["antibot", "forensics", "har", "scraping", "security"]
 categories = ["web-programming", "network-programming"]
+exclude = [
+	"docs/incident-runbook.md",
+	"docs/p1-backlog.md",
+	"tests/runbook_diagnostics.rs",
+]
 
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
+reqwest = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true, features = ["macros", "rt-multi-thread", "time"] }
+lru = { workspace = true, optional = true }
+redis = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json.workspace = true
+
+[features]
+default = []
+## Enable telemetry metrics collection for SLO assessment and escalation operations
+metrics = []
+## Enable live URL validation example and ignored integration smoke test
+live-validation = ["dep:reqwest", "dep:tokio"]
+## Enable investigation report caching backends and cached analysis APIs
+caching = ["dep:lru"]
+## Optional Redis-backed investigation report cache
+redis-cache = ["caching", "dep:redis"]
+

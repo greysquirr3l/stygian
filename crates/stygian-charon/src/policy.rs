@@ -4,8 +4,8 @@ use crate::har;
 use crate::investigation::{infer_requirements, investigate_har};
 use crate::types::{
     AdapterStrategy, AntiBotProvider, ExecutionMode, IntegrationRecommendation,
-    InvestigationBundle, InvestigationReport, RequirementsProfile, RuntimePolicy, SessionMode,
-    TelemetryLevel,
+    InvestigationBundle, InvestigationReport, RequirementLevel, RequirementsProfile, RuntimePolicy,
+    SessionMode, TelemetryLevel,
 };
 
 /// Build a concrete runtime policy from an investigation report and inferred requirements.
@@ -39,6 +39,9 @@ pub fn build_runtime_policy(
     };
 
     apply_strategy_defaults(&mut policy, &requirements.recommendation);
+
+    // Apply SLO-based escalation before other adjustments
+    apply_slo_escalation(&mut policy, requirements);
 
     let has_429 = report.status_histogram.get(&429).copied().unwrap_or(0) > 0;
     if has_429 {
@@ -152,6 +155,61 @@ fn apply_strategy_defaults(policy: &mut RuntimePolicy, recommendation: &Integrat
     dedupe_required_features(&mut policy.required_stygian_features);
 }
 
+/// Apply SLO-based escalation to the runtime policy.
+///
+/// When the `adaptive_rate_and_retry_budget` requirement is in the warning zone (Medium level),
+/// increases retry budget and enables warmup for improved resilience.
+/// When in the critical zone (High level), escalates to browser mode with sticky sessions
+/// for maximum anti-bot posture.
+fn apply_slo_escalation(policy: &mut RuntimePolicy, requirements: &RequirementsProfile) {
+    // Find the adaptive_rate_and_retry_budget requirement
+    let adaptive_req = requirements
+        .requirements
+        .iter()
+        .find(|r| r.id == "adaptive_rate_and_retry_budget");
+
+    if let Some(req) = adaptive_req {
+        match req.level {
+            RequirementLevel::Medium => {
+                // Warning zone: increase retries and enable warmup for resilience
+                policy.max_retries = policy.max_retries.max(4);
+                policy.backoff_base_ms = policy.backoff_base_ms.max(400);
+                if policy.execution_mode == ExecutionMode::Http {
+                    policy.enable_warmup = true;
+                    policy
+                        .config_hints
+                        .insert("slo.escalation".to_string(), "warning".to_string());
+                }
+            }
+            RequirementLevel::High => {
+                // Critical zone: escalate to browser mode with sticky sessions if not already
+                if policy.execution_mode != ExecutionMode::Browser
+                    || policy.session_mode != SessionMode::Sticky
+                {
+                    policy.execution_mode = ExecutionMode::Browser;
+                    policy.session_mode = SessionMode::Sticky;
+                    policy.rate_limit_rps = policy.rate_limit_rps.min(1.5);
+                    policy.max_retries = policy.max_retries.max(5);
+                    policy.backoff_base_ms = policy.backoff_base_ms.max(600);
+                    policy.enable_warmup = true;
+                    policy.enforce_webrtc_proxy_only = true;
+                    policy.sticky_session_ttl_secs = Some(600);
+                    policy
+                        .required_stygian_features
+                        .push("stygian-proxy".to_string());
+                    policy
+                        .config_hints
+                        .insert("slo.escalation".to_string(), "critical".to_string());
+                    dedupe_required_features(&mut policy.required_stygian_features);
+                }
+            }
+            RequirementLevel::Low => {
+                // Below threshold: no escalation needed
+            }
+        }
+    }
+}
+
 fn dedupe_required_features(features: &mut Vec<String>) {
     let mut seen = BTreeMap::new();
     features.retain(|feature| seen.insert(feature.clone(), true).is_none());
@@ -191,6 +249,7 @@ mod tests {
                 confidence: 0.9,
                 markers: vec!["x-datadome".to_string()],
             },
+            target_class: None,
         };
 
         let requirements = RequirementsProfile {
@@ -242,11 +301,220 @@ mod tests {
                 confidence: 0.8,
                 markers: vec!["cf-ray".to_string(), "__cf_bm".to_string()],
             },
+            target_class: None,
         };
 
         let bundle = plan_from_report(report.clone());
         assert_eq!(bundle.report, report);
         assert_eq!(bundle.requirements.provider, AntiBotProvider::Cloudflare);
         assert_eq!(bundle.policy.execution_mode, ExecutionMode::Browser);
+    }
+
+    #[test]
+    fn slo_escalation_warning_increases_retries_and_warmup() {
+        // A requirement at Medium level (warning zone) should increase retries and enable warmup
+        use crate::types::{AntiBotRequirement, RequirementLevel};
+
+        let report = InvestigationReport {
+            page_title: None,
+            total_requests: 100,
+            blocked_requests: 20,
+            status_histogram: BTreeMap::new(),
+            resource_type_histogram: BTreeMap::new(),
+            provider_histogram: BTreeMap::new(),
+            marker_histogram: BTreeMap::new(),
+            top_markers: Vec::new(),
+            hosts: Vec::new(),
+            suspicious_requests: Vec::new(),
+            aggregate: Detection {
+                provider: AntiBotProvider::Unknown,
+                confidence: 0.0,
+                markers: Vec::new(),
+            },
+            target_class: None,
+        };
+
+        let requirements = RequirementsProfile {
+            provider: AntiBotProvider::Unknown,
+            confidence: 0.0,
+            requirements: vec![AntiBotRequirement {
+                id: "adaptive_rate_and_retry_budget".to_string(),
+                title: "Apply adaptive pacing".to_string(),
+                why: "Block ratio in warning zone".to_string(),
+                evidence: vec!["ratio=0.20".to_string()],
+                level: RequirementLevel::Medium,
+            }],
+            recommendation: IntegrationRecommendation {
+                strategy: AdapterStrategy::DirectHttp,
+                rationale: "test".to_string(),
+                required_stygian_features: Vec::new(),
+                config_hints: BTreeMap::new(),
+            },
+        };
+
+        let policy = build_runtime_policy(&report, &requirements);
+        assert!(policy.max_retries >= 4);
+        assert!(policy.backoff_base_ms >= 400);
+        assert!(policy.enable_warmup);
+        assert_eq!(
+            policy.config_hints.get("slo.escalation"),
+            Some(&"warning".to_string())
+        );
+    }
+
+    #[test]
+    fn slo_escalation_critical_escalates_to_browser_sticky() {
+        // A requirement at High level (critical zone) should escalate to browser + sticky session
+        use crate::types::{AntiBotRequirement, RequirementLevel};
+
+        let report = InvestigationReport {
+            page_title: None,
+            total_requests: 100,
+            blocked_requests: 25,
+            status_histogram: BTreeMap::new(),
+            resource_type_histogram: BTreeMap::new(),
+            provider_histogram: BTreeMap::new(),
+            marker_histogram: BTreeMap::new(),
+            top_markers: Vec::new(),
+            hosts: Vec::new(),
+            suspicious_requests: Vec::new(),
+            aggregate: Detection {
+                provider: AntiBotProvider::Unknown,
+                confidence: 0.0,
+                markers: Vec::new(),
+            },
+            target_class: None,
+        };
+
+        let requirements = RequirementsProfile {
+            provider: AntiBotProvider::Unknown,
+            confidence: 0.0,
+            requirements: vec![AntiBotRequirement {
+                id: "adaptive_rate_and_retry_budget".to_string(),
+                title: "Apply adaptive pacing".to_string(),
+                why: "Block ratio in critical zone".to_string(),
+                evidence: vec!["ratio=0.25".to_string()],
+                level: RequirementLevel::High,
+            }],
+            recommendation: IntegrationRecommendation {
+                strategy: AdapterStrategy::DirectHttp,
+                rationale: "test".to_string(),
+                required_stygian_features: Vec::new(),
+                config_hints: BTreeMap::new(),
+            },
+        };
+
+        let policy = build_runtime_policy(&report, &requirements);
+        assert_eq!(policy.execution_mode, ExecutionMode::Browser);
+        assert_eq!(policy.session_mode, SessionMode::Sticky);
+        assert!(policy.max_retries >= 5);
+        assert!(policy.backoff_base_ms >= 600);
+        assert!(policy.enable_warmup);
+        assert!(policy.sticky_session_ttl_secs.is_some());
+        assert!(
+            policy
+                .required_stygian_features
+                .contains(&"stygian-proxy".to_string())
+        );
+        assert_eq!(
+            policy.config_hints.get("slo.escalation"),
+            Some(&"critical".to_string())
+        );
+    }
+
+    #[test]
+    fn slo_escalation_respects_already_escalated_policies() {
+        // If already in browser/sticky, critical escalation should not downgrade
+        use crate::types::{AntiBotRequirement, RequirementLevel};
+
+        let report = InvestigationReport {
+            page_title: None,
+            total_requests: 100,
+            blocked_requests: 25,
+            status_histogram: BTreeMap::new(),
+            resource_type_histogram: BTreeMap::new(),
+            provider_histogram: BTreeMap::new(),
+            marker_histogram: BTreeMap::new(),
+            top_markers: Vec::new(),
+            hosts: Vec::new(),
+            suspicious_requests: Vec::new(),
+            aggregate: Detection {
+                provider: AntiBotProvider::Unknown,
+                confidence: 0.0,
+                markers: Vec::new(),
+            },
+            target_class: None,
+        };
+
+        let requirements = RequirementsProfile {
+            provider: AntiBotProvider::Unknown,
+            confidence: 0.0,
+            requirements: vec![AntiBotRequirement {
+                id: "adaptive_rate_and_retry_budget".to_string(),
+                title: "Apply adaptive pacing".to_string(),
+                why: "Block ratio in critical zone".to_string(),
+                evidence: vec!["ratio=0.25".to_string()],
+                level: RequirementLevel::High,
+            }],
+            recommendation: IntegrationRecommendation {
+                strategy: AdapterStrategy::StickyProxy,
+                rationale: "test".to_string(),
+                required_stygian_features: Vec::new(),
+                config_hints: BTreeMap::new(),
+            },
+        };
+
+        let policy = build_runtime_policy(&report, &requirements);
+        assert_eq!(policy.execution_mode, ExecutionMode::Browser);
+        assert_eq!(policy.session_mode, SessionMode::Sticky);
+        // Should not add stygian-proxy twice
+        let proxy_count = policy
+            .required_stygian_features
+            .iter()
+            .filter(|f| f.as_str() == "stygian-proxy")
+            .count();
+        assert_eq!(proxy_count, 1);
+    }
+
+    #[test]
+    fn slo_escalation_no_requirement_means_no_escalation() {
+        // Without the adaptive requirement, no escalation should happen
+        let report = InvestigationReport {
+            page_title: None,
+            total_requests: 100,
+            blocked_requests: 3,
+            status_histogram: BTreeMap::new(),
+            resource_type_histogram: BTreeMap::new(),
+            provider_histogram: BTreeMap::new(),
+            marker_histogram: BTreeMap::new(),
+            top_markers: Vec::new(),
+            hosts: Vec::new(),
+            suspicious_requests: Vec::new(),
+            aggregate: Detection {
+                provider: AntiBotProvider::Unknown,
+                confidence: 0.0,
+                markers: Vec::new(),
+            },
+            target_class: None,
+        };
+
+        let requirements = RequirementsProfile {
+            provider: AntiBotProvider::Unknown,
+            confidence: 0.0,
+            requirements: Vec::new(), // No adaptive requirement
+            recommendation: IntegrationRecommendation {
+                strategy: AdapterStrategy::DirectHttp,
+                rationale: "test".to_string(),
+                required_stygian_features: Vec::new(),
+                config_hints: BTreeMap::new(),
+            },
+        };
+
+        let policy = build_runtime_policy(&report, &requirements);
+        assert_eq!(policy.execution_mode, ExecutionMode::Http);
+        assert_eq!(policy.session_mode, SessionMode::Stateless);
+        assert_eq!(policy.max_retries, 2);
+        assert!(!policy.enable_warmup);
+        assert_eq!(policy.config_hints.get("slo.escalation"), None);
     }
 }

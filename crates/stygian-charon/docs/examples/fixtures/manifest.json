@@ -1,0 +1,11 @@
+{
+  "fixtures": [
+    "fingerprint-snapshot-v1-browser.fixture.json",
+    "fingerprint-snapshot-v1-http.fixture.json"
+  ],
+  "generation_version": "v1",
+  "sources": [
+    "crates/stygian-charon/docs/examples/fingerprint-snapshot-v1-browser.json",
+    "crates/stygian-charon/docs/examples/fingerprint-snapshot-v1-http.json"
+  ]
+}

@@ -1,0 +1,236 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stygian.dev/schemas/stygian-charon/normalized-fingerprint-snapshot.schema.json",
+  "title": "NormalizedFingerprintSnapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "description": "Versioned, mode-aware normalized fingerprint snapshot.",
+  "x-canonical-order": [
+    "schema_version",
+    "snapshot_id",
+    "mode",
+    "captured_at",
+    "signals",
+    "metadata",
+    "legacy_user_agent",
+    "legacy_ja3_hash"
+  ],
+  "required": [
+    "schema_version",
+    "snapshot_id",
+    "mode",
+    "captured_at",
+    "signals"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Required. Semver-style snapshot schema version.",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "snapshot_id": {
+      "type": "string",
+      "description": "Required. Stable unique snapshot id.",
+      "pattern": "^[a-zA-Z0-9._:-]{8,128}$"
+    },
+    "mode": {
+      "type": "string",
+      "description": "Required. Snapshot acquisition mode.",
+      "enum": ["Http", "Browser", "Hybrid"]
+    },
+    "captured_at": {
+      "type": "string",
+      "description": "Required. RFC 3339 capture timestamp.",
+      "format": "date-time"
+    },
+    "signals": {
+      "$ref": "#/$defs/FingerprintSignals"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Optional. Free-form provenance metadata.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "legacy_user_agent": {
+      "type": "string",
+      "description": "Deprecated. Legacy mirror of signals.user_agent.",
+      "deprecated": true
+    },
+    "legacy_ja3_hash": {
+      "type": "string",
+      "description": "Deprecated. Legacy mirror of signals.tls.ja3_hash.",
+      "deprecated": true,
+      "pattern": "^[a-fA-F0-9]{32}$"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "Http"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "signals": {
+            "required": ["tls"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "Browser"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "signals": {
+            "required": ["webgl"]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "ScreenFingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-canonical-order": ["width", "height", "device_pixel_ratio"],
+      "required": ["width", "height", "device_pixel_ratio"],
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32768
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32768
+        },
+        "device_pixel_ratio": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 16.0
+        }
+      }
+    },
+    "WebGlFingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-canonical-order": ["vendor", "renderer"],
+      "required": ["vendor", "renderer"],
+      "properties": {
+        "vendor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "renderer": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "TlsFingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-canonical-order": ["ja3_hash", "ja4"],
+      "required": ["ja3_hash"],
+      "properties": {
+        "ja3_hash": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{32}$"
+        },
+        "ja4": {
+          "type": ["string", "null"],
+          "minLength": 1
+        }
+      }
+    },
+    "FingerprintSignals": {
+      "type": "object",
+      "additionalProperties": false,
+      "x-canonical-order": [
+        "user_agent",
+        "accept_language",
+        "platform",
+        "timezone",
+        "headers",
+        "features",
+        "screen",
+        "webgl",
+        "tls"
+      ],
+      "required": [
+        "user_agent",
+        "accept_language",
+        "platform",
+        "timezone",
+        "headers",
+        "features",
+        "screen"
+      ],
+      "properties": {
+        "user_agent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "accept_language": {
+          "type": "string",
+          "minLength": 1
+        },
+        "platform": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "features": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        },
+        "screen": {
+          "$ref": "#/$defs/ScreenFingerprint"
+        },
+        "webgl": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WebGlFingerprint"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tls": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TlsFingerprint"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

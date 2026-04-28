@@ -1,0 +1,32 @@
+name: Charon Fixtures
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - crates/stygian-charon/**
+      - .github/scripts/generate-charon-fixtures.sh
+      - .github/workflows/charon-fixtures.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fixture-determinism:
+    name: Fixture Determinism
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate fixtures
+        run: .github/scripts/generate-charon-fixtures.sh
+
+      - name: Verify fixtures are up to date
+        run: |
+          if ! git diff --quiet -- crates/stygian-charon/docs/examples/fixtures; then
+            echo "::error::Generated Charon fixtures differ from committed baseline."
+            echo "::notice::Run '.github/scripts/generate-charon-fixtures.sh' and commit updated fixtures."
+            git --no-pager diff -- crates/stygian-charon/docs/examples/fixtures
+            exit 1
+          fi
