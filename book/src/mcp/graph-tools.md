@@ -1,6 +1,6 @@
 # Graph MCP Tools
 
-`stygian-graph` exposes seven tools for HTTP scraping, API querying, and pipeline execution.
+`stygian-graph` exposes scraping, graph inspection, and optional Charon diagnostics tools.
 
 ---
 
@@ -9,6 +9,12 @@
 ```toml
 [dependencies]
 stygian-graph = { version = "*", features = ["mcp"] }
+```
+
+Enable Charon-backed diagnostics/planning tools with:
+
+```toml
+stygian-graph = { version = "*", features = ["mcp", "charon"] }
 ```
 
 To use as a standalone MCP server (without the aggregator), embed `McpGraphServer` in
@@ -258,6 +264,43 @@ total_timeout_secs = 45
 
 If the `acquisition` block is omitted, browser nodes remain non-breaking and are added to
 `skipped` as before.
+
+---
+
+## Optional Charon tools
+
+These tools are available only when `stygian-graph` is built with the `charon` feature.
+
+### `charon_classify_transaction`
+
+Classify a single HTTP transaction for likely anti-bot provider signals.
+
+### `charon_investigate_har`
+
+Turn a HAR payload into a normalized `InvestigationReport`.
+
+### `charon_infer_requirements`
+
+Infer operational requirements from an existing investigation report.
+
+### `charon_build_runtime_policy`
+
+Build a runtime policy from an investigation report plus inferred requirements.
+
+### `charon_map_runtime_policy`
+
+Map a runtime policy into acquisition hints suitable for downstream runners.
+
+### `charon_analyze_and_plan`
+
+Run HAR investigation, requirement inference, runtime policy planning, and acquisition mapping in
+one call.
+
+Typical aggregator names are prefixed automatically, for example:
+
+- `graph_charon_classify_transaction`
+- `graph_charon_investigate_har`
+- `graph_charon_analyze_and_plan`
 
 **Example pipeline TOML:**
 

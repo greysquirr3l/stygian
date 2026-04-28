@@ -87,8 +87,8 @@ serde_yaml.workspace = true
 indexmap.workspace = true
 
 # Browser automation (optional)
-stygian-browser = { path = "../stygian-browser", version = "0.11.0", optional = true }
-stygian-charon = { path = "../stygian-charon", version = "0.11.0", optional = true }
+stygian-browser = { path = "../stygian-browser", version = "0.12.0", optional = true }
+stygian-charon = { path = "../stygian-charon", version = "0.12.0", optional = true }
 
 # WASM plugins (optional)
 wasmtime = { workspace = true, optional = true }
@@ -121,7 +121,7 @@ default = ["browser"]
 # Include browser automation support
 browser = ["dep:stygian-browser"]
 # Full feature set
-full = ["browser", "extract", "api", "wasm-plugins", "postgres", "cloudflare-crawl", "redis", "object-storage", "scrape-exchange", "escalation", "acquisition-runner"]
+full = ["browser", "extract", "api", "wasm-plugins", "postgres", "cloudflare-crawl", "redis", "object-storage", "scrape-exchange", "escalation", "charon", "acquisition-runner"]
 # Scrape Exchange REST API client and adapters
 scrape-exchange = []
 # Redis / Valkey cache adapter
@@ -138,10 +138,12 @@ postgres = ["dep:sqlx"]
 cloudflare-crawl = []
 # Default tiered escalation policy adapter
 escalation = []
+# Expose Charon diagnostics and runtime planning APIs
+charon = ["dep:stygian-charon"]
 # MCP (Model Context Protocol) server — exposes scraping & pipeline tools over stdin/stdout JSON-RPC 2.0
 mcp = []
 # Optional bridge for running stygian-browser AcquisitionRunner from graph pipeline nodes
-acquisition-runner = ["browser", "dep:stygian-charon"]
+acquisition-runner = ["browser", "charon"]
 # Structured data extraction via derive macros (requires browser)
 extract = ["browser", "stygian-browser/extract"]
 

@@ -1,6 +1,6 @@
 # Introduction
 
-**stygian** is a high-performance web scraping toolkit for Rust, delivered as four complementary
+**stygian** is a high-performance web scraping toolkit for Rust, delivered as five complementary
 crates in a single workspace.
 
 | Crate | Purpose |
@@ -8,6 +8,7 @@ crates in a single workspace.
 | [`stygian-graph`](./graph/architecture.md) | Graph-based scraping engine — DAG pipelines, AI extraction, distributed execution |
 | [`stygian-browser`](./browser/overview.md) | Anti-detection browser automation — stealth profiles, browser pooling, CDP automation |
 | [`stygian-proxy`](./proxy/overview.md) | Proxy pool management — rotation strategies, circuit breakers, sticky sessions |
+| [`stygian-charon`](./charon/overview.md) | Diagnostics and policy planning — HAR forensics, SLO assessment, runtime acquisition guidance |
 | [`stygian-mcp`](./mcp/overview.md) | Unified [Model Context Protocol](./mcp/overview.md) server — LLM agent integration |
 
 All crates share a common philosophy: **zero-cost abstractions, extreme composability, and
@@ -45,6 +46,7 @@ Add crates to `Cargo.toml`:
 stygian-graph   = "*"
 stygian-browser = "*"   # optional — only needed for JS-rendered pages
 stygian-proxy   = "*"   # optional — proxy pool management
+stygian-charon  = "*"   # optional — anti-bot diagnostics and policy planning
 tokio            = { version = "1", features = ["full"] }
 serde_json       = "1"
 ```
@@ -127,6 +129,7 @@ stygian/
 │   ├── stygian-graph/     # Scraping engine
 │   ├── stygian-browser/   # Browser automation
 │   ├── stygian-proxy/     # Proxy pool management
+│   ├── stygian-charon/    # Anti-bot diagnostics and policy planning
 │   └── stygian-mcp/       # Unified MCP aggregator binary
 ├── book/                   # This documentation (mdBook)
 ├── docs/                   # Architecture reference docs
@@ -146,5 +149,7 @@ Source, issues, and pull requests live at
 | This guide | [greysquirr3l.github.io/stygian](https://greysquirr3l.github.io/stygian/) |
 | API reference (`stygian-graph`) | [greysquirr3l.github.io/stygian/api/stygian_graph](https://greysquirr3l.github.io/stygian/api/stygian_graph/index.html) |
 | API reference (`stygian-browser`) | [greysquirr3l.github.io/stygian/api/stygian_browser](https://greysquirr3l.github.io/stygian/api/stygian_browser/index.html) |
+| API reference (`stygian-charon`) | [greysquirr3l.github.io/stygian/api/stygian_charon](https://greysquirr3l.github.io/stygian/api/stygian_charon/index.html) |
 | crates.io (`stygian-graph`) | [crates.io/crates/stygian-graph](https://crates.io/crates/stygian-graph) |
 | crates.io (`stygian-browser`) | [crates.io/crates/stygian-browser](https://crates.io/crates/stygian-browser) |
+| crates.io (`stygian-charon`) | [crates.io/crates/stygian-charon](https://crates.io/crates/stygian-charon) |

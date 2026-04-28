@@ -44,8 +44,18 @@
 
 ---
 
+# Charon Diagnostics
+
+- [Overview](./charon/overview.md)
+- [Getting Started](./charon/getting-started.md)
+- [SLO & Policy Planning](./charon/slo-policy.md)
+- [Operations & Runbooks](./charon/operations.md)
+
+---
+
 # Reference
 
+- [Charon Release Notes](./reference/charon-release.md)
 - [Environment Variables](./reference/env-vars.md)
 - [Testing & Coverage](./reference/testing.md)
 

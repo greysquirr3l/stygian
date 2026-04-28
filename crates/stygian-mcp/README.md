@@ -55,7 +55,7 @@ All tools from the three underlying crates are available under their respective 
 
 | Prefix | Crate | Example tools |
 | ------ | ----- | ------------- |
-| `graph_*` | `stygian-graph` | `graph_scrape`, `graph_scrape_rest`, `graph_pipeline_run` |
+| `graph_*` | `stygian-graph` | `graph_scrape`, `graph_scrape_rest`, `graph_pipeline_run`, `graph_charon_analyze_and_plan` |
 | `browser_*` | `stygian-browser` | `browser_acquire`, `browser_navigate`, `browser_screenshot`, `browser_content`, `browser_eval`, `browser_query`, `browser_warmup`, `browser_refresh`, `browser_auth_session`, `browser_session_save`, `browser_session_restore`, `browser_humanize`, `browser_release`, `browser_attach`\* |
 | `proxy_*` | `stygian-proxy` | `proxy_add`, `proxy_acquire_with_capabilities`, `proxy_fetch_freelist`, `proxy_fetch_freeapiproxies` |
 
@@ -74,6 +74,16 @@ The aggregator also adds two cross-crate tools:
 | ---- | ----------- |
 | `scrape_proxied` | HTTP scrape routed through an acquired proxy |
 | `browser_proxied` | Browser session with a proxy from the pool |
+
+Charon-backed diagnostics tools are also exposed through the `graph_*` namespace when
+`stygian-graph` is built with its `charon` feature. Representative examples:
+
+- `graph_charon_classify_transaction`
+- `graph_charon_investigate_har`
+- `graph_charon_infer_requirements`
+- `graph_charon_build_runtime_policy`
+- `graph_charon_map_runtime_policy`
+- `graph_charon_analyze_and_plan`
 
 ## Architecture
 

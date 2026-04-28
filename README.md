@@ -2,7 +2,7 @@
 
 ![stygian](assets/img/stygian-logo.png)
 
-**High-performance web scraping toolkit for Rust** — graph-based execution engine + anti-detection browser automation.
+**High-performance web scraping toolkit for Rust** — graph execution, anti-detection browser automation, and diagnostics-driven acquisition planning.
 
 [![CI](https://github.com/greysquirr3l/stygian/actions/workflows/ci.yml/badge.svg)](https://github.com/greysquirr3l/stygian/actions/workflows/ci.yml)
 [![Security Audit](https://github.com/greysquirr3l/stygian/actions/workflows/security.yml/badge.svg)](https://github.com/greysquirr3l/stygian/actions/workflows/security.yml)
@@ -49,6 +49,16 @@ Proxy pool management with intelligent rotation:
 - **Health checking** — automatic dead proxy removal
 - **Sticky sessions** — domain-bound proxy affinity
 - **Weighted selection** — prioritize faster/more reliable proxies
+
+### [stygian-charon](crates/stygian-charon)
+
+Diagnostics and runtime-policy planning for anti-bot operations:
+
+- **HAR forensics** — normalize transaction evidence into reusable reports
+- **Provider classification** — detect likely anti-bot vendors from request/response signals
+- **Target-aware SLOs** — assess blocked-ratio health by target class
+- **Policy planning** — recommend retries, warmup, and escalation posture
+- **Acquisition mapping** — translate reports into runner-friendly acquisition hints
 
 ### [stygian-mcp](crates/stygian-mcp)
 
@@ -145,6 +155,7 @@ Add to your `Cargo.toml`:
 stygian-graph = { version = "*", features = ["browser"] }
 stygian-browser = "*"     # optional, for JavaScript rendering
 stygian-proxy = "*"       # optional, for proxy pool management
+stygian-charon = "*"      # optional, for diagnostics and policy planning
 tokio = { version = "1", features = ["full"] }
 ```
 
@@ -201,6 +212,9 @@ stygian-graph = { version = "*", features = ["full"] }
 # Browser + Proxy integration
 stygian-browser = { version = "*", features = ["stealth", "tls-config"] }
 stygian-proxy = { version = "*", features = ["browser", "socks"] }
+
+# Diagnostics + policy planning
+stygian-charon = { version = "*", features = ["metrics", "caching"] }
 ```
 
 ### Runner-First Acquisition (Recommended)
@@ -384,3 +398,8 @@ Built with:
 **Status**: Active development | Rust 2024 edition | Linux + macOS
 
 For detailed documentation, see the [project docs site](https://greysquirr3l.github.io/stygian).
+
+Charon release docs start here:
+
+- [Charon overview](https://greysquirr3l.github.io/stygian/charon/overview.html)
+- [Charon release notes](https://greysquirr3l.github.io/stygian/reference/charon-release.html)

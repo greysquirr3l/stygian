@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- _No changes yet._
+
+## [0.12.0] - 2026-04-27
+
+### Added
+
 - `stygian-charon`: adaptive SLO framework (`AdaptiveSloPolicy`,
   `RegressionHistoryPolicy`) with bounded threshold drift and optional JSON
   persistence for historical observations
@@ -22,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   latency assertions
 - `stygian-graph`: SLO-aware acquisition bridge support for optional
   `acquisition.target_class` and recommendation-driven mode escalation diagnostics
+- `stygian-graph (mcp)`: feature-gated `charon_*` tool surface for transaction
+  classification, HAR investigation, requirement inference, runtime policy planning,
+  and acquisition mapping
 
 ### Changed
 
@@ -32,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `stygian-charon/docs`: P1 backlog closure now records explicit command evidence,
   checks remaining phase-level validation gates, and documents accepted exceptions
   for CHR-011 timing and CHR-013 live-target execution scope
+- `docs`: mdBook now includes dedicated Charon sections (overview, getting started,
+  SLO/policy planning, operations) plus reference release notes and MCP graph tool
+  coverage updates
+- `release`: crates.io workflow now publishes `stygian-charon` in sequence before
+  `stygian-graph`
 
 ### Fixed
 
@@ -484,7 +498,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `chrome131` TLS profile and was a primary Cloudflare Turnstile detection signal.
 - `stygian-browser`: `window.chrome.runtime`, `window.chrome.csi`, and
   `window.chrome.loadTimes` are now present in every `Basic`/`Advanced` stealth session.
-  Page scripts that tested for the *absence* of these properties to detect headless mode
+  Page scripts that tested for the _absence_ of these properties to detect headless mode
   will now see them populated with stub objects/functions.
 - `stygian-browser`: `navigator.userAgentData.brands` is now spoofed to match the
   `Chrome/131` UA. Any code that reads `navigator.userAgentData` directly will see
@@ -511,7 +525,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Breaking changes
 
 - `stygian-browser`: `browser_content`, `browser_eval`, and `browser_screenshot` MCP tools
-  now return the content of the *current page* rather than always returning an empty
+  now return the content of the _current page_ rather than always returning an empty
   `about:blank` response. This was a bug fix, but callers that relied on the (incorrect)
   empty response will observe different output.
 

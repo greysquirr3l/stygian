@@ -25,6 +25,9 @@ For most LLM agent integrations, run the **aggregator** — it merges all three 
 a single stdin/stdout MCP server and adds two cross-crate tools (`scrape_proxied`,
 `browser_proxied`) that orchestrate proxies and scraping/browser together.
 
+When `stygian-graph` is built with its `charon` feature, the graph surface also exposes
+feature-gated `graph_charon_*` diagnostics and runtime-planning tools.
+
 ---
 
 ## Quick start — aggregator
@@ -84,7 +87,7 @@ When using the aggregator, all tools are namespaced:
 
 | Prefix | Sub-server |
 | ------ | ---------- |
-| `graph_` | [stygian-graph](./graph-tools.md) — e.g. `graph_scrape`, `graph_pipeline_run` |
+| `graph_` | [stygian-graph](./graph-tools.md) — e.g. `graph_scrape`, `graph_pipeline_run`, `graph_charon_analyze_and_plan` |
 | `browser_` | [stygian-browser](./browser-tools.md) — e.g. `browser_acquire`, `browser_navigate` |
 | `proxy_` | [stygian-proxy](./proxy-tools.md) — e.g. `proxy_add`, `proxy_acquire` |
 | *(none)* | Aggregator cross-crate — `scrape_proxied`, `browser_proxied` |

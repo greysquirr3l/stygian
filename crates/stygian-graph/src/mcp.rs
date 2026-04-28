@@ -47,6 +47,7 @@
 //! | `scrape_rss` | `url` | `data` (JSON array of items), `metadata` |
 //! | `pipeline_validate` | `toml` | `nodes`, `services`, `execution_order`, `valid` |
 //! | `pipeline_run` | `toml`, `timeout_secs?` | per-node `outputs`, `skipped`, `errors` |
+//! | `charon_*` | feature-gated HAR diagnostics and planning inputs | Charon report/policy JSON payloads |
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -54,6 +55,8 @@ use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
+#[cfg(feature = "charon")]
+use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[cfg(feature = "acquisition-runner")]
@@ -65,9 +68,12 @@ use stygian_browser::{
     AcquisitionMode, AcquisitionRequest, AcquisitionRunner, BrowserConfig, BrowserPool,
 };
 #[cfg(feature = "acquisition-runner")]
+use stygian_charon::AcquisitionModeHint;
+#[cfg(feature = "charon")]
 use stygian_charon::{
-    AcquisitionModeHint, TargetClass, build_runtime_policy, infer_requirements_with_target_class,
-    investigate_har, map_runtime_policy,
+    AcquisitionPolicy, InvestigationBundle, InvestigationReport, RequirementsProfile,
+    RuntimePolicy, TargetClass, TransactionView, build_runtime_policy, classify_transaction,
+    infer_requirements_with_target_class, investigate_har, map_runtime_policy,
 };
 
 use crate::{
@@ -98,6 +104,46 @@ fn ok_response(id: &Value, result: Value) -> Value {
     map.insert("id".to_owned(), id.clone());
     map.insert("result".to_owned(), result);
     Value::Object(map)
+}
+
+#[cfg(feature = "charon")]
+fn json_content_response(id: &Value, payload: &Value) -> Value {
+    ok_response(
+        id,
+        json!({
+            "content": [{
+                "type": "text",
+                "text": serde_json::to_string(payload).unwrap_or_default()
+            }]
+        }),
+    )
+}
+
+#[cfg(feature = "charon")]
+fn decode_required_arg<T: DeserializeOwned>(args: &Value, key: &str) -> Result<T, String> {
+    let raw = args
+        .get(key)
+        .cloned()
+        .ok_or_else(|| format!("Missing required parameter: {key}"))?;
+    serde_json::from_value(raw).map_err(|e| format!("Invalid parameter '{key}': {e}"))
+}
+
+#[cfg(feature = "charon")]
+fn parse_target_class_json(value: Option<&Value>) -> Result<TargetClass, String> {
+    let Some(value) = value else {
+        return Ok(TargetClass::Unknown);
+    };
+    let Some(raw) = value.as_str() else {
+        return Err("target_class must be a string".to_string());
+    };
+
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "api" => Ok(TargetClass::Api),
+        "content-site" | "content_site" | "contentsite" | "content" => Ok(TargetClass::ContentSite),
+        "high-security" | "high_security" | "highsecurity" => Ok(TargetClass::HighSecurity),
+        "unknown" => Ok(TargetClass::Unknown),
+        _ => Err(format!("Unknown target_class: {raw}")),
+    }
 }
 
 // ─── Server ───────────────────────────────────────────────────────────────────
@@ -340,7 +386,7 @@ impl McpGraphServer {
     }
 
     fn graph_tool_defs() -> Vec<Value> {
-        vec![
+        let mut tools = vec![
             json!({
                 "name": "pipeline_validate",
                 "description": "Parse and validate a TOML pipeline definition without executing it. Returns the node list, service declarations, and computed execution order.",
@@ -416,6 +462,91 @@ impl McpGraphServer {
                     "required": ["toml"]
                 }
             }),
+        ];
+
+        #[cfg(feature = "charon")]
+        tools.extend(Self::charon_tool_defs());
+
+        tools
+    }
+
+    #[cfg(feature = "charon")]
+    fn charon_tool_defs() -> Vec<Value> {
+        vec![
+            json!({
+                "name": "charon_classify_transaction",
+                "description": "Classify a single HTTP transaction for likely anti-bot provider signals.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "url": { "type": "string", "description": "Request URL" },
+                        "status": { "type": "integer", "description": "HTTP status code" },
+                        "response_headers": { "type": "object", "description": "Response headers as a string map" },
+                        "response_body_snippet": { "type": "string", "description": "Optional response body snippet" },
+                        "response_body_excerpt": { "type": "string", "description": "Alias for response_body_snippet" }
+                    },
+                    "required": ["url", "status"]
+                }
+            }),
+            json!({
+                "name": "charon_investigate_har",
+                "description": "Build a Charon investigation report from a HAR payload.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "har": { "type": "string", "description": "HAR JSON payload" },
+                        "target_class": { "type": "string", "description": "Optional target class: api | content-site | high-security | unknown" }
+                    },
+                    "required": ["har"]
+                }
+            }),
+            json!({
+                "name": "charon_infer_requirements",
+                "description": "Infer Charon operational requirements from an investigation report.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "report": { "type": "object", "description": "InvestigationReport JSON object" },
+                        "target_class": { "type": "string", "description": "Optional target class override: api | content-site | high-security | unknown" }
+                    },
+                    "required": ["report"]
+                }
+            }),
+            json!({
+                "name": "charon_build_runtime_policy",
+                "description": "Build a runtime policy from a Charon investigation report and inferred requirements profile.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "report": { "type": "object", "description": "InvestigationReport JSON object" },
+                        "requirements": { "type": "object", "description": "RequirementsProfile JSON object" }
+                    },
+                    "required": ["report", "requirements"]
+                }
+            }),
+            json!({
+                "name": "charon_map_runtime_policy",
+                "description": "Map a Charon runtime policy into acquisition hints for downstream runners.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "policy": { "type": "object", "description": "RuntimePolicy JSON object" }
+                    },
+                    "required": ["policy"]
+                }
+            }),
+            json!({
+                "name": "charon_analyze_and_plan",
+                "description": "Run end-to-end Charon HAR analysis, requirement inference, runtime policy planning, and acquisition mapping in one call.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "har": { "type": "string", "description": "HAR JSON payload" },
+                        "target_class": { "type": "string", "description": "Optional target class: api | content-site | high-security | unknown" }
+                    },
+                    "required": ["har"]
+                }
+            }),
         ]
     }
 
@@ -443,7 +574,153 @@ impl McpGraphServer {
             "node_info" => Self::tool_graph_node_info(id, &args),
             "impact" => Self::tool_graph_impact(id, &args),
             "query_nodes" => Self::tool_graph_query(id, &args),
+            #[cfg(feature = "charon")]
+            "charon_classify_transaction" => Self::tool_charon_classify_transaction(id, &args),
+            #[cfg(feature = "charon")]
+            "charon_investigate_har" => Self::tool_charon_investigate_har(id, &args),
+            #[cfg(feature = "charon")]
+            "charon_infer_requirements" => Self::tool_charon_infer_requirements(id, &args),
+            #[cfg(feature = "charon")]
+            "charon_build_runtime_policy" => Self::tool_charon_build_runtime_policy(id, &args),
+            #[cfg(feature = "charon")]
+            "charon_map_runtime_policy" => Self::tool_charon_map_runtime_policy(id, &args),
+            #[cfg(feature = "charon")]
+            "charon_analyze_and_plan" => Self::tool_charon_analyze_and_plan(id, &args),
             _ => error_response(id, -32602, &format!("Unknown tool: {name}")),
+        }
+    }
+
+    #[cfg(feature = "charon")]
+    fn tool_charon_classify_transaction(id: &Value, args: &Value) -> Value {
+        let Some(url) = args.get("url").and_then(Value::as_str) else {
+            return error_response(id, -32602, "Missing required parameter: url");
+        };
+        let Some(status_u64) = args.get("status").and_then(Value::as_u64) else {
+            return error_response(id, -32602, "Missing required parameter: status");
+        };
+        let Ok(status) = u16::try_from(status_u64) else {
+            return error_response(id, -32602, "status must fit in a 16-bit unsigned integer");
+        };
+
+        let response_headers = match args.get("response_headers") {
+            Some(value) if !value.is_null() => {
+                match serde_json::from_value::<std::collections::BTreeMap<String, String>>(
+                    value.clone(),
+                ) {
+                    Ok(headers) => headers,
+                    Err(e) => {
+                        return error_response(
+                            id,
+                            -32602,
+                            &format!("Invalid parameter 'response_headers': {e}"),
+                        );
+                    }
+                }
+            }
+            _ => std::collections::BTreeMap::new(),
+        };
+        let response_body_snippet = args
+            .get("response_body_snippet")
+            .or_else(|| args.get("response_body_excerpt"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+
+        let tx = TransactionView {
+            url: url.to_string(),
+            status,
+            response_headers,
+            response_body_snippet,
+        };
+        let detection = classify_transaction(&tx);
+        json_content_response(id, &json!({ "detection": detection }))
+    }
+
+    #[cfg(feature = "charon")]
+    fn tool_charon_investigate_har(id: &Value, args: &Value) -> Value {
+        let Some(har) = args.get("har").and_then(Value::as_str) else {
+            return error_response(id, -32602, "Missing required parameter: har");
+        };
+        let target_class = match parse_target_class_json(args.get("target_class")) {
+            Ok(target_class) => target_class,
+            Err(e) => return error_response(id, -32602, &e),
+        };
+
+        match investigate_har(har) {
+            Ok(mut report) => {
+                report.target_class = Some(target_class);
+                json_content_response(id, &json!({ "report": report }))
+            }
+            Err(e) => error_response(id, -32603, &format!("HAR investigation failed: {e}")),
+        }
+    }
+
+    #[cfg(feature = "charon")]
+    fn tool_charon_infer_requirements(id: &Value, args: &Value) -> Value {
+        let mut report: InvestigationReport = match decode_required_arg(args, "report") {
+            Ok(report) => report,
+            Err(e) => return error_response(id, -32602, &e),
+        };
+        let target_class = match parse_target_class_json(args.get("target_class")) {
+            Ok(TargetClass::Unknown) => report.target_class.unwrap_or(TargetClass::Unknown),
+            Ok(target_class) => target_class,
+            Err(e) => return error_response(id, -32602, &e),
+        };
+
+        report.target_class = Some(target_class);
+        let requirements = infer_requirements_with_target_class(&report, target_class);
+        json_content_response(id, &json!({ "requirements": requirements }))
+    }
+
+    #[cfg(feature = "charon")]
+    fn tool_charon_build_runtime_policy(id: &Value, args: &Value) -> Value {
+        let report: InvestigationReport = match decode_required_arg(args, "report") {
+            Ok(report) => report,
+            Err(e) => return error_response(id, -32602, &e),
+        };
+        let requirements: RequirementsProfile = match decode_required_arg(args, "requirements") {
+            Ok(requirements) => requirements,
+            Err(e) => return error_response(id, -32602, &e),
+        };
+
+        let policy = build_runtime_policy(&report, &requirements);
+        json_content_response(id, &json!({ "policy": policy }))
+    }
+
+    #[cfg(feature = "charon")]
+    fn tool_charon_map_runtime_policy(id: &Value, args: &Value) -> Value {
+        let policy: RuntimePolicy = match decode_required_arg(args, "policy") {
+            Ok(policy) => policy,
+            Err(e) => return error_response(id, -32602, &e),
+        };
+
+        let acquisition: AcquisitionPolicy = map_runtime_policy(&policy);
+        json_content_response(id, &json!({ "acquisition": acquisition }))
+    }
+
+    #[cfg(feature = "charon")]
+    fn tool_charon_analyze_and_plan(id: &Value, args: &Value) -> Value {
+        let Some(har) = args.get("har").and_then(Value::as_str) else {
+            return error_response(id, -32602, "Missing required parameter: har");
+        };
+        let target_class = match parse_target_class_json(args.get("target_class")) {
+            Ok(target_class) => target_class,
+            Err(e) => return error_response(id, -32602, &e),
+        };
+
+        match investigate_har(har) {
+            Ok(mut report) => {
+                report.target_class = Some(target_class);
+                let requirements = infer_requirements_with_target_class(&report, target_class);
+                let policy = build_runtime_policy(&report, &requirements);
+                let acquisition = map_runtime_policy(&policy);
+                let bundle = InvestigationBundle {
+                    report,
+                    requirements,
+                    policy,
+                };
+                json_content_response(id, &json!({ "bundle": bundle, "acquisition": acquisition }))
+            }
+            Err(e) => error_response(id, -32603, &format!("HAR investigation failed: {e}")),
         }
     }
 
@@ -1258,7 +1535,7 @@ const fn mode_rank(mode: AcquisitionMode) -> u8 {
     }
 }
 
-#[cfg(feature = "acquisition-runner")]
+#[cfg(all(feature = "acquisition-runner", feature = "charon"))]
 const fn mode_from_hint(hint: AcquisitionModeHint) -> AcquisitionMode {
     match hint {
         AcquisitionModeHint::Fast => AcquisitionMode::Fast,
@@ -1700,6 +1977,114 @@ mod tests {
         assert!(names.contains(&"scrape_rss"));
         assert!(names.contains(&"pipeline_validate"));
         assert!(names.contains(&"pipeline_run"));
+
+        #[cfg(feature = "charon")]
+        {
+            assert!(names.contains(&"charon_classify_transaction"));
+            assert!(names.contains(&"charon_investigate_har"));
+            assert!(names.contains(&"charon_infer_requirements"));
+            assert!(names.contains(&"charon_build_runtime_policy"));
+            assert!(names.contains(&"charon_map_runtime_policy"));
+            assert!(names.contains(&"charon_analyze_and_plan"));
+        }
+    }
+
+    #[cfg(feature = "charon")]
+    #[test]
+    fn charon_classify_transaction_returns_detection() {
+        let id = json!(99);
+        let args = json!({
+            "url": "https://example.com/challenge",
+            "status": 403,
+            "response_headers": { "x-datadome": "1" },
+            "response_body_snippet": "captcha-delivery.com"
+        });
+
+        let resp = McpGraphServer::tool_charon_classify_transaction(&id, &args);
+        let text = resp
+            .pointer("/result/content/0/text")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let payload: Value = serde_json::from_str(text).unwrap_or(Value::Null);
+
+        assert_eq!(
+            payload
+                .pointer("/detection/provider")
+                .and_then(Value::as_str),
+            Some("DataDome")
+        );
+    }
+
+    #[cfg(feature = "charon")]
+    #[test]
+    fn charon_analyze_and_plan_returns_policy_and_acquisition() {
+        let id = json!(100);
+        let args = json!({
+            "har": json!({
+                "log": {
+                    "version": "1.2",
+                    "creator": {"name": "test", "version": "1.0"},
+                    "pages": [{
+                        "id": "page_1",
+                        "title": "https://example.com/challenge",
+                        "startedDateTime": "2026-01-01T00:00:00.000Z",
+                        "pageTimings": {"onLoad": 0}
+                    }],
+                    "entries": [{
+                        "pageref": "page_1",
+                        "startedDateTime": "2026-01-01T00:00:00.000Z",
+                        "time": 0,
+                        "request": {
+                            "method": "GET",
+                            "url": "https://example.com/challenge",
+                            "httpVersion": "HTTP/2",
+                            "headers": [],
+                            "queryString": [],
+                            "cookies": [],
+                            "headersSize": -1,
+                            "bodySize": 0
+                        },
+                        "response": {
+                            "status": 403,
+                            "statusText": "Forbidden",
+                            "httpVersion": "HTTP/2",
+                            "headers": [],
+                            "cookies": [],
+                            "content": {
+                                "size": 0,
+                                "mimeType": "text/html",
+                                "text": "captcha-delivery.com"
+                            },
+                            "redirectURL": "",
+                            "headersSize": -1,
+                            "bodySize": 0
+                        },
+                        "cache": {},
+                        "timings": {
+                            "blocked": 0,
+                            "dns": 0,
+                            "connect": 0,
+                            "send": 0,
+                            "wait": 0,
+                            "receive": 0,
+                            "ssl": 0
+                        }
+                    }]
+                }
+            }).to_string(),
+            "target_class": "api"
+        });
+
+        let resp = McpGraphServer::tool_charon_analyze_and_plan(&id, &args);
+        let text = resp
+            .pointer("/result/content/0/text")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let payload: Value = serde_json::from_str(text).unwrap_or(Value::Null);
+
+        assert!(payload.get("bundle").is_some());
+        assert!(payload.pointer("/bundle/policy").is_some());
+        assert!(payload.pointer("/acquisition/mode").is_some());
     }
 
     #[test]
