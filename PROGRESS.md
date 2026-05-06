@@ -141,6 +141,7 @@
 | CHR-014b — Redis cache integration test (env-gated) | `[x]` | Added ignored `redis-cache` integration test gated by env var |
 | CHR-017a — Incident runbook diagnostics executable tests | `[x]` | Added Category A/B/C diagnostics tests in `runbook_diagnostics.rs` |
 | CHR-002/003/004/005 — Snapshot foundation verification closeout | `[x]` | Verified schema/compatibility, deterministic collector, fixture workflow, and drift suite; evidence in `crates/stygian-charon/docs/signal-coverage-matrix.md` |
+| CHR-001/011/014/015/017 — Docs/process verification closeout | `[x]` | Evidence consolidated in `crates/stygian-charon/docs/issue-closeout-verification.md` |
 
 ---
 
