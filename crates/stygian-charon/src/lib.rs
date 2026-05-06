@@ -31,6 +31,8 @@ pub mod investigation;
 /// Telemetry and metrics collection (feature-gated).
 #[cfg(feature = "metrics")]
 pub mod metrics;
+/// External observatory runner and comparison reports.
+pub mod observatory;
 /// Runtime policy planning based on investigation output.
 pub mod policy;
 /// Challenge-style probe pack for adversarial and regression testing.
@@ -73,6 +75,12 @@ pub use investigation::{
 };
 #[cfg(feature = "caching")]
 pub use investigation::{investigate_har_cached, investigate_har_cached_with_target_class};
+pub use observatory::{
+    ObservatoryCase, ObservatoryComparison, ObservatoryError, ObservatoryEscalation,
+    ObservatoryReport, ObservatorySample, run_external_observatory_from_hars,
+};
+#[cfg(feature = "live-validation")]
+pub use observatory::{LiveObservatoryProbe, run_external_observatory_live};
 pub use policy::{analyze_and_plan, build_runtime_policy, plan_from_report};
 pub use probe::{
     ChallengeProbe, ProbeCategory, ProbeExpectation, ProbePackReport, ProbeRunResult,
