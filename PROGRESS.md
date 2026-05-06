@@ -140,6 +140,7 @@
 | CHR-014a — Cache-hit improvement benchmark | `[x]` | Added timing-focused `cache_benchmark` example to quantify cache-hit gains |
 | CHR-014b — Redis cache integration test (env-gated) | `[x]` | Added ignored `redis-cache` integration test gated by env var |
 | CHR-017a — Incident runbook diagnostics executable tests | `[x]` | Added Category A/B/C diagnostics tests in `runbook_diagnostics.rs` |
+| CHR-002/003/004/005 — Snapshot foundation verification closeout | `[x]` | Verified schema/compatibility, deterministic collector, fixture workflow, and drift suite; evidence in `crates/stygian-charon/docs/signal-coverage-matrix.md` |
 
 ---
 
