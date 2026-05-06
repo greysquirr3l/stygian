@@ -29,6 +29,8 @@ pub mod investigation;
 pub mod metrics;
 /// Runtime policy planning based on investigation output.
 pub mod policy;
+/// Challenge-style probe pack for adversarial and regression testing.
+pub mod probe;
 /// Normalized fingerprint snapshot schema types and compatibility checks.
 pub mod snapshot;
 /// Public types for transaction and report models.
@@ -59,6 +61,10 @@ pub use investigation::{
 #[cfg(feature = "caching")]
 pub use investigation::{investigate_har_cached, investigate_har_cached_with_target_class};
 pub use policy::{analyze_and_plan, build_runtime_policy, plan_from_report};
+pub use probe::{
+    ChallengeProbe, ProbeCategory, ProbeExpectation, ProbePackReport, ProbeRunResult,
+    challenge_probe_pack, run_probe_pack,
+};
 pub use snapshot::{
     FingerprintSignals, NormalizedFingerprintSnapshot, ScreenFingerprint, SnapshotCoherenceReport,
     SnapshotCoherenceViolation, SnapshotCollectionError, SnapshotCompatibilityError,

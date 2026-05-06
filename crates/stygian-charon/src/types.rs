@@ -109,7 +109,7 @@ impl BlockedRatioSlo {
 }
 
 /// A simplified view of one HTTP transaction used for provider classification.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct TransactionView {
     /// Request URL.
     pub url: String,
