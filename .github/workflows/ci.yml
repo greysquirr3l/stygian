@@ -63,6 +63,50 @@ jobs:
       - name: Run Charon snapshot drift tests
         run: cargo test -p stygian-charon --test snapshot_drift -- --nocapture
 
+  stealth:
+    name: Stealth
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-stealth-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-stealth-
+
+      - name: Install Chromium
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y chromium-browser
+          echo "STYGIAN_CHROME_PATH=$(which chromium-browser)" >> "$GITHUB_ENV"
+
+      - name: Build stealth probe
+        run: cargo build --package stygian-browser --example stealth_probe --all-features
+
+      - name: Run stealth probe
+        run: |
+          ./target/debug/examples/stealth_probe \
+            --threshold 0.95 \
+            about:blank \
+            > probe-report.json 2> probe-stderr.txt
+
+      - name: Upload stealth probe artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stealth-probe-report
+          path: |
+            probe-report.json
+            probe-stderr.txt
+
   clippy:
     name: Clippy
     runs-on: ubuntu-latest

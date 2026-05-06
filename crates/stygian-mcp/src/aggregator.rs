@@ -12,6 +12,12 @@
 //! The aggregator strips the `graph_` prefix before forwarding calls to the
 //! graph sub-server (which internally uses un-prefixed names like `scrape`).
 //! Browser and proxy tools are already prefixed in their respective servers.
+//!
+//! Proxy guidance: proxy-backed tools are opt-in and should not be used by
+//! default. Prefer direct tools (`graph_scrape`, `browser_acquire` +
+//! `browser_navigate`) unless proxy routing is explicitly requested or proxy
+//! use is required for a confirmed network-blocking scenario and proxies are
+//! available in the pool.
 
 use std::sync::Arc;
 
@@ -232,7 +238,7 @@ impl McpAggregator {
         let cross_tools = vec![
             json!({
                 "name": "scrape_proxied",
-                "description": "Fetch a URL through a proxy automatically selected from the pool. Acquires a proxy, performs an HTTP scrape, then releases the proxy. Returns the scraped content.",
+                "description": "Fetch a URL through a proxy automatically selected from the pool. Acquires a proxy, performs an HTTP scrape, then releases the proxy. Returns the scraped content. IMPORTANT: Only use this tool when the user has explicitly requested proxy routing, or when IP-based rate limiting/blocking is the confirmed problem and proxies are known to be available. Do NOT use this tool by default — use graph_scrape instead. Requires at least one proxy in the pool (check proxy_pool_stats first); returns an error if the pool is empty.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -244,7 +250,7 @@ impl McpAggregator {
             }),
             json!({
                 "name": "browser_proxied",
-                "description": "Navigate to a URL in a full headless browser session routed through a proxy automatically selected from the pool. Acquires a proxy and browser session, navigates, captures HTML content, then releases both. Returns navigation metadata and page HTML.",
+                "description": "Navigate to a URL in a full headless browser session routed through a proxy automatically selected from the pool. Acquires a proxy and browser session, navigates, captures HTML content, then releases both. Returns navigation metadata and page HTML. IMPORTANT: Only use this tool when the user has explicitly requested proxy routing, or when both browser rendering AND IP rotation are specifically required. Do NOT use this tool by default — use browser_acquire + browser_navigate instead. Requires at least one proxy in the pool (check proxy_pool_stats first); returns an error if the pool is empty.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {

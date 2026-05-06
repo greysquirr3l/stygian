@@ -42,7 +42,7 @@
 //!
 //! | Tool | Parameters | Returns |
 //! | ------ | ----------- | --------- |
-//! | `browser_acquire` | `stealth_level?`, `tls_profile?`, `webrtc_policy?`, `cdp_fix_mode?`, `proxy?` | `session_id`, `requested_metadata` |
+//! | `browser_acquire` | `stealth_level?`, `tls_profile?`, `webrtc_policy?`, `cdp_fix_mode?`, `proxy? (opt-in only)` | `session_id`, `requested_metadata` |
 //! | `browser_acquire_and_extract` | `url, mode, wait_for_selector?, extraction_js?, total_timeout_secs?` | `strategy_used, final_url, status_code, extracted?, html_excerpt?, diagnostics` |
 //! | `browser_navigate` | `session_id, url, timeout_secs?` | `title, url` |
 //! | `browser_eval` | `session_id, script` | `result: Value` |
@@ -64,6 +64,10 @@
 //! | `browser_find_similar` *(similarity feature)* | `session_id, url, reference_selector, threshold?, max_results?, timeout_secs?` | scored `matches` array |
 //! | `browser_warmup` | `session_id, url, wait?, timeout_ms?, stabilize_ms?` | warmup report |
 //! | `browser_refresh` | `session_id, wait?, timeout_ms?, reset_connection?` | refresh report |
+//!
+//! Proxy guidance: leave `proxy` unset by default. Only pass `proxy` when the
+//! user explicitly requests proxy routing or after a proxy has been acquired
+//! from the proxy pool.
 
 use std::{
     collections::HashMap,
@@ -246,7 +250,7 @@ static TOOL_DEFINITIONS: LazyLock<Vec<Value>> = LazyLock::new(|| {
                     },
                     "proxy": {
                         "type": "string",
-                        "description": "HTTP/SOCKS proxy URL, e.g. 'http://user:pass@host:port' (browser-launch-level)."
+                        "description": "HTTP/SOCKS proxy URL, e.g. 'http://user:pass@host:port'. Only pass this when the user has explicitly requested proxy use or you have already acquired a proxy via proxy_acquire. Do NOT populate this field by default."
                     },
                     "target_profile": {
                         "type": "string",

@@ -1,10 +1,10 @@
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 
+use crate::analyzer::{AnalyzerProfile, AnalyzerVersion, ProviderAnalyzer};
 use crate::har;
 use crate::types::{
-    AntiBotProvider, Detection, HarClassificationReport, HarRequestSummary, ProviderScore,
-    TransactionView,
+    AntiBotProvider, Detection, HarClassificationReport, ProviderScore, TransactionView,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -117,9 +117,42 @@ const SIGNATURES: &[Signature] = &[
     },
 ];
 
+struct SignatureAnalyzer {
+    version: AnalyzerVersion,
+}
+
+impl ProviderAnalyzer for SignatureAnalyzer {
+    fn version(&self) -> AnalyzerVersion {
+        self.version
+    }
+
+    fn classify_transaction(&self, tx: &TransactionView) -> Detection {
+        match self.version {
+            AnalyzerVersion::V1 | AnalyzerVersion::V1Legacy => classify_transaction_v1(tx),
+        }
+    }
+}
+
+const fn select_analyzer(version: AnalyzerVersion) -> SignatureAnalyzer {
+    SignatureAnalyzer { version }
+}
+
 /// Classify a transaction view into a likely anti-bot provider.
 #[must_use]
 pub fn classify_transaction(tx: &TransactionView) -> Detection {
+    classify_transaction_with_profile(tx, &AnalyzerProfile::default())
+}
+
+/// Classify one transaction using the analyzer selected by profile.
+#[must_use]
+pub fn classify_transaction_with_profile(
+    tx: &TransactionView,
+    profile: &AnalyzerProfile,
+) -> Detection {
+    select_analyzer(profile.analyzer_version).classify_transaction(tx)
+}
+
+fn classify_transaction_v1(tx: &TransactionView) -> Detection {
     let mut scores: BTreeMap<AntiBotProvider, ProviderScore> = BTreeMap::new();
 
     for provider in [
@@ -214,71 +247,20 @@ pub fn classify_transaction(tx: &TransactionView) -> Detection {
 /// Returns [`har::HarError`] when the input is not valid HAR JSON
 /// or is missing required HAR fields.
 pub fn classify_har(har_json: &str) -> Result<HarClassificationReport, har::HarError> {
-    let parsed = har::parse_har_transactions(har_json)?;
-
-    let requests = parsed
-        .requests
-        .into_iter()
-        .map(|req| HarRequestSummary {
-            url: req.transaction.url.clone(),
-            status: req.transaction.status,
-            resource_type: req.resource_type,
-            detection: classify_transaction(&req.transaction),
-        })
-        .collect::<Vec<_>>();
-
-    let aggregate = aggregate_detection(&requests);
-
-    Ok(HarClassificationReport {
-        page_title: parsed.page_title,
-        aggregate,
-        requests,
-    })
+    classify_har_with_profile(har_json, &AnalyzerProfile::default())
 }
 
-fn aggregate_detection(requests: &[HarRequestSummary]) -> Detection {
-    let mut provider_counts: BTreeMap<AntiBotProvider, u32> = BTreeMap::new();
-    let mut markers: Vec<String> = Vec::new();
-
-    for req in requests {
-        if req.detection.provider != AntiBotProvider::Unknown {
-            let entry = provider_counts.entry(req.detection.provider).or_insert(0);
-            *entry = entry.saturating_add(1);
-        }
-        markers.extend(req.detection.markers.iter().cloned());
-    }
-
-    if provider_counts.is_empty() {
-        return Detection {
-            provider: AntiBotProvider::Unknown,
-            confidence: 0.0,
-            markers: Vec::new(),
-        };
-    }
-
-    let mut ordered: Vec<(AntiBotProvider, u32)> = provider_counts.into_iter().collect();
-    ordered.sort_by_key(|(_, count)| Reverse(*count));
-
-    if let Some((provider, top_count)) = ordered.first().copied() {
-        let second_count = ordered.get(1).map_or(0, |x| x.1);
-        let confidence = if top_count + second_count == 0 {
-            0.0
-        } else {
-            f64::from(top_count) / f64::from(top_count + second_count)
-        };
-
-        Detection {
-            provider,
-            confidence,
-            markers,
-        }
-    } else {
-        Detection {
-            provider: AntiBotProvider::Unknown,
-            confidence: 0.0,
-            markers,
-        }
-    }
+/// Classify a HAR payload using the analyzer selected by profile.
+///
+/// # Errors
+///
+/// Returns [`har::HarError`] when the input is not valid HAR JSON
+/// or is missing required HAR fields.
+pub fn classify_har_with_profile(
+    har_json: &str,
+    profile: &AnalyzerProfile,
+) -> Result<HarClassificationReport, har::HarError> {
+    select_analyzer(profile.analyzer_version).classify_har(har_json)
 }
 
 fn normalize_headers(headers: &BTreeMap<String, String>) -> String {
@@ -335,5 +317,26 @@ mod tests {
 
         assert_eq!(detection.provider, AntiBotProvider::Cloudflare);
         assert!(detection.confidence > 0.5);
+    }
+
+    #[test]
+    fn profile_selected_analyzer_matches_default_classifier_for_v1() {
+        let mut headers = BTreeMap::new();
+        let _ = headers.insert("cf-ray".to_string(), "123-ORD".to_string());
+        let tx = TransactionView {
+            url: "https://example.com".to_string(),
+            status: 403,
+            response_headers: headers,
+            response_body_snippet: Some("Attention Required! | Cloudflare".to_string()),
+        };
+
+        let baseline = classify_transaction(&tx);
+        let profile = AnalyzerProfile {
+            profile_id: "canary".to_string(),
+            analyzer_version: AnalyzerVersion::V1,
+        };
+        let selected = classify_transaction_with_profile(&tx, &profile);
+
+        assert_eq!(baseline, selected);
     }
 }

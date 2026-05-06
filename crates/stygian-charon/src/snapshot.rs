@@ -156,6 +156,32 @@ pub struct SnapshotDriftReport {
     pub diffs: Vec<SnapshotSignalDrift>,
 }
 
+/// Machine-readable coherence violation produced by a snapshot rule.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SnapshotCoherenceViolation {
+    /// Stable identifier for the violated rule.
+    pub rule_id: String,
+    /// Human-readable explanation of the mismatch.
+    pub message: String,
+    /// Dot-paths participating in the violation.
+    pub paths: Vec<String>,
+}
+
+/// Result of evaluating all registered snapshot coherence rules.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SnapshotCoherenceReport {
+    /// Violations returned by the active rule set.
+    pub violations: Vec<SnapshotCoherenceViolation>,
+}
+
+impl SnapshotCoherenceReport {
+    /// Return `true` when any coherence rule was violated.
+    #[must_use]
+    pub const fn has_violations(&self) -> bool {
+        !self.violations.is_empty()
+    }
+}
+
 impl SnapshotDriftReport {
     /// Return `true` when any signal drift was detected.
     #[must_use]
@@ -221,6 +247,17 @@ const VOLATILE_METADATA_KEYS: &[&str] = &[
     "run_id",
     "session_id",
     "trace_id",
+];
+
+type SnapshotCoherenceRule =
+    fn(&NormalizedFingerprintSnapshot) -> Option<SnapshotCoherenceViolation>;
+
+const SNAPSHOT_COHERENCE_RULES: &[SnapshotCoherenceRule] = &[
+    rule_user_agent_header_matches,
+    rule_accept_language_header_matches,
+    rule_browser_webdriver_disabled,
+    rule_webgl_fields_populated,
+    rule_tls_fields_populated,
 ];
 
 /// Normalize a snapshot in-place for deterministic collection.
@@ -292,6 +329,19 @@ pub fn compare_snapshot_signal_drift(
     Ok(SnapshotDriftReport { diffs })
 }
 
+/// Evaluate registered coherence rules across normalized snapshot fields.
+#[must_use]
+pub fn evaluate_snapshot_coherence(
+    snapshot: &NormalizedFingerprintSnapshot,
+) -> SnapshotCoherenceReport {
+    let violations = SNAPSHOT_COHERENCE_RULES
+        .iter()
+        .filter_map(|rule| rule(snapshot))
+        .collect();
+
+    SnapshotCoherenceReport { violations }
+}
+
 fn collect_signal_diffs(
     path: &str,
     baseline: &serde_json::Value,
@@ -360,6 +410,111 @@ fn parse_schema_major(version: &str) -> Result<u64, SnapshotCompatibilityError> 
     major
         .parse::<u64>()
         .map_err(|_| SnapshotCompatibilityError::InvalidSchemaVersion(version.to_string()))
+}
+
+fn signal_header<'a>(snapshot: &'a NormalizedFingerprintSnapshot, name: &str) -> Option<&'a str> {
+    snapshot
+        .signals
+        .headers
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.as_str())
+}
+
+fn mismatch_violation(
+    rule_id: &'static str,
+    message: impl Into<String>,
+    paths: &[&str],
+) -> SnapshotCoherenceViolation {
+    SnapshotCoherenceViolation {
+        rule_id: rule_id.to_string(),
+        message: message.into(),
+        paths: paths.iter().map(|path| (*path).to_string()).collect(),
+    }
+}
+
+fn rule_user_agent_header_matches(
+    snapshot: &NormalizedFingerprintSnapshot,
+) -> Option<SnapshotCoherenceViolation> {
+    let header = signal_header(snapshot, "user-agent")?;
+    if header == snapshot.signals.user_agent {
+        return None;
+    }
+
+    Some(mismatch_violation(
+        "user_agent_header_match",
+        "signals.user_agent does not match signals.headers.user-agent",
+        &["signals.user_agent", "signals.headers.user-agent"],
+    ))
+}
+
+fn rule_accept_language_header_matches(
+    snapshot: &NormalizedFingerprintSnapshot,
+) -> Option<SnapshotCoherenceViolation> {
+    let header = signal_header(snapshot, "accept-language")?;
+    if header == snapshot.signals.accept_language {
+        return None;
+    }
+
+    Some(mismatch_violation(
+        "accept_language_header_match",
+        "signals.accept_language does not match signals.headers.accept-language",
+        &["signals.accept_language", "signals.headers.accept-language"],
+    ))
+}
+
+fn rule_browser_webdriver_disabled(
+    snapshot: &NormalizedFingerprintSnapshot,
+) -> Option<SnapshotCoherenceViolation> {
+    if snapshot.mode == SnapshotMode::Http {
+        return None;
+    }
+
+    if snapshot
+        .signals
+        .features
+        .get("navigator.webdriver")
+        .copied()
+        != Some(true)
+    {
+        return None;
+    }
+
+    Some(mismatch_violation(
+        "navigator_webdriver_disabled",
+        "browser-oriented snapshots should not report navigator.webdriver=true",
+        &["mode", "signals.features.navigator.webdriver"],
+    ))
+}
+
+fn rule_webgl_fields_populated(
+    snapshot: &NormalizedFingerprintSnapshot,
+) -> Option<SnapshotCoherenceViolation> {
+    let webgl = snapshot.signals.webgl.as_ref()?;
+    if !webgl.vendor.trim().is_empty() && !webgl.renderer.trim().is_empty() {
+        return None;
+    }
+
+    Some(mismatch_violation(
+        "webgl_fields_populated",
+        "signals.webgl vendor and renderer must both be populated when webgl is present",
+        &["signals.webgl.vendor", "signals.webgl.renderer"],
+    ))
+}
+
+fn rule_tls_fields_populated(
+    snapshot: &NormalizedFingerprintSnapshot,
+) -> Option<SnapshotCoherenceViolation> {
+    let tls = snapshot.signals.tls.as_ref()?;
+    if !tls.ja3_hash.trim().is_empty() {
+        return None;
+    }
+
+    Some(mismatch_violation(
+        "tls_ja3_populated",
+        "signals.tls.ja3_hash must be populated when tls is present",
+        &["signals.tls.ja3_hash"],
+    ))
 }
 
 /// Validate normalized snapshot compatibility rules across modes and versions.
@@ -446,6 +601,51 @@ mod tests {
             "../docs/examples/fingerprint-snapshot-v1-browser.json"
         ));
         assert!(validate_snapshot_compatibility(&snap).is_ok());
+    }
+
+    #[test]
+    fn coherence_report_is_clean_for_example_browser_snapshot() {
+        let snap = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-browser.json"
+        ));
+
+        let report = evaluate_snapshot_coherence(&snap);
+
+        assert!(!report.has_violations());
+    }
+
+    #[test]
+    fn coherence_report_flags_cross_field_mismatches() {
+        let mut snap = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-browser.json"
+        ));
+        snap.signals
+            .headers
+            .insert("user-agent".to_string(), "different-user-agent".to_string());
+        snap.signals
+            .headers
+            .insert("accept-language".to_string(), "fr-FR,fr;q=0.9".to_string());
+        snap.signals
+            .features
+            .insert("navigator.webdriver".to_string(), true);
+
+        let report = evaluate_snapshot_coherence(&snap);
+
+        assert!(report.has_violations());
+        assert_eq!(report.violations.len(), 3);
+        let ids = report
+            .violations
+            .iter()
+            .map(|violation| violation.rule_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            ids,
+            vec![
+                "user_agent_header_match",
+                "accept_language_header_match",
+                "navigator_webdriver_disabled"
+            ]
+        );
     }
 
     #[test]

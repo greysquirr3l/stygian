@@ -5,6 +5,11 @@ use thiserror::Error;
 
 use crate::types::TransactionView;
 
+const MAX_HAR_BYTES: usize = 10 * 1024 * 1024;
+const MAX_HAR_ENTRIES: usize = 10_000;
+const MAX_HEADERS_PER_ENTRY: usize = 256;
+const MAX_URL_BYTES: usize = 8 * 1024;
+
 /// Errors returned while parsing HAR data.
 #[derive(Debug, Error)]
 pub enum HarError {
@@ -14,6 +19,9 @@ pub enum HarError {
     /// Expected HAR structure is missing required fields.
     #[error("invalid HAR structure: {0}")]
     InvalidStructure(&'static str),
+    /// HAR input exceeded a configured safety limit.
+    #[error("har input exceeds safety limit: {0}")]
+    LimitExceeded(&'static str),
 }
 
 /// Internal parsed HAR representation.
@@ -60,8 +68,13 @@ impl From<TransactionViewWithType> for TransactionView {
 /// # Errors
 ///
 /// Returns [`HarError::InvalidJson`] when `har_json` is not valid JSON,
-/// or [`HarError::InvalidStructure`] when required HAR fields are missing.
+/// [`HarError::InvalidStructure`] when required HAR fields are missing, or
+/// [`HarError::LimitExceeded`] when input safety limits are exceeded.
 pub fn parse_har_transactions(har_json: &str) -> Result<ParsedHar, HarError> {
+    if har_json.len() > MAX_HAR_BYTES {
+        return Err(HarError::LimitExceeded("har payload too large"));
+    }
+
     let root: Value = serde_json::from_str(har_json)?;
 
     let log = root
@@ -81,6 +94,10 @@ pub fn parse_har_transactions(har_json: &str) -> Result<ParsedHar, HarError> {
         .and_then(Value::as_array)
         .ok_or(HarError::InvalidStructure("missing entries array"))?;
 
+    if entries.len() > MAX_HAR_ENTRIES {
+        return Err(HarError::LimitExceeded("too many HAR entries"));
+    }
+
     let mut requests: Vec<TransactionViewWithType> = Vec::new();
 
     for entry in entries {
@@ -97,17 +114,25 @@ pub fn parse_har_transactions(har_json: &str) -> Result<ParsedHar, HarError> {
             .map(str::to_owned)
             .ok_or(HarError::InvalidStructure("entry request missing url"))?;
 
+        if url.len() > MAX_URL_BYTES {
+            return Err(HarError::LimitExceeded("request url too large"));
+        }
+
         let status = response
             .get("status")
             .and_then(Value::as_u64)
             .and_then(|x| u16::try_from(x).ok())
             .ok_or(HarError::InvalidStructure("entry response missing status"))?;
 
-        let headers = response
-            .get("headers")
-            .and_then(Value::as_array)
-            .map(|headers| extract_headers(headers))
-            .unwrap_or_default();
+        let headers = match response.get("headers").and_then(Value::as_array) {
+            Some(headers) => {
+                if headers.len() > MAX_HEADERS_PER_ENTRY {
+                    return Err(HarError::LimitExceeded("too many response headers"));
+                }
+                extract_headers(headers)
+            }
+            None => BTreeMap::new(),
+        };
 
         let body_snippet = response
             .get("content")
@@ -195,5 +220,55 @@ mod tests {
             assert_eq!(first.status(), 403);
             assert_eq!(first.url(), "https://example.com");
         }
+    }
+
+    #[test]
+    fn rejects_oversized_har_payload() {
+        let oversized = " ".repeat(MAX_HAR_BYTES + 1);
+
+        let result = parse_har_transactions(&oversized);
+
+        assert!(matches!(
+            result,
+            Err(HarError::LimitExceeded("har payload too large"))
+        ));
+    }
+
+    #[test]
+    fn rejects_too_many_entries() {
+        let entries = std::iter::repeat_n(
+            r#"{"request":{"url":"https://example.com"},"response":{"status":200}}"#,
+            MAX_HAR_ENTRIES + 1,
+        )
+        .collect::<Vec<_>>()
+        .join(",");
+        let json = format!(r#"{{"log":{{"entries":[{entries}]}}}}"#);
+
+        let result = parse_har_transactions(&json);
+
+        assert!(matches!(
+            result,
+            Err(HarError::LimitExceeded("too many HAR entries"))
+        ));
+    }
+
+    #[test]
+    fn rejects_too_many_response_headers() {
+        let headers = std::iter::repeat_n(
+            r#"{"name":"server","value":"cloudflare"}"#,
+            MAX_HEADERS_PER_ENTRY + 1,
+        )
+        .collect::<Vec<_>>()
+        .join(",");
+        let json = format!(
+            r#"{{"log":{{"entries":[{{"request":{{"url":"https://example.com"}},"response":{{"status":403,"headers":[{headers}]}}}}]}}}}"#
+        );
+
+        let result = parse_har_transactions(&json);
+
+        assert!(matches!(
+            result,
+            Err(HarError::LimitExceeded("too many response headers"))
+        ));
     }
 }

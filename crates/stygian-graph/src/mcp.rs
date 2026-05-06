@@ -296,7 +296,7 @@ impl McpGraphServer {
                     "properties": {
                         "url":          { "type": "string",  "description": "Target URL" },
                         "timeout_secs": { "type": "integer", "description": "Request timeout in seconds (default: 30)" },
-                        "proxy_url":    { "type": "string",  "description": "HTTP/SOCKS5 proxy URL (e.g. socks5://user:pass@host:1080)" },
+                        "proxy_url":    { "type": "string",  "description": "HTTP/SOCKS5 proxy URL (e.g. socks5://user:pass@host:1080). Only pass this when the user has explicitly requested proxy use. Do NOT populate this field by default." },
                         "rotate_ua":    { "type": "boolean", "description": "Rotate User-Agent on each request (default: true)" }
                     },
                     "required": ["url"]

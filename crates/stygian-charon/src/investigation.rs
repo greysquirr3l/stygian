@@ -1,13 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::analyzer::AnalyzerProfile;
 #[cfg(feature = "caching")]
 use crate::cache::{InvestigationReportCache, investigation_cache_key};
-use crate::classifier::classify_transaction;
+use crate::classifier::{classify_transaction, classify_transaction_with_profile};
 use crate::har;
 use crate::types::{
     AdapterStrategy, AntiBotProvider, AntiBotRequirement, BlockedRatioSlo, Detection,
     HarRequestSummary, HostSummary, IntegrationRecommendation, InvestigationDiff,
     InvestigationReport, MarkerCount, RequirementLevel, RequirementsProfile, TargetClass,
+    TransactionView,
 };
 
 /// Build an investigation report from a HAR payload.
@@ -16,6 +18,30 @@ use crate::types::{
 ///
 /// Returns [`har::HarError`] when the HAR payload is invalid or malformed.
 pub fn investigate_har(har_json: &str) -> Result<InvestigationReport, har::HarError> {
+    investigate_har_with_classifier(har_json, classify_transaction)
+}
+
+/// Build an investigation report from a HAR payload using an explicit analyzer profile.
+///
+/// # Errors
+///
+/// Returns [`har::HarError`] when the HAR payload is invalid or malformed.
+pub fn investigate_har_with_profile(
+    har_json: &str,
+    profile: &AnalyzerProfile,
+) -> Result<InvestigationReport, har::HarError> {
+    investigate_har_with_classifier(har_json, |tx| {
+        classify_transaction_with_profile(tx, profile)
+    })
+}
+
+fn investigate_har_with_classifier<F>(
+    har_json: &str,
+    classify: F,
+) -> Result<InvestigationReport, har::HarError>
+where
+    F: Fn(&TransactionView) -> Detection,
+{
     let parsed = har::parse_har_transactions(har_json)?;
 
     let mut status_histogram: BTreeMap<u16, u64> = BTreeMap::new();
@@ -29,7 +55,7 @@ pub fn investigate_har(har_json: &str) -> Result<InvestigationReport, har::HarEr
     let mut suspicious_requests: Vec<HarRequestSummary> = Vec::new();
 
     for req in parsed.requests {
-        let detection = classify_transaction(&req.transaction);
+        let detection = classify(&req.transaction);
 
         let summary = HarRequestSummary {
             url: req.transaction.url.clone(),
