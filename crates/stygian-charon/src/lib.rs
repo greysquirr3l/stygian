@@ -13,6 +13,8 @@ pub mod acquisition;
 pub mod adaptive;
 /// Versioned analyzer interfaces and profile selection.
 pub mod analyzer;
+/// Historical HAR replay across analyzer profiles.
+pub mod backtest;
 /// Diagnostic bundle API with redaction policy.
 pub mod bundle;
 /// Investigation report cache backends and cache key helpers.
@@ -44,6 +46,10 @@ pub use acquisition::{
 };
 pub use adaptive::{AdaptivePolicyError, AdaptiveSloPolicy, RegressionHistoryPolicy};
 pub use analyzer::{AnalyzerProfile, AnalyzerVersion, ProviderAnalyzer};
+pub use backtest::{
+    BacktestCase, BacktestDisagreement, BacktestError, BacktestReport, BacktestSample,
+    run_profile_backtest,
+};
 pub use bundle::{
     BundleCoherenceViolation, BundleError, BundleMetadata, BundleRedactionPolicy, DiagnosticBundle,
     apply_redaction, build_diagnostic_bundle, build_diagnostic_bundle_with_snapshot,
