@@ -18,7 +18,7 @@ env:
   THRESHOLD: ${{ inputs.threshold || '0.95' }}
 
 jobs:
-  # ── Stage 1: Run verify_stealth against about:blank ──────────────────────
+  # ── Stage 1: Run verify_stealth against configured canary targets ────────
   probe:
     name: Stealth probe
     runs-on: ubuntu-latest
@@ -50,22 +50,99 @@ jobs:
       - name: Build stealth probe
         run: cargo build --example stealth_probe --all-features
 
-      - name: Run stealth probe (synthetic)
+      - name: Run stealth probe (configured canaries)
         id: probe
         run: |
+          set -u
+          : > probe-stderr.txt
+          : > probe-results.ndjson
+
+          python3 - <<'PY' > canary-targets.tsv
+          import pathlib
+          import tomllib
+
+          doc = tomllib.loads(pathlib.Path('.github/stealth-canary.toml').read_text())
+          for entry in doc.get('canary', []):
+              label = entry.get('label', 'unnamed')
+              url = entry['url']
+              threshold = float(entry.get('threshold', 0.90))
+              advisory = bool(entry.get('advisory', False))
+              print(f"{label}\t{url}\t{threshold:.6f}\t{str(advisory).lower()}")
+          PY
+
+          HARD_FAIL=false
+          ANY_FAIL=false
+
+          while IFS=$'\t' read -r LABEL URL ENTRY_THRESHOLD ADVISORY; do
+            THRESHOLD_TO_USE="$ENTRY_THRESHOLD"
+            # Preserve workflow_dispatch override for the synthetic check.
+            if [[ "$LABEL" == "synthetic-injection" && -n "${THRESHOLD:-}" ]]; then
+              THRESHOLD_TO_USE="$THRESHOLD"
+            fi
+
+            set +e
+            ./target/debug/examples/stealth_probe \
+              --threshold "$THRESHOLD_TO_USE" \
+              "$URL" \
+              > probe-one.json 2> probe-one-stderr.txt
+            EXIT=$?
+            set -e
+
+            {
+              echo "=== ${LABEL} (${URL}) ==="
+              cat probe-one-stderr.txt
+              echo
+            } >> probe-stderr.txt
+
+            if [[ "$EXIT" -ne 0 ]]; then
+              ANY_FAIL=true
+              if [[ "$ADVISORY" != "true" ]]; then
+                HARD_FAIL=true
+              fi
+            fi
+
+            jq -c \
+              --arg label "$LABEL" \
+              --arg url "$URL" \
+              --arg threshold "$THRESHOLD_TO_USE" \
+              --arg advisory "$ADVISORY" \
+              --argjson exit_code "$EXIT" \
+              '
+                (.[0] // {"ok": false, "error": "missing probe result"})
+                + {
+                    label: $label,
+                    url: $url,
+                    threshold: ($threshold | tonumber),
+                    advisory: ($advisory == "true"),
+                    exit_code: $exit_code
+                  }
+              ' probe-one.json >> probe-results.ndjson
+          done < canary-targets.tsv
+
+          jq -s '.' probe-results.ndjson > probe-report.json
           set +e
-          ./target/debug/examples/stealth_probe \
-            --threshold "$THRESHOLD" \
-            about:blank \
-            > probe-report.json 2>probe-stderr.txt
-          EXIT=$?
           cat probe-report.json
           cat probe-stderr.txt >&2 || true
-          if [ "$EXIT" -eq 0 ]; then
-            echo "regression=false" >> "$GITHUB_OUTPUT"
-          else
+
+          if [[ "$HARD_FAIL" == "true" ]]; then
             echo "regression=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "regression=false" >> "$GITHUB_OUTPUT"
           fi
+
+          if [[ "$ANY_FAIL" == "true" ]]; then
+            echo "issue=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "issue=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          jq -r '
+            "## Stealth Canary Results",
+            "",
+            "| label | url | threshold | score_pct | ok | advisory |",
+            "|---|---|---:|---:|---|---|",
+            (.[] | "| \(.label) | \(.url) | \(.threshold) | \((.score_pct // 0)) | \(.ok) | \(.advisory) |")
+          ' probe-report.json >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload probe report
         if: always()
@@ -77,7 +154,7 @@ jobs:
             probe-stderr.txt
 
       - name: Create or update regression issue
-        if: steps.probe.outputs.regression == 'true'
+        if: steps.probe.outputs.issue == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -86,12 +163,23 @@ jobs:
           RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           ISSUE_BODY_FILE="/tmp/stealth-regression-issue.md"
 
+          FAILED_TARGETS="$(
+            jq -r '.[]
+              | select(.ok == false)
+              | "- \(.label) (advisory=\(.advisory), threshold=\(.threshold), score_pct=\((.score_pct // "n/a"))) -> \(.url)"
+            ' probe-report.json 2>/dev/null
+          )"
+
           FAILED_CHECKS="$(
             {
-              jq -r '.[] | .failed_checks[]?.id' probe-report.json 2>/dev/null | sed 's/^/- check: /'
-              jq -r '.[] | select(.error != null) | .error' probe-report.json 2>/dev/null | sed 's/^/- error: /'
+              jq -r '.[] | select(.ok == false) as $row | $row.failed_checks[]?.id | "- [\($row.label)] check: \(.)"' probe-report.json 2>/dev/null
+              jq -r '.[] | select(.error != null) | "- [\(.label)] error: \(.error)"' probe-report.json 2>/dev/null
             } | head -20
           )"
+
+          if [[ -z "${FAILED_TARGETS}" ]]; then
+            FAILED_TARGETS="_(none parsed; see uploaded probe report)_"
+          fi
 
           if [[ -z "${FAILED_CHECKS}" ]]; then
             FAILED_CHECKS="_(see uploaded probe report)_"
@@ -102,7 +190,10 @@ jobs:
 
           **Date**: ${DATE}
 
-          The daily stealth canary detected failing checks against \`about:blank\`.
+          The daily stealth canary detected one or more failing targets from \`.github/stealth-canary.toml\`.
+
+          ### Failed targets
+          ${FAILED_TARGETS}
 
           ### Failed checks
           ${FAILED_CHECKS}
