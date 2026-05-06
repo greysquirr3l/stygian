@@ -101,6 +101,11 @@ pub enum ModeDifferentialError {
 /// This runner executes the same set of mode comparisons for every corpus,
 /// computes signal-level drift with deterministic normalization, and evaluates
 /// each pair against configurable thresholds suitable for CI gates.
+///
+/// # Errors
+///
+/// Returns [`ModeDifferentialError`] if a corpus contains duplicate modes,
+/// is missing a required mode from `comparisons`, or snapshot comparison fails.
 pub fn run_mode_differential_regression(
     corpora: &[ModeDifferentialCorpus],
     comparisons: &[ModeComparison],

@@ -117,6 +117,10 @@ pub struct RedisInvestigationCache {
 #[cfg(feature = "redis-cache")]
 impl RedisInvestigationCache {
     /// Create a new Redis-backed cache using the provided URL.
+    ///
+    /// # Errors
+    ///
+    /// Returns a Redis error if the client cannot be created from `redis_url`.
     pub fn new(redis_url: &str, ttl: Duration) -> redis::RedisResult<Self> {
         let client = redis::Client::open(redis_url)?;
         Ok(Self {

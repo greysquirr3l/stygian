@@ -281,6 +281,11 @@ pub fn normalize_snapshot_for_determinism(
 /// The function first validates snapshot compatibility, then applies
 /// deterministic normalization rules, and finally serializes with a stable
 /// field order (provided by struct declaration order + `BTreeMap` keys).
+///
+/// # Errors
+///
+/// Returns [`SnapshotCollectionError`] when snapshot compatibility validation
+/// fails or when JSON serialization fails.
 pub fn collect_deterministic_snapshot_bytes(
     snapshot: &NormalizedFingerprintSnapshot,
     options: &SnapshotDeterminismOptions,
@@ -524,6 +529,12 @@ fn rule_tls_fields_populated(
 /// - requires `signals.tls` for [`SnapshotMode::Http`]
 /// - requires `signals.webgl` for [`SnapshotMode::Browser`]
 /// - requires deprecated mirror fields, when present, to match canonical fields
+///
+/// # Errors
+///
+/// Returns [`SnapshotCompatibilityError`] when schema version is invalid or
+/// unsupported, required mode-specific signals are missing, or legacy mirror
+/// fields do not match canonical signal values.
 pub fn validate_snapshot_compatibility(
     snapshot: &NormalizedFingerprintSnapshot,
 ) -> Result<(), SnapshotCompatibilityError> {

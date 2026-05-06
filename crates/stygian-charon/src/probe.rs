@@ -207,8 +207,16 @@ fn run_one_probe(probe: &ChallengeProbe) -> ProbeRunResult {
 /// ```
 #[must_use]
 pub fn challenge_probe_pack() -> Vec<ChallengeProbe> {
+    let mut probes = Vec::new();
+    probes.extend(build_benign_probes());
+    probes.extend(build_suspicious_probes());
+    probes.extend(build_adversarial_probes());
+    probes.extend(build_edge_case_probes());
+    probes
+}
+
+fn build_benign_probes() -> Vec<ChallengeProbe> {
     vec![
-        // ── Benign probes ────────────────────────────────────────────────────
         ChallengeProbe {
             name: "benign-200-ok".to_string(),
             description: "Plain 200 OK response with no anti-bot headers".to_string(),
@@ -248,7 +256,11 @@ pub fn challenge_probe_pack() -> Vec<ChallengeProbe> {
                 min_confidence: 0.0,
             },
         },
-        // ── Suspicious probes ─────────────────────────────────────────────────
+    ]
+}
+
+fn build_suspicious_probes() -> Vec<ChallengeProbe> {
+    vec![
         ChallengeProbe {
             name: "suspicious-akamai-partial".to_string(),
             description: "Single low-weight Akamai marker; should detect Akamai".to_string(),
@@ -283,7 +295,18 @@ pub fn challenge_probe_pack() -> Vec<ChallengeProbe> {
                 min_confidence: 0.0,
             },
         },
-        // ── Adversarial probes ────────────────────────────────────────────────
+    ]
+}
+
+fn build_adversarial_probes() -> Vec<ChallengeProbe> {
+    let mut probes = Vec::new();
+    probes.extend(build_adversarial_probes_part_one());
+    probes.extend(build_adversarial_probes_part_two());
+    probes
+}
+
+fn build_adversarial_probes_part_one() -> Vec<ChallengeProbe> {
+    vec![
         ChallengeProbe {
             name: "adversarial-datadome-full".to_string(),
             description: "Full DataDome challenge: x-datadome + cookie + captcha URL".to_string(),
@@ -357,6 +380,11 @@ pub fn challenge_probe_pack() -> Vec<ChallengeProbe> {
                 min_confidence: 0.5,
             },
         },
+    ]
+}
+
+fn build_adversarial_probes_part_two() -> Vec<ChallengeProbe> {
+    vec![
         ChallengeProbe {
             name: "adversarial-perimeterx-block".to_string(),
             description: "PerimeterX / Human Security block page".to_string(),
@@ -417,7 +445,11 @@ pub fn challenge_probe_pack() -> Vec<ChallengeProbe> {
                 min_confidence: 0.5,
             },
         },
-        // ── Edge-case probes ──────────────────────────────────────────────────
+    ]
+}
+
+fn build_edge_case_probes() -> Vec<ChallengeProbe> {
+    vec![
         ChallengeProbe {
             name: "edge-empty-headers".to_string(),
             description: "Transaction with no headers and no body; must not panic".to_string(),

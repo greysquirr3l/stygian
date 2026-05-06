@@ -60,6 +60,7 @@ pub struct MetricsCollector {
 
 impl MetricsCollector {
     /// Create a new metrics collector.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             assessments_total: Arc::new(AtomicU64::new(0)),
@@ -150,6 +151,7 @@ impl MetricsCollector {
     }
 
     /// Export metrics in Prometheus text format.
+    #[must_use]
     pub fn to_prometheus(&self) -> String {
         let mut output = String::new();
 
