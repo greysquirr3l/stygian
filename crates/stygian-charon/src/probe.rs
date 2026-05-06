@@ -136,10 +136,7 @@ impl ProbePackReport {
 /// ```
 #[must_use]
 pub fn run_probe_pack(probes: &[ChallengeProbe]) -> ProbePackReport {
-    let mut results: Vec<ProbeRunResult> = probes
-        .iter()
-        .map(run_one_probe)
-        .collect();
+    let mut results: Vec<ProbeRunResult> = probes.iter().map(run_one_probe).collect();
 
     results.sort_by(|a, b| {
         b.passed
@@ -237,7 +234,10 @@ pub fn challenge_probe_pack() -> Vec<ChallengeProbe> {
                 response_headers: {
                     let mut h = BTreeMap::new();
                     h.insert("content-type".to_string(), "application/json".to_string());
-                    h.insert("cache-control".to_string(), "public, max-age=3600".to_string());
+                    h.insert(
+                        "cache-control".to_string(),
+                        "public, max-age=3600".to_string(),
+                    );
                     h.insert("x-cache".to_string(), "HIT".to_string());
                     h
                 },
@@ -328,9 +328,7 @@ pub fn challenge_probe_pack() -> Vec<ChallengeProbe> {
                     );
                     h
                 },
-                response_body_snippet: Some(
-                    "Attention Required! | Cloudflare".to_string(),
-                ),
+                response_body_snippet: Some("Attention Required! | Cloudflare".to_string()),
             },
             expectation: ProbeExpectation {
                 expected_provider: AntiBotProvider::Cloudflare,
@@ -368,15 +366,10 @@ pub fn challenge_probe_pack() -> Vec<ChallengeProbe> {
                 status: 403,
                 response_headers: {
                     let mut h = BTreeMap::new();
-                    h.insert(
-                        "set-cookie".to_string(),
-                        "_px3=payload; Path=/".to_string(),
-                    );
+                    h.insert("set-cookie".to_string(), "_px3=payload; Path=/".to_string());
                     h
                 },
-                response_body_snippet: Some(
-                    "perimeterx access denied".to_string(),
-                ),
+                response_body_snippet: Some("perimeterx access denied".to_string()),
             },
             expectation: ProbeExpectation {
                 expected_provider: AntiBotProvider::PerimeterX,
@@ -503,8 +496,7 @@ mod tests {
     #[test]
     fn probe_pack_has_all_categories() {
         let probes = challenge_probe_pack();
-        let categories: std::collections::BTreeSet<_> =
-            probes.iter().map(|p| p.category).collect();
+        let categories: std::collections::BTreeSet<_> = probes.iter().map(|p| p.category).collect();
         assert!(categories.contains(&ProbeCategory::Benign));
         assert!(categories.contains(&ProbeCategory::Suspicious));
         assert!(categories.contains(&ProbeCategory::Adversarial));

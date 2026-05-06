@@ -5,12 +5,10 @@ use thiserror::Error;
 
 use crate::analyzer::AnalyzerProfile;
 use crate::har;
+use crate::infer_requirements_with_target_class;
 use crate::investigation::investigate_har_with_profile;
 use crate::policy::build_runtime_policy;
-use crate::types::{
-    AntiBotProvider, ExecutionMode, SessionMode, TargetClass, TelemetryLevel,
-};
-use crate::infer_requirements_with_target_class;
+use crate::types::{AntiBotProvider, ExecutionMode, SessionMode, TargetClass, TelemetryLevel};
 
 /// One external observatory HAR input to compare against a baseline HAR.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

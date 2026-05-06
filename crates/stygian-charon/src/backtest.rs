@@ -160,7 +160,8 @@ fn compute_disagreements(samples: &[BacktestSample]) -> Vec<BacktestDisagreement
     by_case
         .into_iter()
         .filter_map(|(case_id, providers_by_profile)| {
-            let unique: BTreeSet<AntiBotProvider> = providers_by_profile.values().copied().collect();
+            let unique: BTreeSet<AntiBotProvider> =
+                providers_by_profile.values().copied().collect();
             (unique.len() > 1).then(|| BacktestDisagreement {
                 case_id: case_id.to_string(),
                 providers_by_profile,

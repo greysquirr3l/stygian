@@ -75,12 +75,12 @@ pub use investigation::{
 };
 #[cfg(feature = "caching")]
 pub use investigation::{investigate_har_cached, investigate_har_cached_with_target_class};
+#[cfg(feature = "live-validation")]
+pub use observatory::{LiveObservatoryProbe, run_external_observatory_live};
 pub use observatory::{
     ObservatoryCase, ObservatoryComparison, ObservatoryError, ObservatoryEscalation,
     ObservatoryReport, ObservatorySample, run_external_observatory_from_hars,
 };
-#[cfg(feature = "live-validation")]
-pub use observatory::{LiveObservatoryProbe, run_external_observatory_live};
 pub use policy::{analyze_and_plan, build_runtime_policy, plan_from_report};
 pub use probe::{
     ChallengeProbe, ProbeCategory, ProbeExpectation, ProbePackReport, ProbeRunResult,

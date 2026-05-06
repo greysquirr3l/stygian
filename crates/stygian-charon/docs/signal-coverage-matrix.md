@@ -47,22 +47,27 @@ Source of truth for current requirement IDs:
 Verified on 2026-05-06 against current `main` implementation.
 
 - **CHR-002 (snapshot schema + compatibility checks)**
-	- Schema/type surface: `NormalizedFingerprintSnapshot` in `crates/stygian-charon/src/snapshot.rs`
-	- Compatibility enforcement: `validate_snapshot_compatibility()` in `crates/stygian-charon/src/snapshot.rs`
-	- Regression coverage: `example_http_snapshot_is_compatible`, `example_browser_snapshot_is_compatible`, `unsupported_schema_major_fails_compatibility`
+
+  - Schema/type surface: `NormalizedFingerprintSnapshot` in `crates/stygian-charon/src/snapshot.rs`
+  - Compatibility enforcement: `validate_snapshot_compatibility()` in `crates/stygian-charon/src/snapshot.rs`
+  - Regression coverage: `example_http_snapshot_is_compatible`, `example_browser_snapshot_is_compatible`, `unsupported_schema_major_fails_compatibility`
 
 - **CHR-003 (deterministic snapshot collector)**
-	- Collector entrypoint: `collect_deterministic_snapshot_bytes()` in `crates/stygian-charon/src/snapshot.rs`
-	- Determinism/guardrail tests: `deterministic_collector_produces_identical_bytes_for_volatile_differences`, `deterministic_collector_rejects_incompatible_snapshot`
+
+  - Collector entrypoint: `collect_deterministic_snapshot_bytes()` in `crates/stygian-charon/src/snapshot.rs`
+  - Determinism/guardrail tests: `deterministic_collector_produces_identical_bytes_for_volatile_differences`, `deterministic_collector_rejects_incompatible_snapshot`
 
 - **CHR-004 (baseline fixture workflow)**
-	- Fixture-backed workflow exercised in snapshot tests using `docs/examples/fingerprint-snapshot-v1-http.json` and `docs/examples/fingerprint-snapshot-v1-browser.json`
-	- Differential flow consumes these fixtures in `crates/stygian-charon/src/differential.rs`
+
+  - Fixture-backed workflow exercised in snapshot tests using `docs/examples/fingerprint-snapshot-v1-http.json` and `docs/examples/fingerprint-snapshot-v1-browser.json`
+
+  - Differential flow consumes these fixtures in `crates/stygian-charon/src/differential.rs`
 
 - **CHR-005 (snapshot drift suite)**
-	- Drift engine: `compare_snapshot_signal_drift()` in `crates/stygian-charon/src/snapshot.rs`
-	- Test coverage: `compare_snapshot_signal_drift_reports_focused_paths`, `compare_snapshot_signal_drift_ignores_volatile_only_changes`
-	- Runner coverage: `mode_differential_runner_reports_failures_against_thresholds` in `crates/stygian-charon/src/differential.rs`
+
+  - Drift engine: `compare_snapshot_signal_drift()` in `crates/stygian-charon/src/snapshot.rs`
+  - Test coverage: `compare_snapshot_signal_drift_reports_focused_paths`, `compare_snapshot_signal_drift_ignores_volatile_only_changes`
+  - Runner coverage: `mode_differential_runner_reports_failures_against_thresholds` in `crates/stygian-charon/src/differential.rs`
 
 Validation command used for this verification:
 
