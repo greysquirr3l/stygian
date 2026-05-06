@@ -88,6 +88,9 @@ jobs:
           sudo apt-get install -y chromium-browser
           echo "STYGIAN_CHROME_PATH=$(which chromium-browser)" >> "$GITHUB_ENV"
 
+      - name: Validate stealth canary config
+        run: python3 .github/scripts/validate_stealth_canary.py
+
       - name: Build stealth probe
         run: cargo build --package stygian-browser --example stealth_probe --all-features
 
