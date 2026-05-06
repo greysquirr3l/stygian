@@ -13,6 +13,8 @@ pub mod acquisition;
 pub mod adaptive;
 /// Versioned analyzer interfaces and profile selection.
 pub mod analyzer;
+/// Diagnostic bundle API with redaction policy.
+pub mod bundle;
 /// Investigation report cache backends and cache key helpers.
 #[cfg(feature = "caching")]
 pub mod cache;
@@ -42,6 +44,11 @@ pub use acquisition::{
 };
 pub use adaptive::{AdaptivePolicyError, AdaptiveSloPolicy, RegressionHistoryPolicy};
 pub use analyzer::{AnalyzerProfile, AnalyzerVersion, ProviderAnalyzer};
+pub use bundle::{
+    BundleCoherenceViolation, BundleError, BundleMetadata, BundleRedactionPolicy, DiagnosticBundle,
+    apply_redaction, build_diagnostic_bundle, build_diagnostic_bundle_with_snapshot,
+    diagnostic_bundle_from_investigation,
+};
 #[cfg(feature = "redis-cache")]
 pub use cache::RedisInvestigationCache;
 #[cfg(feature = "caching")]
