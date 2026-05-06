@@ -33,7 +33,7 @@ pub enum BundleRedactionPolicy {
 }
 
 /// Metadata fields attached to every [`DiagnosticBundle`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BundleMetadata {
     /// Schema version of the bundle format (`"1.0"`).
     pub schema_version: String,
@@ -229,8 +229,7 @@ fn chrono_now() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_secs());
     format!("unix:{secs}")
 }
 
@@ -287,7 +286,8 @@ fn redact_url_credentials(url: &mut String) {
 fn redact_url_query(url: &mut String) {
     if let Some(q) = url.find('?') {
         url.truncate(q);
-        url.push_str(&format!("?{REDACTED}"));
+        url.push('?');
+        url.push_str(REDACTED);
     }
 }
 
@@ -300,7 +300,11 @@ mod tests {
 
     #[test]
     fn build_diagnostic_bundle_empty_har() {
-        let bundle = build_diagnostic_bundle(EMPTY_HAR, BundleRedactionPolicy::Standard).unwrap();
+        let result = build_diagnostic_bundle(EMPTY_HAR, BundleRedactionPolicy::Standard);
+        assert!(result.is_ok(), "bundle build should succeed");
+        let Ok(bundle) = result else {
+            return;
+        };
         assert_eq!(bundle.metadata.schema_version, "1.0");
         assert_eq!(
             bundle.metadata.redaction_policy,
@@ -321,7 +325,11 @@ mod tests {
              "cache":{},"timings":{"send":0,"wait":100,"receive":0}}
         ]}}"#;
 
-        let bundle = build_diagnostic_bundle(har, BundleRedactionPolicy::Standard).unwrap();
+        let result = build_diagnostic_bundle(har, BundleRedactionPolicy::Standard);
+        assert!(result.is_ok(), "bundle build should succeed");
+        let Ok(bundle) = result else {
+            return;
+        };
         for req in &bundle.report.suspicious_requests {
             assert!(
                 !req.url.contains("user:pass"),
@@ -342,7 +350,11 @@ mod tests {
              "cache":{},"timings":{"send":0,"wait":100,"receive":0}}
         ]}}"#;
 
-        let bundle = build_diagnostic_bundle(har, BundleRedactionPolicy::None).unwrap();
+        let result = build_diagnostic_bundle(har, BundleRedactionPolicy::None);
+        assert!(result.is_ok(), "bundle build should succeed");
+        let Ok(bundle) = result else {
+            return;
+        };
         for req in &bundle.report.suspicious_requests {
             assert!(
                 req.url.contains("user:pass"),
@@ -354,7 +366,11 @@ mod tests {
 
     #[test]
     fn bundle_metadata_schema_version_is_stable() {
-        let bundle = build_diagnostic_bundle(EMPTY_HAR, BundleRedactionPolicy::None).unwrap();
+        let result = build_diagnostic_bundle(EMPTY_HAR, BundleRedactionPolicy::None);
+        assert!(result.is_ok(), "bundle build should succeed");
+        let Ok(bundle) = result else {
+            return;
+        };
         assert_eq!(bundle.metadata.schema_version, "1.0");
     }
 

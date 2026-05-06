@@ -6,14 +6,17 @@ from __future__ import annotations
 import pathlib
 import sys
 import tomllib
+from typing import Any
 
 
 def fail(message: str) -> None:
+    """Print a user-facing validation error and exit non-zero."""
     print(f"stealth-canary config error: {message}", file=sys.stderr)
     raise SystemExit(1)
 
 
 def main() -> None:
+    """Validate `.github/stealth-canary.toml` schema and invariants."""
     config_path = pathlib.Path(".github/stealth-canary.toml")
     if not config_path.exists():
         fail(f"missing config file: {config_path}")
@@ -23,9 +26,11 @@ def main() -> None:
     except tomllib.TOMLDecodeError as exc:
         fail(f"invalid TOML: {exc}")
 
-    canaries = data.get("canary")
-    if not isinstance(canaries, list) or not canaries:
+    canaries_raw: Any = data.get("canary")
+    if not isinstance(canaries_raw, list) or not canaries_raw:
         fail("expected at least one [[canary]] entry")
+
+    canaries: list[Any] = canaries_raw
 
     has_non_advisory = False
 

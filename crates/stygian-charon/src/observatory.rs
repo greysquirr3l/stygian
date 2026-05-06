@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -173,7 +171,7 @@ pub struct LiveObservatoryProbe {
     pub user_agent: String,
     /// Additional request headers.
     #[serde(default)]
-    pub headers: BTreeMap<String, String>,
+    pub headers: std::collections::BTreeMap<String, String>,
     /// Request timeout in milliseconds.
     pub timeout_ms: u64,
 }
@@ -327,13 +325,17 @@ async fn capture_probe_har(
                 .ok()
                 .map(|parsed| (name.as_str().to_string(), parsed.to_string()))
         })
-        .collect::<BTreeMap<_, _>>();
+        .collect::<std::collections::BTreeMap<_, _>>();
 
     Ok(build_single_request_har(target_url, status, &headers))
 }
 
 #[cfg(feature = "live-validation")]
-fn build_single_request_har(url: &str, status: u16, headers: &BTreeMap<String, String>) -> String {
+fn build_single_request_har(
+    url: &str,
+    status: u16,
+    headers: &std::collections::BTreeMap<String, String>,
+) -> String {
     let response_headers = headers
         .iter()
         .map(|(name, value)| {
@@ -451,10 +453,14 @@ mod tests {
         if let Ok(report) = result {
             assert!(report.has_regression);
             assert_eq!(report.comparisons.len(), 1);
-            assert_eq!(
-                report.comparisons[0].recommended_action,
-                "investigate_regression"
-            );
+            let first = report.comparisons.first();
+            assert!(first.is_some(), "expected one comparison result");
+            if let Some(first_comparison) = first {
+                assert_eq!(
+                    first_comparison.recommended_action,
+                    "investigate_regression"
+                );
+            }
         }
     }
 
@@ -476,7 +482,11 @@ mod tests {
 
         if let Ok(report) = result {
             assert!(!report.has_regression);
-            assert_eq!(report.comparisons[0].recommended_action, "monitor");
+            let first = report.comparisons.first();
+            assert!(first.is_some(), "expected one comparison result");
+            if let Some(first_comparison) = first {
+                assert_eq!(first_comparison.recommended_action, "monitor");
+            }
         }
     }
 }

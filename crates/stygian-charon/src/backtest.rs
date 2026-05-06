@@ -195,7 +195,11 @@ mod tests {
             assert_eq!(report.total_cases, 1);
             assert_eq!(report.total_profiles, 1);
             assert_eq!(report.samples.len(), 1);
-            assert_eq!(report.samples[0].provider, AntiBotProvider::Cloudflare);
+            let first = report.samples.first();
+            assert!(first.is_some(), "expected at least one sample");
+            if let Some(first_sample) = first {
+                assert_eq!(first_sample.provider, AntiBotProvider::Cloudflare);
+            }
             assert!(report.disagreements.is_empty());
         }
     }
@@ -243,6 +247,10 @@ mod tests {
 
         let disagreements = compute_disagreements(&samples);
         assert_eq!(disagreements.len(), 1);
-        assert_eq!(disagreements[0].case_id, "case-1");
+        let first = disagreements.first();
+        assert!(first.is_some(), "expected one disagreement");
+        if let Some(first_disagreement) = first {
+            assert_eq!(first_disagreement.case_id, "case-1");
+        }
     }
 }
