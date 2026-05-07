@@ -2,6 +2,27 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
+// ── Input Size Limits ───────────────────────────────────────────────────────
+// Bounds on snapshot field sizes to prevent resource exhaustion and DoS.
+
+/// Maximum JSON payload size for a snapshot (10 MB).
+const MAX_SNAPSHOT_JSON_BYTES: usize = 10 * 1024 * 1024;
+
+/// Maximum length for string fields like user_agent, platform, timezone.
+const MAX_STRING_FIELD_BYTES: usize = 4_096;
+
+/// Maximum length for hash fields like ja3_hash, snapshot_id.
+const MAX_HASH_FIELD_BYTES: usize = 1_024;
+
+/// Maximum number of header entries in signals.headers.
+const MAX_HEADERS_ENTRIES: usize = 256;
+
+/// Maximum number of feature flags in signals.features.
+const MAX_FEATURES_ENTRIES: usize = 256;
+
+/// Maximum number of metadata entries.
+const MAX_METADATA_ENTRIES: usize = 128;
+
 /// Normalized capture mode for a fingerprint snapshot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SnapshotMode {
@@ -112,6 +133,9 @@ pub enum SnapshotCompatibilityError {
         /// Deprecated field name.
         field: &'static str,
     },
+    /// Input validation failed due to size or structure constraints.
+    #[error("input validation failed: {0}")]
+    InputValidation(&'static str),
 }
 
 /// Error returned when building deterministic snapshot bytes.
@@ -417,6 +441,143 @@ fn parse_schema_major(version: &str) -> Result<u64, SnapshotCompatibilityError> 
         .map_err(|_| SnapshotCompatibilityError::InvalidSchemaVersion(version.to_string()))
 }
 
+/// Validate input sizes for a snapshot to prevent resource exhaustion.
+///
+/// # Errors
+///
+/// Returns [`SnapshotCompatibilityError::InputValidation`] when any size limit is exceeded.
+fn validate_snapshot_input_sizes(
+    snapshot: &NormalizedFingerprintSnapshot,
+) -> Result<(), SnapshotCompatibilityError> {
+    // Validate string field sizes
+    if snapshot.schema_version.len() > MAX_STRING_FIELD_BYTES {
+        return Err(SnapshotCompatibilityError::InputValidation(
+            "schema_version exceeds maximum length",
+        ));
+    }
+    if snapshot.snapshot_id.len() > MAX_HASH_FIELD_BYTES {
+        return Err(SnapshotCompatibilityError::InputValidation(
+            "snapshot_id exceeds maximum length",
+        ));
+    }
+    if snapshot.captured_at.len() > MAX_STRING_FIELD_BYTES {
+        return Err(SnapshotCompatibilityError::InputValidation(
+            "captured_at exceeds maximum length",
+        ));
+    }
+
+    // Validate signals string fields
+    let signals = &snapshot.signals;
+    if signals.user_agent.len() > MAX_STRING_FIELD_BYTES {
+        return Err(SnapshotCompatibilityError::InputValidation(
+            "signals.user_agent exceeds maximum length",
+        ));
+    }
+    if signals.accept_language.len() > MAX_STRING_FIELD_BYTES {
+        return Err(SnapshotCompatibilityError::InputValidation(
+            "signals.accept_language exceeds maximum length",
+        ));
+    }
+    if signals.platform.len() > MAX_STRING_FIELD_BYTES {
+        return Err(SnapshotCompatibilityError::InputValidation(
+            "signals.platform exceeds maximum length",
+        ));
+    }
+    if signals.timezone.len() > MAX_STRING_FIELD_BYTES {
+        return Err(SnapshotCompatibilityError::InputValidation(
+            "signals.timezone exceeds maximum length",
+        ));
+    }
+
+    // Validate headers and features collections
+    if signals.headers.len() > MAX_HEADERS_ENTRIES {
+        return Err(SnapshotCompatibilityError::InputValidation(
+            "signals.headers exceeds maximum entries",
+        ));
+    }
+    if signals.features.len() > MAX_FEATURES_ENTRIES {
+        return Err(SnapshotCompatibilityError::InputValidation(
+            "signals.features exceeds maximum entries",
+        ));
+    }
+
+    // Validate individual header key/value sizes
+    for (key, value) in &signals.headers {
+        if key.len() > MAX_STRING_FIELD_BYTES {
+            return Err(SnapshotCompatibilityError::InputValidation(
+                "header key exceeds maximum length",
+            ));
+        }
+        if value.len() > MAX_STRING_FIELD_BYTES {
+            return Err(SnapshotCompatibilityError::InputValidation(
+                "header value exceeds maximum length",
+            ));
+        }
+    }
+
+    // Validate WebGL fields if present
+    if let Some(webgl) = &signals.webgl {
+        if webgl.vendor.len() > MAX_STRING_FIELD_BYTES {
+            return Err(SnapshotCompatibilityError::InputValidation(
+                "signals.webgl.vendor exceeds maximum length",
+            ));
+        }
+        if webgl.renderer.len() > MAX_STRING_FIELD_BYTES {
+            return Err(SnapshotCompatibilityError::InputValidation(
+                "signals.webgl.renderer exceeds maximum length",
+            ));
+        }
+    }
+
+    // Validate TLS fields if present
+    if let Some(tls) = &signals.tls {
+        if tls.ja3_hash.len() > MAX_HASH_FIELD_BYTES {
+            return Err(SnapshotCompatibilityError::InputValidation(
+                "signals.tls.ja3_hash exceeds maximum length",
+            ));
+        }
+        if let Some(ja4) = &tls.ja4 {
+            if ja4.len() > MAX_HASH_FIELD_BYTES {
+                return Err(SnapshotCompatibilityError::InputValidation(
+                    "signals.tls.ja4 exceeds maximum length",
+                ));
+            }
+        }
+    }
+
+    // Validate metadata
+    if snapshot.metadata.len() > MAX_METADATA_ENTRIES {
+        return Err(SnapshotCompatibilityError::InputValidation(
+            "metadata exceeds maximum entries",
+        ));
+    }
+    for (key, value) in &snapshot.metadata {
+        if key.len() > MAX_HASH_FIELD_BYTES || value.len() > MAX_STRING_FIELD_BYTES {
+            return Err(SnapshotCompatibilityError::InputValidation(
+                "metadata entry exceeds maximum size",
+            ));
+        }
+    }
+
+    // Validate legacy fields if present
+    if let Some(legacy_ua) = &snapshot.legacy_user_agent {
+        if legacy_ua.len() > MAX_STRING_FIELD_BYTES {
+            return Err(SnapshotCompatibilityError::InputValidation(
+                "legacy_user_agent exceeds maximum length",
+            ));
+        }
+    }
+    if let Some(legacy_ja3) = &snapshot.legacy_ja3_hash {
+        if legacy_ja3.len() > MAX_HASH_FIELD_BYTES {
+            return Err(SnapshotCompatibilityError::InputValidation(
+                "legacy_ja3_hash exceeds maximum length",
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 fn signal_header<'a>(snapshot: &'a NormalizedFingerprintSnapshot, name: &str) -> Option<&'a str> {
     snapshot
         .signals
@@ -538,6 +699,9 @@ fn rule_tls_fields_populated(
 pub fn validate_snapshot_compatibility(
     snapshot: &NormalizedFingerprintSnapshot,
 ) -> Result<(), SnapshotCompatibilityError> {
+    // Validate input sizes first to prevent resource exhaustion
+    validate_snapshot_input_sizes(snapshot)?;
+
     let major = parse_schema_major(&snapshot.schema_version)?;
     if major != 1 {
         return Err(SnapshotCompatibilityError::UnsupportedSchemaMajor(major));
@@ -850,5 +1014,152 @@ mod tests {
         .expect("drift comparison must succeed");
 
         assert!(!report.has_drift());
+    }
+
+    #[test]
+    fn reject_excessively_long_user_agent() {
+        let mut snapshot = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-http.json"
+        ));
+        snapshot.signals.user_agent = "A".repeat(MAX_STRING_FIELD_BYTES + 1);
+
+        let result = validate_snapshot_compatibility(&snapshot);
+        assert!(result.is_err(), "should reject excessively long user_agent");
+        assert!(matches!(
+            result,
+            Err(SnapshotCompatibilityError::InputValidation(_))
+        ));
+    }
+
+    #[test]
+    fn reject_excessively_long_platform() {
+        let mut snapshot = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-http.json"
+        ));
+        snapshot.signals.platform = "B".repeat(MAX_STRING_FIELD_BYTES + 1);
+
+        let result = validate_snapshot_compatibility(&snapshot);
+        assert!(result.is_err(), "should reject excessively long platform");
+    }
+
+    #[test]
+    fn reject_excessive_headers_count() {
+        let mut snapshot = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-http.json"
+        ));
+        for i in 0..=MAX_HEADERS_ENTRIES {
+            snapshot
+                .signals
+                .headers
+                .insert(format!("X-Custom-{}", i), "value".to_string());
+        }
+
+        let result = validate_snapshot_compatibility(&snapshot);
+        assert!(result.is_err(), "should reject excessive headers count");
+    }
+
+    #[test]
+    fn reject_excessive_metadata_count() {
+        let mut snapshot = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-http.json"
+        ));
+        for i in 0..=MAX_METADATA_ENTRIES {
+            snapshot
+                .metadata
+                .insert(format!("key_{}", i), "value".to_string());
+        }
+
+        let result = validate_snapshot_compatibility(&snapshot);
+        assert!(result.is_err(), "should reject excessive metadata count");
+    }
+
+    #[test]
+    fn reject_oversized_webgl_vendor() {
+        let mut snapshot = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-http.json"
+        ));
+        if let Some(webgl) = snapshot.signals.webgl.as_mut() {
+            webgl.vendor = "X".repeat(MAX_STRING_FIELD_BYTES + 1);
+        }
+
+        let result = validate_snapshot_compatibility(&snapshot);
+        assert!(result.is_err(), "should reject oversized webgl vendor");
+    }
+
+    #[test]
+    fn reject_oversized_ja3_hash() {
+        let mut snapshot = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-http.json"
+        ));
+        if let Some(tls) = snapshot.signals.tls.as_mut() {
+            tls.ja3_hash = "X".repeat(MAX_HASH_FIELD_BYTES + 1);
+        }
+
+        let result = validate_snapshot_compatibility(&snapshot);
+        assert!(result.is_err(), "should reject oversized ja3_hash");
+    }
+
+    #[test]
+    fn reject_oversized_schema_version() {
+        let mut snapshot = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-http.json"
+        ));
+        snapshot.schema_version = "1".repeat(MAX_STRING_FIELD_BYTES + 1);
+
+        let result = validate_snapshot_compatibility(&snapshot);
+        assert!(result.is_err(), "should reject oversized schema_version");
+    }
+
+    #[test]
+    fn accept_valid_snapshot_with_max_sizes() {
+        let mut snapshot = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-http.json"
+        ));
+        // Fill fields to max allowed sizes
+        snapshot.signals.user_agent = "A".repeat(MAX_STRING_FIELD_BYTES);
+        snapshot.signals.platform = "B".repeat(MAX_STRING_FIELD_BYTES - 1);
+
+        let result = validate_snapshot_compatibility(&snapshot);
+        assert!(result.is_ok(), "should accept snapshot at max limits");
+    }
+
+    #[test]
+    fn reject_excessive_features_count() {
+        let mut snapshot = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-http.json"
+        ));
+        for i in 0..=MAX_FEATURES_ENTRIES {
+            snapshot
+                .signals
+                .features
+                .insert(format!("feature_{}", i), false);
+        }
+
+        let result = validate_snapshot_compatibility(&snapshot);
+        assert!(result.is_err(), "should reject excessive features count");
+    }
+
+    #[test]
+    fn reject_large_header_value() {
+        let mut snapshot = parse_snapshot(include_str!(
+            "../docs/examples/fingerprint-snapshot-v1-http.json"
+        ));
+        snapshot.signals.headers.insert(
+            "X-Large".to_string(),
+            "V".repeat(MAX_STRING_FIELD_BYTES + 1),
+        );
+
+        let result = validate_snapshot_compatibility(&snapshot);
+        assert!(result.is_err(), "should reject large header value");
+    }
+
+    #[test]
+    fn deserialize_malformed_json_fails_gracefully() {
+        let malformed = "{invalid json}";
+        let result: Result<NormalizedFingerprintSnapshot, _> = serde_json::from_str(malformed);
+        assert!(result.is_err(), "should fail on malformed JSON");
+        // Error should not expose sensitive information
+        let err_msg = result.unwrap_err().to_string();
+        assert!(!err_msg.contains("secret"), "error should not leak secrets");
     }
 }
