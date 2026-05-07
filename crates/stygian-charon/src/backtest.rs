@@ -197,6 +197,18 @@ fn compute_disagreements(samples: &[BacktestSample]) -> Vec<BacktestDisagreement
         .collect()
 }
 
+fn usize_to_f64_saturating(value: usize) -> f64 {
+    f64::from(u32::try_from(value).unwrap_or(u32::MAX))
+}
+
+fn ratio_from_counts(numerator: usize, denominator: usize) -> f64 {
+    if denominator == 0 {
+        0.0
+    } else {
+        usize_to_f64_saturating(numerator) / usize_to_f64_saturating(denominator)
+    }
+}
+
 /// Compute per-profile aggregate metrics from backtest samples and disagreements.
 ///
 /// Metrics include detection rate, average confidence, and disagreement frequency,
@@ -234,15 +246,12 @@ fn compute_profile_metrics(
                 .iter()
                 .filter(|s| s.provider != AntiBotProvider::Unknown)
                 .count();
-            let detection_rate = if total_samples > 0 {
-                detected_count as f64 / total_samples as f64
-            } else {
-                0.0
-            };
+            let detection_rate = ratio_from_counts(detected_count, total_samples);
 
             // Average confidence score
             let avg_confidence = if total_samples > 0 {
-                profile_samples.iter().map(|s| s.confidence).sum::<f64>() / total_samples as f64
+                profile_samples.iter().map(|s| s.confidence).sum::<f64>()
+                    / usize_to_f64_saturating(total_samples)
             } else {
                 0.0
             };
@@ -252,11 +261,7 @@ fn compute_profile_metrics(
                 .iter()
                 .filter(|s| s.confidence < 0.5)
                 .count();
-            let low_confidence_rate = if total_samples > 0 {
-                low_confidence_count as f64 / total_samples as f64
-            } else {
-                0.0
-            };
+            let low_confidence_rate = ratio_from_counts(low_confidence_count, total_samples);
 
             // Disagreement count for this profile
             let disagreement_count = disagreement_counts.get(&profile_id).copied().unwrap_or(0);

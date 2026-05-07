@@ -289,11 +289,19 @@ pub fn assess_release_risk(
         incident_pressure_30d: scaled_incident_pressure(input.incident_count_30d, 10),
     };
 
-    let raw_score = breakdown.probe_failure_ratio * weights.probe_failures
-        + breakdown.drift_failure_ratio * weights.drift_failures
-        + breakdown.observatory_regression_ratio * weights.observatory_regressions
-        + breakdown.incident_pressure_7d * weights.incidents_7d
-        + breakdown.incident_pressure_30d * weights.incidents_30d;
+    let raw_score = breakdown.incident_pressure_30d.mul_add(
+        weights.incidents_30d,
+        breakdown.incident_pressure_7d.mul_add(
+            weights.incidents_7d,
+            breakdown.observatory_regression_ratio.mul_add(
+                weights.observatory_regressions,
+                breakdown.probe_failure_ratio.mul_add(
+                    weights.probe_failures,
+                    breakdown.drift_failure_ratio * weights.drift_failures,
+                ),
+            ),
+        ),
+    );
 
     let score = raw_score.clamp(0.0, 1.0);
     let level = thresholds.classify(score);
@@ -393,7 +401,7 @@ fn ratio(numerator: usize, denominator: usize) -> f64 {
     if denominator == 0 {
         0.0
     } else {
-        numerator as f64 / denominator as f64
+        usize_to_f64_saturating(numerator) / usize_to_f64_saturating(denominator)
     }
 }
 
@@ -402,7 +410,11 @@ fn scaled_incident_pressure(incidents: usize, saturation_point: usize) -> f64 {
         return 0.0;
     }
 
-    (incidents as f64 / saturation_point as f64).clamp(0.0, 1.0)
+    (usize_to_f64_saturating(incidents) / usize_to_f64_saturating(saturation_point)).clamp(0.0, 1.0)
+}
+
+fn usize_to_f64_saturating(value: usize) -> f64 {
+    f64::from(u32::try_from(value).unwrap_or(u32::MAX))
 }
 
 fn classify_trend_delta(risk_delta: f64) -> ReleaseTrendDirection {

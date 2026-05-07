@@ -8,10 +8,10 @@ use serde::{Deserialize, Serialize};
 /// Maximum JSON payload size for a snapshot (10 MB).
 const MAX_SNAPSHOT_JSON_BYTES: usize = 10 * 1024 * 1024;
 
-/// Maximum length for string fields like user_agent, platform, timezone.
+/// Maximum length for string fields like `user_agent`, `platform`, `timezone`.
 const MAX_STRING_FIELD_BYTES: usize = 4_096;
 
-/// Maximum length for hash fields like ja3_hash, snapshot_id.
+/// Maximum length for hash fields like `ja3_hash`, `snapshot_id`.
 const MAX_HASH_FIELD_BYTES: usize = 1_024;
 
 /// Maximum number of header entries in signals.headers.
@@ -319,8 +319,16 @@ pub fn collect_deterministic_snapshot_bytes(
     let mut normalized = snapshot.clone();
     normalize_snapshot_for_determinism(&mut normalized, options);
 
-    serde_json::to_vec(&normalized)
-        .map_err(|error| SnapshotCollectionError::Serialization(error.to_string()))
+    let bytes = serde_json::to_vec(&normalized)
+        .map_err(|error| SnapshotCollectionError::Serialization(error.to_string()))?;
+
+    if bytes.len() > MAX_SNAPSHOT_JSON_BYTES {
+        return Err(SnapshotCollectionError::Serialization(
+            "snapshot JSON exceeds maximum allowed size".to_string(),
+        ));
+    }
+
+    Ok(bytes)
 }
 
 /// Compare baseline and candidate snapshots for deterministic, signal-focused drift.
@@ -441,55 +449,46 @@ fn parse_schema_major(version: &str) -> Result<u64, SnapshotCompatibilityError> 
         .map_err(|_| SnapshotCompatibilityError::InvalidSchemaVersion(version.to_string()))
 }
 
-/// Validate input sizes for a snapshot to prevent resource exhaustion.
-///
-/// # Errors
-///
-/// Returns [`SnapshotCompatibilityError::InputValidation`] when any size limit is exceeded.
-fn validate_snapshot_input_sizes(
-    snapshot: &NormalizedFingerprintSnapshot,
+const fn validate_max_len(
+    value: &str,
+    max_len: usize,
+    message: &'static str,
 ) -> Result<(), SnapshotCompatibilityError> {
-    // Validate string field sizes
-    if snapshot.schema_version.len() > MAX_STRING_FIELD_BYTES {
-        return Err(SnapshotCompatibilityError::InputValidation(
-            "schema_version exceeds maximum length",
-        ));
-    }
-    if snapshot.snapshot_id.len() > MAX_HASH_FIELD_BYTES {
-        return Err(SnapshotCompatibilityError::InputValidation(
-            "snapshot_id exceeds maximum length",
-        ));
-    }
-    if snapshot.captured_at.len() > MAX_STRING_FIELD_BYTES {
-        return Err(SnapshotCompatibilityError::InputValidation(
-            "captured_at exceeds maximum length",
-        ));
+    if value.len() > max_len {
+        return Err(SnapshotCompatibilityError::InputValidation(message));
     }
 
-    // Validate signals string fields
-    let signals = &snapshot.signals;
-    if signals.user_agent.len() > MAX_STRING_FIELD_BYTES {
-        return Err(SnapshotCompatibilityError::InputValidation(
-            "signals.user_agent exceeds maximum length",
-        ));
-    }
-    if signals.accept_language.len() > MAX_STRING_FIELD_BYTES {
-        return Err(SnapshotCompatibilityError::InputValidation(
-            "signals.accept_language exceeds maximum length",
-        ));
-    }
-    if signals.platform.len() > MAX_STRING_FIELD_BYTES {
-        return Err(SnapshotCompatibilityError::InputValidation(
-            "signals.platform exceeds maximum length",
-        ));
-    }
-    if signals.timezone.len() > MAX_STRING_FIELD_BYTES {
-        return Err(SnapshotCompatibilityError::InputValidation(
-            "signals.timezone exceeds maximum length",
-        ));
-    }
+    Ok(())
+}
 
-    // Validate headers and features collections
+fn validate_signal_text_fields(
+    signals: &FingerprintSignals,
+) -> Result<(), SnapshotCompatibilityError> {
+    validate_max_len(
+        &signals.user_agent,
+        MAX_STRING_FIELD_BYTES,
+        "signals.user_agent exceeds maximum length",
+    )?;
+    validate_max_len(
+        &signals.accept_language,
+        MAX_STRING_FIELD_BYTES,
+        "signals.accept_language exceeds maximum length",
+    )?;
+    validate_max_len(
+        &signals.platform,
+        MAX_STRING_FIELD_BYTES,
+        "signals.platform exceeds maximum length",
+    )?;
+    validate_max_len(
+        &signals.timezone,
+        MAX_STRING_FIELD_BYTES,
+        "signals.timezone exceeds maximum length",
+    )
+}
+
+fn validate_signal_collections(
+    signals: &FingerprintSignals,
+) -> Result<(), SnapshotCompatibilityError> {
     if signals.headers.len() > MAX_HEADERS_ENTRIES {
         return Err(SnapshotCompatibilityError::InputValidation(
             "signals.headers exceeds maximum entries",
@@ -501,56 +500,65 @@ fn validate_snapshot_input_sizes(
         ));
     }
 
-    // Validate individual header key/value sizes
     for (key, value) in &signals.headers {
-        if key.len() > MAX_STRING_FIELD_BYTES {
-            return Err(SnapshotCompatibilityError::InputValidation(
-                "header key exceeds maximum length",
-            ));
-        }
-        if value.len() > MAX_STRING_FIELD_BYTES {
-            return Err(SnapshotCompatibilityError::InputValidation(
-                "header value exceeds maximum length",
-            ));
-        }
+        validate_max_len(
+            key,
+            MAX_STRING_FIELD_BYTES,
+            "header key exceeds maximum length",
+        )?;
+        validate_max_len(
+            value,
+            MAX_STRING_FIELD_BYTES,
+            "header value exceeds maximum length",
+        )?;
     }
 
-    // Validate WebGL fields if present
+    Ok(())
+}
+
+fn validate_optional_signal_fields(
+    signals: &FingerprintSignals,
+) -> Result<(), SnapshotCompatibilityError> {
     if let Some(webgl) = &signals.webgl {
-        if webgl.vendor.len() > MAX_STRING_FIELD_BYTES {
-            return Err(SnapshotCompatibilityError::InputValidation(
-                "signals.webgl.vendor exceeds maximum length",
-            ));
-        }
-        if webgl.renderer.len() > MAX_STRING_FIELD_BYTES {
-            return Err(SnapshotCompatibilityError::InputValidation(
-                "signals.webgl.renderer exceeds maximum length",
-            ));
-        }
+        validate_max_len(
+            &webgl.vendor,
+            MAX_STRING_FIELD_BYTES,
+            "signals.webgl.vendor exceeds maximum length",
+        )?;
+        validate_max_len(
+            &webgl.renderer,
+            MAX_STRING_FIELD_BYTES,
+            "signals.webgl.renderer exceeds maximum length",
+        )?;
     }
 
-    // Validate TLS fields if present
     if let Some(tls) = &signals.tls {
-        if tls.ja3_hash.len() > MAX_HASH_FIELD_BYTES {
+        validate_max_len(
+            &tls.ja3_hash,
+            MAX_HASH_FIELD_BYTES,
+            "signals.tls.ja3_hash exceeds maximum length",
+        )?;
+        if let Some(ja4) = &tls.ja4
+            && ja4.len() > MAX_HASH_FIELD_BYTES
+        {
             return Err(SnapshotCompatibilityError::InputValidation(
-                "signals.tls.ja3_hash exceeds maximum length",
+                "signals.tls.ja4 exceeds maximum length",
             ));
-        }
-        if let Some(ja4) = &tls.ja4 {
-            if ja4.len() > MAX_HASH_FIELD_BYTES {
-                return Err(SnapshotCompatibilityError::InputValidation(
-                    "signals.tls.ja4 exceeds maximum length",
-                ));
-            }
         }
     }
 
-    // Validate metadata
+    Ok(())
+}
+
+fn validate_metadata_fields(
+    snapshot: &NormalizedFingerprintSnapshot,
+) -> Result<(), SnapshotCompatibilityError> {
     if snapshot.metadata.len() > MAX_METADATA_ENTRIES {
         return Err(SnapshotCompatibilityError::InputValidation(
             "metadata exceeds maximum entries",
         ));
     }
+
     for (key, value) in &snapshot.metadata {
         if key.len() > MAX_HASH_FIELD_BYTES || value.len() > MAX_STRING_FIELD_BYTES {
             return Err(SnapshotCompatibilityError::InputValidation(
@@ -559,23 +567,60 @@ fn validate_snapshot_input_sizes(
         }
     }
 
-    // Validate legacy fields if present
-    if let Some(legacy_ua) = &snapshot.legacy_user_agent {
-        if legacy_ua.len() > MAX_STRING_FIELD_BYTES {
-            return Err(SnapshotCompatibilityError::InputValidation(
-                "legacy_user_agent exceeds maximum length",
-            ));
-        }
+    Ok(())
+}
+
+const fn validate_legacy_field_sizes(
+    snapshot: &NormalizedFingerprintSnapshot,
+) -> Result<(), SnapshotCompatibilityError> {
+    if let Some(legacy_ua) = &snapshot.legacy_user_agent
+        && legacy_ua.len() > MAX_STRING_FIELD_BYTES
+    {
+        return Err(SnapshotCompatibilityError::InputValidation(
+            "legacy_user_agent exceeds maximum length",
+        ));
     }
-    if let Some(legacy_ja3) = &snapshot.legacy_ja3_hash {
-        if legacy_ja3.len() > MAX_HASH_FIELD_BYTES {
-            return Err(SnapshotCompatibilityError::InputValidation(
-                "legacy_ja3_hash exceeds maximum length",
-            ));
-        }
+    if let Some(legacy_ja3) = &snapshot.legacy_ja3_hash
+        && legacy_ja3.len() > MAX_HASH_FIELD_BYTES
+    {
+        return Err(SnapshotCompatibilityError::InputValidation(
+            "legacy_ja3_hash exceeds maximum length",
+        ));
     }
 
     Ok(())
+}
+
+/// Validate input sizes for a snapshot to prevent resource exhaustion.
+///
+/// # Errors
+///
+/// Returns [`SnapshotCompatibilityError::InputValidation`] when any size limit is exceeded.
+fn validate_snapshot_input_sizes(
+    snapshot: &NormalizedFingerprintSnapshot,
+) -> Result<(), SnapshotCompatibilityError> {
+    validate_max_len(
+        &snapshot.schema_version,
+        MAX_STRING_FIELD_BYTES,
+        "schema_version exceeds maximum length",
+    )?;
+    validate_max_len(
+        &snapshot.snapshot_id,
+        MAX_HASH_FIELD_BYTES,
+        "snapshot_id exceeds maximum length",
+    )?;
+    validate_max_len(
+        &snapshot.captured_at,
+        MAX_STRING_FIELD_BYTES,
+        "captured_at exceeds maximum length",
+    )?;
+
+    let signals = &snapshot.signals;
+    validate_signal_text_fields(signals)?;
+    validate_signal_collections(signals)?;
+    validate_optional_signal_fields(signals)?;
+    validate_metadata_fields(snapshot)?;
+    validate_legacy_field_sizes(snapshot)
 }
 
 fn signal_header<'a>(snapshot: &'a NormalizedFingerprintSnapshot, name: &str) -> Option<&'a str> {
@@ -1051,7 +1096,7 @@ mod tests {
             snapshot
                 .signals
                 .headers
-                .insert(format!("X-Custom-{}", i), "value".to_string());
+                .insert(format!("X-Custom-{i}"), "value".to_string());
         }
 
         let result = validate_snapshot_compatibility(&snapshot);
@@ -1066,7 +1111,7 @@ mod tests {
         for i in 0..=MAX_METADATA_ENTRIES {
             snapshot
                 .metadata
-                .insert(format!("key_{}", i), "value".to_string());
+                .insert(format!("key_{i}"), "value".to_string());
         }
 
         let result = validate_snapshot_compatibility(&snapshot);
@@ -1132,7 +1177,7 @@ mod tests {
             snapshot
                 .signals
                 .features
-                .insert(format!("feature_{}", i), false);
+                .insert(format!("feature_{i}"), false);
         }
 
         let result = validate_snapshot_compatibility(&snapshot);
@@ -1159,7 +1204,9 @@ mod tests {
         let result: Result<NormalizedFingerprintSnapshot, _> = serde_json::from_str(malformed);
         assert!(result.is_err(), "should fail on malformed JSON");
         // Error should not expose sensitive information
-        let err_msg = result.unwrap_err().to_string();
+        let err_msg = result
+            .expect_err("malformed JSON input must fail to deserialize")
+            .to_string();
         assert!(!err_msg.contains("secret"), "error should not leak secrets");
     }
 }
