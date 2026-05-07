@@ -9,7 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- _No changes yet._
+- `stygian-charon`: release risk scoring and trend reporting via
+  `release_risk` (including weighted factor breakdown, configurable thresholds,
+  release risk levels, and candidate trend summaries)
+- `stygian-charon`: backtest profile metrics aggregation in backtest reports to
+  track per-profile pass/fail rates and support acceptance-threshold analysis
+
+### Changed
+
+- `stygian-charon`: public API surface now exports release risk and trend types
+  and helper entry points from the crate root
+
+### Fixed
+
+- `workspace`: upgraded `wasmtime` from `42.0.2` to `43.0.2` to address
+  `RUSTSEC-2026-0114` and unblock Security Audit CI
+
+### Documentation
+
+- `stygian-charon/docs`: added release risk threshold guidance for rollout and
+  escalation policy calibration
 
 ## [0.12.0] - 2026-04-27
 
