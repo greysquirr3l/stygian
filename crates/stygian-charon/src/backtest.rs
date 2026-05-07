@@ -45,6 +45,28 @@ pub struct BacktestDisagreement {
     pub providers_by_profile: BTreeMap<String, AntiBotProvider>,
 }
 
+/// Per-profile aggregate metrics computed from backtest samples.
+///
+/// Metrics help identify profiles that underperform compared to baseline,
+/// enabling data-driven decisions about rule rollout and SLO adjustments.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProfileMetrics {
+    /// Profile identifier.
+    pub profile_id: String,
+    /// Total cases analyzed for this profile.
+    pub total_samples: usize,
+    /// Average confidence score across all samples (0.0–1.0).
+    pub avg_confidence: f64,
+    /// Percentage of samples where this profile detected suspicious activity.
+    pub detection_rate: f64,
+    /// Number of disagreement cases where this profile diverged from other profiles.
+    pub disagreement_count: usize,
+    /// Number of cases with confidence < 0.5 (potentially false positives).
+    pub low_confidence_count: usize,
+    /// Ratio of cases with low confidence (0.0–1.0).
+    pub low_confidence_rate: f64,
+}
+
 /// Aggregate output for profile backtesting over historical HARs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BacktestReport {
@@ -56,6 +78,9 @@ pub struct BacktestReport {
     pub samples: Vec<BacktestSample>,
     /// Cases where profile predictions diverged.
     pub disagreements: Vec<BacktestDisagreement>,
+    /// Aggregate metrics per profile (optional; computed on demand).
+    #[serde(default)]
+    pub profile_metrics: BTreeMap<String, ProfileMetrics>,
 }
 
 /// Errors returned by [`run_profile_backtest`].
@@ -140,12 +165,14 @@ pub fn run_profile_backtest(
     }
 
     let disagreements = compute_disagreements(&samples);
+    let profile_metrics = compute_profile_metrics(&samples, &disagreements);
 
     Ok(BacktestReport {
         total_cases: corpus.len(),
         total_profiles: profiles.len(),
         samples,
         disagreements,
+        profile_metrics,
     })
 }
 
@@ -166,6 +193,86 @@ fn compute_disagreements(samples: &[BacktestSample]) -> Vec<BacktestDisagreement
                 case_id: case_id.to_string(),
                 providers_by_profile,
             })
+        })
+        .collect()
+}
+
+/// Compute per-profile aggregate metrics from backtest samples and disagreements.
+///
+/// Metrics include detection rate, average confidence, and disagreement frequency,
+/// which inform acceptance decisions during rule rollout.
+fn compute_profile_metrics(
+    samples: &[BacktestSample],
+    disagreements: &[BacktestDisagreement],
+) -> BTreeMap<String, ProfileMetrics> {
+    let mut by_profile: BTreeMap<String, Vec<&BacktestSample>> = BTreeMap::new();
+
+    // Group samples by profile
+    for sample in samples {
+        by_profile
+            .entry(sample.profile_id.clone())
+            .or_default()
+            .push(sample);
+    }
+
+    // Count disagreements per profile
+    let mut disagreement_counts: BTreeMap<String, usize> = BTreeMap::new();
+    for disagreement in disagreements {
+        for profile_id in disagreement.providers_by_profile.keys() {
+            *disagreement_counts.entry(profile_id.clone()).or_insert(0) += 1;
+        }
+    }
+
+    // Compute metrics for each profile
+    by_profile
+        .into_iter()
+        .map(|(profile_id, profile_samples)| {
+            let total_samples = profile_samples.len();
+
+            // Detection rate: percentage of cases with non-Unknown provider
+            let detected_count = profile_samples
+                .iter()
+                .filter(|s| s.provider != AntiBotProvider::Unknown)
+                .count();
+            let detection_rate = if total_samples > 0 {
+                detected_count as f64 / total_samples as f64
+            } else {
+                0.0
+            };
+
+            // Average confidence score
+            let avg_confidence = if total_samples > 0 {
+                profile_samples.iter().map(|s| s.confidence).sum::<f64>() / total_samples as f64
+            } else {
+                0.0
+            };
+
+            // Low confidence (potential false positive indicator)
+            let low_confidence_count = profile_samples
+                .iter()
+                .filter(|s| s.confidence < 0.5)
+                .count();
+            let low_confidence_rate = if total_samples > 0 {
+                low_confidence_count as f64 / total_samples as f64
+            } else {
+                0.0
+            };
+
+            // Disagreement count for this profile
+            let disagreement_count = disagreement_counts.get(&profile_id).copied().unwrap_or(0);
+
+            (
+                profile_id.clone(),
+                ProfileMetrics {
+                    profile_id,
+                    total_samples,
+                    avg_confidence,
+                    detection_rate,
+                    disagreement_count,
+                    low_confidence_count,
+                    low_confidence_rate,
+                },
+            )
         })
         .collect()
 }
