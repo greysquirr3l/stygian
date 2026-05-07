@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- _No changes yet._
+
+## [0.12.1] - 2026-05-06
+
+### Added
+
 - `stygian-charon`: release risk scoring and trend reporting via
   `release_risk` (including weighted factor breakdown, configurable thresholds,
   release risk levels, and candidate trend summaries)
@@ -19,11 +25,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `stygian-charon`: public API surface now exports release risk and trend types
   and helper entry points from the crate root
+- `workspace`: advanced crate release line from `0.12.0` to `0.12.1` and
+  updated internal path dependency version pins across crates
 
 ### Fixed
 
 - `workspace`: upgraded `wasmtime` from `42.0.2` to `43.0.2` to address
   `RUSTSEC-2026-0114` and unblock Security Audit CI
+- `stygian-charon`: resolved strict clippy violations in backtest metrics,
+  release-risk scoring arithmetic, and snapshot validation/test helpers
+- `stygian-graph`: suppressed false-positive `unused_async` warnings for
+  `acquisition-runner`-disabled async stubs while preserving async call-shape
+  compatibility
 
 ### Documentation
 

@@ -37,11 +37,13 @@ Before promotion, RE findings must pass:
 ### 2.1 Promotion Stakeholders
 
 **Required Reviewers (All 3 must approve):**
+
 - **Stealth Lead:** Owns overall detection strategy; reviews signal validity and strategy fit
 - **RE Specialist:** Lead reverse engineer; verifies reproducibility and root cause analysis
 - **SRE/DevOps:** Validates performance impact, rollback safety, monitoring setup
 
 **Optional Reviewers (Context-specific):**
+
 - **Product/Customer Success:** If finding impacts specific customer workflows
 - **Security:** For critical infrastructure signals or attack surface changes
 
@@ -98,6 +100,7 @@ The following events automatically trigger rollback without explicit approval:
 **Triggered when:** Medium-risk issues detected but not auto-trigger criteria
 
 **Steps:**
+
 1. Issue created and labeled `rollback-candidate` with evidence
 2. Stealth Lead reviews within 2 hours
 3. If approved, create rollback branch: `git checkout main && git checkout -b rollback/chr-###-YYYYMMDD-hhmmss`
@@ -110,6 +113,7 @@ The following events automatically trigger rollback without explicit approval:
 ### 3.3 Rollback Communication
 
 Upon rollback:
+
 - GitHub issue updated with status: `ROLLED_BACK`
 - Team Slack notification posted (#stealth-channel or similar)
 - Customer support notified if affecting live traffic
@@ -118,6 +122,7 @@ Upon rollback:
 ### 3.4 Re-Promotion After Rollback
 
 After rollback, finding may be re-promoted once:
+
 - Root cause of rollback fully understood
 - Fix implemented and tested
 - Evidence re-collected and documented
@@ -164,6 +169,7 @@ After 7 days of stable monitoring, finding moves from `advisory=true` to hard-fa
 ### 5.1 Approval Deadlock
 
 If reviewers cannot reach consensus within 5 business days:
+
 1. Stealth Lead mediates; documents decision rationale
 2. If still unresolved, escalate to project maintainer (@greysquirr3l) for tie-break
 3. Decision documented and linked in GitHub issue for future reference
@@ -180,6 +186,7 @@ In case of critical security regression or zero-day bypass:
 ## 6. Examples
 
 ### Example 1: Low-Risk Cosmetic Signal
+
 - **Finding:** Detect common AI-generated User-Agent strings
 - **Evidence Quality:** Found in 2 major LLM tools; reproducible with public APIs
 - **Approvals:** Stealth Lead + RE Specialist (SRE approval optional for cosmetic)
@@ -187,6 +194,7 @@ In case of critical security regression or zero-day bypass:
 - **Rollout:** Phase 1 (advisory) immediately; phase 2 after 7d monitoring
 
 ### Example 2: Medium-Risk New Attack Vector
+
 - **Finding:** New timing-based fingerprint correlation attack
 - **Evidence Quality:** Requires controlled lab setup; impacts ~5% of traffic
 - **Approvals:** All 3 reviewers + Product sign-off required
@@ -195,6 +203,7 @@ In case of critical security regression or zero-day bypass:
 - **Rollback:** Automatic if stealth scores drop >3%
 
 ### Example 3: High-Risk Attack Surface
+
 - **Finding:** New fingerprinting vector via undocumented WebGL extension
 - **Evidence Quality:** Affects 30%+ of traffic; false positive risk <2%
 - **Approvals:** All 3 reviewers + majority vote by Stealth Lead/Product/Security
@@ -205,6 +214,7 @@ In case of critical security regression or zero-day bypass:
 ## 7. Review & Updates
 
 This policy is reviewed quarterly or when significant issues arise. Stakeholders:
+
 - Stealth Lead
 - RE Specialist
 - SRE/DevOps representative

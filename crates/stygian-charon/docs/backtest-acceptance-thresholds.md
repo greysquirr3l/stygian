@@ -14,6 +14,7 @@ Backtests should be run before:
 4. **Major stealth updates** — Confirm no significant regression on historical patterns
 
 Backtests are NOT required for:
+
 - Documentation updates
 - Non-functional refactoring
 - Minor bug fixes in unrelated code
@@ -103,6 +104,7 @@ All profiles must meet these minimum thresholds to be approved for production ro
 - Duration: 3–7 days depending on traffic volume
 
 **Go/No-Go Decision**:
+
 - **GO**: No regression in metrics, false positives within acceptable bounds
 - **NO-GO**: Revert rule, conduct RCA, modify rule, re-backtest
 
@@ -114,6 +116,7 @@ All profiles must meet these minimum thresholds to be approved for production ro
 - Continuous monitoring for detection drift
 
 **Monitoring Metrics**:
+
 - Daily stealth canary score changes (±1% tolerance)
 - Customer-reported false positive incidents
 - Detection rate stability over rolling 7-day window
@@ -139,6 +142,7 @@ accuracy_vs_baseline = (new_profile_detection_rate / baseline_profile_detection_
 ### Example 1: New Rule Passes Backtest
 
 Profile metrics:
+
 - Detection Rate: 84% ✅
 - Avg Confidence: 0.78 ✅
 - Low Confidence Rate: 3% ✅
@@ -150,6 +154,7 @@ Profile metrics:
 ### Example 2: New Rule Fails Backtest
 
 Profile metrics:
+
 - Detection Rate: 65% ❌ (below 70% minimum)
 - Avg Confidence: 0.72 ✅
 - Low Confidence Rate: 18% ❌ (above 15% maximum)
@@ -161,6 +166,7 @@ Profile metrics:
 ### Example 3: Borderline Backtest (Investigation Required)
 
 Profile metrics:
+
 - Detection Rate: 88% ✅
 - Avg Confidence: 0.68 ✅
 - Low Confidence Rate: 14% ⚠️ (just under 15% limit)
@@ -168,6 +174,7 @@ Profile metrics:
 - Accuracy vs Baseline: 98% ✅
 
 **Decision**: CONDITIONAL APPROVAL. Approved for Phase 1 with additional monitoring:
+
 1. Set lower thresholds in Phase 1 (advisory=true, extended monitoring window)
 2. Enhance logging for low-confidence cases to understand FP patterns
 3. Plan Phase 2 activation only after 7+ days of clean monitoring
@@ -197,6 +204,7 @@ In case of critical security fix or zero-day bypass:
 ## Review Cadence
 
 Acceptance thresholds are reviewed quarterly or when:
+
 - Significant false positive incident occurs
 - Production regression detected
 - New analyzer version or major rule set change
