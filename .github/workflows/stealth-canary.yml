@@ -9,9 +9,14 @@ on:
         description: 'Synthetic check pass threshold (0.0–1.0, default: 0.95)'
         required: false
         default: '0.95'
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
 
 permissions:
   issues: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -220,4 +225,11 @@ jobs:
           else
             gh issue create --title "${TITLE}" --body-file "${ISSUE_BODY_FILE}"
           fi
+
+      - name: Fail if hard regression detected
+        if: steps.probe.outputs.regression == 'true'
+        run: |
+          echo "❌ Stealth regression detected (hard fail)"
+          echo "Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          exit 1
 
