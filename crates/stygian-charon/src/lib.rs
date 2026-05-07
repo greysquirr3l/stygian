@@ -37,6 +37,8 @@ pub mod observatory;
 pub mod policy;
 /// Challenge-style probe pack for adversarial and regression testing.
 pub mod probe;
+/// Release risk scoring and release-candidate trend reporting.
+pub mod release_risk;
 /// Normalized fingerprint snapshot schema types and compatibility checks.
 pub mod snapshot;
 /// Public types for transaction and report models.
@@ -85,6 +87,12 @@ pub use policy::{analyze_and_plan, build_runtime_policy, plan_from_report};
 pub use probe::{
     ChallengeProbe, ProbeCategory, ProbeExpectation, ProbePackReport, ProbeRunResult,
     challenge_probe_pack, run_probe_pack,
+};
+pub use release_risk::{
+    ReleaseCandidateRiskSnapshot, ReleaseRiskAssessment, ReleaseRiskBreakdown, ReleaseRiskInput,
+    ReleaseRiskLevel, ReleaseRiskThresholds, ReleaseRiskWeights, ReleaseTrendDirection,
+    ReleaseTrendPoint, ReleaseTrendReport, assess_release_risk, build_release_trend_report,
+    release_risk_input_from_reports,
 };
 pub use snapshot::{
     FingerprintSignals, NormalizedFingerprintSnapshot, ScreenFingerprint, SnapshotCoherenceReport,
