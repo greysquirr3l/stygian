@@ -1714,6 +1714,7 @@ async fn run_acquisition_bridge(url: &str, cfg: &AcquisitionNodeConfig) -> Resul
 }
 
 #[cfg(not(feature = "acquisition-runner"))]
+#[allow(clippy::unused_async)]
 async fn run_acquisition_bridge(_url: &str, _cfg: &AcquisitionNodeConfig) -> Result<Value, String> {
     Err(
         "acquisition bridge requested but stygian-graph was built without feature 'acquisition-runner'"
@@ -1871,6 +1872,7 @@ where
 }
 
 #[cfg(not(feature = "acquisition-runner"))]
+#[allow(clippy::unused_async)]
 async fn execute_browser_pipeline_node<F, Fut>(
     _node: &NodeDecl,
     _node_name: &str,
