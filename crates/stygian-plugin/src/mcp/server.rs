@@ -340,12 +340,12 @@ impl McpPluginServer {
             .map(|t| {
                 json!({
                     "id": t.id.to_string(),
-                    "name": t.name,
-                    "description": t.description,
+                    "name": &t.name,
+                    "description": &t.description,
                     "regions": t.regions.len(),
                     "created_at": t.metadata.created_at.to_rfc3339(),
                     "usage_count": t.metadata.usage_count,
-                    "tags": t.metadata.tags,
+                    "tags": &t.metadata.tags,
                 })
             })
             .collect();

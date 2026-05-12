@@ -320,7 +320,7 @@ impl McpAggregator {
                     "properties": {
                         "url": { "type": "string", "description": "Target URL to scrape" },
                         "template_id": { "type": "string", "description": "UUID of the extraction template to apply if HTTP scraping fails" },
-                        "idempotency_key": { "type": "string", "description": "Optional idempotency key to deduplicate repeated calls (ULID or UUID string)" }
+                        "idempotency_key": { "type": "string", "description": "Optional idempotency key to deduplicate repeated calls (ULID string format)" }
                     },
                     "required": ["url", "template_id"]
                 }
