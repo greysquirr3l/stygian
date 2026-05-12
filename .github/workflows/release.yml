@@ -93,7 +93,7 @@ jobs:
       - name: Verify workspace versions match tag
         run: |
           TAG_VERSION="${{ needs.resolve.outputs.version }}"
-          for crate in stygian-browser stygian-proxy stygian-graph stygian-mcp; do
+          for crate in stygian-browser stygian-proxy stygian-graph stygian-mcp stygian-plugin stygian-charon stygian-extract-derive; do
             CARGO_VERSION=$(cargo metadata --no-deps --format-version 1 \
               | jq -r --arg name "$crate" '.packages[] | select(.name == $name) | .version')
             if [ "$CARGO_VERSION" != "$TAG_VERSION" ]; then
