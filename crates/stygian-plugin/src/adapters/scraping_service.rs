@@ -116,8 +116,21 @@ impl ScrapingService for PluginExtractionAdapter {
             });
         }
 
-        // Create extraction request
-        let request = ExtractionRequest::new(template, input.url.clone(), input.url.clone())
+        // Determine HTML source: prefer params["html"], but can be passed via URL if it's full HTML
+        let html = if let Some(html_str) = input.params.get("html").and_then(|v| v.as_str()) {
+            // HTML explicitly provided in params (from fallback chain)
+            html_str.to_string()
+        } else if input.url.starts_with('<') {
+            // URL field actually contains HTML (edge case)
+            input.url.clone()
+        } else {
+            // No HTML available; cannot proceed
+            return Err(StygianError::Service(ServiceError::InvalidInput(
+                "No HTML content provided in params['html'] or URL".to_string(),
+            )));
+        };
+
+        let request = ExtractionRequest::new(template, input.url.clone(), html)
             .with_idempotency_key(idempotency_key);
 
         // Execute extraction
