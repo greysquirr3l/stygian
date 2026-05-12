@@ -19,6 +19,7 @@ writing Rust code.
 | **Graph MCP** | `stygian-graph` (embed `McpGraphServer` in your binary) | Scraping pipelines and DAG execution only |
 | **Browser MCP** | `stygian-browser` (embed `McpBrowserServer` in your binary) | Browser automation only |
 | **Proxy MCP** | `stygian-proxy` (embed `McpProxyServer` in your binary) | Proxy pool management only |
+| **Plugin MCP** | `stygian-plugin` (embed `McpPluginServer` in your binary) | Recorded-template extraction fallback only |
 | **Aggregator** | `stygian-mcp` (binary) | All capabilities in one server — recommended |
 
 For most LLM agent integrations, run the **aggregator** — it merges all three tool surfaces into
@@ -90,6 +91,7 @@ When using the aggregator, all tools are namespaced:
 | `graph_` | [stygian-graph](./graph-tools.md) — e.g. `graph_scrape`, `graph_pipeline_run`, `graph_charon_analyze_and_plan` |
 | `browser_` | [stygian-browser](./browser-tools.md) — e.g. `browser_acquire`, `browser_navigate` |
 | `proxy_` | [stygian-proxy](./proxy-tools.md) — e.g. `proxy_add`, `proxy_acquire` |
+| `plugin_` | [stygian-plugin](./plugin-tools.md) — e.g. `plugin_create_template`, `plugin_apply_template` |
 | *(none)* | Aggregator cross-crate — `scrape_proxied`, `browser_proxied` |
 
 When using a per-crate MCP server standalone, graph tools are *un-prefixed* (e.g. `scrape`

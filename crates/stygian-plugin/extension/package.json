@@ -1,0 +1,15 @@
+{
+  "name": "stygian-plugin-extension",
+  "version": "0.12.1",
+  "description": "Stygian Chrome extension for visual data extraction template recording",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.270",
+    "typescript": "^5.7.2"
+  }
+}

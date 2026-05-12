@@ -1,4 +1,4 @@
-//! Aggregated MCP server that merges the graph, browser, and proxy tool surfaces.
+//! Aggregated MCP server that merges the graph, browser, proxy, and plugin tool surfaces.
 //!
 //! # Tool namespace
 //!
@@ -7,11 +7,12 @@
 //! | `graph_` | `stygian-graph` | `graph_scrape`, `graph_pipeline_run` |
 //! | `browser_` | `stygian-browser` | `browser_acquire`, `browser_navigate` |
 //! | `proxy_` | `stygian-proxy` | `proxy_add`, `proxy_acquire` |
+//! | `plugin_` | `stygian-plugin` | `plugin_apply_template`, `plugin_list_templates` |
 //! | *(none)* | Aggregator cross-crate | `scrape_proxied`, `browser_proxied` |
 //!
 //! The aggregator strips the `graph_` prefix before forwarding calls to the
 //! graph sub-server (which internally uses un-prefixed names like `scrape`).
-//! Browser and proxy tools are already prefixed in their respective servers.
+//! Browser, proxy, and plugin tools are already prefixed in their respective servers.
 //!
 //! Proxy guidance: proxy-backed tools are opt-in and should not be used by
 //! default. Prefer direct tools (`graph_scrape`, `browser_acquire` +
@@ -28,7 +29,15 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 
 use stygian_browser::{BrowserPool, mcp::McpBrowserServer};
+use stygian_graph::adapters::fallback::{
+    FallbackChainService, default_fallback_breaker, default_primary_breaker,
+};
+use stygian_graph::adapters::http::{HttpAdapter, HttpConfig};
 use stygian_graph::mcp::McpGraphServer;
+use stygian_graph::ports::{ScrapingService, ServiceInput};
+use stygian_plugin::adapters::{ExtractionEngine, PluginExtractionAdapter};
+use stygian_plugin::mcp::McpPluginServer;
+use stygian_plugin::storage::{FileTemplateStore, MemoryIdempotencyStore};
 use stygian_proxy::mcp::McpProxyServer;
 
 const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2024-11-05"];
@@ -50,6 +59,10 @@ const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2024
 pub struct McpAggregator {
     browser: Arc<McpBrowserServer>,
     proxy: Arc<McpProxyServer>,
+    plugin: Arc<McpPluginServer>,
+    /// HTTP-first fallback chain: tries a plain HTTP scrape first, automatically
+    /// falls back to plugin template extraction on failure or circuit-open.
+    fallback_chain: Arc<FallbackChainService>,
     /// Cancellation token for the proxy background health-check and session-purge tasks.
     proxy_token: CancellationToken,
     /// Join handle for the proxy background tasks (health-check + session purge).
@@ -70,9 +83,49 @@ impl McpAggregator {
         let browser = Arc::new(McpBrowserServer::new(pool));
         let proxy = Arc::new(McpProxyServer::new()?);
         let (proxy_token, proxy_bg) = proxy.start_background();
+
+        // Shared template and idempotency stores — used by both the plugin MCP server
+        // and the plugin extraction adapter inside the fallback chain, so that templates
+        // created via plugin_create_template are immediately usable in fallback pipelines.
+        let templates_dir = std::path::PathBuf::from("./plugin-templates");
+        let template_store: Arc<dyn stygian_plugin::ports::PluginTemplateStore> =
+            Arc::new(FileTemplateStore::new(templates_dir));
+        let idempotency_store: Arc<dyn stygian_plugin::ports::IdempotencyKeyStore> =
+            Arc::new(MemoryIdempotencyStore::new());
+
+        let plugin = Arc::new(McpPluginServer::with_adapters(
+            Arc::clone(&template_store),
+            Arc::new(ExtractionEngine),
+            Arc::clone(&idempotency_store),
+        ));
+
+        // Build fallback chain: plain HTTP (primary) → plugin extraction (fallback).
+        // The HTTP adapter uses default anti-bot configuration; the plugin adapter uses
+        // the same stores as the MCP server so templates are immediately available.
+        let http_primary = Arc::new(HttpAdapter::with_config(HttpConfig::default()));
+        let plugin_fallback = Arc::new(PluginExtractionAdapter::new(
+            template_store,
+            Arc::new(ExtractionEngine),
+            idempotency_store,
+        ));
+        let fallback_chain = Arc::new(
+            FallbackChainService::builder()
+                .add(http_primary, default_primary_breaker())
+                .add(plugin_fallback, default_fallback_breaker())
+                .named("http-to-plugin")
+                .build(),
+        );
+        info!(
+            "fallback chain '{}' built with {} services",
+            fallback_chain.name(),
+            fallback_chain.len()
+        );
+
         Ok(Self {
             browser,
             proxy,
+            plugin,
+            fallback_chain,
             proxy_token,
             proxy_bg: Some(proxy_bg),
         })
@@ -259,12 +312,34 @@ impl McpAggregator {
                     "required": ["url"]
                 }
             }),
+            json!({
+                "name": "scrape_with_plugin_fallback",
+                "description": "Scrape a URL using a circuit-breaker-protected fallback chain: (1) Plain HTTP scrape first — fast, lightweight, no template needed. (2) If the HTTP scrape fails or the circuit opens due to repeated failures, automatically falls back to plugin template extraction using the specified template. Use this tool when you have a saved extraction template and want resilient, schema-structured results even if the site's anti-bot protection blocks plain HTTP. The `template_id` is required so the plugin fallback knows how to extract structured data; use plugin_list_templates to find available IDs.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "url": { "type": "string", "description": "Target URL to scrape" },
+                        "template_id": { "type": "string", "description": "UUID of the extraction template to apply if HTTP scraping fails" },
+                        "idempotency_key": { "type": "string", "description": "Optional idempotency key to deduplicate repeated calls (ULID or UUID string)" }
+                    },
+                    "required": ["url", "template_id"]
+                }
+            }),
         ];
 
-        let all_tools: Vec<Value> = [graph_tools, browser_tools, proxy_tools, cross_tools]
-            .into_iter()
-            .flatten()
-            .collect();
+        // Plugin tools — provided by stygian-plugin.
+        let plugin_tools = self.plugin.tools_list();
+
+        let all_tools: Vec<Value> = [
+            graph_tools,
+            browser_tools,
+            proxy_tools,
+            plugin_tools,
+            cross_tools,
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
 
         ok_response(id, &json!({ "tools": all_tools }))
     }
@@ -311,10 +386,20 @@ impl McpAggregator {
                 "params": { "name": name, "arguments": args }
             });
             self.proxy.handle_request(&sub).await
+        } else if name.starts_with("plugin_") {
+            // Route to plugin server, stripping the "plugin_" prefix
+            if let Some(short) = name.strip_prefix("plugin_") {
+                let result = self.plugin.handle_tool_call(short, args).await;
+                ok_response(id, &result)
+            } else {
+                error_response(id, -32602, &format!("Invalid plugin tool: {name}"))
+            }
         } else if name == "scrape_proxied" {
             self.tool_scrape_proxied(id, args).await
         } else if name == "browser_proxied" {
             self.tool_browser_proxied(id, args).await
+        } else if name == "scrape_with_plugin_fallback" {
+            self.tool_scrape_with_plugin_fallback(id, args).await
         } else {
             error_response(id, -32602, &format!("Unknown tool: {name}"))
         }
@@ -530,6 +615,51 @@ impl McpAggregator {
                 }]
             }),
         )
+    }
+
+    // ── Cross-crate tool: scrape_with_plugin_fallback ─────────────────────────
+
+    /// Execute the HTTP→plugin fallback chain for a URL.
+    ///
+    /// Tries a plain HTTP scrape first.  If that fails or the HTTP circuit is
+    /// open, the chain automatically falls back to plugin template extraction
+    /// using `template_id` from `args`.
+    async fn tool_scrape_with_plugin_fallback(&self, id: &Value, args: &Value) -> Value {
+        let Some(url) = args.get("url").and_then(Value::as_str).map(str::to_owned) else {
+            return error_response(id, -32602, "Missing 'url'");
+        };
+        let Some(template_id) = args
+            .get("template_id")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+        else {
+            return error_response(id, -32602, "Missing 'template_id'");
+        };
+
+        let mut params = json!({ "template_id": template_id });
+        if let Some(idem_key) = args.get("idempotency_key").and_then(Value::as_str)
+            && let Some(obj) = params.as_object_mut()
+        {
+            obj.insert(
+                "idempotency_key".to_string(),
+                Value::String(idem_key.to_owned()),
+            );
+        }
+
+        let input = ServiceInput { url, params };
+        match self.fallback_chain.execute(input).await {
+            Ok(output) => ok_response(
+                id,
+                &json!({
+                    "content": [{
+                        "type": "text",
+                        "text": output.data
+                    }],
+                    "metadata": output.metadata
+                }),
+            ),
+            Err(e) => error_response(id, -32603, &format!("Fallback chain exhausted: {e}")),
+        }
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

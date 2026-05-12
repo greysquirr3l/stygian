@@ -48,3 +48,6 @@ stygian-browser = { path = "../stygian-browser", version = "0.12.1", optional = 
 tokio       = { workspace = true }
 tokio-test  = "0.4"
 wiremock    = "0.6"
+
+[lints]
+workspace = true

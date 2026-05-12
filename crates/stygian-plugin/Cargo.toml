@@ -1,0 +1,48 @@
+[package]
+name = "stygian-plugin"
+version = "0.12.1"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+async-trait = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+tokio = { version = "1.49", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+ulid = { version = "1.1", features = ["serde"] }
+regex = "1.10"
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+
+# Stygian crates
+stygian-graph = { path = "../stygian-graph", optional = true }
+
+# Parsing
+scraper = "0.25"
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.8"
+
+[features]
+default = []
+javascript = []
+graph-integration = ["stygian-graph"]
+
+[[bin]]
+name = "stygian-plugin-mcp"
+path = "src/bin/mcp_server.rs"
+required-features = []
+
+[[example]]
+name = "basic_extraction"
+path = "examples/basic_extraction.rs"
+
+[lints]
+workspace = true

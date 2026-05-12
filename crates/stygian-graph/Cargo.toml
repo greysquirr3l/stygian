@@ -156,3 +156,6 @@ required-features = []
 name = "stygian-api"
 path = "src/bin/stygian-api.rs"
 required-features = []
+
+[lints]
+workspace = true

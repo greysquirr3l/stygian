@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Stygian Plugin - Visual Data Extraction",
+  "version": "0.12.1",
+  "description": "Interactive visual data extraction tool. Record templates once, apply them anywhere. Fallback for when automated scraping fails.",
+  "permissions": ["activeTab", "scripting", "storage", "webRequest"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Stygian Plugin - Visual Extraction"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-script.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["injected.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "icons": {
+    "16": "assets/icons/icon-16.png",
+    "32": "assets/icons/icon-32.png",
+    "48": "assets/icons/icon-48.png",
+    "128": "assets/icons/icon-128.png"
+  }
+}

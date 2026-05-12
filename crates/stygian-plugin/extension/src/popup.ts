@@ -1,0 +1,474 @@
+/**
+ * Popup UI logic for Stygian Plugin
+ */
+
+import type { ExtractionTemplate, Region } from "./types";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────────────────────
+
+let currentRecordingTemplate: ExtractionTemplate | null = null;
+let isRecording = false;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tab Navigation
+// ─────────────────────────────────────────────────────────────────────────────
+
+document.querySelectorAll(".tab-btn").forEach((btn) => {
+  btn.addEventListener("click", (e) => {
+    const tabName = (e.target as HTMLElement).getAttribute("data-tab");
+    if (!tabName) return;
+
+    // Hide all tabs
+    document.querySelectorAll(".tab-content").forEach((tab) => {
+      tab.classList.remove("active");
+    });
+
+    // Deactivate all buttons
+    document.querySelectorAll(".tab-btn").forEach((b) => {
+      b.classList.remove("active");
+    });
+
+    // Show selected tab
+    const selectedTab = document.getElementById(tabName);
+    if (selectedTab) {
+      selectedTab.classList.add("active");
+    }
+
+    // Activate button
+    (e.target as HTMLElement).classList.add("active");
+
+    // Load templates when switching to tabs that need them
+    if (tabName === "templates") {
+      loadTemplates();
+    } else if (tabName === "apply") {
+      loadTemplatesForApply();
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Templates Tab
+// ─────────────────────────────────────────────────────────────────────────────
+
+const newTemplateBtn = document.getElementById("new-template-btn");
+newTemplateBtn?.addEventListener("click", () => {
+  const name = prompt("Enter template name:");
+  if (!name) return;
+
+  const description = prompt("Enter template description (optional):");
+
+  chrome.runtime.sendMessage(
+    {
+      type: "create_template",
+      name,
+      description: description || undefined,
+    },
+    (response) => {
+      if (response.success) {
+        loadTemplates();
+        showStatus("Template created!", "success");
+      } else {
+        showStatus("Failed to create template: " + response.error, "error");
+      }
+    },
+  );
+});
+
+async function loadTemplates() {
+  const response = await sendMessage({ type: "list_templates" });
+
+  const listContainer = document.getElementById("templates-list");
+  if (!listContainer) return;
+
+  const templates = response.templates as ExtractionTemplate[];
+
+  if (templates.length === 0) {
+    listContainer.innerHTML = '<p class="empty-state">No templates yet.</p>';
+    return;
+  }
+
+  listContainer.innerHTML = templates
+    .map(
+      (template) => `
+        <div class="template-card">
+          <div class="template-info">
+            <h3>${template.name}</h3>
+            ${template.description ? `<p>${template.description}</p>` : ""}
+            <div class="template-meta">
+              <span>${template.regions.length} regions</span>
+              <span>${template.metadata.usage_count} uses</span>
+            </div>
+          </div>
+          <div class="template-actions">
+            <button class="btn btn-small" onclick="editTemplate('${template.id}')">Edit</button>
+            <button class="btn btn-small btn-danger" onclick="deleteTemplate('${template.id}')">Delete</button>
+          </div>
+        </div>
+      `,
+    )
+    .join("");
+}
+
+async function editTemplate(templateId: string) {
+  const response = await sendMessage({
+    type: "get_template",
+    template_id: templateId,
+  });
+
+  if (!response.success) {
+    showStatus("Failed to load template", "error");
+    return;
+  }
+
+  const template = response.template as ExtractionTemplate;
+
+  const action = prompt(
+    `Template: ${template.name}\n\nOptions:\n1. Edit name\n2. View regions\n3. Export JSON`,
+    "1",
+  );
+
+  switch (action) {
+    case "1": {
+      const newName = prompt("New template name:", template.name);
+      if (newName && newName !== template.name) {
+        template.name = newName;
+        await sendMessage({
+          type: "save_template",
+          template,
+        });
+        loadTemplates();
+        showStatus("Template updated!", "success");
+      }
+      break;
+    }
+
+    case "2": {
+      const regions = template.regions
+        .map((r) => `- ${r.name}: ${JSON.stringify(r.selector)}`)
+        .join("\n");
+      alert(`Regions:\n\n${regions || "No regions"}`);
+      break;
+    }
+
+    case "3": {
+      const exportResponse = await sendMessage({
+        type: "export_template",
+        template_id: templateId,
+      });
+
+      if (exportResponse.success) {
+        const dataUrl = `data:text/json,${encodeURIComponent(exportResponse.json)}`;
+        const link = document.createElement("a");
+        link.href = dataUrl;
+        link.download = `${template.name.replace(/\s+/g, "_")}.json`;
+        link.click();
+      }
+      break;
+    }
+  }
+}
+
+async function deleteTemplate(templateId: string) {
+  if (!confirm("Delete this template?")) return;
+
+  const response = await sendMessage({
+    type: "delete_template",
+    template_id: templateId,
+  });
+
+  if (response.success) {
+    loadTemplates();
+    showStatus("Template deleted", "success");
+  } else {
+    showStatus("Failed to delete template", "error");
+  }
+}
+
+// Make functions globally available for onclick handlers
+(window as any).editTemplate = editTemplate;
+(window as any).deleteTemplate = deleteTemplate;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Record Tab
+// ─────────────────────────────────────────────────────────────────────────────
+
+const recordNameInput = document.getElementById(
+  "record-name-input",
+) as HTMLInputElement;
+const recordDescriptionInput = document.getElementById(
+  "record-description-input",
+) as HTMLTextAreaElement;
+const startRecordingBtn = document.getElementById(
+  "start-recording-btn",
+) as HTMLButtonElement | null;
+const finishRecordingBtn = document.getElementById(
+  "finish-recording-btn",
+) as HTMLButtonElement | null;
+const recordingRegionsList = document.getElementById("recording-regions-list");
+
+startRecordingBtn?.addEventListener("click", async () => {
+  const name = recordNameInput.value.trim();
+  if (!name) {
+    showStatus("Please enter a template name", "error");
+    return;
+  }
+
+  // Get active tab
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tabs[0]) {
+    showStatus("No active tab", "error");
+    return;
+  }
+
+  // Create template
+  const createResponse = await sendMessage({
+    type: "create_template",
+    name,
+    description: recordDescriptionInput.value.trim(),
+  });
+
+  if (!createResponse.success) {
+    showStatus("Failed to create template", "error");
+    return;
+  }
+
+  currentRecordingTemplate = {
+    id: createResponse.template_id,
+    name,
+    description: recordDescriptionInput.value.trim(),
+    regions: [],
+    metadata: {
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      usage_count: 0,
+      version: 1,
+      tags: [],
+    },
+  };
+
+  // Start recording in content script
+  try {
+    await chrome.tabs.sendMessage(tabs[0].id!, {
+      type: "start_recording",
+      template_name: name,
+    });
+
+    isRecording = true;
+    startRecordingBtn!.disabled = true;
+    finishRecordingBtn!.disabled = false;
+    recordNameInput.disabled = true;
+    recordDescriptionInput.disabled = true;
+
+    showStatus(
+      "Recording started! Click elements in the page to add regions.",
+      "info",
+    );
+  } catch (error) {
+    showStatus("Failed to start recording", "error");
+  }
+});
+
+finishRecordingBtn?.addEventListener("click", async () => {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tabs[0] || !currentRecordingTemplate) return;
+
+  try {
+    const stopResponse = await chrome.tabs.sendMessage(tabs[0].id!, {
+      type: "stop_recording",
+    });
+
+    if (stopResponse.success && stopResponse.regions) {
+      currentRecordingTemplate.regions = stopResponse.regions;
+
+      // Save template
+      const saveResponse = await sendMessage({
+        type: "save_template",
+        template: currentRecordingTemplate,
+      });
+
+      if (saveResponse.success) {
+        showStatus(
+          `Template saved with ${stopResponse.regions.length} regions!`,
+          "success",
+        );
+
+        // Reset form
+        recordNameInput.value = "";
+        recordDescriptionInput.value = "";
+        startRecordingBtn!.disabled = false;
+        finishRecordingBtn!.disabled = true;
+        recordNameInput.disabled = false;
+        recordDescriptionInput.disabled = false;
+        isRecording = false;
+        currentRecordingTemplate = null;
+        updateRecordingRegionsList([]);
+
+        // Switch to templates tab to show the new template
+        document
+          .querySelector('[data-tab="templates"]')
+          ?.dispatchEvent(new MouseEvent("click"));
+      }
+    }
+  } catch (error) {
+    showStatus("Failed to save template", "error");
+  }
+});
+
+// Listen for region updates from content script
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === "region_added" && currentRecordingTemplate) {
+    currentRecordingTemplate.regions.push(message.region);
+    updateRecordingRegionsList(currentRecordingTemplate.regions);
+  }
+  sendResponse({ success: true });
+});
+
+function updateRecordingRegionsList(regions: Region[]) {
+  if (!recordingRegionsList) return;
+
+  if (regions.length === 0) {
+    recordingRegionsList.innerHTML =
+      '<p class="empty-state">No regions added yet</p>';
+    return;
+  }
+
+  recordingRegionsList.innerHTML = regions
+    .map(
+      (region) => `
+        <div class="region-item">
+          <span class="region-name">${region.name}</span>
+          <span class="region-count">${region.transformations.length} transforms</span>
+        </div>
+      `,
+    )
+    .join("");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Apply Tab
+// ─────────────────────────────────────────────────────────────────────────────
+
+const applyTemplateSelect = document.getElementById(
+  "apply-template-select",
+) as HTMLSelectElement;
+const applyTemplateBtn = document.getElementById(
+  "apply-template-btn",
+) as HTMLButtonElement | null;
+
+async function loadTemplatesForApply() {
+  const response = await sendMessage({ type: "list_templates" });
+  const templates = response.templates as ExtractionTemplate[];
+
+  applyTemplateSelect.innerHTML =
+    '<option value="">-- Choose a template --</option>';
+  templates.forEach((template) => {
+    const option = document.createElement("option");
+    option.value = template.id;
+    option.textContent = template.name;
+    applyTemplateSelect.appendChild(option);
+  });
+}
+
+applyTemplateBtn?.addEventListener("click", async () => {
+  const templateId = applyTemplateSelect.value;
+  if (!templateId) {
+    showStatus("Please select a template", "error");
+    return;
+  }
+
+  applyTemplateBtn!.disabled = true;
+  showStatus("Extracting data...", "info");
+
+  try {
+    const response = await sendMessage({
+      type: "apply_template",
+      template_id: templateId,
+    });
+
+    if (response.success) {
+      displayResults(response.result);
+      showStatus("Extraction complete!", "success");
+    } else {
+      showStatus("Extraction failed: " + response.error, "error");
+    }
+  } catch (error) {
+    showStatus("Error during extraction: " + String(error), "error");
+  } finally {
+    applyTemplateBtn!.disabled = false;
+  }
+});
+
+function displayResults(result: any) {
+  const resultsContainer = document.getElementById("extraction-results");
+  if (!resultsContainer) return;
+
+  const data = result.data || {};
+  const html = `
+    <div class="results-panel">
+      <h3>Extraction Results</h3>
+      <pre>${JSON.stringify(data, null, 2)}</pre>
+      <button class="btn btn-small" onclick="copyResults()">Copy JSON</button>
+    </div>
+  `;
+
+  resultsContainer.innerHTML = html;
+  (window as any).lastResults = JSON.stringify(data, null, 2);
+}
+
+(window as any).copyResults = function () {
+  const results = (window as any).lastResults;
+  if (results) {
+    navigator.clipboard.writeText(results).then(() => {
+      showStatus("Results copied to clipboard!", "success");
+    });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Utilities
+// ─────────────────────────────────────────────────────────────────────────────
+
+function sendMessage(message: any): Promise<any> {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(message, (response) => {
+      if (chrome.runtime.lastError) {
+        reject(chrome.runtime.lastError);
+      } else {
+        resolve(response);
+      }
+    });
+  });
+}
+
+function showStatus(
+  message: string,
+  type: "success" | "error" | "info" = "info",
+) {
+  console.log(`[${type.toUpperCase()}]`, message);
+
+  const statusElements = document.querySelectorAll('[id$="-status"]');
+  statusElements.forEach((el) => {
+    el.textContent = message;
+    el.className = `status-message ${type}`;
+  });
+
+  // Auto-hide after 3 seconds
+  setTimeout(() => {
+    statusElements.forEach((el) => {
+      if (el.textContent === message) {
+        el.textContent = "";
+      }
+    });
+  }, 3000);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Initialization
+// ─────────────────────────────────────────────────────────────────────────────
+
+console.log("[Popup] Stygian Plugin popup loaded");
+
+// Load templates on startup
+loadTemplates();

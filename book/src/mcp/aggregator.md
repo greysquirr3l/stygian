@@ -1,7 +1,7 @@
 # The stygian-mcp Aggregator
 
-`stygian-mcp` is a standalone binary that runs a single MCP server merging all three Stygian
-sub-crate tool surfaces into one JSON-RPC 2.0 endpoint. It is the recommended way to integrate
+`stygian-mcp` is a standalone binary that runs a single MCP server merging graph, browser, proxy,
+and plugin tool surfaces into one JSON-RPC 2.0 endpoint. It is the recommended way to integrate
 Stygian with LLM agents and IDE plug-ins.
 
 ---
