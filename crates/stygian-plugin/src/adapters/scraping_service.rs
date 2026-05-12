@@ -125,8 +125,8 @@ impl ScrapingService for PluginExtractionAdapter {
             input.url.clone()
         } else {
             // No HTML available; cannot proceed
-            return Err(StygianError::Service(ServiceError::InvalidInput(
-                "No HTML content provided in params['html'] or URL".to_string(),
+            return Err(StygianError::Service(ServiceError::Unavailable(
+                "No HTML content provided in params['html'] or URL; plugin extraction cannot proceed".to_string(),
             )));
         };
 

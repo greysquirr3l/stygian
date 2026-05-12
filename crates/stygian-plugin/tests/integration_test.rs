@@ -52,10 +52,17 @@ mod tests {
         let adapter =
             PluginExtractionAdapter::new(template_store, extraction_port, idempotency_store);
 
+        // Sample HTML for extraction
+        let html = r#"
+            <div class="product-name">Premium Widget</div>
+            <span class="product-price">$19.99</span>
+        "#;
+
         let input = ServiceInput {
             url: "https://example.com/products".to_string(),
             params: json!({
                 "template_id": template_id.to_string(),
+                "html": html,
             }),
         };
 
@@ -92,24 +99,27 @@ mod tests {
             PluginExtractionAdapter::new(template_store, extraction_port, idempotency_store);
 
         let idempotency_key = ulid::Ulid::new();
+        let html = "<html><h1>First</h1></html>";
 
         let input1 = ServiceInput {
-            url: "<html><h1>First</h1></html>".to_string(),
+            url: "https://example.com/page1".to_string(),
             params: json!({
                 "template_id": template.id.to_string(),
                 "idempotency_key": idempotency_key.to_string(),
+                "html": html,
             }),
         };
 
         let result1 = adapter.execute(input1).await?;
         assert_eq!(result1.metadata.get("cached"), Some(&json!(false)));
 
-        // Same key with different URL should return cached result
+        // Same key with different URL/HTML should return cached result (idempotency key is primary)
         let input2 = ServiceInput {
-            url: "<html><h1>Different</h1></html>".to_string(),
+            url: "https://example.com/page2".to_string(),
             params: json!({
                 "template_id": template.id.to_string(),
                 "idempotency_key": idempotency_key.to_string(),
+                "html": "<html><h1>Different</h1></html>",
             }),
         };
 
