@@ -35,7 +35,6 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tracing::{debug, error, info};
 
 use stygian_plugin::config::{Config, TransportMode};
-use stygian_plugin::{McpPluginServer, McpRequestHandler};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -53,10 +52,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     match config.transport {
         TransportMode::Stdio => {
-            let server = Arc::new(McpPluginServer::new_with_file_storage(
+            let server = Arc::new(stygian_plugin::mcp::server::McpPluginServer::new_with_file_storage(
                 config.templates_dir.clone(),
             ));
-            let handler = McpRequestHandler::new(Arc::clone(&server), config);
+            let handler = stygian_plugin::mcp::handler::McpRequestHandler::new(Arc::clone(&server), config);
             run_stdio(handler).await
         }
         TransportMode::Http => {
@@ -80,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
 /// Run the MCP server over stdin/stdout (JSON-RPC 2.0 newline-delimited).
 async fn run_stdio(
-    handler: McpRequestHandler,
+    handler: stygian_plugin::mcp::handler::McpRequestHandler,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("MCP server listening on stdin/stdout (JSON-RPC 2.0)");
 
@@ -173,9 +172,8 @@ mod tests {
             parse_result.is_err(),
             "serde_json must fail on invalid input"
         );
-        let json_err = match parse_result {
-            Err(e) => e,
-            Ok(_) => return, // asserted above; this arm is unreachable in practice
+        let Err(json_err) = parse_result else {
+            return;
         };
         let err_resp = make_parse_error(&json_err);
         assert_eq!(
