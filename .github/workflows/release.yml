@@ -370,6 +370,46 @@ jobs:
         with:
           ref: ${{ needs.resolve.outputs.release_ref }}
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build extension bundle
+        run: |
+          cd crates/stygian-plugin/extension
+          npm ci
+          npm run build
+
+      - name: Package extension bundle
+        id: extension_bundle
+        run: |
+          set -euo pipefail
+
+          VERSION="${{ needs.resolve.outputs.version }}"
+          STAGING_DIR=$(mktemp -d)
+          ARCHIVE="stygian-plugin-extension-v${VERSION}.zip"
+
+          mkdir -p "$STAGING_DIR/extension"
+          cp crates/stygian-plugin/extension/manifest.json "$STAGING_DIR/extension/manifest.json"
+          cp crates/stygian-plugin/extension/popup.html "$STAGING_DIR/extension/popup.html"
+          cp -R crates/stygian-plugin/extension/assets "$STAGING_DIR/extension/assets"
+          cp -R crates/stygian-plugin/extension/styles "$STAGING_DIR/extension/styles"
+          cp -R crates/stygian-plugin/extension/dist "$STAGING_DIR/extension/dist"
+          cp crates/stygian-plugin/extension/package.json "$STAGING_DIR/extension/package.json"
+          cp crates/stygian-plugin/extension/README.md "$STAGING_DIR/extension/README.md"
+
+          jq --arg version "$VERSION" '.version = $version' \
+            "$STAGING_DIR/extension/manifest.json" > "$STAGING_DIR/extension/manifest.json.tmp"
+          mv "$STAGING_DIR/extension/manifest.json.tmp" "$STAGING_DIR/extension/manifest.json"
+
+          jq --arg version "$VERSION" '.version = $version' \
+            "$STAGING_DIR/extension/package.json" > "$STAGING_DIR/extension/package.json.tmp"
+          mv "$STAGING_DIR/extension/package.json.tmp" "$STAGING_DIR/extension/package.json"
+
+          (cd "$STAGING_DIR/extension" && zip -r "$GITHUB_WORKSPACE/$ARCHIVE" .)
+          echo "archive=$GITHUB_WORKSPACE/$ARCHIVE" >> "$GITHUB_OUTPUT"
+
       - name: Extract changelog for this version
         id: changelog
         run: |
@@ -388,5 +428,6 @@ jobs:
         with:
           tag_name: ${{ needs.resolve.outputs.release_ref }}
           body: ${{ steps.changelog.outputs.notes }}
+          files: ${{ steps.extension_bundle.outputs.archive }}
           draft: false
           prerelease: ${{ contains(needs.resolve.outputs.version, '-alpha') || contains(needs.resolve.outputs.version, '-beta') || contains(needs.resolve.outputs.version, '-rc') }}
