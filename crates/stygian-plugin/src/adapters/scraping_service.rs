@@ -104,16 +104,26 @@ impl ScrapingService for PluginExtractionAdapter {
         };
 
         // Check for cached result (idempotency)
-        if let Ok(Some(cached)) = self.idempotency_store.get_result(&idempotency_key).await {
-            info!("Plugin extraction cache hit for key: {}", idempotency_key);
-            return Ok(ServiceOutput {
-                data: serde_json::to_string(&cached.data).unwrap_or_default(),
-                metadata: json!({
-                    "extraction": cached.data,
-                    "metadata": cached.metadata,
-                    "cached": true,
-                }),
-            });
+        match self.idempotency_store.get_result(&idempotency_key).await {
+            Ok(Some(cached)) => {
+                info!("Plugin extraction cache hit for key: {}", idempotency_key);
+                return Ok(ServiceOutput {
+                    data: serde_json::to_string(&cached.data).unwrap_or_default(),
+                    metadata: json!({
+                        "extraction": cached.data,
+                        "metadata": cached.metadata,
+                        "cached": true,
+                    }),
+                });
+            }
+            Ok(None) => {}
+            Err(e) => {
+                tracing::warn!(
+                    "idempotency lookup failed for key {}: {}",
+                    idempotency_key,
+                    e
+                );
+            }
         }
 
         // Determine HTML source: prefer params["html"], but can be passed via URL if it's full HTML
@@ -139,10 +149,17 @@ impl ScrapingService for PluginExtractionAdapter {
         })?;
 
         // Cache the result
-        let _ = self
+        if let Err(e) = self
             .idempotency_store
             .store_result(&idempotency_key, &result)
-            .await;
+            .await
+        {
+            tracing::warn!(
+                "failed to store idempotent result for key {}: {}",
+                idempotency_key,
+                e
+            );
+        }
 
         info!("Plugin extraction completed: {} regions successful", {
             result

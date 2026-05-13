@@ -58,9 +58,9 @@ mod tests {
         bad.name = String::new();
         assert!(bad.validate().is_err());
 
-        // Invalid: no regions
+        // Valid draft: templates can be created without regions and completed later.
         let no_regions = ExtractionTemplate::new("Test");
-        assert!(no_regions.validate().is_err());
+        assert!(no_regions.validate().is_ok());
     }
 
     #[test]
@@ -391,7 +391,7 @@ mod tests {
 
         let response = server
             .handle_tool_call(
-                "create_template",
+                "plugin_create_template",
                 &json!({
                     "name": "Test Template",
                     "description": "A test template"
@@ -400,6 +400,7 @@ mod tests {
             .await;
 
         assert!(response.get("content").is_some());
+        assert!(response.get("isError").and_then(serde_json::Value::as_bool) != Some(true));
         Ok(())
     }
 

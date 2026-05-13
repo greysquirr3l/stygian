@@ -232,5 +232,5 @@ let chain = Arc::new(
 );
 ```
 
-`default_primary_breaker()` uses a 5-failure threshold and 60-second reset window.
-`default_fallback_breaker()` uses a 3-failure threshold and 30-second reset window.
+`default_primary_breaker()` uses a 5-failure threshold and 30-second reset window.
+`default_fallback_breaker()` uses a 3-failure threshold and 60-second reset window.

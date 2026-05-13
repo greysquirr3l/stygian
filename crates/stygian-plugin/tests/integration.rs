@@ -5,14 +5,24 @@
 use serde_json::json;
 use std::sync::Arc;
 use stygian_plugin::{McpPluginServer, McpRequestHandler, config::Config};
+use tempfile::TempDir;
 
-#[tokio::test]
-async fn test_initialize_handshake() {
+fn test_handler() -> (TempDir, McpRequestHandler) {
+    let tmp = match TempDir::new() {
+        Ok(tmp) => tmp,
+        Err(e) => panic!("failed to create temp dir for integration test: {e}"),
+    };
     let server = Arc::new(McpPluginServer::new_with_file_storage(
-        "./test-templates".into(),
+        tmp.path().to_path_buf(),
     ));
     let config = Config::testing();
     let handler = McpRequestHandler::new(server, config);
+    (tmp, handler)
+}
+
+#[tokio::test]
+async fn test_initialize_handshake() {
+    let (_tmp, handler) = test_handler();
 
     let req = json!({
         "jsonrpc": "2.0",
@@ -47,11 +57,7 @@ async fn test_initialize_handshake() {
 
 #[tokio::test]
 async fn test_initialize_unsupported_protocol() {
-    let server = Arc::new(McpPluginServer::new_with_file_storage(
-        "./test-templates".into(),
-    ));
-    let config = Config::testing();
-    let handler = McpRequestHandler::new(server, config);
+    let (_tmp, handler) = test_handler();
 
     let req = json!({
         "jsonrpc": "2.0",
@@ -78,11 +84,7 @@ async fn test_initialize_unsupported_protocol() {
 
 #[tokio::test]
 async fn test_tools_list() {
-    let server = Arc::new(McpPluginServer::new_with_file_storage(
-        "./test-templates".into(),
-    ));
-    let config = Config::testing();
-    let handler = McpRequestHandler::new(server, config);
+    let (_tmp, handler) = test_handler();
 
     let req = json!({
         "jsonrpc": "2.0",
@@ -120,11 +122,7 @@ async fn test_tools_list() {
 
 #[tokio::test]
 async fn test_ping() {
-    let server = Arc::new(McpPluginServer::new_with_file_storage(
-        "./test-templates".into(),
-    ));
-    let config = Config::testing();
-    let handler = McpRequestHandler::new(server, config);
+    let (_tmp, handler) = test_handler();
 
     let req = json!({
         "jsonrpc": "2.0",
@@ -150,11 +148,7 @@ async fn test_ping() {
 
 #[tokio::test]
 async fn test_notification_no_response() {
-    let server = Arc::new(McpPluginServer::new_with_file_storage(
-        "./test-templates".into(),
-    ));
-    let config = Config::testing();
-    let handler = McpRequestHandler::new(server, config);
+    let (_tmp, handler) = test_handler();
 
     // Notification has no id field
     let req = json!({
@@ -170,11 +164,7 @@ async fn test_notification_no_response() {
 
 #[tokio::test]
 async fn test_invalid_jsonrpc_version() {
-    let server = Arc::new(McpPluginServer::new_with_file_storage(
-        "./test-templates".into(),
-    ));
-    let config = Config::testing();
-    let handler = McpRequestHandler::new(server, config);
+    let (_tmp, handler) = test_handler();
 
     let req = json!({
         "jsonrpc": "1.0",
@@ -198,11 +188,7 @@ async fn test_invalid_jsonrpc_version() {
 
 #[tokio::test]
 async fn test_missing_method() {
-    let server = Arc::new(McpPluginServer::new_with_file_storage(
-        "./test-templates".into(),
-    ));
-    let config = Config::testing();
-    let handler = McpRequestHandler::new(server, config);
+    let (_tmp, handler) = test_handler();
 
     let req = json!({
         "jsonrpc": "2.0",
@@ -226,11 +212,7 @@ async fn test_missing_method() {
 
 #[tokio::test]
 async fn test_method_not_found() {
-    let server = Arc::new(McpPluginServer::new_with_file_storage(
-        "./test-templates".into(),
-    ));
-    let config = Config::testing();
-    let handler = McpRequestHandler::new(server, config);
+    let (_tmp, handler) = test_handler();
 
     let req = json!({
         "jsonrpc": "2.0",
@@ -254,11 +236,7 @@ async fn test_method_not_found() {
 
 #[tokio::test]
 async fn test_tools_call_missing_name() {
-    let server = Arc::new(McpPluginServer::new_with_file_storage(
-        "./test-templates".into(),
-    ));
-    let config = Config::testing();
-    let handler = McpRequestHandler::new(server, config);
+    let (_tmp, handler) = test_handler();
 
     let req = json!({
         "jsonrpc": "2.0",
@@ -283,11 +261,7 @@ async fn test_tools_call_missing_name() {
 
 #[tokio::test]
 async fn test_initialize_without_protocol_version() {
-    let server = Arc::new(McpPluginServer::new_with_file_storage(
-        "./test-templates".into(),
-    ));
-    let config = Config::testing();
-    let handler = McpRequestHandler::new(server, config);
+    let (_tmp, handler) = test_handler();
 
     let req = json!({
         "jsonrpc": "2.0",
@@ -312,11 +286,7 @@ async fn test_initialize_without_protocol_version() {
 
 #[tokio::test]
 async fn test_response_format_correctness() {
-    let server = Arc::new(McpPluginServer::new_with_file_storage(
-        "./test-templates".into(),
-    ));
-    let config = Config::testing();
-    let handler = McpRequestHandler::new(server, config);
+    let (_tmp, handler) = test_handler();
 
     let req = json!({
         "jsonrpc": "2.0",

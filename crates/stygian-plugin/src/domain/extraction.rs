@@ -191,11 +191,6 @@ impl ExtractionTemplate {
                 "template name cannot be empty".to_string(),
             ));
         }
-        if self.regions.is_empty() {
-            return Err(crate::error::PluginError::TemplateValidationError(
-                "template must have at least one region".to_string(),
-            ));
-        }
         for region in &self.regions {
             region.validate()?;
         }

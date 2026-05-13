@@ -24,7 +24,7 @@ Half-Open  →  probe failure  →  Open
 | Field | Default | Description |
 | ----- | ------- | ----------- |
 | `failure_threshold` | 5 | Consecutive failures before circuit opens |
-| `reset_timeout` | 60 s | Time before the breaker enters Half-Open |
+| `reset_timeout` | 30 s | Time before the breaker enters Half-Open |
 
 Convenience constructors:
 
@@ -38,12 +38,12 @@ use stygian_graph::adapters::fallback::{
 ### Querying state
 
 ```rust
-use stygian_graph::adapters::resilience::CircuitBreakerState;
+use stygian_graph::ports::CircuitState;
 
 match breaker.state() {
-    CircuitBreakerState::Closed    => { /* normal path */ }
-    CircuitBreakerState::Open      => { /* skip, fail fast */ }
-    CircuitBreakerState::HalfOpen  => { /* probe once */ }
+    CircuitState::Closed    => { /* normal path */ }
+    CircuitState::Open      => { /* skip, fail fast */ }
+    CircuitState::HalfOpen  => { /* probe once */ }
 }
 ```
 

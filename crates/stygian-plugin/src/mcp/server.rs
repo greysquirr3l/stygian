@@ -15,7 +15,7 @@ use crate::{
     storage::{FileTemplateStore, MemoryIdempotencyStore},
 };
 
-const SUPPORTED_TRANSFORMATIONS: &str = "Trim, Lowercase, Uppercase, RemoveWhitespace, NormalizeWhitespace, StripHtml, DecodeHtml, ParseJson, Regex:pattern/replacement";
+const SUPPORTED_TRANSFORMATIONS: &str = "Trim, Lowercase, Uppercase, RemoveWhitespace, NormalizeWhitespace, StripHtml, DecodeHtml, ParseJson, Regex:pattern/replacement, RegexExtract:pattern/group, Coerce:type, Filter:pattern";
 
 /// MCP server providing plugin extraction tools
 #[allow(dead_code)]
@@ -568,6 +568,51 @@ pub(crate) fn parse_transformation(s: &str) -> Result<Transformation> {
         "StripHtml" => Ok(Transformation::StripHtml),
         "DecodeHtml" => Ok(Transformation::DecodeHtml),
         "ParseJson" => Ok(Transformation::ParseJson),
+        s if s.starts_with("RegexExtract:") => s
+            .strip_prefix("RegexExtract:")
+            .and_then(|rest| rest.rsplit_once('/'))
+            .map_or_else(
+                || {
+                    Err(PluginError::TemplateValidationError(
+                        "RegexExtract format: RegexExtract:pattern/group".to_string(),
+                    ))
+                },
+                |(pattern, group_str)| {
+                    let group = group_str.parse::<usize>().map_err(|_| {
+                        PluginError::TemplateValidationError(
+                            "RegexExtract group must be a positive integer".to_string(),
+                        )
+                    })?;
+                    Ok(Transformation::RegexExtract {
+                        pattern: pattern.to_string(),
+                        group,
+                    })
+                },
+            ),
+        s if s.starts_with("Coerce:") => s.strip_prefix("Coerce:").map_or_else(
+            || {
+                Err(PluginError::TemplateValidationError(
+                    "Coerce format: Coerce:type".to_string(),
+                ))
+            },
+            |target_type| {
+                Ok(Transformation::Coerce {
+                    target_type: target_type.to_string(),
+                })
+            },
+        ),
+        s if s.starts_with("Filter:") => s.strip_prefix("Filter:").map_or_else(
+            || {
+                Err(PluginError::TemplateValidationError(
+                    "Filter format: Filter:pattern".to_string(),
+                ))
+            },
+            |pattern| {
+                Ok(Transformation::Filter {
+                    pattern: pattern.to_string(),
+                })
+            },
+        ),
         s if s.starts_with("Regex:") => s
             .strip_prefix("Regex:")
             .and_then(|rest| rest.split_once('/'))
@@ -599,6 +644,9 @@ mod tests {
         assert!(parse_transformation("Trim").is_ok());
         assert!(parse_transformation("Lowercase").is_ok());
         assert!(parse_transformation("Regex:pattern/replace").is_ok());
+        assert!(parse_transformation("RegexExtract:price:(\\d+\\.\\d+)/1").is_ok());
+        assert!(parse_transformation("Coerce:number").is_ok());
+        assert!(parse_transformation("Filter:^ok$").is_ok());
         assert!(parse_transformation("Invalid").is_err());
     }
 }

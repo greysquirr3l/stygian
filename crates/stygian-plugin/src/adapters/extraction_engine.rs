@@ -35,22 +35,22 @@ impl ExtractionEngine {
                     let count = extracted_values.len();
 
                     // For single values, return as-is; for multiple, return array
-                    let result_value = match extracted_values.len() {
-                        0 => serde_json::json!(null),
-                        1 => serde_json::Value::String(
-                            extracted_values.first().cloned().ok_or_else(|| {
+                    let result_value = if count == 1 {
+                        serde_json::Value::String(extracted_values.into_iter().next().ok_or_else(
+                            || {
                                 PluginError::ExtractionError(
                                     "selector matched a single value, but none were extracted"
                                         .to_string(),
                                 )
-                            })?,
-                        ),
-                        _ => serde_json::Value::Array(
+                            },
+                        )?)
+                    } else {
+                        serde_json::Value::Array(
                             extracted_values
                                 .into_iter()
                                 .map(serde_json::Value::String)
                                 .collect(),
-                        ),
+                        )
                     };
 
                     result
