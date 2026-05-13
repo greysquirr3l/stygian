@@ -52,10 +52,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     match config.transport {
         TransportMode::Stdio => {
-            let server = Arc::new(stygian_plugin::mcp::server::McpPluginServer::new_with_file_storage(
-                config.templates_dir.clone(),
-            ));
-            let handler = stygian_plugin::mcp::handler::McpRequestHandler::new(Arc::clone(&server), config);
+            let server = Arc::new(
+                stygian_plugin::mcp::server::McpPluginServer::new_with_file_storage(
+                    config.templates_dir.clone(),
+                ),
+            );
+            let handler =
+                stygian_plugin::mcp::handler::McpRequestHandler::new(Arc::clone(&server), config);
             run_stdio(handler).await
         }
         TransportMode::Http => {
