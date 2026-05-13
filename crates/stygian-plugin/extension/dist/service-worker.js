@@ -217,6 +217,17 @@
                                 const template = JSON.parse(message.json);
                                 // Regenerate ID to avoid conflicts
                                 template.id = generateUUID();
+                                // Normalise metadata so the popup can always read usage_count etc.
+                                const now = new Date().toISOString();
+                                template.metadata = {
+                                    usage_count: 0,
+                                    version: 1,
+                                    tags: [],
+                                    created_at: now,
+                                    updated_at: now,
+                                    ...(template.metadata ?? {}),
+                                };
+                                template.regions = template.regions ?? [];
                                 await saveTemplate(template);
                                 sendResponse({
                                     success: true,
@@ -227,6 +238,38 @@
                                 sendResponse({
                                     success: false,
                                     error: "Invalid JSON",
+                                });
+                            }
+                        }
+                        break;
+                    case "sync_from_server":
+                        {
+                            try {
+                                const backendResponse = await callBackendTool("plugin_list_templates", {});
+                                // The MCP tool returns a JSON string in result.result.content[0].text
+                                const content = backendResponse?.result?.content?.[0]?.text ?? null;
+                                if (!content) {
+                                    sendResponse({
+                                        success: false,
+                                        error: "No content in server response",
+                                    });
+                                    break;
+                                }
+                                const parsed = JSON.parse(content);
+                                const serverTemplates = parsed.templates ?? [];
+                                // Upsert by original ID (server-authoritative), preserving ID
+                                let imported = 0;
+                                for (const template of serverTemplates) {
+                                    // Keep the server's ID so future applies route correctly
+                                    await saveTemplate(template);
+                                    imported++;
+                                }
+                                sendResponse({ success: true, imported });
+                            }
+                            catch (e) {
+                                sendResponse({
+                                    success: false,
+                                    error: String(e),
                                 });
                             }
                         }
