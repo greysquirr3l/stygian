@@ -1,11 +1,11 @@
 //! Basic extraction example
 
+use serde_json::json;
 use stygian_plugin::{
-    domain::{ExtractionTemplate, Region, Selector, ExtractionRequest, Transformation},
     adapters::ExtractionEngine,
+    domain::{ExtractionRequest, ExtractionTemplate, Region, Selector, Transformation},
     ports::PluginExtractionPort,
 };
-use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Selector::css("h1.product-title"),
                 json!({"type": "string"}),
             )
-            .with_transformation(Transformation::Trim)
+            .with_transformation(Transformation::Trim),
         )
         .with_region(
             Region::new(
@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Selector::css(".product-price"),
                 json!({"type": "string"}),
             )
-            .with_transformation(Transformation::Trim)
+            .with_transformation(Transformation::Trim),
         );
 
     // Sample HTML

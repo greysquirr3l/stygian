@@ -30,8 +30,8 @@
 //! └──────────────────────────────────┘
 //! ```
 
-pub mod server;
 pub mod handler;
+pub mod server;
 
-pub use server::McpPluginServer;
 pub use handler::McpRequestHandler;
+pub use server::McpPluginServer;

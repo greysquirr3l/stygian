@@ -1,6 +1,6 @@
 //! Fallback chain service adapter.
 //!
-//! Implements [`ScrapingService`] by trying a prioritised list of inner services
+//! Implements [`crate::ports::ScrapingService`] by trying a prioritised list of inner services
 //! with per-service circuit breakers.  When a service's circuit is **Open** or
 //! its execution fails, the chain automatically moves to the next lower-priority
 //! service.
@@ -8,7 +8,7 @@
 //! # Behaviour
 //!
 //! 1. Services are tried in registration order (index 0 = highest priority).
-//! 2. A service is **skipped** when its circuit breaker is [`CircuitState::Open`]
+//! 2. A service is **skipped** when its circuit breaker is [`crate::ports::CircuitState::Open`]
 //!    and the reset timeout has not yet elapsed.  The chain then probes it once
 //!    the timeout passes (half-open probe).
 //! 3. On **success** the corresponding circuit breaker records the success and the

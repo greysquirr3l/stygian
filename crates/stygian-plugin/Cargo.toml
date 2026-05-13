@@ -21,7 +21,7 @@ anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 
 # Stygian crates
-stygian-graph = { path = "../stygian-graph", optional = true }
+stygian-graph = { path = "../stygian-graph", version = "0.12.1", optional = true }
 
 # Parsing
 scraper = "0.25"
