@@ -15,13 +15,14 @@
 
 ## What is stygian?
 
-Stygian is a monorepo with five complementary Rust crates for building robust, scalable web scraping systems:
+Stygian is a monorepo with six complementary Rust crates for building robust, scalable web scraping systems:
 
 - **[stygian-graph](crates/stygian-graph)** — Graph-based scraping engine (DAGs, AI extraction, distributed execution)
 - **[stygian-browser](crates/stygian-browser)** — Anti-detection browser automation (stealth features, human behavior)
 - **[stygian-proxy](crates/stygian-proxy)** — Proxy pool management (multi-protocol, health checking, sticky sessions)
 - **[stygian-charon](crates/stygian-charon)** — Diagnostics & policy planning (HAR forensics, provider classification, SLOs)
 - **[stygian-mcp](crates/stygian-mcp)** — MCP aggregator (LLM tool integration via JSON-RPC 2.0)
+- **[stygian-plugin](crates/stygian-plugin)** — Visual data extraction with MCP tools and browser extension
 
 ---
 
