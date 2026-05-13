@@ -1,243 +1,242 @@
-/**
- * Content script for Stygian Plugin
- * Handles DOM interaction, element selection, and template recording
- */
-// ─────────────────────────────────────────────────────────────────────────────
-// State Management
-// ─────────────────────────────────────────────────────────────────────────────
-let recordingState = {
-    active: false,
-    template_name: '',
-    regions: [],
-};
-let highlightedElement = null;
-let selectedElements = new Set();
-// ─────────────────────────────────────────────────────────────────────────────
-// Message Listener
-// ─────────────────────────────────────────────────────────────────────────────
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    console.log('[Content] Received message:', message.type);
-    switch (message.type) {
-        case 'start_recording':
-            startRecording(message.template_name);
-            sendResponse({ success: true });
-            break;
-        case 'stop_recording':
-            stopRecording();
-            sendResponse({ success: true, regions: recordingState.regions });
-            break;
-        case 'get_selected_selector':
-            if (highlightedElement) {
-                const path = getElementPath(highlightedElement);
+"use strict";
+/// <reference types="chrome" />
+(() => {
+    // ─────────────────────────────────────────────────────────────────────────────
+    // State Management
+    // ─────────────────────────────────────────────────────────────────────────────
+    let recordingState = {
+        active: false,
+        template_name: "",
+        regions: [],
+    };
+    let highlightedElement = null;
+    let selectedElements = new Set();
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Message Listener
+    // ─────────────────────────────────────────────────────────────────────────────
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+        console.log("[Content] Received message:", message.type);
+        switch (message.type) {
+            case "start_recording":
+                startRecording(message.template_name);
+                sendResponse({ success: true });
+                break;
+            case "stop_recording":
+                stopRecording();
+                sendResponse({ success: true, regions: recordingState.regions });
+                break;
+            case "get_selected_selector":
+                if (highlightedElement) {
+                    const path = getElementPath(highlightedElement);
+                    sendResponse({
+                        success: true,
+                        css_path: path.css,
+                        xpath_path: path.xpath,
+                        element_text: highlightedElement.textContent?.slice(0, 100),
+                    });
+                }
+                else {
+                    sendResponse({ success: false, error: "No element selected" });
+                }
+                break;
+            case "highlight_selector":
+                highlightElementBySelector(message.selector);
+                sendResponse({ success: true });
+                break;
+            case "clear_highlights":
+                clearAllHighlights();
+                sendResponse({ success: true });
+                break;
+            case "get_page_html":
                 sendResponse({
                     success: true,
-                    css_path: path.css,
-                    xpath_path: path.xpath,
-                    element_text: highlightedElement.textContent?.slice(0, 100),
+                    html: document.documentElement.outerHTML,
                 });
-            }
-            else {
-                sendResponse({ success: false, error: 'No element selected' });
-            }
-            break;
-        case 'highlight_selector':
-            highlightElementBySelector(message.selector);
-            sendResponse({ success: true });
-            break;
-        case 'clear_highlights':
-            clearAllHighlights();
-            sendResponse({ success: true });
-            break;
-        case 'get_page_html':
-            sendResponse({
-                success: true,
-                html: document.documentElement.outerHTML,
-            });
-            break;
-        default:
-            sendResponse({ success: false, error: 'Unknown message type' });
-    }
-    return true; // Keep the message channel open for async responses
-});
-// ─────────────────────────────────────────────────────────────────────────────
-// Recording Functions
-// ─────────────────────────────────────────────────────────────────────────────
-function startRecording(templateName) {
-    recordingState.active = true;
-    recordingState.template_name = templateName;
-    recordingState.regions = [];
-    console.log('[Content] Recording started:', templateName);
-    // Add recording UI
-    showRecordingOverlay();
-    // Enable element selection on hover
-    document.addEventListener('mouseover', onElementHover, true);
-    document.addEventListener('mousedown', onElementClick, true);
-}
-function stopRecording() {
-    recordingState.active = false;
-    console.log('[Content] Recording stopped');
-    // Remove recording UI
-    removeRecordingOverlay();
-    // Disable element selection
-    document.removeEventListener('mouseover', onElementHover, true);
-    document.removeEventListener('mousedown', onElementClick, true);
-    clearAllHighlights();
-}
-// ─────────────────────────────────────────────────────────────────────────────
-// DOM Interaction
-// ─────────────────────────────────────────────────────────────────────────────
-function onElementHover(event) {
-    if (!recordingState.active)
-        return;
-    const target = event.target;
-    if (target === highlightedElement)
-        return;
-    // Clear previous highlight
-    if (highlightedElement) {
-        unhighlightElement(highlightedElement);
-    }
-    // Highlight new element
-    highlightedElement = target;
-    highlightElement(target);
-}
-function onElementClick(event) {
-    if (!recordingState.active)
-        return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (!highlightedElement)
-        return;
-    // In recording mode, add this element as a region
-    const name = prompt('Enter region name (e.g., "product_title"):');
-    if (!name)
-        return;
-    const path = getElementPath(highlightedElement);
-    const region = {
-        name,
-        selector: {
-            type: 'dual',
-            css: path.css,
-            xpath: path.xpath,
-        },
-        schema: { type: 'string' },
-        transformations: [],
-    };
-    recordingState.regions.push(region);
-    console.log('[Content] Region added:', name);
-    // Send update to popup
-    chrome.runtime.sendMessage({
-        type: 'region_added',
-        region,
+                break;
+            default:
+                sendResponse({ success: false, error: "Unknown message type" });
+        }
+        return true; // Keep the message channel open for async responses
     });
-}
-// ─────────────────────────────────────────────────────────────────────────────
-// Element Highlighting
-// ─────────────────────────────────────────────────────────────────────────────
-function highlightElement(element) {
-    const rect = element.getBoundingClientRect();
-    const highlight = document.createElement('div');
-    highlight.className = 'stygian-highlight';
-    highlight.setAttribute('data-stygian', 'highlight');
-    highlight.style.position = 'fixed';
-    highlight.style.top = rect.top + 'px';
-    highlight.style.left = rect.left + 'px';
-    highlight.style.width = rect.width + 'px';
-    highlight.style.height = rect.height + 'px';
-    highlight.style.backgroundColor = 'rgba(52, 152, 219, 0.3)';
-    highlight.style.border = '2px solid #3498db';
-    highlight.style.borderRadius = '4px';
-    highlight.style.zIndex = '999998';
-    highlight.style.pointerEvents = 'none';
-    document.body.appendChild(highlight);
-    // Store reference on element
-    element.__stygian_highlight = highlight;
-}
-function unhighlightElement(element) {
-    const highlight = element.__stygian_highlight;
-    if (highlight) {
-        highlight.remove();
-        delete element.__stygian_highlight;
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Recording Functions
+    // ─────────────────────────────────────────────────────────────────────────────
+    function startRecording(templateName) {
+        recordingState.active = true;
+        recordingState.template_name = templateName;
+        recordingState.regions = [];
+        console.log("[Content] Recording started:", templateName);
+        // Add recording UI
+        showRecordingOverlay();
+        // Enable element selection on hover
+        document.addEventListener("mouseover", onElementHover, true);
+        document.addEventListener("mousedown", onElementClick, true);
     }
-}
-function clearAllHighlights() {
-    document.querySelectorAll('[data-stygian="highlight"]').forEach((el) => {
-        el.remove();
-    });
-    highlightedElement = null;
-    selectedElements.clear();
-}
-function highlightElementBySelector(selector) {
-    clearAllHighlights();
-    try {
-        const elements = document.querySelectorAll(selector);
-        elements.forEach((el) => {
-            highlightElement(el);
-            selectedElements.add(el);
+    function stopRecording() {
+        recordingState.active = false;
+        console.log("[Content] Recording stopped");
+        // Remove recording UI
+        removeRecordingOverlay();
+        // Disable element selection
+        document.removeEventListener("mouseover", onElementHover, true);
+        document.removeEventListener("mousedown", onElementClick, true);
+        clearAllHighlights();
+    }
+    // ─────────────────────────────────────────────────────────────────────────────
+    // DOM Interaction
+    // ─────────────────────────────────────────────────────────────────────────────
+    function onElementHover(event) {
+        if (!recordingState.active)
+            return;
+        const target = event.target;
+        if (target === highlightedElement)
+            return;
+        // Clear previous highlight
+        if (highlightedElement) {
+            unhighlightElement(highlightedElement);
+        }
+        // Highlight new element
+        highlightedElement = target;
+        highlightElement(target);
+    }
+    function onElementClick(event) {
+        if (!recordingState.active)
+            return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (!highlightedElement)
+            return;
+        // In recording mode, add this element as a region
+        const name = prompt('Enter region name (e.g., "product_title"):');
+        if (!name)
+            return;
+        const path = getElementPath(highlightedElement);
+        const region = {
+            name,
+            selector: {
+                type: "dual",
+                css: path.css,
+                xpath: path.xpath,
+            },
+            schema: { type: "string" },
+            transformations: [],
+        };
+        recordingState.regions.push(region);
+        console.log("[Content] Region added:", name);
+        // Send update to popup
+        chrome.runtime.sendMessage({
+            type: "region_added",
+            region,
         });
     }
-    catch (e) {
-        console.error('[Content] Invalid selector:', e);
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Element Highlighting
+    // ─────────────────────────────────────────────────────────────────────────────
+    function highlightElement(element) {
+        const rect = element.getBoundingClientRect();
+        const highlight = document.createElement("div");
+        highlight.className = "stygian-highlight";
+        highlight.setAttribute("data-stygian", "highlight");
+        highlight.style.position = "fixed";
+        highlight.style.top = rect.top + "px";
+        highlight.style.left = rect.left + "px";
+        highlight.style.width = rect.width + "px";
+        highlight.style.height = rect.height + "px";
+        highlight.style.backgroundColor = "rgba(52, 152, 219, 0.3)";
+        highlight.style.border = "2px solid #3498db";
+        highlight.style.borderRadius = "4px";
+        highlight.style.zIndex = "999998";
+        highlight.style.pointerEvents = "none";
+        document.body.appendChild(highlight);
+        // Store reference on element
+        element.__stygian_highlight = highlight;
     }
-}
-// ─────────────────────────────────────────────────────────────────────────────
-// Selector Generation
-// ─────────────────────────────────────────────────────────────────────────────
-function getElementPath(element) {
-    return {
-        css: getCSSPath(element),
-        xpath: getXPathPath(element),
-    };
-}
-function getCSSPath(element) {
-    const path = [];
-    let el = element;
-    while (el && el !== document.documentElement) {
-        let selector = el.tagName.toLowerCase();
-        if (el.id) {
-            selector += `#${el.id}`;
-            path.unshift(selector);
-            break;
+    function unhighlightElement(element) {
+        const highlight = element.__stygian_highlight;
+        if (highlight) {
+            highlight.remove();
+            delete element.__stygian_highlight;
         }
-        if (el.className) {
-            const classes = el.className
-                .split(/\s+/)
-                .filter((c) => c)
-                .join('.');
-            if (classes)
-                selector += `.${classes}`;
-        }
-        path.unshift(selector);
-        el = el.parentElement;
     }
-    return path.join(' > ');
-}
-function getXPathPath(element) {
-    const path = [];
-    let el = element;
-    while (el && el !== document.documentElement) {
-        let index = 1;
-        let sibling = el.previousElementSibling;
-        while (sibling) {
-            if (sibling.tagName === el.tagName) {
-                index++;
+    function clearAllHighlights() {
+        document.querySelectorAll('[data-stygian="highlight"]').forEach((el) => {
+            el.remove();
+        });
+        highlightedElement = null;
+        selectedElements.clear();
+    }
+    function highlightElementBySelector(selector) {
+        clearAllHighlights();
+        try {
+            const elements = document.querySelectorAll(selector);
+            elements.forEach((el) => {
+                highlightElement(el);
+                selectedElements.add(el);
+            });
+        }
+        catch (e) {
+            console.error("[Content] Invalid selector:", e);
+        }
+    }
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Selector Generation
+    // ─────────────────────────────────────────────────────────────────────────────
+    function getElementPath(element) {
+        return {
+            css: getCSSPath(element),
+            xpath: getXPathPath(element),
+        };
+    }
+    function getCSSPath(element) {
+        const path = [];
+        let el = element;
+        while (el && el !== document.documentElement) {
+            let selector = el.tagName.toLowerCase();
+            if (el.id) {
+                selector += `#${el.id}`;
+                path.unshift(selector);
+                break;
             }
-            sibling = sibling.previousElementSibling;
+            if (el.className) {
+                const classes = el.className
+                    .split(/\s+/)
+                    .filter((c) => c)
+                    .join(".");
+                if (classes)
+                    selector += `.${classes}`;
+            }
+            path.unshift(selector);
+            el = el.parentElement;
         }
-        const tagName = el.tagName.toLowerCase();
-        const part = `${tagName}[${index}]`;
-        path.unshift(part);
-        el = el.parentElement;
+        return path.join(" > ");
     }
-    return '/' + path.join('/');
-}
-// ─────────────────────────────────────────────────────────────────────────────
-// Recording Overlay UI
-// ─────────────────────────────────────────────────────────────────────────────
-function showRecordingOverlay() {
-    const overlay = document.createElement('div');
-    overlay.id = 'stygian-recording-overlay';
-    overlay.setAttribute('data-stygian', 'overlay');
-    overlay.innerHTML = `
+    function getXPathPath(element) {
+        const path = [];
+        let el = element;
+        while (el && el !== document.documentElement) {
+            let index = 1;
+            let sibling = el.previousElementSibling;
+            while (sibling) {
+                if (sibling.tagName === el.tagName) {
+                    index++;
+                }
+                sibling = sibling.previousElementSibling;
+            }
+            const tagName = el.tagName.toLowerCase();
+            const part = `${tagName}[${index}]`;
+            path.unshift(part);
+            el = el.parentElement;
+        }
+        return "/" + path.join("/");
+    }
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Recording Overlay UI
+    // ─────────────────────────────────────────────────────────────────────────────
+    function showRecordingOverlay() {
+        const overlay = document.createElement("div");
+        overlay.id = "stygian-recording-overlay";
+        overlay.setAttribute("data-stygian", "overlay");
+        overlay.innerHTML = `
     <div style="
       position: fixed;
       top: 0;
@@ -283,26 +282,26 @@ function showRecordingOverlay() {
       </div>
     </div>
   `;
-    document.body.appendChild(overlay);
-    // Overlay is not interactive, so we allow normal interaction through it
-    const overlayDiv = overlay.querySelector('div');
-    if (overlayDiv) {
-        overlayDiv.style.pointerEvents = 'auto';
+        document.body.appendChild(overlay);
+        // Overlay is not interactive, so we allow normal interaction through it
+        const overlayDiv = overlay.querySelector("div");
+        if (overlayDiv) {
+            overlayDiv.style.pointerEvents = "auto";
+        }
     }
-}
-function removeRecordingOverlay() {
-    const overlay = document.getElementById('stygian-recording-overlay');
-    if (overlay) {
-        overlay.remove();
+    function removeRecordingOverlay() {
+        const overlay = document.getElementById("stygian-recording-overlay");
+        if (overlay) {
+            overlay.remove();
+        }
     }
-}
-// ─────────────────────────────────────────────────────────────────────────────
-// Initialization
-// ─────────────────────────────────────────────────────────────────────────────
-console.log('[Content] Stygian Plugin content script loaded');
-// Notify service worker that we're ready
-chrome.runtime.sendMessage({
-    type: 'content_script_ready',
-});
-export {};
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Initialization
+    // ─────────────────────────────────────────────────────────────────────────────
+    console.log("[Content] Stygian Plugin content script loaded");
+    // Notify service worker that we're ready
+    chrome.runtime.sendMessage({
+        type: "content_script_ready",
+    });
+})();
 //# sourceMappingURL=content-script.js.map
