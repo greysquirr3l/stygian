@@ -36,7 +36,6 @@ use stygian_graph::adapters::http::{HttpAdapter, HttpConfig};
 use stygian_graph::mcp::McpGraphServer;
 use stygian_graph::ports::{ScrapingService, ServiceInput};
 use stygian_plugin::adapters::{ExtractionEngine, PluginExtractionAdapter};
-use stygian_plugin::mcp::McpPluginServer;
 use stygian_plugin::storage::{FileTemplateStore, MemoryIdempotencyStore};
 use stygian_proxy::mcp::McpProxyServer;
 
@@ -59,7 +58,7 @@ const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2025-11-25", "2025-06-18", "2024
 pub struct McpAggregator {
     browser: Arc<McpBrowserServer>,
     proxy: Arc<McpProxyServer>,
-    plugin: Arc<McpPluginServer>,
+    plugin: Arc<stygian_plugin::mcp::McpPluginServer>,
     /// HTTP-first fallback chain: tries a plain HTTP scrape first, automatically
     /// falls back to plugin template extraction on failure or circuit-open.
     fallback_chain: Arc<FallbackChainService>,
@@ -93,7 +92,7 @@ impl McpAggregator {
         let idempotency_store: Arc<dyn stygian_plugin::ports::IdempotencyKeyStore> =
             Arc::new(MemoryIdempotencyStore::new());
 
-        let plugin = Arc::new(McpPluginServer::with_adapters(
+        let plugin = Arc::new(stygian_plugin::mcp::McpPluginServer::with_adapters(
             Arc::clone(&template_store),
             Arc::new(ExtractionEngine),
             Arc::clone(&idempotency_store),

@@ -113,7 +113,7 @@ fn execute_region(document: &Html, region: &crate::domain::Region) -> Result<Vec
     // Parse as CSS selector
     let selector = ScraperSelector::parse(selector_text).map_err(|e| {
         crate::error::PluginError::SelectorError {
-            selector: selector_text.to_string(),
+            selector: selector_text.clone(),
             reason: format!("Failed to parse CSS selector: {e:?}"),
         }
     })?;

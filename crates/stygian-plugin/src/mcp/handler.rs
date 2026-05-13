@@ -27,12 +27,13 @@ impl McpRequestHandler {
     pub async fn handle(&self, req: &Value) -> Option<Value> {
         // Check if this is a well-formed notification (jsonrpc="2.0", has method, id field missing)
         let is_notification = is_jsonrpc_notification(req);
-        let id = req.get("id").unwrap_or(&Value::Null);
+        // Clone id to avoid Send trait issues across await points (serde_json::Value contains Cell)
+        let id = req.get("id").cloned().unwrap_or(Value::Null);
 
         // Validate JSON-RPC 2.0 structure
         if req.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
             return Some(error_response(
-                id,
+                &id,
                 -32600,
                 "Invalid request: expected jsonrpc='2.0'",
             ));
@@ -40,7 +41,7 @@ impl McpRequestHandler {
 
         let Some(method) = req.get("method").and_then(Value::as_str) else {
             return Some(error_response(
-                id,
+                &id,
                 -32600,
                 "Invalid request: missing string 'method'",
             ));
@@ -48,11 +49,11 @@ impl McpRequestHandler {
 
         // Dispatch to appropriate handler
         let response = match method {
-            "initialize" => self.handle_initialize(id, req),
-            "initialized" | "notifications/initialized" | "ping" => ok_response(id, &json!({})),
-            "tools/list" => self.handle_tools_list(id),
-            "tools/call" => self.handle_tools_call(id, req).await,
-            other => error_response(id, -32601, &format!("Method not found: {other}")),
+            "initialize" => self.handle_initialize(&id, req),
+            "initialized" | "notifications/initialized" | "ping" => ok_response(&id, &json!({})),
+            "tools/list" => self.handle_tools_list(&id),
+            "tools/call" => self.handle_tools_call(&id, req).await,
+            other => error_response(&id, -32601, &format!("Method not found: {other}")),
         };
 
         // Notifications don't get responses
@@ -118,12 +119,12 @@ impl McpRequestHandler {
         let Some(name) = params.get("name").and_then(Value::as_str) else {
             return error_response(id, -32602, "Missing tool 'name'");
         };
+        let name = name.to_string();
 
-        let empty = Value::Null;
-        let args = params.get("arguments").unwrap_or(&empty);
+        let args = params.get("arguments").cloned().unwrap_or(Value::Null);
 
         // Call the server's tool handler
-        let result = self.server.handle_tool_call(name, args).await;
+        let result = self.server.handle_tool_call(&name, &args).await;
 
         // Return wrapped in MCP response format
         ok_response(id, &result)

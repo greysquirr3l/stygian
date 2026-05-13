@@ -2,6 +2,7 @@
 //!
 //! Provides the core tool definitions and request handling for plugin extraction.
 
+use scraper::{Html, Selector as ScraperSelector};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -248,6 +249,7 @@ impl McpPluginServer {
         let region_name = args
             .get("region_name")
             .and_then(Value::as_str)
+            .map(ToString::to_string)
             .ok_or_else(|| {
                 PluginError::TemplateValidationError("missing 'region_name'".to_string())
             })?;
@@ -286,8 +288,7 @@ impl McpPluginServer {
                 })?;
                 let transformation = parse_transformation(s).map_err(|_| {
                     PluginError::TemplateValidationError(format!(
-                        "invalid transformation at index {idx}: '{s}'. Supported transformations: {}",
-                        SUPPORTED_TRANSFORMATIONS
+                        "invalid transformation at index {idx}: '{s}'. Supported transformations: {SUPPORTED_TRANSFORMATIONS}"
                     ))
                 })?;
                 transformations.push(transformation);
@@ -295,7 +296,7 @@ impl McpPluginServer {
         }
 
         // Create region
-        let mut region = Region::new(region_name, selector, json!({"type": "string"}));
+        let mut region = Region::new(&region_name, selector, json!({"type": "string"}));
         for t in transformations {
             region = region.with_transformation(t);
         }
@@ -322,15 +323,17 @@ impl McpPluginServer {
         let html = args
             .get("html")
             .and_then(Value::as_str)
+            .map(ToString::to_string)
             .ok_or_else(|| PluginError::TemplateValidationError("missing 'html'".to_string()))?;
 
         let url = args
             .get("url")
             .and_then(Value::as_str)
+            .map(ToString::to_string)
             .ok_or_else(|| PluginError::TemplateValidationError("missing 'url'".to_string()))?;
 
         let template = self.template_store.get(&template_id).await?;
-        let request = ExtractionRequest::new(template, url, html);
+        let request = ExtractionRequest::new(template, &url, &html);
         let result = self.extraction_engine.execute(&request).await?;
 
         Ok(json!({
@@ -424,35 +427,39 @@ impl McpPluginServer {
         let html = args
             .get("html")
             .and_then(Value::as_str)
+            .map(ToString::to_string)
             .ok_or_else(|| PluginError::TemplateValidationError("missing 'html'".to_string()))?;
 
         let url = args
             .get("url")
             .and_then(Value::as_str)
+            .map(ToString::to_string)
             .ok_or_else(|| PluginError::TemplateValidationError("missing 'url'".to_string()))?;
 
         let root_selector_str = args
             .get("root_selector")
             .and_then(Value::as_str)
+            .map(ToString::to_string)
             .ok_or_else(|| {
                 PluginError::TemplateValidationError("missing 'root_selector'".to_string())
             })?;
 
         // Parse root selector as CSS (XPath not supported for batch extraction)
-        use scraper::Selector as ScraperSelector;
         let root_selector =
-            ScraperSelector::parse(root_selector_str).map_err(|_| PluginError::SelectorError {
-                selector: root_selector_str.to_string(),
+            ScraperSelector::parse(&root_selector_str).map_err(|_| PluginError::SelectorError {
+                selector: root_selector_str.clone(),
                 reason: "Failed to parse root_selector as CSS selector".to_string(),
             })?;
 
-        // Parse HTML and find all root containers
-        use scraper::Html;
-        let document = Html::parse_document(html);
-        let root_elements: Vec<String> = document
-            .select(&root_selector)
-            .map(|elem| elem.inner_html())
-            .collect();
+        // Parse HTML and find all root containers.
+        // Keep this in a separate scope so non-Send scraper internals are dropped before await.
+        let root_elements: Vec<String> = {
+            let document = Html::parse_document(&html);
+            document
+                .select(&root_selector)
+                .map(|elem| elem.inner_html())
+                .collect()
+        };
 
         if root_elements.is_empty() {
             return Err(PluginError::ExtractionError(format!(
@@ -465,7 +472,7 @@ impl McpPluginServer {
         let mut results = Vec::new();
 
         for root_html in root_elements {
-            let request = ExtractionRequest::new(template.clone(), url, &root_html);
+            let request = ExtractionRequest::new(template.clone(), &url, &root_html);
             match self.extraction_engine.execute(&request).await {
                 Ok(result) => {
                     results.push(json!({
@@ -495,12 +502,19 @@ impl McpPluginServer {
         let html = args
             .get("html")
             .and_then(Value::as_str)
+            .map(ToString::to_string)
             .ok_or_else(|| PluginError::TemplateValidationError("missing 'html'".to_string()))?;
 
-        let selector_css = args.get("selector_css").and_then(Value::as_str);
-        let selector_xpath = args.get("selector_xpath").and_then(Value::as_str);
+        let selector_css = args
+            .get("selector_css")
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
+        let selector_xpath = args
+            .get("selector_xpath")
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
 
-        let selector = match (selector_css, selector_xpath) {
+        let selector = match (&selector_css, &selector_xpath) {
             (Some(css), Some(xpath)) => Selector::dual(css, xpath),
             (Some(css), None) => Selector::css(css),
             (None, Some(xpath)) => Selector::xpath(xpath),
@@ -515,7 +529,10 @@ impl McpPluginServer {
 
         // Use the CSS selector for validation/counting since XPath is not yet supported
         if let Some(css) = selector_css {
-            let (is_valid, count) = self.extraction_engine.validate_selector(html, css).await?;
+            let (is_valid, count) = self
+                .extraction_engine
+                .validate_selector(&html, &css)
+                .await?;
             Ok(json!({
                 "selector": css,
                 "selector_type": "css",
