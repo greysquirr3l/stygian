@@ -89,6 +89,7 @@ tasks/
 reference_materials/
 crates/stygian-proxy/docs
 .obliviate.toml
+PROGRESS.md
 PROGRESS-*.md
 docs/spider-gap-analysis.md
 .papertowelignore
@@ -98,4 +99,3 @@ reference_projects/
 stygian-technical-assessment.md
 docs/stygian-local-refactor-plan.md
 docs/technical-assessment.md
-crates/stygian-plugin/extension/node_modules/PROGRESS.md
