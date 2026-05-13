@@ -81,6 +81,82 @@ type PopupRegion = any;
     );
   });
 
+  // ── Import JSON ──────────────────────────────────────────────────────────────
+
+  const importTemplateBtn = document.getElementById("import-template-btn");
+  const importTemplateFile = document.getElementById(
+    "import-template-file",
+  ) as HTMLInputElement | null;
+
+  importTemplateBtn?.addEventListener("click", () => {
+    importTemplateFile?.click();
+  });
+
+  importTemplateFile?.addEventListener("change", async () => {
+    const file = importTemplateFile?.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      // Support single template object or array of templates
+      const items: any[] = Array.isArray(parsed) ? parsed : [parsed];
+
+      let imported = 0;
+      let failed = 0;
+      for (const item of items) {
+        const response = await sendMessage({
+          type: "import_template",
+          json: JSON.stringify(item),
+        });
+        if (response.success) {
+          imported++;
+        } else {
+          failed++;
+        }
+      }
+
+      loadTemplates();
+      const msg =
+        failed === 0
+          ? `Imported ${imported} template${imported !== 1 ? "s" : ""}!`
+          : `Imported ${imported}, failed ${failed}`;
+      showStatus(msg, failed === 0 ? "success" : "error");
+    } catch (_e) {
+      showStatus("Invalid JSON file", "error");
+    } finally {
+      // Reset so the same file can be re-imported if needed
+      if (importTemplateFile) importTemplateFile.value = "";
+    }
+  });
+
+  // ── Sync from Server ─────────────────────────────────────────────────────────
+
+  const syncTemplatesBtn = document.getElementById("sync-templates-btn");
+
+  syncTemplatesBtn?.addEventListener("click", async () => {
+    syncTemplatesBtn.setAttribute("disabled", "true");
+    showStatus("Syncing templates from server…", "info");
+
+    try {
+      const response = await sendMessage({ type: "sync_from_server" });
+
+      if (response.success) {
+        loadTemplates();
+        showStatus(
+          `Synced ${response.imported} template${response.imported !== 1 ? "s" : ""} from server!`,
+          "success",
+        );
+      } else {
+        showStatus("Sync failed: " + response.error, "error");
+      }
+    } catch (e) {
+      showStatus("Sync error: " + String(e), "error");
+    } finally {
+      syncTemplatesBtn.removeAttribute("disabled");
+    }
+  });
+
   async function loadTemplates() {
     const response = await sendMessage({ type: "list_templates" });
 
@@ -99,11 +175,11 @@ type PopupRegion = any;
         (template) => `
         <div class="template-card">
           <div class="template-info">
-            <h3>${template.name}</h3>
+            <h3>${template.name ?? "(unnamed)"}</h3>
             ${template.description ? `<p>${template.description}</p>` : ""}
             <div class="template-meta">
-              <span>${template.regions.length} regions</span>
-              <span>${template.metadata.usage_count} uses</span>
+              <span>${(template.regions ?? []).length} regions</span>
+              <span>${template.metadata?.usage_count ?? 0} uses</span>
             </div>
           </div>
           <div class="template-actions">
@@ -302,15 +378,7 @@ type PopupRegion = any;
           );
 
           // Reset form
-          recordNameInput.value = "";
-          recordDescriptionInput.value = "";
-          startRecordingBtn!.disabled = false;
-          finishRecordingBtn!.disabled = true;
-          recordNameInput.disabled = false;
-          recordDescriptionInput.disabled = false;
-          isRecording = false;
-          currentRecordingTemplate = null;
-          updateRecordingRegionsList([]);
+          resetRecordingForm();
 
           // Switch to templates tab to show the new template
           document
@@ -329,10 +397,26 @@ type PopupRegion = any;
       if (message.type === "region_added" && currentRecordingTemplate) {
         currentRecordingTemplate.regions.push(message.region);
         updateRecordingRegionsList(currentRecordingTemplate.regions);
+      } else if (message.type === "recording_stopped") {
+        // User pressed Escape to stop recording - reset UI without saving
+        resetRecordingForm();
+        showStatus("Recording stopped", "info");
       }
       sendResponse({ success: true });
     },
   );
+
+  function resetRecordingForm() {
+    recordNameInput.value = "";
+    recordDescriptionInput.value = "";
+    startRecordingBtn!.disabled = false;
+    finishRecordingBtn!.disabled = true;
+    recordNameInput.disabled = false;
+    recordDescriptionInput.disabled = false;
+    isRecording = false;
+    currentRecordingTemplate = null;
+    updateRecordingRegionsList([]);
+  }
 
   function updateRecordingRegionsList(regions: PopupRegion[]) {
     if (!recordingRegionsList) return;

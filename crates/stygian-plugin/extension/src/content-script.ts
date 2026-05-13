@@ -1,6 +1,5 @@
 /// <reference types="chrome" />
 
-
 /**
  * Content script for Stygian Plugin
  * Handles DOM interaction, element selection, and template recording
@@ -100,6 +99,9 @@ type CsElementWithPath = any;
     // Enable element selection on hover
     document.addEventListener("mouseover", onElementHover, true);
     document.addEventListener("mousedown", onElementClick, true);
+
+    // Allow Escape key to stop recording
+    document.addEventListener("keydown", onEscapeKey, true);
   }
 
   function stopRecording() {
@@ -113,6 +115,7 @@ type CsElementWithPath = any;
     // Disable element selection
     document.removeEventListener("mouseover", onElementHover, true);
     document.removeEventListener("mousedown", onElementClick, true);
+    document.removeEventListener("keydown", onEscapeKey, true);
 
     clearAllHighlights();
   }
@@ -169,6 +172,24 @@ type CsElementWithPath = any;
       type: "region_added",
       region,
     });
+  }
+
+  function onEscapeKey(event: KeyboardEvent) {
+    if (!recordingState.active) return;
+
+    if (event.key === "Escape" || event.code === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+
+      console.log("[Content] Escape pressed - stopping recording");
+
+      stopRecording();
+
+      // Notify popup that recording was stopped
+      chrome.runtime.sendMessage({
+        type: "recording_stopped",
+      });
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
