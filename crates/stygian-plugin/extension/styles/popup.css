@@ -427,6 +427,12 @@ select:focus {
   margin-top: 4px;
 }
 
+.connection-diagnostics {
+  font-size: 12px;
+  color: #666;
+  margin-top: 6px;
+}
+
 .hint code {
   background: #f0f0f0;
   padding: 1px 4px;

@@ -496,11 +496,27 @@ type PopupRegion = any;
   const connectionStatusText = document.getElementById(
     "connection-status-text",
   );
+  const connectionDiagnosticsEl = document.getElementById(
+    "connection-diagnostics",
+  );
 
   function setConnectionStatus(connected: boolean, label: string) {
     if (!connectionStatusEl || !connectionStatusText) return;
     connectionStatusEl.className = `connection-status ${connected ? "connected" : "disconnected"}`;
     connectionStatusText.textContent = label;
+  }
+
+  function setConnectionDiagnostics(label: string) {
+    if (!connectionDiagnosticsEl) return;
+    connectionDiagnosticsEl.textContent = label;
+  }
+
+  function formatCheckTime(date: Date): string {
+    return date.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
   }
 
   async function loadBackendUrl() {
@@ -515,16 +531,25 @@ type PopupRegion = any;
   }
 
   async function checkConnection() {
+    const startedAt = new Date();
+    const t0 = performance.now();
     setConnectionStatus(false, "Checking\u2026");
     try {
       const response = await sendMessage({ type: "check_connection" });
+      const elapsedMs = Math.round(performance.now() - t0);
+      const checkTime = formatCheckTime(startedAt);
       if (response.success) {
         setConnectionStatus(true, `Connected \u2014 ${response.url}`);
+        setConnectionDiagnostics(`Last check: ${checkTime} (${elapsedMs}ms)`);
       } else {
         setConnectionStatus(false, `Disconnected: ${response.error}`);
+        setConnectionDiagnostics(`Last check: ${checkTime} (${elapsedMs}ms)`);
       }
     } catch (error) {
+      const elapsedMs = Math.round(performance.now() - t0);
+      const checkTime = formatCheckTime(startedAt);
       setConnectionStatus(false, `Disconnected: ${String(error)}`);
+      setConnectionDiagnostics(`Last check: ${checkTime} (${elapsedMs}ms)`);
     }
   }
 
