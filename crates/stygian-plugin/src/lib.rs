@@ -113,6 +113,12 @@ pub mod storage;
 /// MCP (Model Context Protocol) server for the plugin system
 pub mod mcp;
 
+/// HTTP transport for the MCP server (requires `http` feature)
+///
+/// Exposes JSON-RPC 2.0 over HTTP with CORS support for browser extension use.
+#[cfg(feature = "http")]
+pub mod http;
+
 /// Runtime configuration for the standalone MCP server
 pub mod config;
 

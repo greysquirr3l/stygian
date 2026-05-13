@@ -465,6 +465,72 @@ function showStatus(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Settings Tab
+// ─────────────────────────────────────────────────────────────────────────────
+
+const backendUrlInput = document.getElementById(
+  "backend-url-input",
+) as HTMLInputElement | null;
+const saveBackendUrlBtn = document.getElementById(
+  "save-backend-url-btn",
+) as HTMLButtonElement | null;
+const checkConnectionBtn = document.getElementById(
+  "check-connection-btn",
+) as HTMLButtonElement | null;
+const connectionStatusEl = document.getElementById("connection-status");
+const connectionStatusText = document.getElementById("connection-status-text");
+
+function setConnectionStatus(connected: boolean, label: string) {
+  if (!connectionStatusEl || !connectionStatusText) return;
+  connectionStatusEl.className = `connection-status ${connected ? "connected" : "disconnected"}`;
+  connectionStatusText.textContent = label;
+}
+
+async function loadBackendUrl() {
+  const response = await sendMessage({ type: "get_backend_url" });
+  if (response.success && backendUrlInput) {
+    backendUrlInput.value = response.url;
+  }
+}
+
+async function checkConnection() {
+  setConnectionStatus(false, "Checking\u2026");
+  const response = await sendMessage({ type: "check_connection" });
+  if (response.success) {
+    setConnectionStatus(true, `Connected \u2014 ${response.url}`);
+  } else {
+    setConnectionStatus(false, `Disconnected: ${response.error}`);
+  }
+}
+
+saveBackendUrlBtn?.addEventListener("click", async () => {
+  const url = backendUrlInput?.value.trim();
+  if (!url) {
+    showStatus("URL cannot be empty", "error");
+    return;
+  }
+  const response = await sendMessage({ type: "set_backend_url", url });
+  if (response.success) {
+    showStatus("Backend URL saved", "success");
+    await checkConnection();
+  } else {
+    showStatus("Failed to save URL: " + response.error, "error");
+  }
+});
+
+checkConnectionBtn?.addEventListener("click", () => {
+  checkConnection();
+});
+
+// Load settings and run initial health check when settings tab is opened
+document
+  .querySelector('[data-tab="settings"]')
+  ?.addEventListener("click", async () => {
+    await loadBackendUrl();
+    await checkConnection();
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Initialization
 // ─────────────────────────────────────────────────────────────────────────────
 

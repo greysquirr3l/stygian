@@ -3,16 +3,25 @@
  * Manages template storage, communication with backend MCP server, and template execution
  */
 
-import type {
-    ExtractionTemplate
-} from "./types";
+import type { ExtractionTemplate } from "./types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Storage Keys
 // ─────────────────────────────────────────────────────────────────────────────
 
 const STORAGE_KEY_TEMPLATES = "stygian_plugin_templates";
-const BACKEND_ENDPOINT = "http://localhost:3000"; // Change to your backend URL
+const STORAGE_KEY_BACKEND_URL = "stygian_plugin_backend_url";
+const DEFAULT_BACKEND_URL = "http://localhost:3000";
+
+/** Resolves the configured backend URL from sync storage, falling back to the default. */
+async function getBackendUrl(): Promise<string> {
+  const storage = await chrome.storage.sync.get(STORAGE_KEY_BACKEND_URL);
+  const url = storage[STORAGE_KEY_BACKEND_URL] as string | undefined;
+  if (url && url.trim().length > 0) {
+    return url.trim().replace(/\/$/, "");
+  }
+  return DEFAULT_BACKEND_URL;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Template Management
@@ -76,7 +85,8 @@ async function callBackendTool(
   console.log("[ServiceWorker] Calling backend tool:", toolName, args);
 
   try {
-    const response = await fetch(`${BACKEND_ENDPOINT}/mcp/tools/call`, {
+    const backendUrl = await getBackendUrl();
+    const response = await fetch(`${backendUrl}/mcp/tools/call`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -266,6 +276,52 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
           }
           break;
+
+        case "check_connection": {
+          try {
+            const backendUrl = await getBackendUrl();
+            const resp = await fetch(`${backendUrl}/health`, {
+              signal: AbortSignal.timeout(3000),
+            });
+            if (resp.ok) {
+              const data = (await resp.json()) as Record<string, unknown>;
+              sendResponse({
+                success: true,
+                status: data["status"] ?? "ok",
+                url: backendUrl,
+              });
+            } else {
+              sendResponse({
+                success: false,
+                error: `HTTP ${resp.status}`,
+                url: backendUrl,
+              });
+            }
+          } catch (e) {
+            const backendUrl = await getBackendUrl().catch(
+              () => DEFAULT_BACKEND_URL,
+            );
+            sendResponse({ success: false, error: String(e), url: backendUrl });
+          }
+          break;
+        }
+
+        case "set_backend_url": {
+          const newUrl = ((message.url as string) || "").trim();
+          if (!newUrl) {
+            sendResponse({ success: false, error: "URL cannot be empty" });
+            break;
+          }
+          await chrome.storage.sync.set({ [STORAGE_KEY_BACKEND_URL]: newUrl });
+          sendResponse({ success: true, url: newUrl });
+          break;
+        }
+
+        case "get_backend_url": {
+          const url = await getBackendUrl();
+          sendResponse({ success: true, url });
+          break;
+        }
 
         default:
           sendResponse({

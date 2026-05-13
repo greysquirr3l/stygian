@@ -234,3 +234,111 @@ let chain = Arc::new(
 
 `default_primary_breaker()` uses a 5-failure threshold and 30-second reset window.
 `default_fallback_breaker()` uses a 3-failure threshold and 60-second reset window.
+
+---
+
+## HTTP Transport
+
+`stygian-plugin-mcp` ships with a built-in HTTP server for use with browser
+extensions or any HTTP client.  The server speaks JSON-RPC 2.0 over HTTP and
+supports CORS (`Access-Control-Allow-Origin: *`), making it safe to call from
+Chrome extensions with opaque `chrome-extension://` origins.
+
+### Starting the HTTP server
+
+```sh
+# Default: binds 0.0.0.0:3000
+stygian-plugin-mcp --transport http
+
+# Custom port
+stygian-plugin-mcp --transport http --http-port 8080
+
+# With a templates directory
+stygian-plugin-mcp --transport http --templates-dir ~/.stygian/templates
+```
+
+The binary must be compiled with the `http` feature (enabled by default in
+release builds):
+
+```sh
+cargo install stygian-plugin-mcp --features http
+```
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET`  | `/health` | Liveness probe. Returns `{"status":"ok","service":"stygian-plugin-mcp"}`. |
+| `GET`  | `/mcp/tools/list` | List all registered MCP tools. |
+| `POST` | `/mcp/tools/call` | Invoke a single tool (bare or full JSON-RPC envelope). |
+| `POST` | `/mcp` | Full JSON-RPC 2.0 dispatch — any method. |
+
+### Request formats
+
+**Full JSON-RPC envelope** (preferred):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "plugin_apply_template",
+    "arguments": {
+      "template_id": "my-template",
+      "html": "<html>...",
+      "url": "https://example.com"
+    }
+  }
+}
+```
+
+**Bare call** (Chrome extension shorthand, `POST /mcp/tools/call` only):
+
+```json
+{
+  "name": "plugin_apply_template",
+  "arguments": {
+    "template_id": "my-template",
+    "html": "<html>...",
+    "url": "https://example.com"
+  }
+}
+```
+
+Both forms return a standard JSON-RPC 2.0 response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": { "content": [{ "type": "text", "text": "..." }], "isError": false }
+}
+```
+
+### Chrome extension integration
+
+The bundled Chrome extension (`crates/stygian-plugin/extension/`) connects to the
+HTTP server automatically.  The backend URL defaults to `http://localhost:3000` and
+can be changed from the **Settings** tab in the extension popup.
+
+```
+Extension popup → Settings → MCP Server URL → http://localhost:3000 → Save
+```
+
+The Settings tab also shows a live connection status dot (green/red) that pings
+`/health` on demand.
+
+### Error responses
+
+JSON-RPC errors follow the spec:
+
+| Code | Meaning |
+|------|---------|
+| `-32700` | Parse error — request body is not valid JSON |
+| `-32600` | Invalid request — missing `jsonrpc` or `method` |
+| `-32602` | Invalid params — `name` field missing from `tools/call` |
+| `-32601` | Method not found — unknown JSON-RPC method |
+
+Tool-level errors (e.g. unknown template) are returned as `result.isError = true`
+content, not as JSON-RPC error objects.  This matches the MCP specification.

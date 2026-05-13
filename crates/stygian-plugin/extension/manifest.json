@@ -6,7 +6,7 @@
   "permissions": ["activeTab", "scripting", "storage", "webRequest"],
   "host_permissions": ["<all_urls>"],
   "background": {
-    "service_worker": "service-worker.js"
+    "service_worker": "dist/service-worker.js"
   },
   "action": {
     "default_popup": "popup.html",
@@ -15,7 +15,7 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content-script.js"],
+      "js": ["dist/content-script.js"],
       "run_at": "document_start",
       "all_frames": false
     }

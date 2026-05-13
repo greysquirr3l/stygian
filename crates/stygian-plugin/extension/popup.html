@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stygian Plugin</title>
+    <link rel="stylesheet" href="styles/popup.css" />
+  </head>
+  <body>
+    <div id="app" class="container">
+      <!-- Header -->
+      <header class="header">
+        <div class="header-content">
+          <h1>Stygian Plugin</h1>
+          <p class="subtitle">Visual Data Extraction</p>
+        </div>
+      </header>
+
+      <!-- Tabs -->
+      <nav class="tabs">
+        <button class="tab-btn active" data-tab="templates">Templates</button>
+        <button class="tab-btn" data-tab="record">Record</button>
+        <button class="tab-btn" data-tab="apply">Apply</button>
+        <button class="tab-btn" data-tab="settings">Settings</button>
+      </nav>
+
+      <!-- Templates Tab -->
+      <div id="templates" class="tab-content active">
+        <div class="tab-header">
+          <h2>Extraction Templates</h2>
+          <button id="new-template-btn" class="btn btn-primary">
+            + New Template
+          </button>
+        </div>
+
+        <div id="templates-list" class="templates-list">
+          <p class="empty-state">
+            No templates yet. Create one to get started!
+          </p>
+        </div>
+      </div>
+
+      <!-- Record Tab -->
+      <div id="record" class="tab-content">
+        <div class="tab-header">
+          <h2>Record New Template</h2>
+        </div>
+
+        <div class="form-group">
+          <label>Template Name</label>
+          <input
+            id="record-name-input"
+            type="text"
+            placeholder="e.g., Product Listings"
+            class="input"
+          />
+        </div>
+
+        <div class="form-group">
+          <label>Description (optional)</label>
+          <textarea
+            id="record-description-input"
+            placeholder="Describe what this template extracts"
+            class="textarea"
+          ></textarea>
+        </div>
+
+        <div class="form-group">
+          <h3>Regions to Record</h3>
+          <div id="recording-regions-list" class="regions-list"></div>
+        </div>
+
+        <div class="button-group">
+          <button id="start-recording-btn" class="btn btn-success">
+            Start Recording
+          </button>
+          <button id="finish-recording-btn" class="btn btn-secondary" disabled>
+            Finish & Save
+          </button>
+        </div>
+
+        <div id="recording-status" class="status-message"></div>
+      </div>
+
+      <!-- Apply Tab -->
+      <div id="apply" class="tab-content">
+        <div class="tab-header">
+          <h2>Apply Template</h2>
+        </div>
+
+        <div class="form-group">
+          <label>Select Template</label>
+          <select id="apply-template-select" class="input">
+            <option value="">-- Choose a template --</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <button id="apply-template-btn" class="btn btn-primary">
+            Extract Data
+          </button>
+        </div>
+
+        <div id="extraction-results" class="results-container"></div>
+      </div>
+
+      <!-- Settings Tab -->
+      <div id="settings" class="tab-content">
+        <div class="tab-header">
+          <h2>Settings</h2>
+        </div>
+
+        <div class="form-group">
+          <label for="backend-url-input">MCP Server URL</label>
+          <div class="input-row">
+            <input
+              id="backend-url-input"
+              type="url"
+              placeholder="http://localhost:3000"
+              class="input"
+            />
+            <button id="save-backend-url-btn" class="btn btn-primary">Save</button>
+          </div>
+          <p class="hint">Run <code>stygian-plugin-mcp --transport http</code> locally.</p>
+        </div>
+
+        <div class="form-group">
+          <label>Connection Status</label>
+          <div id="connection-status" class="connection-status disconnected">
+            <span class="status-dot"></span>
+            <span id="connection-status-text">Checking&hellip;</span>
+          </div>
+          <button id="check-connection-btn" class="btn btn-secondary" style="margin-top:8px">
+            Check Connection
+          </button>
+        </div>
+      </div>
+
+    <script src="dist/popup.js"></script>
+  </body>
+</html>
