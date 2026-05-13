@@ -7,6 +7,8 @@ use crate::error::PluginError;
 use crate::{Result, ports::PluginExtractionPort};
 use async_trait::async_trait;
 use scraper::{Html, Selector as ScraperSelector};
+use serde::Serialize;
+use std::collections::HashMap;
 use std::time::Instant;
 
 /// Extraction engine: executes templates against HTML
@@ -14,6 +16,34 @@ use std::time::Instant;
 /// Uses the `scraper` crate to evaluate CSS selectors against HTML,
 /// applies transformations, and builds structured results.
 pub struct ExtractionEngine;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TransformationDebugStep {
+    pub transformation: String,
+    pub input: String,
+    pub output: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RegionDebugInfo {
+    pub selector: String,
+    pub selector_kind: String,
+    pub evaluation_scope: String,
+    pub match_count: usize,
+    pub raw_match_html: Option<String>,
+    pub raw_extracted_value: Option<String>,
+    pub transformation_output_chain: Vec<TransformationDebugStep>,
+    pub final_value: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ExtractionDebugInfo {
+    pub evaluation_scope: String,
+    pub root_html_snippet: String,
+    pub regions: HashMap<String, RegionDebugInfo>,
+}
 
 impl ExtractionEngine {
     /// Execute an extraction request
@@ -95,6 +125,24 @@ impl ExtractionEngine {
 
         Ok(result)
     }
+
+    pub fn diagnose(request: &ExtractionRequest, evaluation_scope: &str) -> ExtractionDebugInfo {
+        let document = Html::parse_document(&request.html);
+        let mut regions = HashMap::new();
+
+        for region in &request.template.regions {
+            regions.insert(
+                region.name.clone(),
+                diagnose_region(&document, region, evaluation_scope),
+            );
+        }
+
+        ExtractionDebugInfo {
+            evaluation_scope: evaluation_scope.to_string(),
+            root_html_snippet: truncate_debug(&request.html, 2_000),
+            regions,
+        }
+    }
 }
 
 /// Execute extraction for a single region
@@ -138,6 +186,135 @@ fn execute_region(document: &Html, region: &crate::domain::Region) -> Result<Vec
     }
 
     Ok(results)
+}
+
+fn diagnose_region(
+    document: &Html,
+    region: &crate::domain::Region,
+    evaluation_scope: &str,
+) -> RegionDebugInfo {
+    let (selector_kind, selector_text) = match &region.selector {
+        crate::domain::Selector::Css(css) => ("css", css.as_str()),
+        crate::domain::Selector::XPath(xpath) => ("xpath", xpath.as_str()),
+        crate::domain::Selector::Both { css, .. } => ("dual", css.as_str()),
+    };
+
+    if matches!(&region.selector, crate::domain::Selector::XPath(_)) {
+        return RegionDebugInfo {
+            selector: selector_text.to_string(),
+            selector_kind: selector_kind.to_string(),
+            evaluation_scope: evaluation_scope.to_string(),
+            match_count: 0,
+            raw_match_html: None,
+            raw_extracted_value: None,
+            transformation_output_chain: Vec::new(),
+            final_value: None,
+            error: Some(
+                "XPath selectors are not yet supported. Please use CSS selectors instead."
+                    .to_string(),
+            ),
+        };
+    }
+
+    let selector = match ScraperSelector::parse(selector_text) {
+        Ok(selector) => selector,
+        Err(error) => {
+            return RegionDebugInfo {
+                selector: selector_text.to_string(),
+                selector_kind: selector_kind.to_string(),
+                evaluation_scope: evaluation_scope.to_string(),
+                match_count: 0,
+                raw_match_html: None,
+                raw_extracted_value: None,
+                transformation_output_chain: Vec::new(),
+                final_value: None,
+                error: Some(format!("Failed to parse CSS selector: {error:?}")),
+            };
+        }
+    };
+
+    let elements: Vec<_> = document.select(&selector).collect();
+    let match_count = elements.len();
+
+    let Some(first_match) = elements.first() else {
+        return RegionDebugInfo {
+            selector: selector_text.to_string(),
+            selector_kind: selector_kind.to_string(),
+            evaluation_scope: evaluation_scope.to_string(),
+            match_count,
+            raw_match_html: None,
+            raw_extracted_value: None,
+            transformation_output_chain: Vec::new(),
+            final_value: None,
+            error: Some(format!("No elements matched CSS selector: {selector_text}")),
+        };
+    };
+
+    let raw_match_html = truncate_debug(&first_match.html(), 800);
+    let raw_extracted_value = first_match.inner_html();
+    let (transformation_output_chain, final_value, error) =
+        trace_transformations(&region.transformations, &raw_extracted_value);
+
+    RegionDebugInfo {
+        selector: selector_text.to_string(),
+        selector_kind: selector_kind.to_string(),
+        evaluation_scope: evaluation_scope.to_string(),
+        match_count,
+        raw_match_html: Some(raw_match_html),
+        raw_extracted_value: Some(truncate_debug(&raw_extracted_value, 800)),
+        transformation_output_chain,
+        final_value: final_value.map(|value| truncate_debug(&value, 800)),
+        error,
+    }
+}
+
+fn trace_transformations(
+    transformations: &[crate::domain::Transformation],
+    raw_value: &str,
+) -> (Vec<TransformationDebugStep>, Option<String>, Option<String>) {
+    let mut current = raw_value.to_string();
+    let mut steps = Vec::with_capacity(transformations.len());
+
+    for transformation in transformations {
+        let input = current.clone();
+        match transformation.apply(&current) {
+            Ok(output) => {
+                steps.push(TransformationDebugStep {
+                    transformation: format!("{transformation:?}"),
+                    input: truncate_debug(&input, 400),
+                    output: Some(truncate_debug(&output, 400)),
+                    error: None,
+                });
+                current = output;
+            }
+            Err(error) => {
+                let error_text = error.to_string();
+                steps.push(TransformationDebugStep {
+                    transformation: format!("{transformation:?}"),
+                    input: truncate_debug(&input, 400),
+                    output: None,
+                    error: Some(error_text.clone()),
+                });
+                return (steps, None, Some(error_text));
+            }
+        }
+    }
+
+    (steps, Some(current), None)
+}
+
+fn truncate_debug(value: &str, max_chars: usize) -> String {
+    let mut truncated = String::new();
+
+    for (index, ch) in value.chars().enumerate() {
+        if index >= max_chars {
+            truncated.push_str("...");
+            break;
+        }
+        truncated.push(ch);
+    }
+
+    truncated
 }
 
 #[async_trait]
@@ -243,5 +420,63 @@ mod tests {
         let (valid, _) = engine.validate_selector(html, ">>>invalid").await?;
         assert!(!valid);
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_supported_css_selector_features() -> crate::Result<()> {
+        let html = r#"
+            <table>
+                <tr data-testid="person-row">
+                    <td>skip</td>
+                    <td><span class="name">Ada Lovelace</span></td>
+                    <td data-testid="name-cell"><span class="title">Founder</span></td>
+                </tr>
+            </table>
+        "#;
+        let engine = ExtractionEngine;
+
+        let (valid, count) = engine
+            .validate_selector(
+                html,
+                "td:nth-child(2), [data-testid*='name'] .title, tr[data-testid='person-row'] .name",
+            )
+            .await?;
+
+        assert!(valid);
+        assert_eq!(count, 3);
+        Ok(())
+    }
+
+    #[test]
+    fn test_diagnostics_capture_match_and_transformations() {
+        let html = r#"<div><span class="name">  Ada Lovelace  </span></div>"#;
+        let region = Region::new(
+            "full_name",
+            Selector::css(".name"),
+            json!({"type": "string"}),
+        )
+        .with_transformation(Transformation::Trim)
+        .with_transformation(Transformation::Uppercase);
+        let template = ExtractionTemplate::new("Debug Test").with_region(region);
+        let request = ExtractionRequest::new(template, "http://example.com", html);
+
+        let diagnostics = ExtractionEngine::diagnose(&request, "document");
+        let region = diagnostics.regions.get("full_name");
+
+        assert!(region.is_some());
+        assert_eq!(region.map(|value| value.match_count), Some(1));
+        assert_eq!(
+            region.and_then(|value| value.final_value.as_deref()),
+            Some("ADA LOVELACE"),
+        );
+        assert_eq!(
+            region.map(|value| value.transformation_output_chain.len()),
+            Some(2),
+        );
+        assert!(
+            region
+                .and_then(|value| value.raw_match_html.as_deref())
+                .is_some_and(|value| value.contains("Ada Lovelace"))
+        );
     }
 }

@@ -17,6 +17,99 @@ type SwExtractionTemplate = any;
   const STORAGE_KEY_BACKEND_URL = "stygian_plugin_backend_url";
   const DEFAULT_BACKEND_URL = "http://localhost:3000";
 
+  function normalizeSelector(selector: any): Record<string, any> {
+    if (!selector || typeof selector !== "object") {
+      return {};
+    }
+
+    if (
+      typeof selector.css === "string" ||
+      typeof selector.xpath === "string"
+    ) {
+      return {
+        ...selector,
+        type:
+          selector.type ??
+          (selector.css && selector.xpath
+            ? "dual"
+            : selector.css
+              ? "css"
+              : "xpath"),
+      };
+    }
+
+    if (typeof selector.Css === "string") {
+      return {
+        type: "css",
+        css: selector.Css,
+      };
+    }
+
+    if (typeof selector.XPath === "string") {
+      return {
+        type: "xpath",
+        xpath: selector.XPath,
+      };
+    }
+
+    const dual = selector.Both;
+    if (dual && typeof dual === "object") {
+      return {
+        type: "dual",
+        css: dual.css,
+        xpath: dual.xpath,
+      };
+    }
+
+    return { ...selector };
+  }
+
+  function normalizeTransformation(transformation: any): any {
+    if (!transformation || typeof transformation !== "object") {
+      return transformation;
+    }
+
+    const params =
+      transformation.params && typeof transformation.params === "object"
+        ? transformation.params
+        : {};
+
+    return {
+      ...params,
+      ...transformation,
+      type: transformation.type,
+    };
+  }
+
+  function normalizeTemplateShape(
+    template: SwExtractionTemplate,
+  ): SwExtractionTemplate {
+    if (!template || typeof template !== "object") {
+      return template;
+    }
+
+    const regions = Array.isArray(template.regions)
+      ? template.regions.map((region: any) => ({
+          ...region,
+          selector: normalizeSelector(region?.selector),
+          transformations: Array.isArray(region?.transformations)
+            ? region.transformations.map((step: any) =>
+                normalizeTransformation(step),
+              )
+            : [],
+        }))
+      : [];
+
+    return {
+      ...template,
+      regions,
+      metadata:
+        template.metadata && typeof template.metadata === "object"
+          ? template.metadata
+          : {},
+    };
+  }
+
   /** Resolves the configured backend URL from sync storage, falling back to the default. */
   async function getBackendUrl(): Promise<string> {
     const storage = await chrome.storage.sync.get(STORAGE_KEY_BACKEND_URL);
@@ -32,22 +125,23 @@ type SwExtractionTemplate = any;
   // ─────────────────────────────────────────────────────────────────────────────
 
   async function saveTemplate(template: SwExtractionTemplate): Promise<void> {
+    const normalizedTemplate = normalizeTemplateShape(template);
     const storage = await chrome.storage.local.get(STORAGE_KEY_TEMPLATES);
     const templates = (storage[STORAGE_KEY_TEMPLATES] ||
       []) as SwExtractionTemplate[];
 
-    const index = templates.findIndex((t) => t.id === template.id);
+    const index = templates.findIndex((t) => t.id === normalizedTemplate.id);
     if (index >= 0) {
-      templates[index] = template;
+      templates[index] = normalizedTemplate;
     } else {
-      templates.push(template);
+      templates.push(normalizedTemplate);
     }
 
     await chrome.storage.local.set({
       [STORAGE_KEY_TEMPLATES]: templates,
     });
 
-    console.log("[ServiceWorker] Template saved:", template.id);
+    console.log("[ServiceWorker] Template saved:", normalizedTemplate.id);
   }
 
   async function getTemplate(
@@ -57,12 +151,15 @@ type SwExtractionTemplate = any;
     const templates = (storage[STORAGE_KEY_TEMPLATES] ||
       []) as SwExtractionTemplate[];
 
-    return templates.find((t) => t.id === templateId) || null;
+    const template = templates.find((t) => t.id === templateId) || null;
+    return template ? normalizeTemplateShape(template) : null;
   }
 
   async function listTemplates(): Promise<SwExtractionTemplate[]> {
     const storage = await chrome.storage.local.get(STORAGE_KEY_TEMPLATES);
-    return (storage[STORAGE_KEY_TEMPLATES] || []) as SwExtractionTemplate[];
+    return (
+      (storage[STORAGE_KEY_TEMPLATES] || []) as SwExtractionTemplate[]
+    ).map((template) => normalizeTemplateShape(template));
   }
 
   async function deleteTemplate(templateId: string): Promise<void> {
@@ -118,6 +215,170 @@ type SwExtractionTemplate = any;
       console.error("[ServiceWorker] Backend communication error:", error);
       throw error;
     }
+  }
+
+  async function ensureContentScriptReady(tabId: number): Promise<void> {
+    try {
+      await chrome.tabs.sendMessage(tabId, { type: "ping" });
+      return;
+    } catch {
+      // Content script may not be injected yet (e.g., tab opened before reload).
+    }
+
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["dist/content-script.js"],
+    });
+
+    // Retry once after explicit injection.
+    await chrome.tabs.sendMessage(tabId, { type: "ping" });
+  }
+
+  function getToolTextPayload(response: any): string | null {
+    return response?.result?.content?.[0]?.text ?? null;
+  }
+
+  function isToolError(response: any): boolean {
+    return Boolean(response?.result?.isError);
+  }
+
+  function isTemplateNotFoundToolError(response: any): boolean {
+    if (!isToolError(response)) return false;
+    const text = getToolTextPayload(response);
+    return (
+      typeof text === "string" &&
+      text.toLowerCase().includes("template not found")
+    );
+  }
+
+  function parseToolJsonPayload(response: any): Record<string, any> {
+    const text = getToolTextPayload(response);
+    if (typeof text !== "string" || text.length === 0) {
+      throw new Error("Missing backend payload");
+    }
+
+    return JSON.parse(text) as Record<string, any>;
+  }
+
+  function mapTransformationsToBackend(
+    transformations: any[] | undefined,
+  ): string[] {
+    if (!Array.isArray(transformations)) return [];
+
+    const mapped: string[] = [];
+    for (const item of transformations) {
+      if (typeof item === "string") {
+        mapped.push(item);
+        continue;
+      }
+
+      const type = item?.type;
+      if (typeof type !== "string") continue;
+
+      if (
+        [
+          "Trim",
+          "Lowercase",
+          "Uppercase",
+          "RemoveWhitespace",
+          "NormalizeWhitespace",
+          "StripHtml",
+          "DecodeHtml",
+          "ParseJson",
+        ].includes(type)
+      ) {
+        mapped.push(type);
+        continue;
+      }
+
+      if (type === "Regex") {
+        mapped.push(`Regex:${item.pattern ?? ""}/${item.replacement ?? ""}`);
+        continue;
+      }
+
+      if (type === "RegexExtract") {
+        mapped.push(`RegexExtract:${item.pattern ?? ""}/${item.group ?? 0}`);
+        continue;
+      }
+
+      if (type === "Filter") {
+        mapped.push(`Filter:${item.pattern ?? ""}`);
+      }
+    }
+
+    return mapped;
+  }
+
+  async function syncTemplateToBackend(
+    template: SwExtractionTemplate,
+  ): Promise<string> {
+    const createResponse = await callBackendTool("plugin_create_template", {
+      name: template.name,
+      description: template.description,
+      tags: template.metadata?.tags ?? [],
+    });
+
+    if (isToolError(createResponse)) {
+      throw new Error(
+        getToolTextPayload(createResponse) ??
+          "Failed to create template in backend",
+      );
+    }
+
+    const created = parseToolJsonPayload(createResponse);
+    const backendTemplateId = created.template_id as string | undefined;
+    if (!backendTemplateId) {
+      throw new Error("Backend did not return a template_id");
+    }
+
+    const regions = Array.isArray(template.regions) ? template.regions : [];
+    for (const region of regions) {
+      const addRegionResponse = await callBackendTool("plugin_add_region", {
+        template_id: backendTemplateId,
+        region_name: region.name,
+        selector_css: region.selector?.css,
+        selector_xpath: region.selector?.xpath,
+        transformations: mapTransformationsToBackend(region.transformations),
+      });
+
+      if (isToolError(addRegionResponse)) {
+        throw new Error(
+          getToolTextPayload(addRegionResponse) ??
+            `Failed to sync region '${region.name}'`,
+        );
+      }
+    }
+
+    template.metadata = {
+      ...(template.metadata ?? {}),
+      backend_template_id: backendTemplateId,
+      updated_at: new Date().toISOString(),
+    };
+    await saveTemplate(template);
+
+    return backendTemplateId;
+  }
+
+  async function applyTemplateLocally(
+    tabId: number,
+    template: SwExtractionTemplate,
+  ): Promise<any> {
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: "extract_with_template",
+      template,
+    });
+
+    if (!response?.success) {
+      throw new Error(response?.error ?? "Local extraction failed");
+    }
+
+    return {
+      data: response.data ?? {},
+      metadata: {
+        ...(response.metadata ?? {}),
+        source: "local_fallback",
+      },
+    };
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -213,6 +474,17 @@ type SwExtractionTemplate = any;
                 break;
               }
 
+              try {
+                await ensureContentScriptReady(tabs[0].id!);
+              } catch {
+                sendResponse({
+                  success: false,
+                  error:
+                    "Cannot connect to this page. Switch to a normal website tab and reload it, then try again.",
+                });
+                break;
+              }
+
               const htmlResponse = await chrome.tabs.sendMessage(tabs[0].id!, {
                 type: "get_page_html",
               });
@@ -225,20 +497,56 @@ type SwExtractionTemplate = any;
                 break;
               }
 
-              // Call backend to execute extraction
-              const backendResponse = await callBackendTool(
-                "plugin_apply_template",
-                {
-                  template_id: message.template_id,
-                  html: htmlResponse.html,
-                  url: tabs[0].url || "",
-                },
-              );
+              const backendTemplateId =
+                template.metadata?.backend_template_id ?? message.template_id;
+              const applyArgs = {
+                template_id: backendTemplateId,
+                html: htmlResponse.html,
+                url: tabs[0].url || "",
+              };
 
-              sendResponse({
-                success: true,
-                result: backendResponse,
-              });
+              try {
+                // Call backend to execute extraction
+                let backendResponse = await callBackendTool(
+                  "plugin_apply_template",
+                  applyArgs,
+                );
+
+                // If backend does not know this template, sync local template then retry once.
+                if (isTemplateNotFoundToolError(backendResponse)) {
+                  const syncedBackendTemplateId =
+                    await syncTemplateToBackend(template);
+                  backendResponse = await callBackendTool(
+                    "plugin_apply_template",
+                    {
+                      ...applyArgs,
+                      template_id: syncedBackendTemplateId,
+                    },
+                  );
+                }
+
+                // If backend still returns tool error (e.g., read-only storage), fallback locally.
+                if (isToolError(backendResponse)) {
+                  const localResult = await applyTemplateLocally(
+                    tabs[0].id!,
+                    template,
+                  );
+                  sendResponse({ success: true, result: localResult });
+                  break;
+                }
+
+                sendResponse({
+                  success: true,
+                  result: backendResponse,
+                });
+              } catch (_backendError) {
+                // Backend unavailable or write-restricted (e.g., read-only FS): fallback locally.
+                const localResult = await applyTemplateLocally(
+                  tabs[0].id!,
+                  template,
+                );
+                sendResponse({ success: true, result: localResult });
+              }
             }
             break;
 

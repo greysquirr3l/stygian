@@ -17,6 +17,9 @@
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         console.log("[Content] Received message:", message.type);
         switch (message.type) {
+            case "ping":
+                sendResponse({ success: true });
+                break;
             case "start_recording":
                 startRecording(message.template_name);
                 sendResponse({ success: true });
@@ -52,6 +55,17 @@
                     success: true,
                     html: document.documentElement.outerHTML,
                 });
+                break;
+            case "extract_with_template":
+                {
+                    try {
+                        const extracted = extractWithTemplate(message.template);
+                        sendResponse({ success: true, ...extracted });
+                    }
+                    catch (error) {
+                        sendResponse({ success: false, error: String(error) });
+                    }
+                }
                 break;
             default:
                 sendResponse({ success: false, error: "Unknown message type" });
@@ -145,6 +159,131 @@
                 type: "recording_stopped",
             });
         }
+    }
+    function extractWithTemplate(template) {
+        const startedAt = performance.now();
+        const regions = Array.isArray(template?.regions) ? template.regions : [];
+        const data = {};
+        let regionsSuccessful = 0;
+        for (const region of regions) {
+            const value = extractRegionValue(region);
+            if (value !== null && value !== undefined && value !== "") {
+                regionsSuccessful++;
+            }
+            data[region.name] = value;
+        }
+        return {
+            data,
+            metadata: {
+                regions_successful: regionsSuccessful,
+                total_regions: regions.length,
+                elapsed_ms: Math.round(performance.now() - startedAt),
+                source: "local_fallback",
+            },
+        };
+    }
+    function extractRegionValue(region) {
+        const selector = region?.selector;
+        const cssSelector = selector?.css;
+        const xpathSelector = selector?.xpath;
+        let node = null;
+        if (typeof cssSelector === "string" && cssSelector.length > 0) {
+            try {
+                node = document.querySelector(cssSelector);
+            }
+            catch {
+                // Ignore invalid selector; fallback to XPath.
+            }
+        }
+        if (!node &&
+            typeof xpathSelector === "string" &&
+            xpathSelector.length > 0) {
+            try {
+                const result = document.evaluate(xpathSelector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+                node = result.singleNodeValue;
+            }
+            catch {
+                // Ignore invalid XPath.
+            }
+        }
+        const rawValue = node?.textContent?.trim() ?? "";
+        return applyTransformations(rawValue, region?.transformations);
+    }
+    function applyTransformations(value, transformations) {
+        if (!Array.isArray(transformations) || transformations.length === 0) {
+            return value;
+        }
+        let current = value;
+        for (const step of transformations) {
+            const type = typeof step === "string" ? step : step?.type;
+            if (typeof type !== "string")
+                continue;
+            if (type === "Trim" && typeof current === "string") {
+                current = current.trim();
+            }
+            else if (type === "Lowercase" && typeof current === "string") {
+                current = current.toLowerCase();
+            }
+            else if (type === "Uppercase" && typeof current === "string") {
+                current = current.toUpperCase();
+            }
+            else if (type === "RemoveWhitespace" && typeof current === "string") {
+                current = current.replace(/\s+/g, "");
+            }
+            else if (type === "NormalizeWhitespace" &&
+                typeof current === "string") {
+                current = current.replace(/\s+/g, " ").trim();
+            }
+            else if (type === "StripHtml" && typeof current === "string") {
+                current = current.replace(/<[^>]+>/g, "");
+            }
+            else if (type === "DecodeHtml" && typeof current === "string") {
+                const textarea = document.createElement("textarea");
+                textarea.innerHTML = current;
+                current = textarea.value;
+            }
+            else if (type === "ParseJson" && typeof current === "string") {
+                try {
+                    current = JSON.parse(current);
+                }
+                catch {
+                    // Keep original text if parsing fails.
+                }
+            }
+            else if (type === "Regex" && typeof current === "string") {
+                const pattern = typeof step?.pattern === "string" ? step.pattern : "";
+                const replacement = typeof step?.replacement === "string" ? step.replacement : "";
+                try {
+                    current = current.replace(new RegExp(pattern, "g"), replacement);
+                }
+                catch {
+                    // Ignore invalid regex.
+                }
+            }
+            else if (type === "RegexExtract" && typeof current === "string") {
+                const pattern = typeof step?.pattern === "string" ? step.pattern : "";
+                const group = typeof step?.group === "number" && Number.isInteger(step.group)
+                    ? step.group
+                    : 0;
+                try {
+                    const match = current.match(new RegExp(pattern));
+                    current = match?.[group] ?? "";
+                }
+                catch {
+                    // Ignore invalid regex.
+                }
+            }
+            else if (type === "Filter" && typeof current === "string") {
+                const pattern = typeof step?.pattern === "string" ? step.pattern : "";
+                try {
+                    current = new RegExp(pattern).test(current) ? current : "";
+                }
+                catch {
+                    // Ignore invalid regex.
+                }
+            }
+        }
+        return current;
     }
     // ─────────────────────────────────────────────────────────────────────────────
     // Element Highlighting

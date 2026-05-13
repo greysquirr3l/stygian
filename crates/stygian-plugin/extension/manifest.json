@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Stygian Plugin - Visual Data Extraction",
-  "version": "0.12.1",
+  "version": "0.13.3",
   "description": "Interactive visual data extraction tool. Record templates once, apply them anywhere. Fallback for when automated scraping fails.",
   "permissions": ["activeTab", "scripting", "storage", "webRequest"],
   "host_permissions": ["<all_urls>"],

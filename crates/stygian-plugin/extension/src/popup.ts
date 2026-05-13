@@ -183,14 +183,36 @@ type PopupRegion = any;
             </div>
           </div>
           <div class="template-actions">
-            <button class="btn btn-small" onclick="editTemplate('${template.id}')">Edit</button>
-            <button class="btn btn-small btn-danger" onclick="deleteTemplate('${template.id}')">Delete</button>
+            <button class="btn btn-small" data-action="edit-template" data-template-id="${template.id}">Edit</button>
+            <button class="btn btn-small btn-danger" data-action="delete-template" data-template-id="${template.id}">Delete</button>
           </div>
         </div>
       `,
       )
       .join("");
   }
+
+  document
+    .getElementById("templates-list")
+    ?.addEventListener("click", (event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+
+      const button = target.closest(
+        "button[data-action][data-template-id]",
+      ) as HTMLButtonElement | null;
+      if (!button) return;
+
+      const templateId = button.getAttribute("data-template-id");
+      if (!templateId) return;
+
+      const action = button.getAttribute("data-action");
+      if (action === "edit-template") {
+        void editTemplate(templateId);
+      } else if (action === "delete-template") {
+        void deleteTemplate(templateId);
+      }
+    });
 
   async function editTemplate(templateId: string) {
     const response = await sendMessage({
@@ -266,10 +288,6 @@ type PopupRegion = any;
       showStatus("Failed to delete template", "error");
     }
   }
-
-  // Make functions globally available for onclick handlers
-  (window as any).editTemplate = editTemplate;
-  (window as any).deleteTemplate = deleteTemplate;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Record Tab
@@ -481,6 +499,20 @@ type PopupRegion = any;
       });
 
       if (response.success) {
+        const mcpToolError =
+          response.result?.result?.isError === true
+            ? response.result?.result?.content?.[0]?.text
+            : null;
+        const backendError =
+          response.result?.error?.message ??
+          response.result?.error ??
+          mcpToolError ??
+          null;
+        if (backendError) {
+          showStatus("Extraction failed: " + String(backendError), "error");
+          return;
+        }
+
         displayResults(response.result);
         showStatus("Extraction complete!", "success");
       } else {
@@ -497,12 +529,12 @@ type PopupRegion = any;
     const resultsContainer = document.getElementById("extraction-results");
     if (!resultsContainer) return;
 
-    const data = result.data || {};
+    const data = normaliseExtractionResult(result);
     const html = `
     <div class="results-panel">
       <h3>Extraction Results</h3>
       <pre>${JSON.stringify(data, null, 2)}</pre>
-      <button class="btn btn-small" onclick="copyResults()">Copy JSON</button>
+      <button class="btn btn-small" data-action="copy-results">Copy JSON</button>
     </div>
   `;
 
@@ -510,14 +542,55 @@ type PopupRegion = any;
     (window as any).lastResults = JSON.stringify(data, null, 2);
   }
 
-  (window as any).copyResults = function () {
-    const results = (window as any).lastResults;
-    if (results) {
-      navigator.clipboard.writeText(results).then(() => {
-        showStatus("Results copied to clipboard!", "success");
-      });
+  document
+    .getElementById("extraction-results")
+    ?.addEventListener("click", (event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+
+      const button = target.closest(
+        "button[data-action='copy-results']",
+      ) as HTMLButtonElement | null;
+      if (!button) return;
+
+      void copyResultsToClipboard();
+    });
+
+  function normaliseExtractionResult(result: any): Record<string, any> {
+    if (result?.data && typeof result.data === "object") {
+      return result.data as Record<string, any>;
     }
-  };
+
+    const textPayload = result?.result?.content?.[0]?.text;
+    if (typeof textPayload === "string") {
+      try {
+        const parsed = JSON.parse(textPayload) as Record<string, any>;
+        if (parsed?.data && typeof parsed.data === "object") {
+          return parsed.data as Record<string, any>;
+        }
+        return parsed;
+      } catch {
+        return { raw: textPayload };
+      }
+    }
+
+    return {};
+  }
+
+  async function copyResultsToClipboard(): Promise<void> {
+    const results = (window as any).lastResults;
+    if (!results) {
+      showStatus("No results to copy", "error");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(results);
+      showStatus("Results copied to clipboard!", "success");
+    } catch (error) {
+      showStatus("Failed to copy results", "error");
+    }
+  }
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Utilities

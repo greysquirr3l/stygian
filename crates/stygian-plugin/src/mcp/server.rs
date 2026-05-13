@@ -115,7 +115,8 @@ impl McpPluginServer {
                     "properties": {
                         "template_id": { "type": "string", "description": "UUID of the template to apply" },
                         "html": { "type": "string", "description": "HTML content to extract from" },
-                        "url": { "type": "string", "description": "Source URL (for logging/context)" }
+                        "url": { "type": "string", "description": "Source URL (for logging/context)" },
+                        "debug": { "type": "boolean", "description": "Include per-region selector diagnostics and root HTML snippet." }
                     },
                     "required": ["template_id", "html", "url"]
                 }
@@ -331,10 +332,12 @@ impl McpPluginServer {
             .and_then(Value::as_str)
             .map(ToString::to_string)
             .ok_or_else(|| PluginError::TemplateValidationError("missing 'url'".to_string()))?;
+        let debug = args.get("debug").and_then(Value::as_bool).unwrap_or(false);
 
         let template = self.template_store.get(&template_id).await?;
         let request = ExtractionRequest::new(template, &url, &html);
         let result = self.extraction_engine.execute(&request).await?;
+        let debug_payload = debug.then(|| ExtractionEngine::diagnose(&request, "document"));
 
         Ok(json!({
             "data": result.data,
@@ -342,7 +345,10 @@ impl McpPluginServer {
                 "regions_successful": result.metadata.region_status.values().filter(|s| s.success).count(),
                 "total_regions": result.metadata.region_status.len(),
                 "elapsed_ms": result.metadata.elapsed_ms,
-            }
+                "region_status": result.metadata.region_status,
+                "errors": result.metadata.errors,
+            },
+            "debug": debug_payload,
         }))
     }
 
@@ -443,6 +449,7 @@ impl McpPluginServer {
             .ok_or_else(|| {
                 PluginError::TemplateValidationError("missing 'root_selector'".to_string())
             })?;
+        let debug = args.get("debug").and_then(Value::as_bool).unwrap_or(false);
 
         // Parse root selector as CSS (XPath not supported for batch extraction)
         let root_selector =
@@ -457,7 +464,7 @@ impl McpPluginServer {
             let document = Html::parse_document(&html);
             document
                 .select(&root_selector)
-                .map(|elem| elem.inner_html())
+                .map(|elem| elem.html())
                 .collect()
         };
 
@@ -466,6 +473,20 @@ impl McpPluginServer {
                 "root_selector matched no elements: {root_selector_str}"
             )));
         }
+
+        let first_root_html = debug.then(|| {
+            root_elements.first().map(|root| {
+                let mut truncated = String::new();
+                for (index, ch) in root.chars().enumerate() {
+                    if index >= 2_000 {
+                        truncated.push_str("...");
+                        break;
+                    }
+                    truncated.push(ch);
+                }
+                truncated
+            })
+        });
 
         // Extract data from each root container
         let template = self.template_store.get(&template_id).await?;
@@ -495,6 +516,10 @@ impl McpPluginServer {
             "results": results,
             "total_matched": results.len(),
             "successful": results.iter().filter(|r| r.get("data").is_some()).count(),
+            "debug": debug.then(|| json!({
+                "evaluation_scope": "root_fragment",
+                "first_root_html": first_root_html,
+            })),
         }))
     }
 

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.3] - 2026-05-13
+
+### Fixed
+
+- **Extension**: Delete, Edit, and Copy JSON buttons now use delegated `data-action` listeners
+  instead of inline `onclick` — fixes silent failures caused by Content Security Policy (CSP)
+  blocking inline event handlers in Manifest V3
+- **Extension**: Apply tab now shows extraction status and error feedback via `apply-status` div
+- **Extension**: Escape key stops recording from any focused context
+- **Extension**: Added `ensureContentScriptReady` guard — injects content script when missing
+  before sending messages, eliminating "Could not establish connection" errors
+- **Extension**: Template auto-sync on apply — if backend returns template-not-found, the
+  extension pushes the local template via `plugin_create_template` / `plugin_add_region` and retries
+- **Extension**: Local DOM extraction fallback — when the backend filesystem is read-only,
+  extraction runs client-side via the content script instead of failing
+- **`stygian-plugin`**: `plugin_apply_template` now accepts `debug: true` and returns
+  per-region diagnostics (`matched`, `raw_value`, `transformations_applied`, `final_value`)
+- **`stygian-plugin`**: `plugin_extract_batch` root scope fix — outer HTML is preserved for
+  per-item extraction context
+- **`stygian-plugin`**: Replaced `expect()` calls in tests with non-panicking Option assertions
+  (fixes `clippy::expect_used` denial)
+
 ## [0.13.2] - 2026-05-13
 
 ### Fixed

@@ -1,6 +1,6 @@
 {
   "name": "stygian-plugin-extension",
-  "version": "0.12.1",
+  "version": "0.13.3",
   "description": "Stygian Chrome extension for visual data extraction template recording",
   "private": true,
   "scripts": {

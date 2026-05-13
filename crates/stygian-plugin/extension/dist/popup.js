@@ -149,13 +149,33 @@
             </div>
           </div>
           <div class="template-actions">
-            <button class="btn btn-small" onclick="editTemplate('${template.id}')">Edit</button>
-            <button class="btn btn-small btn-danger" onclick="deleteTemplate('${template.id}')">Delete</button>
+            <button class="btn btn-small" data-action="edit-template" data-template-id="${template.id}">Edit</button>
+            <button class="btn btn-small btn-danger" data-action="delete-template" data-template-id="${template.id}">Delete</button>
           </div>
         </div>
       `)
             .join("");
     }
+    document
+        .getElementById("templates-list")
+        ?.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!target)
+            return;
+        const button = target.closest("button[data-action][data-template-id]");
+        if (!button)
+            return;
+        const templateId = button.getAttribute("data-template-id");
+        if (!templateId)
+            return;
+        const action = button.getAttribute("data-action");
+        if (action === "edit-template") {
+            void editTemplate(templateId);
+        }
+        else if (action === "delete-template") {
+            void deleteTemplate(templateId);
+        }
+    });
     async function editTemplate(templateId) {
         const response = await sendMessage({
             type: "get_template",
@@ -219,9 +239,6 @@
             showStatus("Failed to delete template", "error");
         }
     }
-    // Make functions globally available for onclick handlers
-    window.editTemplate = editTemplate;
-    window.deleteTemplate = deleteTemplate;
     // ─────────────────────────────────────────────────────────────────────────────
     // Record Tab
     // ─────────────────────────────────────────────────────────────────────────────
@@ -384,6 +401,17 @@
                 template_id: templateId,
             });
             if (response.success) {
+                const mcpToolError = response.result?.result?.isError === true
+                    ? response.result?.result?.content?.[0]?.text
+                    : null;
+                const backendError = response.result?.error?.message ??
+                    response.result?.error ??
+                    mcpToolError ??
+                    null;
+                if (backendError) {
+                    showStatus("Extraction failed: " + String(backendError), "error");
+                    return;
+                }
                 displayResults(response.result);
                 showStatus("Extraction complete!", "success");
             }
@@ -402,25 +430,61 @@
         const resultsContainer = document.getElementById("extraction-results");
         if (!resultsContainer)
             return;
-        const data = result.data || {};
+        const data = normaliseExtractionResult(result);
         const html = `
     <div class="results-panel">
       <h3>Extraction Results</h3>
       <pre>${JSON.stringify(data, null, 2)}</pre>
-      <button class="btn btn-small" onclick="copyResults()">Copy JSON</button>
+      <button class="btn btn-small" data-action="copy-results">Copy JSON</button>
     </div>
   `;
         resultsContainer.innerHTML = html;
         window.lastResults = JSON.stringify(data, null, 2);
     }
-    window.copyResults = function () {
-        const results = window.lastResults;
-        if (results) {
-            navigator.clipboard.writeText(results).then(() => {
-                showStatus("Results copied to clipboard!", "success");
-            });
+    document
+        .getElementById("extraction-results")
+        ?.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!target)
+            return;
+        const button = target.closest("button[data-action='copy-results']");
+        if (!button)
+            return;
+        void copyResultsToClipboard();
+    });
+    function normaliseExtractionResult(result) {
+        if (result?.data && typeof result.data === "object") {
+            return result.data;
         }
-    };
+        const textPayload = result?.result?.content?.[0]?.text;
+        if (typeof textPayload === "string") {
+            try {
+                const parsed = JSON.parse(textPayload);
+                if (parsed?.data && typeof parsed.data === "object") {
+                    return parsed.data;
+                }
+                return parsed;
+            }
+            catch {
+                return { raw: textPayload };
+            }
+        }
+        return {};
+    }
+    async function copyResultsToClipboard() {
+        const results = window.lastResults;
+        if (!results) {
+            showStatus("No results to copy", "error");
+            return;
+        }
+        try {
+            await navigator.clipboard.writeText(results);
+            showStatus("Results copied to clipboard!", "success");
+        }
+        catch (error) {
+            showStatus("Failed to copy results", "error");
+        }
+    }
     // ─────────────────────────────────────────────────────────────────────────────
     // Utilities
     // ─────────────────────────────────────────────────────────────────────────────
