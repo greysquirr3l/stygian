@@ -99,14 +99,24 @@ impl ExtractionEngine {
 
 /// Execute extraction for a single region
 fn execute_region(document: &Html, region: &crate::domain::Region) -> Result<Vec<String>> {
-    let selector_text = region.selector.primary();
+    // Check selector type and route accordingly
+    let selector_text = match &region.selector {
+        crate::domain::Selector::XPath(_) => {
+            return Err(crate::error::PluginError::ExtractionError(
+                "XPath selectors are not yet supported. Please use CSS selectors instead."
+                    .to_string(),
+            ));
+        }
+        crate::domain::Selector::Css(css) | crate::domain::Selector::Both { css, .. } => css,
+    };
 
-    // Try to parse as CSS selector
-    let selector =
-        ScraperSelector::parse(selector_text).map_err(|e| PluginError::SelectorError {
+    // Parse as CSS selector
+    let selector = ScraperSelector::parse(selector_text).map_err(|e| {
+        crate::error::PluginError::SelectorError {
             selector: selector_text.to_string(),
-            reason: format!("Failed to parse selector: {e:?}"),
-        })?;
+            reason: format!("Failed to parse CSS selector: {e:?}"),
+        }
+    })?;
 
     let mut results = Vec::new();
 
@@ -122,8 +132,8 @@ fn execute_region(document: &Html, region: &crate::domain::Region) -> Result<Vec
     }
 
     if results.is_empty() {
-        return Err(PluginError::ExtractionError(format!(
-            "No elements matched selector: {selector_text}"
+        return Err(crate::error::PluginError::ExtractionError(format!(
+            "No elements matched CSS selector: {selector_text}"
         )));
     }
 

@@ -30,8 +30,8 @@ Convenience constructors:
 
 ```rust
 use stygian_graph::adapters::fallback::{
-    default_primary_breaker,   // threshold 5, reset 60 s
-    default_fallback_breaker,  // threshold 3, reset 120 s
+    default_primary_breaker,   // threshold 5, reset 30 s
+    default_fallback_breaker,  // threshold 3, reset 60 s
 };
 ```
 

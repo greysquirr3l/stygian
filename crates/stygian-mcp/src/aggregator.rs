@@ -12,7 +12,7 @@
 //!
 //! The aggregator strips the `graph_` prefix before forwarding calls to the
 //! graph sub-server (which internally uses un-prefixed names like `scrape`).
-//! Browser, proxy, and plugin tools are already prefixed in their respective servers.
+//! Browser, proxy, and plugin tools receive their full prefixed names in their respective servers.
 //!
 //! Proxy guidance: proxy-backed tools are opt-in and should not be used by
 //! default. Prefer direct tools (`graph_scrape`, `browser_acquire` +
@@ -314,12 +314,13 @@ impl McpAggregator {
             }),
             json!({
                 "name": "scrape_with_plugin_fallback",
-                "description": "Scrape a URL using a circuit-breaker-protected fallback chain: (1) Plain HTTP scrape first — fast, lightweight, no template needed. (2) If the HTTP scrape fails or the circuit opens due to repeated failures, automatically falls back to plugin template extraction using the specified template. Use this tool when you have a saved extraction template and want resilient, schema-structured results even if the site's anti-bot protection blocks plain HTTP. The `template_id` is required so the plugin fallback knows how to extract structured data; use plugin_list_templates to find available IDs.",
+                "description": "Scrape a URL using a circuit-breaker-protected fallback chain: (1) Plain HTTP scrape first — fast, lightweight, no template needed. (2) If the HTTP scrape fails or the circuit opens due to repeated failures, automatically falls back to plugin template extraction using the specified template. Use this tool when you have a saved extraction template and want resilient, schema-structured results even if the site's anti-bot protection blocks plain HTTP. The `template_id` is required so the plugin fallback knows how to extract structured data; use plugin_list_templates to find available IDs. Optionally, provide `html` to skip HTTP scraping and go directly to plugin extraction.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "url": { "type": "string", "description": "Target URL to scrape" },
                         "template_id": { "type": "string", "description": "UUID of the extraction template to apply if HTTP scraping fails" },
+                        "html": { "type": "string", "description": "Optional pre-fetched HTML content. If provided, skips HTTP scraping and uses plugin extraction directly on this HTML." },
                         "idempotency_key": { "type": "string", "description": "Optional idempotency key to deduplicate repeated calls (ULID string format)" }
                     },
                     "required": ["url", "template_id"]
@@ -387,13 +388,9 @@ impl McpAggregator {
             });
             self.proxy.handle_request(&sub).await
         } else if name.starts_with("plugin_") {
-            // Route to plugin server, stripping the "plugin_" prefix
-            if let Some(short) = name.strip_prefix("plugin_") {
-                let result = self.plugin.handle_tool_call(short, args).await;
-                ok_response(id, &result)
-            } else {
-                error_response(id, -32602, &format!("Invalid plugin tool: {name}"))
-            }
+            // Route to plugin server with full prefixed name (plugin server expects "plugin_*" names)
+            let result = self.plugin.handle_tool_call(name, args).await;
+            ok_response(id, &result)
         } else if name == "scrape_proxied" {
             self.tool_scrape_proxied(id, args).await
         } else if name == "browser_proxied" {
@@ -637,6 +634,14 @@ impl McpAggregator {
         };
 
         let mut params = json!({ "template_id": template_id });
+
+        // Include HTML if provided, so plugin fallback can use it directly
+        if let Some(html) = args.get("html").and_then(Value::as_str)
+            && let Some(obj) = params.as_object_mut()
+        {
+            obj.insert("html".to_string(), Value::String(html.to_owned()));
+        }
+
         if let Some(idem_key) = args.get("idempotency_key").and_then(Value::as_str)
             && let Some(obj) = params.as_object_mut()
         {

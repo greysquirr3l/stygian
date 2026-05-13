@@ -65,12 +65,13 @@ let template = ExtractionTemplate::new("Product")
 ### Executing Extraction
 
 ```rust
+use stygian_plugin::adapters::ExtractionEngine;
 use stygian_plugin::domain::ExtractionRequest;
 
 let html = r#"<html><h2 class="product-title">Widget</h2><span class="product-price">$99.99</span></html>"#;
 
 let request = ExtractionRequest::new(template, "https://example.com", html);
-let result = ExtractionEngine.execute(&request).await?;
+let result = ExtractionEngine::execute(&request)?;
 
 println!("Extracted: {:?}", result.data);
 ```

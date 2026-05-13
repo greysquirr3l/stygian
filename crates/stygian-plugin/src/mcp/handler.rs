@@ -22,10 +22,10 @@ impl McpRequestHandler {
 
     /// Handle an incoming MCP request.
     ///
-    /// Returns `Some(response)` for all requests except notifications (id=null),
+    /// Returns `Some(response)` for all requests except notifications (id field missing),
     /// which return `None`.
     pub async fn handle(&self, req: &Value) -> Option<Value> {
-        // Check if this is a well-formed notification (jsonrpc="2.0", has method, no id)
+        // Check if this is a well-formed notification (jsonrpc="2.0", has method, id field missing)
         let is_notification = is_jsonrpc_notification(req);
         let id = req.get("id").unwrap_or(&Value::Null);
 

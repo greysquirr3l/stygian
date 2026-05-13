@@ -72,6 +72,8 @@ impl Region {
                 self.schema.get("type").unwrap_or(&Value::Null)
             )));
         }
+        // Validate the selector syntax
+        self.selector.validate()?;
         Ok(())
     }
 }
@@ -368,7 +370,10 @@ impl ExtractionResult {
     }
 
     /// Calculate and set selector success rate
-    #[expect(clippy::cast_precision_loss, reason = "region counts are small enough to be safe as f32")]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "region counts are small enough to be safe as f32"
+    )]
     pub fn calculate_success_rate(&mut self) {
         if self.metadata.region_status.is_empty() {
             self.metadata.selector_success_rate = 100.0;
