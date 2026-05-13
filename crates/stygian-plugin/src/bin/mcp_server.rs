@@ -168,8 +168,14 @@ mod tests {
 
     #[test]
     fn test_make_parse_error() {
-        let Err(json_err) = serde_json::from_str::<serde_json::Value>("invalid json") else {
-            panic!("expected parse error");
+        let parse_result = serde_json::from_str::<serde_json::Value>("invalid json");
+        assert!(
+            parse_result.is_err(),
+            "serde_json must fail on invalid input"
+        );
+        let json_err = match parse_result {
+            Err(e) => e,
+            Ok(_) => return, // asserted above; this arm is unreachable in practice
         };
         let err_resp = make_parse_error(&json_err);
         assert_eq!(
