@@ -28,9 +28,12 @@
       <div id="templates" class="tab-content active">
         <div class="tab-header">
           <h2>Extraction Templates</h2>
-          <button id="new-template-btn" class="btn btn-primary">
-            + New Template
-          </button>
+          <div class="button-group">
+            <button id="new-template-btn" class="btn btn-primary">+ New</button>
+            <button id="import-template-btn" class="btn btn-secondary">Import JSON</button>
+            <button id="sync-templates-btn" class="btn btn-secondary">Sync from Server</button>
+            <input type="file" id="import-template-file" accept=".json" style="display:none" />
+          </div>
         </div>
 
         <div id="templates-list" class="templates-list">
