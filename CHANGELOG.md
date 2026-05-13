@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-05-13
+
+### Fixed
+
+- **`stygian-plugin`**: Removed `publish = false` to allow crates.io publishing
+  (fixes Release #92 stygian-mcp publish failure)
+
 ## [0.13.1] - 2026-05-12
 
 ### Added

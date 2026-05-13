@@ -4169,7 +4169,7 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "stygian-browser"
-version = "0.13.1"
+version = "0.13.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4196,7 +4196,7 @@ dependencies = [
 
 [[package]]
 name = "stygian-charon"
-version = "0.13.1"
+version = "0.13.2"
 dependencies = [
  "lru",
  "redis",
@@ -4209,7 +4209,7 @@ dependencies = [
 
 [[package]]
 name = "stygian-extract-derive"
-version = "0.13.1"
+version = "0.13.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4218,7 +4218,7 @@ dependencies = [
 
 [[package]]
 name = "stygian-graph"
-version = "0.13.1"
+version = "0.13.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4274,7 +4274,7 @@ dependencies = [
 
 [[package]]
 name = "stygian-mcp"
-version = "0.13.1"
+version = "0.13.2"
 dependencies = [
  "anyhow",
  "serde_json",
@@ -4290,7 +4290,7 @@ dependencies = [
 
 [[package]]
 name = "stygian-plugin"
-version = "0.13.1"
+version = "0.13.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4317,7 +4317,7 @@ dependencies = [
 
 [[package]]
 name = "stygian-proxy"
-version = "0.13.1"
+version = "0.13.2"
 dependencies = [
  "async-trait",
  "futures",
