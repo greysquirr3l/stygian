@@ -1,8 +1,14 @@
 [package]
 name = "stygian-plugin"
+description = "Visual data extraction fallback subsystem with CSS/XPath selectors, idempotent request handling, and composable transformation pipelines."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
 license.workspace = true
+repository.workspace = true
+keywords = ["extraction", "scraping", "selector", "dom", "template"]
+categories = ["web-programming", "text-processing"]
 
 [dependencies]
 async-trait = "0.1"
