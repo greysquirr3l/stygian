@@ -4280,11 +4280,35 @@ dependencies = [
  "serde_json",
  "stygian-browser",
  "stygian-graph",
+ "stygian-plugin",
  "stygian-proxy",
  "tokio",
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "stygian-plugin"
+version = "0.12.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "clap",
+ "regex",
+ "scraper",
+ "serde",
+ "serde_json",
+ "stygian-graph",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "tracing-subscriber",
+ "ulid",
+ "uuid",
 ]
 
 [[package]]
@@ -4921,6 +4945,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "470dbf6591da1b39d43c14523b2b469c86879a53e8b758c8e090a470fe7b1fbe"
 dependencies = [
  "rand 0.9.4",
+ "serde",
  "web-time",
 ]
 

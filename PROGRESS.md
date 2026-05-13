@@ -163,6 +163,25 @@
 
 ---
 
+## Phase 12 — Visual Data Extraction Plugin Subsystem
+
+> Implements: Plugin extraction engine with MCP server for template-based DOM scraping, idempotency tracking, and fallback chain integration.
+> Completion Date: 2026-05-13
+> Validation: strict clippy (`-D warnings`), 450+ tests passing, PR #64 merged.
+
+| Task | Status | Notes |
+|---|---|---|
+| T71 — Plugin domain layer (types & validation) | `[x]` | IdempotencyKey (ULID-based), Selector (CSS/XPath), Transformation (pipeline: Trim, Lowercase, Regex, StripHtml, DecodeHtml, etc.), ExtractionTemplate, Region, ExtractionRequest/Result |
+| T72 — Plugin ports (hexagonal boundaries) | `[x]` | PluginTemplateStore, PluginExtractionPort, IdempotencyKeyStore, PluginRecordingPort (optional stub) |
+| T73 — Plugin adapters (storage & execution) | `[x]` | FileTemplateStore (JSON persistence), MemoryIdempotencyStore (dev/test), ExtractionEngine (CSS selector execution with transformations), PluginExtractionAdapter (ScrapingService integration) |
+| T74 — MCP server (8-tool protocol) | `[x]` | Template mgmt (create/list/delete/get), Region mgmt (add), Extraction (apply/batch), Inspection (selector validation); JSON-RPC 2.0 handler with `initialize`, `tools/list`, `tools/call` |
+| T75 — Comprehensive test suite | `[x]` | 450+ tests across 4 suites: domain & transformation validation, storage adapter ops, extraction engine with CSS selectors, MCP protocol handler, FallbackChainService integration, idempotency dedup & caching |
+| T76 — FallbackChainService integration | `[x]` | Circuit breaker resilience for plugin extraction in fallback chains; PluginExtractionAdapter routes to ScrapingService |
+| T77 — Browser extension foundation | `[x]` | Chrome extension structure with TypeScript types, service worker, popup UI for template management; extension icon assets in multiple sizes (16, 32, 48, 128px) |
+| T78 — Documentation & examples | `[x]` | Plugin tools MCP docs, resilience pattern docs, changelog entry, integration examples |
+
+---
+
 ## Browser Track (Consolidated from PROGRESS-BROWSER.md)
 
 > This section consolidates browser-crate progress into the workspace-level tracker.
@@ -331,3 +350,4 @@
 - T62: Keep graph bridge behavior opt-in by requiring a node-level `acquisition` table for `browser` services; without that block, legacy `pipeline_run` skip semantics stay unchanged.
 - T63: Keep runner-first docs anchored to live MCP/API contracts (`browser_acquire_and_extract`, `fast|resilient|hostile|investigate`, `acquisition-runner` feature) and document compatibility as additive opt-in so downstream graph users can validate both legacy and bridge paths in CI.
 - T58 closure: Tier1 non-regression checks now support optional `STYGIAN_TIER1_BASELINE_CREEPJS` and `STYGIAN_TIER1_BASELINE_BROWSERSCAN` baselines to detect score drops while keeping live validation runnable without pinned scores.
+- T71-T78 (Phase 12 Plugin Subsystem): Hexagonal architecture requires strict domain-layer isolation — no imports from adapters, ports only via trait bounds. CSS selector execution benefits from typed `Selector` enum to prevent XPath from leaking into CSS-only pipelines. MCP protocol notifications (no-id requests) work cleanly with owned fields across async awaits when the handler loop owns the message data. Idempotency deduplication needs early store lookups before execution; async caching must handle concurrent requests gracefully without duplicate work. FallbackChainService integration requires plugin adapter to read HTML from `params['html']` (not URL) to support fallback chain flow. Template validation should allow empty-region drafts (optional early return) to support incremental template construction. Transformation pipelines benefit from enum variants for each operation (Trim, Lowercase, Regex, etc.) rather than ad-hoc string dispatch. Circle-breaker resilience in fallback chains relies on proper circuit state tracking and half-open probe behavior; document timeout/failure thresholds explicitly in module docs. Browser extension foundation can reuse TypeScript types for message-passing contracts but needs separate Chrome manifest.json schema for popup/service-worker wiring. MCP schema validation should be strict on tool inputs; bad inputs return clear error messages with field context to guide client debugging.

@@ -9,7 +9,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- _No changes yet._
+- **`stygian-plugin` (new crate)**: Complete visual data extraction fallback subsystem
+  (Phase 5) implementing hexagonal architecture with zero I/O in the domain layer
+
+  **Domain Layer**:
+  - `IdempotencyKey`: ULID-based deduplication keys with `FromStr`, `Display`, and
+    serialization support for safe extraction retries
+  - `Selector`: CSS/XPath selector types with dual-selector fallback support, validation,
+    and graceful fallback chains
+  - `Transformation`: Pipeline-based value transformations including Trim, Lowercase,
+    Uppercase, Regex, RegexExtract, Coerce (type conversion), Filter, NormalizeWhitespace,
+    StripHtml, DecodeHtml, and ParseJson
+  - `ExtractionTemplate`: Reusable template definition with regions, metadata, usage
+    tracking, and comprehensive validation
+  - `Region`: Named extraction zone with selector, schema, and ordered transformation chain
+  - `ExtractionRequest`/`ExtractionResult`: Request/response contract with status tracking
+    per region and elapsed-time metrics
+
+  **Ports (Hexagonal Architecture)**:
+  - `PluginTemplateStore`: Template persistence trait (async, send/sync)
+  - `PluginExtractionPort`: Extraction execution trait with selector validation
+  - `IdempotencyKeyStore`: Result caching for safe retries
+  - `PluginRecordingPort`: Optional interactive template recording (stub implementation)
+
+  **Adapters & Storage**:
+  - `FileTemplateStore`: JSON file-based template persistence with directory-per-template
+    layout and error recovery
+  - `MemoryIdempotencyStore`: In-memory HashMap-backed idempotency tracking for
+    dev/test environments
+  - `ExtractionEngine`: `scraper`-based CSS selector executor with transformation
+    pipeline integration and per-region error recovery
+  - `PluginExtractionAdapter`: `ScrapingService` implementation for integration into
+    `stygian-graph` fallback chains
+
+  **MCP Server**:
+  - `McpPluginServer`: 8-tool MCP server with template management, extraction, and
+    inspection capabilities
+  - `McpRequestHandler`: Full JSON-RPC 2.0 protocol dispatcher supporting initialize,
+    tools/list, tools/call, and notifications
+  - Standalone binary (`stygian-plugin-mcp`) with CLI config and stdio transport
+  - Tools: `plugin_{create,list,delete,get}_template`, `plugin_add_region`,
+    `plugin_{apply_template,extract_batch}`, `plugin_inspect_selector`
+
+  **Testing & Integration**:
+  - 450+ comprehensive test cases across 4 suites (domain, storage, adapter, MCP)
+  - Transformation pipeline tests with chain validation
+  - Extraction engine tests with CSS selector matching and transformation application
+  - MCP protocol handler tests (initialize, tools/list, error handling, notifications)
+  - `FallbackChainService` integration tests demonstrating circuit breaker + plugin
+    fallback, idempotency caching, and shared-store contracts
+  - End-to-end template creation, storage, retrieval, and execution workflows
+
+  **Browser Extension Foundation**:
+  - Chrome extension structure (manifest, service worker, popup UI, content script)
+  - TypeScript types for message passing and template interchange
+  - Popup UI with template management and region editing
+  - Service worker for local storage and backend communication
+
+  **Documentation & Integration**:
+  - Book chapters for resilience patterns and plugin tools
+  - Example extraction workflows in `examples/`
+  - Zero clippy violations (`-D warnings`) with all lint suppressions via `#[expect(...)]`
+  - Integration with `stygian-graph` `FallbackChainService` for Phase 5 circuit breaker
+    resilience
 
 ## [0.12.1] - 2026-05-06
 

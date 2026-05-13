@@ -1123,9 +1123,12 @@ mod tests {
         let mut snapshot = parse_snapshot(include_str!(
             "../docs/examples/fingerprint-snapshot-v1-http.json"
         ));
-        if let Some(webgl) = snapshot.signals.webgl.as_mut() {
-            webgl.vendor = "X".repeat(MAX_STRING_FIELD_BYTES + 1);
-        }
+        // The HTTP fixture has webgl: null — initialize explicitly so the
+        // oversized vendor is actually present when validation runs.
+        snapshot.signals.webgl = Some(WebGlFingerprint {
+            vendor: "X".repeat(MAX_STRING_FIELD_BYTES + 1),
+            renderer: "renderer".to_string(),
+        });
 
         let result = validate_snapshot_compatibility(&snapshot);
         assert!(result.is_err(), "should reject oversized webgl vendor");
@@ -1160,8 +1163,12 @@ mod tests {
         let mut snapshot = parse_snapshot(include_str!(
             "../docs/examples/fingerprint-snapshot-v1-http.json"
         ));
-        // Fill fields to max allowed sizes
-        snapshot.signals.user_agent = "A".repeat(MAX_STRING_FIELD_BYTES);
+        // Fill fields to max allowed sizes.
+        // Clear legacy_user_agent so the legacy-mismatch check doesn't fire
+        // when we overwrite signals.user_agent.
+        let ua = "A".repeat(MAX_STRING_FIELD_BYTES);
+        snapshot.signals.user_agent = ua.clone();
+        snapshot.legacy_user_agent = Some(ua);
         snapshot.signals.platform = "B".repeat(MAX_STRING_FIELD_BYTES - 1);
 
         let result = validate_snapshot_compatibility(&snapshot);

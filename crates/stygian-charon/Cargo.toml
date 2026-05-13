@@ -39,3 +39,6 @@ caching = ["dep:lru"]
 ## Optional Redis-backed investigation report cache
 redis-cache = ["caching", "dep:redis"]
 
+
+[lints]
+workspace = true

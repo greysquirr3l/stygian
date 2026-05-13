@@ -15,6 +15,7 @@
 - [Custom Adapters](./graph/custom-adapters.md)
 - [Distributed Execution](./graph/distributed.md)
 - [Tiered Escalation](./graph/escalation.md)
+- [Resilience & Fallback Chains](./graph/resilience.md)
 - [Data Sinks](./graph/data-sinks.md)
 - [Scrape Exchange](./graph/scrape-exchange.md)
 - [Observability](./graph/observability.md)
@@ -67,4 +68,5 @@
 - [Graph Tools](./mcp/graph-tools.md)
 - [Browser Tools](./mcp/browser-tools.md)
 - [Proxy Tools](./mcp/proxy-tools.md)
+- [Plugin Tools](./mcp/plugin-tools.md)
 - [Aggregator (stygian-mcp)](./mcp/aggregator.md)

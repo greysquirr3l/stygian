@@ -24,6 +24,9 @@ pub mod cache;
 /// Resilience adapters (circuit breaker, retry)
 pub mod resilience;
 
+/// Fallback chain adapter — tries services in priority order with per-service circuit breakers
+pub mod fallback;
+
 /// No-op service for testing
 pub mod noop;
 

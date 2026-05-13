@@ -756,6 +756,10 @@ impl AcquisitionRunner {
     }
 
     #[cfg(not(feature = "tls-config"))]
+    #[expect(
+        clippy::unused_self,
+        reason = "signature must match the tls-config variant for uniform call sites"
+    )]
     fn run_http_stage_impl(
         &self,
         _request: &AcquisitionRequest,
