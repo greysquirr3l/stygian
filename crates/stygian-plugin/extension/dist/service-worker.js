@@ -311,13 +311,16 @@
     // Initialization
     // ─────────────────────────────────────────────────────────────────────────────
     console.log("[ServiceWorker] Stygian Plugin service worker loaded");
-    // Periodic sync for syncing templates to backend (future feature)
-    chrome.alarms.create("sync_templates", { periodInMinutes: 60 });
-    chrome.alarms.onAlarm.addListener((alarm) => {
-        if (alarm.name === "sync_templates") {
-            console.log("[ServiceWorker] Syncing templates to backend...");
-            // Future: implement template sync to backend
-        }
-    });
+    // Periodic sync is optional; guard it so worker startup never fails when
+    // `alarms` permission is not present in the extension manifest.
+    if (chrome.alarms?.create && chrome.alarms?.onAlarm) {
+        chrome.alarms.create("sync_templates", { periodInMinutes: 60 });
+        chrome.alarms.onAlarm.addListener((alarm) => {
+            if (alarm.name === "sync_templates") {
+                console.log("[ServiceWorker] Syncing templates to backend...");
+                // Future: implement template sync to backend
+            }
+        });
+    }
 })();
 //# sourceMappingURL=service-worker.js.map
