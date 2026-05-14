@@ -2,6 +2,21 @@
 
 Interactive visual data extraction tool. Record extraction templates once, apply them anywhere. Fallback for when automated scraping fails.
 
+## Scope and Positioning
+
+This extension is a basic reference implementation for the Stygian plugin surface.
+It is meant to demonstrate recording, template application, and MCP transport, not to
+be a full production ingestion client.
+
+For production usage, keep data routing and persistence policies on the server side:
+
+- Extract in the extension (for list/table pages, prefer `plugin_extract_batch`)
+- Send structured payloads to your MCP/ingestion backend
+- Route records through graph services and sink adapters for durable storage
+
+See the mdBook pattern guide for the end-to-end flow:
+[Plugin Persistence Pattern](../../../book/src/mcp/plugin-persistence-pattern.md)
+
 ## Features
 
 - **Visual Template Recording**: Click elements on a page to define extraction zones

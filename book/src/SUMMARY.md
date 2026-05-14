@@ -69,4 +69,5 @@
 - [Browser Tools](./mcp/browser-tools.md)
 - [Proxy Tools](./mcp/proxy-tools.md)
 - [Plugin Tools](./mcp/plugin-tools.md)
+- [Plugin Persistence Pattern](./mcp/plugin-persistence-pattern.md)
 - [Aggregator (stygian-mcp)](./mcp/aggregator.md)

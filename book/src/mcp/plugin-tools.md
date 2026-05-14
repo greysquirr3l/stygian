@@ -4,6 +4,10 @@
 Use this surface when direct graph/browser extraction is insufficient and you need a reusable
 selector-and-transformation template.
 
+The bundled browser extension is intentionally a basic reference implementation for recording
+and applying templates. Treat it as a starting point that demonstrates the MCP integration
+surface, and extend it for your product UX, auth model, and persistence requirements.
+
 ---
 
 ## Enabling
@@ -328,6 +332,9 @@ Extension popup → Settings → MCP Server URL → http://localhost:3000 → Sa
 
 The Settings tab also shows a live connection status dot (green/red) that pings
 `/health` on demand.
+
+For an end-to-end persistence pattern (extension extraction -> MCP routing -> sink/database
+ingestion), see [Plugin Persistence Pattern](./plugin-persistence-pattern.md).
 
 ### Error responses
 
