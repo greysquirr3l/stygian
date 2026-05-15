@@ -785,7 +785,17 @@ type PopupRegion = any;
   chrome.runtime.onMessage.addListener(
     (message: any, _sender: any, sendResponse: any) => {
       if (message.type === "region_added" && currentRecordingTemplate) {
-        currentRecordingTemplate.regions.push(message.region);
+        const region = message.region;
+        // Wire pending quick-action type into region metadata
+        if (pendingQuickType) {
+          region.quickType = pendingQuickType;
+          pendingQuickType = null;
+          // Clear active state from quick-action buttons
+          document
+            .querySelectorAll("[data-quick-type]")
+            .forEach((b) => b.classList.remove("active"));
+        }
+        currentRecordingTemplate.regions.push(region);
         updateRecordingRegionsList(currentRecordingTemplate.regions);
         if (recordingBadgeCount) {
           recordingBadgeCount.textContent = String(

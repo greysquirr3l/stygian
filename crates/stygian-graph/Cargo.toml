@@ -87,8 +87,8 @@ serde_yaml.workspace = true
 indexmap.workspace = true
 
 # Browser automation (optional)
-stygian-browser = { path = "../stygian-browser", version = "0.13.3", optional = true }
-stygian-charon = { path = "../stygian-charon", version = "0.13.3", optional = true }
+stygian-browser = { path = "../stygian-browser", version = "0.13.4", optional = true }
+stygian-charon = { path = "../stygian-charon", version = "0.13.4", optional = true }
 
 # WASM plugins (optional)
 wasmtime = { workspace = true, optional = true }

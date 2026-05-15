@@ -821,6 +821,12 @@ type SwExtractionTemplate = any;
   // ─────────────────────────────────────────────────────────────────────────────
 
   function generateUUID(): string {
+    // Use crypto.randomUUID() for cryptographically secure UUID v4 generation.
+    // Falls back to a pseudo-random implementation if crypto API is unavailable.
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    // Fallback: pseudo-random UUID v4 (not cryptographically secure)
     return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
       /[xy]/g,
       function (c) {

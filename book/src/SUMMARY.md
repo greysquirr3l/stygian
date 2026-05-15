@@ -58,6 +58,7 @@
 
 - [Charon Release Notes](./reference/charon-release.md)
 - [Environment Variables](./reference/env-vars.md)
+- [Security Policy](./reference/security-policy.md)
 - [Testing & Coverage](./reference/testing.md)
 
 ---

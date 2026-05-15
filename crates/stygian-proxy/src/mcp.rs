@@ -77,17 +77,16 @@ fn ok_response(id: &Value, result: impl Into<Value>) -> Value {
 
 // ─── Active handle store ──────────────────────────────────────────────────────
 
-/// Active proxy handles keyed by ULID token, waiting for explicit release.
+/// Active proxy handles keyed by ULID token with creation timestamps for TTL-based cleanup.
 ///
-/// # Leak note
-///
-/// TODO: implement a TTL-based cleanup mechanism for orphaned handles.
-/// Handle entries are removed only on `proxy_release`.  If a client crashes or
-/// loses the token, the stored `ProxyHandle` remains in memory until the server
-/// exits.  This is acceptable for typical scraping workloads (sessions are
-/// short-lived and servers are restarted regularly), but a production deployment
-/// that expects long uptimes should add a TTL-based cleanup background task.
-type HandleStore = Arc<Mutex<HashMap<String, ProxyHandle>>>;
+/// Handles are stored as `(ProxyHandle, std::time::Instant)` pairs. The background
+/// cleanup task (see `run()`) periodically removes entries older than `HANDLE_TTL`
+/// (default 4 hours) to prevent unbounded memory growth from orphaned client sessions.
+type HandleStore = Arc<Mutex<HashMap<String, (ProxyHandle, std::time::Instant)>>>;
+
+/// Time-to-live for proxy handles before automatic cleanup (4 hours).
+#[expect(clippy::duration_suboptimal_units)]
+const HANDLE_TTL: std::time::Duration = std::time::Duration::from_secs(4 * 3600);
 
 // ─── Server ───────────────────────────────────────────────────────────────────
 
@@ -130,7 +129,7 @@ impl McpProxyServer {
     /// Run the MCP server, reading JSON-RPC requests from stdin and writing
     /// responses to stdout until EOF.
     ///
-    /// Starts background health checking and session-purge tasks automatically.
+    /// Starts background health checking, session-purge, and handle-cleanup tasks automatically.
     ///
     /// # Errors
     ///
@@ -140,6 +139,20 @@ impl McpProxyServer {
 
         // Launch background health-check + session-purge tasks.
         let (mgr_token, bg) = self.manager.start();
+
+        // Launch background handle cleanup task.
+        let handles_clone = self.handles.clone();
+        let cleanup_handle = tokio::spawn(async move {
+            #[expect(clippy::duration_suboptimal_units)]
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60)); // 1 minute cleanup interval
+            loop {
+                interval.tick().await;
+                let now = std::time::Instant::now();
+                if let Ok(mut store) = handles_clone.try_lock() {
+                    store.retain(|_, (_, created_at)| now.duration_since(*created_at) < HANDLE_TTL);
+                }
+            }
+        });
 
         let stdin = tokio::io::stdin();
         let mut reader = BufReader::new(stdin);
@@ -187,6 +200,7 @@ impl McpProxyServer {
 
         mgr_token.cancel();
         let _ = bg.await;
+        cleanup_handle.abort();
         info!("stygian-proxy MCP server stopped");
         Ok(())
     }
@@ -678,7 +692,10 @@ impl McpProxyServer {
             Ok(handle) => {
                 let proxy_url = handle.proxy_url.clone();
                 let token = Ulid::new().to_string();
-                self.handles.lock().await.insert(token.clone(), handle);
+                self.handles
+                    .lock()
+                    .await
+                    .insert(token.clone(), (handle, std::time::Instant::now()));
                 ok_response(
                     id,
                     json!({
@@ -707,7 +724,10 @@ impl McpProxyServer {
             Ok(handle) => {
                 let proxy_url = handle.proxy_url.clone();
                 let token = Ulid::new().to_string();
-                self.handles.lock().await.insert(token.clone(), handle);
+                self.handles
+                    .lock()
+                    .await
+                    .insert(token.clone(), (handle, std::time::Instant::now()));
                 ok_response(
                     id,
                     json!({
@@ -735,7 +755,7 @@ impl McpProxyServer {
         let success = args.get("success").and_then(Value::as_bool).unwrap_or(true);
 
         let mut store = self.handles.lock().await;
-        let Some(handle) = store.remove(token) else {
+        let Some((handle, _)) = store.remove(token) else {
             return error_response(id, -32602, "Unknown handle_token — already released?");
         };
         drop(store); // release lock before potentially blocking on Drop
@@ -789,7 +809,10 @@ impl McpProxyServer {
             Ok(handle) => {
                 let proxy_url = handle.proxy_url.clone();
                 let token = Ulid::new().to_string();
-                self.handles.lock().await.insert(token.clone(), handle);
+                self.handles
+                    .lock()
+                    .await
+                    .insert(token.clone(), (handle, std::time::Instant::now()));
                 ok_response(
                     id,
                     json!({

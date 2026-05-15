@@ -35,6 +35,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Extension popup**: Corrected test extraction response handling to consume
   `response.result` consistently
 
+## [0.13.4] - 2026-05-15
+
+### Added
+
+- `security`: Added repository-wide [SECURITY.md](SECURITY.md) with a responsible
+  disclosure process, support window, and response SLAs
+- `docs (mdBook)`: Added a dedicated security policy reference page and navigation
+  entry under Reference
+
+### Changed
+
+- `workspace`: bumped workspace and internal crate version pins from `0.13.3` to
+  `0.13.4` across all crate manifests for a consistent release line
+
+### Fixed
+
+- `stygian-proxy (mcp)`: added TTL-based cleanup for orphaned proxy handles to
+  prevent unbounded in-memory growth in long-lived MCP sessions
+- `stygian-plugin/extension`: quick-action type selection is now applied to the
+  next recorded region instead of being ignored
+- `stygian-plugin/extension`: replaced `Math.random()` UUID generation with
+  `crypto.randomUUID()` (with compatibility fallback) in service worker flows
+
 ## [0.13.3] - 2026-05-13
 
 ### Fixed
