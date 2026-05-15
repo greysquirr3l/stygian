@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Extension (recorder UI)**: Reworked in-page recording experience with hover tooltip,
+  selector confidence badges, in-page region naming card, undo support, and compact
+  recording overlay with live region count
+- **Extension popup**: Added draft recovery banner with resume/discard flow for
+  interrupted recording sessions
+- **Extension popup**: Added quick-action region type buttons, active recording badge,
+  inline test extraction panel, and keyboard shortcut (`R`) to start/finish recording
+- **Extension popup**: Added modal flows for creating templates, editing template names,
+  and editing recorded regions (replacing native prompt/alert interactions)
+- **Extension popup**: Added richer recorded-region timeline with confidence indicators,
+  inline edit/delete actions, and reorder controls
+
+### Changed
+
+- **Extension popup**: Status messaging now routes per-tab (`templates`, `record`,
+  `apply`, `settings`) instead of broadcasting across all status elements
+- **Extension popup**: Record-tab testing now persists in-progress template edits before
+  invoking extraction to ensure test results reflect current regions
+
+### Fixed
+
+- **Extension popup**: Prevented double-removal during undo by relying on content-script
+  undo events and using local fallback only when message delivery fails
+- **Extension popup**: Corrected test extraction response handling to consume
+  `response.result` consistently
+
 ## [0.13.3] - 2026-05-13
 
 ### Fixed

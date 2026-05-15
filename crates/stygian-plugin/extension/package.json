@@ -5,11 +5,15 @@
   "private": true,
   "scripts": {
     "build": "tsc",
+    "test": "vitest run --environment jsdom",
     "typecheck": "tsc --noEmit",
     "watch": "tsc --watch"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.270",
-    "typescript": "^5.7.2"
+    "@types/node": "^24.0.0",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.4"
   }
 }

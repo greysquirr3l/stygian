@@ -362,11 +362,21 @@ type SwExtractionTemplate = any;
   async function applyTemplateLocally(
     tabId: number,
     template: SwExtractionTemplate,
+    options?: { mode?: string; rootSelector?: string },
   ): Promise<any> {
-    const response = await chrome.tabs.sendMessage(tabId, {
-      type: "extract_with_template",
-      template,
-    });
+    const response = await chrome.tabs.sendMessage(
+      tabId,
+      options?.mode === "batch"
+        ? {
+            type: "extract_with_template_batch",
+            template,
+            root_selector: options.rootSelector,
+          }
+        : {
+            type: "extract_with_template",
+            template,
+          },
+    );
 
     if (!response?.success) {
       throw new Error(response?.error ?? "Local extraction failed");
@@ -499,16 +509,37 @@ type SwExtractionTemplate = any;
 
               const backendTemplateId =
                 template.metadata?.backend_template_id ?? message.template_id;
+              const mode = message.mode === "batch" ? "batch" : "single";
+              const rootSelector =
+                typeof message.root_selector === "string"
+                  ? message.root_selector.trim()
+                  : "";
+              const debug = message.debug === true;
+
+              if (mode === "batch" && rootSelector.length === 0) {
+                sendResponse({
+                  success: false,
+                  error: "Batch mode requires a root selector",
+                });
+                break;
+              }
+
               const applyArgs = {
                 template_id: backendTemplateId,
                 html: htmlResponse.html,
                 url: tabs[0].url || "",
+                ...(mode === "batch" ? { root_selector: rootSelector } : {}),
+                ...(debug ? { debug: true } : {}),
               };
+              const toolName =
+                mode === "batch"
+                  ? "plugin_extract_batch"
+                  : "plugin_apply_template";
 
               try {
                 // Call backend to execute extraction
                 let backendResponse = await callBackendTool(
-                  "plugin_apply_template",
+                  toolName,
                   applyArgs,
                 );
 
@@ -516,13 +547,10 @@ type SwExtractionTemplate = any;
                 if (isTemplateNotFoundToolError(backendResponse)) {
                   const syncedBackendTemplateId =
                     await syncTemplateToBackend(template);
-                  backendResponse = await callBackendTool(
-                    "plugin_apply_template",
-                    {
-                      ...applyArgs,
-                      template_id: syncedBackendTemplateId,
-                    },
-                  );
+                  backendResponse = await callBackendTool(toolName, {
+                    ...applyArgs,
+                    template_id: syncedBackendTemplateId,
+                  });
                 }
 
                 // If backend still returns tool error (e.g., read-only storage), fallback locally.
@@ -530,6 +558,7 @@ type SwExtractionTemplate = any;
                   const localResult = await applyTemplateLocally(
                     tabs[0].id!,
                     template,
+                    { mode, rootSelector },
                   );
                   sendResponse({ success: true, result: localResult });
                   break;
@@ -544,11 +573,83 @@ type SwExtractionTemplate = any;
                 const localResult = await applyTemplateLocally(
                   tabs[0].id!,
                   template,
+                  { mode, rootSelector },
                 );
                 sendResponse({ success: true, result: localResult });
               }
             }
             break;
+
+          case "inspect_selector": {
+            const selectorCss =
+              typeof message.selector_css === "string"
+                ? message.selector_css.trim()
+                : "";
+            if (selectorCss.length === 0) {
+              sendResponse({
+                success: false,
+                error: "Selector cannot be empty",
+              });
+              break;
+            }
+
+            const tabs = await chrome.tabs.query({
+              active: true,
+              currentWindow: true,
+            });
+            if (!tabs[0]) {
+              sendResponse({ success: false, error: "No active tab" });
+              break;
+            }
+
+            try {
+              await ensureContentScriptReady(tabs[0].id!);
+            } catch {
+              sendResponse({
+                success: false,
+                error:
+                  "Cannot connect to this page. Switch to a normal website tab and reload it, then try again.",
+              });
+              break;
+            }
+
+            const htmlResponse = await chrome.tabs.sendMessage(tabs[0].id!, {
+              type: "get_page_html",
+            });
+
+            try {
+              const backendResponse = await callBackendTool(
+                "plugin_inspect_selector",
+                {
+                  html: htmlResponse.html,
+                  selector_css: selectorCss,
+                },
+              );
+
+              if (!isToolError(backendResponse)) {
+                sendResponse({ success: true, result: backendResponse });
+                break;
+              }
+            } catch {
+              // Fall through to local inspection.
+            }
+
+            const localInspection = await chrome.tabs.sendMessage(tabs[0].id!, {
+              type: "inspect_selector_local",
+              selector_css: selectorCss,
+            });
+
+            if (!localInspection?.success) {
+              sendResponse({
+                success: false,
+                error: localInspection?.error ?? "Selector inspection failed",
+              });
+              break;
+            }
+
+            sendResponse({ success: true, result: localInspection });
+            break;
+          }
 
           case "export_template":
             {

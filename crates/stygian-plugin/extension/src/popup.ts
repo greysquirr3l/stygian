@@ -9,12 +9,219 @@ type PopupExtractionTemplate = any;
 type PopupRegion = any;
 
 (() => {
+  const resultUtils = (globalThis as any).StygianResultUtils as {
+    normalizeExtractionEnvelope: (input: unknown) => {
+      mode: "single" | "batch" | "unknown";
+      data: Record<string, unknown> | null;
+      rows: Record<string, unknown>[];
+      metadata: Record<string, unknown>;
+      debug: unknown;
+      errors: string[];
+      rawPayload: unknown;
+    };
+    recordsToCsv: (records: Record<string, unknown>[]) => string;
+  };
+
   // ─────────────────────────────────────────────────────────────────────────────
   // State
   // ─────────────────────────────────────────────────────────────────────────────
 
   let currentRecordingTemplate: PopupExtractionTemplate | null = null;
   let isRecording = false;
+  let pendingQuickType: string | null = null; // quick-action pre-selection
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Modal Manager
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  type ModalId =
+    | "modal-new-template"
+    | "modal-edit-region"
+    | "modal-edit-template";
+
+  function openModal(id: ModalId) {
+    const overlay = document.getElementById("modal-overlay");
+    const modal = document.getElementById(id);
+    if (!overlay || !modal) return;
+    // Hide all modals first
+    overlay
+      .querySelectorAll(".modal")
+      .forEach((m) => ((m as HTMLElement).style.display = "none"));
+    overlay.style.display = "flex";
+    modal.style.display = "block";
+
+    // Focus first input
+    const firstInput = modal.querySelector<HTMLInputElement>("input, textarea");
+    firstInput?.focus();
+  }
+
+  function closeModal(id: ModalId) {
+    const overlay = document.getElementById("modal-overlay");
+    const modal = document.getElementById(id);
+    if (overlay) overlay.style.display = "none";
+    if (modal) modal.style.display = "none";
+  }
+
+  // Close on overlay backdrop click
+  document.getElementById("modal-overlay")?.addEventListener("click", (e) => {
+    if ((e.target as HTMLElement).id === "modal-overlay") {
+      document
+        .querySelectorAll(".modal")
+        .forEach((m) => ((m as HTMLElement).style.display = "none"));
+      (document.getElementById("modal-overlay") as HTMLElement).style.display =
+        "none";
+    }
+  });
+
+  // Close button / cancel button wiring
+  document.querySelectorAll(".modal-close, .modal-cancel").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      const id = (e.target as HTMLElement).getAttribute(
+        "data-modal",
+      ) as ModalId | null;
+      if (id) closeModal(id);
+    });
+  });
+
+  // Escape key closes the topmost open modal
+  document.addEventListener("keydown", (e: KeyboardEvent) => {
+    if (e.key !== "Escape") return;
+    const overlay = document.getElementById("modal-overlay");
+    if (overlay?.style.display !== "none" && overlay?.style.display !== "") {
+      e.preventDefault();
+      (overlay as HTMLElement).style.display = "none";
+      overlay
+        ?.querySelectorAll(".modal")
+        .forEach((m) => ((m as HTMLElement).style.display = "none"));
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Per-Tab Status (replaces fan-out showStatus)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const TAB_STATUS_IDS: Record<string, string> = {
+    templates: "templates-status",
+    record: "recording-status",
+    apply: "apply-status",
+    settings: "settings-status",
+  };
+
+  function showTabStatus(
+    tab: string,
+    message: string,
+    type: "success" | "error" | "info" = "info",
+    sticky = false,
+  ) {
+    const elId = TAB_STATUS_IDS[tab] ?? "recording-status";
+    const el = document.getElementById(elId);
+    if (!el) return;
+    el.textContent = message;
+    el.className = `status-message ${type}${sticky ? " sticky" : ""}`;
+    if (!sticky) {
+      setTimeout(
+        () => {
+          if (el.textContent === message) el.textContent = "";
+        },
+        type === "error" ? 5000 : 3000,
+      );
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Draft Autosave / Recovery
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const DRAFT_KEY = "stygian_recording_draft";
+
+  function saveDraft() {
+    if (!currentRecordingTemplate) return;
+    const draft = {
+      template: currentRecordingTemplate,
+      savedAt: Date.now(),
+    };
+    chrome.storage.local.set({ [DRAFT_KEY]: draft });
+  }
+
+  function clearDraft() {
+    chrome.storage.local.remove(DRAFT_KEY);
+  }
+
+  async function loadDraftIfExists(): Promise<void> {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(DRAFT_KEY, (result) => {
+        const draft = result[DRAFT_KEY] as
+          | { template: PopupExtractionTemplate; savedAt: number }
+          | undefined;
+        if (!draft) {
+          resolve();
+          return;
+        }
+        // Ignore drafts older than 2 hours
+        if (Date.now() - draft.savedAt > 2 * 60 * 60 * 1000) {
+          clearDraft();
+          resolve();
+          return;
+        }
+        showDraftRecoveryBanner(draft.template, draft.savedAt);
+        resolve();
+      });
+    });
+  }
+
+  function showDraftRecoveryBanner(
+    template: PopupExtractionTemplate,
+    savedAt: number,
+  ) {
+    const banner = document.getElementById("draft-recovery-banner");
+    const label = document.getElementById("draft-banner-label");
+    if (!banner || !label) return;
+    const age = Math.round((Date.now() - savedAt) / 60_000);
+    label.textContent = `"${template.name}" — ${(template.regions ?? []).length} regions — ${age < 1 ? "just now" : `${age}m ago`}`;
+    banner.style.display = "flex";
+
+    document.getElementById("draft-resume-btn")?.addEventListener(
+      "click",
+      () => {
+        resumeDraft(template);
+        banner.style.display = "none";
+      },
+      { once: true },
+    );
+
+    document.getElementById("draft-discard-btn")?.addEventListener(
+      "click",
+      () => {
+        clearDraft();
+        banner.style.display = "none";
+      },
+      { once: true },
+    );
+  }
+
+  function resumeDraft(template: PopupExtractionTemplate) {
+    // Switch to record tab and restore state
+    document
+      .querySelector('[data-tab="record"]')
+      ?.dispatchEvent(new MouseEvent("click"));
+    currentRecordingTemplate = template;
+
+    const nameInput = document.getElementById(
+      "record-name-input",
+    ) as HTMLInputElement;
+    const descInput = document.getElementById(
+      "record-description-input",
+    ) as HTMLTextAreaElement;
+    if (nameInput) nameInput.value = template.name ?? "";
+    if (descInput) descInput.value = template.description ?? "";
+
+    updateRecordingRegionsList(template.regions ?? []);
+    showTabStatus(
+      "record",
+      `Resumed draft with ${(template.regions ?? []).length} regions.`,
+      "info",
+    );
+  }
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Tab Navigation
@@ -59,27 +266,63 @@ type PopupRegion = any;
 
   const newTemplateBtn = document.getElementById("new-template-btn");
   newTemplateBtn?.addEventListener("click", () => {
-    const name = prompt("Enter template name:");
-    if (!name) return;
+    const nameInput = document.getElementById(
+      "modal-new-name",
+    ) as HTMLInputElement;
+    const descInput = document.getElementById(
+      "modal-new-description",
+    ) as HTMLTextAreaElement;
+    if (nameInput) nameInput.value = "";
+    if (descInput) descInput.value = "";
+    openModal("modal-new-template");
+  });
 
-    const description = prompt("Enter template description (optional):");
-
-    chrome.runtime.sendMessage(
-      {
+  document
+    .getElementById("modal-new-confirm")
+    ?.addEventListener("click", async () => {
+      const name = (
+        document.getElementById("modal-new-name") as HTMLInputElement
+      )?.value.trim();
+      const description = (
+        document.getElementById("modal-new-description") as HTMLTextAreaElement
+      )?.value.trim();
+      if (!name) {
+        (
+          document.getElementById("modal-new-name") as HTMLInputElement
+        ).style.borderColor = "#fc8181";
+        return;
+      }
+      closeModal("modal-new-template");
+      const response = await sendMessage({
         type: "create_template",
         name,
         description: description || undefined,
-      },
-      (response: any) => {
-        if (response.success) {
-          loadTemplates();
-          showStatus("Template created!", "success");
-        } else {
-          showStatus("Failed to create template: " + response.error, "error");
-        }
-      },
-    );
-  });
+      });
+      if (response.success) {
+        loadTemplates();
+        showTabStatus("templates", "Template created!", "success");
+      } else {
+        showTabStatus(
+          "templates",
+          "Failed to create template: " + response.error,
+          "error",
+        );
+      }
+    });
+
+  // Enter key inside modal confirms
+  document
+    .getElementById("modal-new-name")
+    ?.addEventListener("keydown", (e) => {
+      if ((e as KeyboardEvent).key === "Enter")
+        document.getElementById("modal-new-confirm")?.click();
+    });
+  document
+    .getElementById("modal-new-description")
+    ?.addEventListener("keydown", (e) => {
+      if ((e as KeyboardEvent).key === "Enter" && (e as KeyboardEvent).ctrlKey)
+        document.getElementById("modal-new-confirm")?.click();
+    });
 
   // ── Import JSON ──────────────────────────────────────────────────────────────
 
@@ -121,9 +364,9 @@ type PopupRegion = any;
         failed === 0
           ? `Imported ${imported} template${imported !== 1 ? "s" : ""}!`
           : `Imported ${imported}, failed ${failed}`;
-      showStatus(msg, failed === 0 ? "success" : "error");
+      showTabStatus("templates", msg, failed === 0 ? "success" : "error");
     } catch (_e) {
-      showStatus("Invalid JSON file", "error");
+      showTabStatus("templates", "Invalid JSON file", "error");
     } finally {
       // Reset so the same file can be re-imported if needed
       if (importTemplateFile) importTemplateFile.value = "";
@@ -136,22 +379,23 @@ type PopupRegion = any;
 
   syncTemplatesBtn?.addEventListener("click", async () => {
     syncTemplatesBtn.setAttribute("disabled", "true");
-    showStatus("Syncing templates from server…", "info");
+    showTabStatus("templates", "Syncing templates from server\u2026", "info");
 
     try {
       const response = await sendMessage({ type: "sync_from_server" });
 
       if (response.success) {
         loadTemplates();
-        showStatus(
+        showTabStatus(
+          "templates",
           `Synced ${response.imported} template${response.imported !== 1 ? "s" : ""} from server!`,
           "success",
         );
       } else {
-        showStatus("Sync failed: " + response.error, "error");
+        showTabStatus("templates", "Sync failed: " + response.error, "error");
       }
     } catch (e) {
-      showStatus("Sync error: " + String(e), "error");
+      showTabStatus("templates", "Sync error: " + String(e), "error");
     } finally {
       syncTemplatesBtn.removeAttribute("disabled");
     }
@@ -214,6 +458,9 @@ type PopupRegion = any;
       }
     });
 
+  // Tracks which template we're editing
+  let editingTemplateId: string | null = null;
+
   async function editTemplate(templateId: string) {
     const response = await sendMessage({
       type: "get_template",
@@ -221,60 +468,69 @@ type PopupRegion = any;
     });
 
     if (!response.success) {
-      showStatus("Failed to load template", "error");
+      showTabStatus("templates", "Failed to load template", "error");
       return;
     }
 
     const template = response.template as PopupExtractionTemplate;
+    editingTemplateId = templateId;
 
-    const action = prompt(
-      `Template: ${template.name}\n\nOptions:\n1. Edit name\n2. View regions\n3. Export JSON`,
-      "1",
-    );
-
-    switch (action) {
-      case "1": {
-        const newName = prompt("New template name:", template.name);
-        if (newName && newName !== template.name) {
-          template.name = newName;
-          await sendMessage({
-            type: "save_template",
-            template,
-          });
-          loadTemplates();
-          showStatus("Template updated!", "success");
-        }
-        break;
-      }
-
-      case "2": {
-        const regions = template.regions
-          .map((r: PopupRegion) => `- ${r.name}: ${JSON.stringify(r.selector)}`)
-          .join("\n");
-        alert(`Regions:\n\n${regions || "No regions"}`);
-        break;
-      }
-
-      case "3": {
-        const exportResponse = await sendMessage({
-          type: "export_template",
-          template_id: templateId,
-        });
-
-        if (exportResponse.success) {
-          const dataUrl = `data:text/json,${encodeURIComponent(exportResponse.json)}`;
-          const link = document.createElement("a");
-          link.href = dataUrl;
-          link.download = `${template.name.replace(/\s+/g, "_")}.json`;
-          link.click();
-        }
-        break;
-      }
-    }
+    const nameInput = document.getElementById(
+      "modal-edit-template-name",
+    ) as HTMLInputElement;
+    if (nameInput) nameInput.value = template.name ?? "";
+    openModal("modal-edit-template");
   }
 
+  document
+    .getElementById("modal-edit-template-confirm")
+    ?.addEventListener("click", async () => {
+      if (!editingTemplateId) return;
+      const newName = (
+        document.getElementById("modal-edit-template-name") as HTMLInputElement
+      )?.value.trim();
+      if (!newName) return;
+      closeModal("modal-edit-template");
+
+      const getResp = await sendMessage({
+        type: "get_template",
+        template_id: editingTemplateId,
+      });
+      if (!getResp.success) return;
+      const template = getResp.template as PopupExtractionTemplate;
+      template.name = newName;
+      const saveResp = await sendMessage({ type: "save_template", template });
+      if (saveResp.success) {
+        loadTemplates();
+        showTabStatus("templates", "Template updated!", "success");
+      } else {
+        showTabStatus(
+          "templates",
+          "Failed to update: " + saveResp.error,
+          "error",
+        );
+      }
+      editingTemplateId = null;
+    });
+
+  document
+    .getElementById("modal-edit-template-name")
+    ?.addEventListener("keydown", (e) => {
+      if ((e as KeyboardEvent).key === "Enter")
+        document.getElementById("modal-edit-template-confirm")?.click();
+    });
+
   async function deleteTemplate(templateId: string) {
-    if (!confirm("Delete this template?")) return;
+    // Use a simple inline confirm approach rather than native confirm()
+    const card = document
+      .querySelector(`[data-template-id="${templateId}"]`)
+      ?.closest(".template-card") as HTMLElement | null;
+    if (card) {
+      card.style.outline = "2px solid #fc8181";
+      setTimeout(() => {
+        card.style.outline = "";
+      }, 2000);
+    }
 
     const response = await sendMessage({
       type: "delete_template",
@@ -283,9 +539,9 @@ type PopupRegion = any;
 
     if (response.success) {
       loadTemplates();
-      showStatus("Template deleted", "success");
+      showTabStatus("templates", "Template deleted", "success");
     } else {
-      showStatus("Failed to delete template", "error");
+      showTabStatus("templates", "Failed to delete template", "error");
     }
   }
 
@@ -308,22 +564,59 @@ type PopupRegion = any;
   const recordingRegionsList = document.getElementById(
     "recording-regions-list",
   );
+  const recordingActiveBadge = document.getElementById(
+    "recording-active-badge",
+  ) as HTMLElement | null;
+  const recordingBadgeCount = document.getElementById(
+    "recording-badge-count",
+  ) as HTMLElement | null;
+  const quickActionsGroup = document.getElementById(
+    "quick-actions-group",
+  ) as HTMLElement | null;
+  const undoLastRegionBtn = document.getElementById(
+    "undo-last-region-btn",
+  ) as HTMLButtonElement | null;
+  const testRecordingBtn = document.getElementById(
+    "test-recording-btn",
+  ) as HTMLButtonElement | null;
+  const recordTestResults = document.getElementById(
+    "record-test-results",
+  ) as HTMLElement | null;
 
+  // ── Quick-action type buttons ────────────────────────────────────────────────
+  document
+    .getElementById("quick-actions-group")
+    ?.querySelectorAll<HTMLButtonElement>("[data-quick-type]")
+    .forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const type = btn.getAttribute("data-quick-type") ?? "";
+        if (pendingQuickType === type) {
+          pendingQuickType = null;
+          btn.classList.remove("active");
+        } else {
+          document
+            .querySelectorAll("[data-quick-type]")
+            .forEach((b) => b.classList.remove("active"));
+          pendingQuickType = type;
+          btn.classList.add("active");
+        }
+      });
+    });
+
+  // ── Start Recording ──────────────────────────────────────────────────────────
   startRecordingBtn?.addEventListener("click", async () => {
     const name = recordNameInput.value.trim();
     if (!name) {
-      showStatus("Please enter a template name", "error");
+      showTabStatus("record", "Please enter a template name", "error");
       return;
     }
 
-    // Get active tab
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tabs[0]) {
-      showStatus("No active tab", "error");
+      showTabStatus("record", "No active tab", "error");
       return;
     }
 
-    // Create template
     const createResponse = await sendMessage({
       type: "create_template",
       name,
@@ -331,7 +624,7 @@ type PopupRegion = any;
     });
 
     if (!createResponse.success) {
-      showStatus("Failed to create template", "error");
+      showTabStatus("record", "Failed to create template", "error");
       return;
     }
 
@@ -349,7 +642,6 @@ type PopupRegion = any;
       },
     };
 
-    // Start recording in content script
     try {
       await chrome.tabs.sendMessage(tabs[0].id!, {
         type: "start_recording",
@@ -362,15 +654,22 @@ type PopupRegion = any;
       recordNameInput.disabled = true;
       recordDescriptionInput.disabled = true;
 
-      showStatus(
+      // Show new UI elements
+      if (recordingActiveBadge) recordingActiveBadge.hidden = false;
+      if (quickActionsGroup) quickActionsGroup.hidden = false;
+      if (recordTestResults) recordTestResults.innerHTML = "";
+
+      showTabStatus(
+        "record",
         "Recording started! Click elements in the page to add regions.",
         "info",
       );
-    } catch (error) {
-      showStatus("Failed to start recording", "error");
+    } catch (_error) {
+      showTabStatus("record", "Failed to start recording", "error");
     }
   });
 
+  // ── Finish Recording ─────────────────────────────────────────────────────────
   finishRecordingBtn?.addEventListener("click", async () => {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tabs[0] || !currentRecordingTemplate) return;
@@ -383,47 +682,142 @@ type PopupRegion = any;
       if (stopResponse.success && stopResponse.regions) {
         currentRecordingTemplate.regions = stopResponse.regions;
 
-        // Save template
         const saveResponse = await sendMessage({
           type: "save_template",
           template: currentRecordingTemplate,
         });
 
         if (saveResponse.success) {
-          showStatus(
+          clearDraft();
+          showTabStatus(
+            "record",
             `Template saved with ${stopResponse.regions.length} regions!`,
             "success",
           );
-
-          // Reset form
           resetRecordingForm();
-
-          // Switch to templates tab to show the new template
           document
             .querySelector('[data-tab="templates"]')
             ?.dispatchEvent(new MouseEvent("click"));
         }
       }
-    } catch (error) {
-      showStatus("Failed to save template", "error");
+    } catch (_error) {
+      showTabStatus("record", "Failed to save template", "error");
     }
   });
 
-  // Listen for region updates from content script
+  // ── Undo Last Region ─────────────────────────────────────────────────────────
+  undoLastRegionBtn?.addEventListener("click", async () => {
+    if (!currentRecordingTemplate) return;
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tabs[0]) return;
+    try {
+      await chrome.tabs.sendMessage(tabs[0].id!, { type: "region_undo" });
+    } catch {
+      // Fallback if content script messaging fails.
+      currentRecordingTemplate.regions = currentRecordingTemplate.regions.slice(
+        0,
+        -1,
+      );
+      updateRecordingRegionsList(currentRecordingTemplate.regions);
+      if (recordingBadgeCount) {
+        recordingBadgeCount.textContent = String(
+          currentRecordingTemplate.regions.length,
+        );
+      }
+      if (undoLastRegionBtn) {
+        undoLastRegionBtn.disabled =
+          currentRecordingTemplate.regions.length === 0;
+      }
+      saveDraft();
+    }
+  });
+
+  // ── Test Extraction ──────────────────────────────────────────────────────────
+  testRecordingBtn?.addEventListener("click", async () => {
+    if (
+      !currentRecordingTemplate ||
+      currentRecordingTemplate.regions.length === 0
+    ) {
+      if (recordTestResults)
+        recordTestResults.innerHTML =
+          '<p class="empty-state">Add at least one region first</p>';
+      return;
+    }
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tabs[0]) return;
+    if (testRecordingBtn) testRecordingBtn.disabled = true;
+
+    try {
+      // Persist latest in-progress regions so apply uses current state.
+      const saveResponse = await sendMessage({
+        type: "save_template",
+        template: currentRecordingTemplate,
+      });
+      if (!saveResponse.success) {
+        if (recordTestResults) {
+          recordTestResults.innerHTML = `<p class="status-message error">Test failed: ${saveResponse.error ?? "failed to save template"}</p>`;
+        }
+        return;
+      }
+
+      const response = await sendMessage({
+        type: "apply_template",
+        template_id: currentRecordingTemplate.id,
+        tab_id: tabs[0].id,
+      });
+      if (recordTestResults) {
+        if (response.success && response.result) {
+          displayResults(response.result, recordTestResults);
+        } else {
+          recordTestResults.innerHTML = `<p class="status-message error">Test failed: ${response.error ?? "unknown"}</p>`;
+        }
+      }
+    } catch (e) {
+      if (recordTestResults) {
+        recordTestResults.innerHTML = `<p class="status-message error">Error: ${String(e)}</p>`;
+      }
+    } finally {
+      if (testRecordingBtn) testRecordingBtn.disabled = false;
+    }
+  });
+
+  // ── Incoming messages from content script ────────────────────────────────────
   chrome.runtime.onMessage.addListener(
     (message: any, _sender: any, sendResponse: any) => {
       if (message.type === "region_added" && currentRecordingTemplate) {
         currentRecordingTemplate.regions.push(message.region);
         updateRecordingRegionsList(currentRecordingTemplate.regions);
+        if (recordingBadgeCount) {
+          recordingBadgeCount.textContent = String(
+            currentRecordingTemplate.regions.length,
+          );
+        }
+        if (undoLastRegionBtn) undoLastRegionBtn.disabled = false;
+        saveDraft();
+      } else if (message.type === "region_undo" && currentRecordingTemplate) {
+        // Content-script-initiated undo (keyboard)
+        currentRecordingTemplate.regions =
+          currentRecordingTemplate.regions.slice(0, -1);
+        updateRecordingRegionsList(currentRecordingTemplate.regions);
+        if (recordingBadgeCount) {
+          recordingBadgeCount.textContent = String(
+            currentRecordingTemplate.regions.length,
+          );
+        }
+        if (undoLastRegionBtn) {
+          undoLastRegionBtn.disabled =
+            currentRecordingTemplate.regions.length === 0;
+        }
+        saveDraft();
       } else if (message.type === "recording_stopped") {
-        // User pressed Escape to stop recording - reset UI without saving
         resetRecordingForm();
-        showStatus("Recording stopped", "info");
+        showTabStatus("record", "Recording stopped", "info");
       }
       sendResponse({ success: true });
     },
   );
 
+  // ── Reset form ───────────────────────────────────────────────────────────────
   function resetRecordingForm() {
     recordNameInput.value = "";
     recordDescriptionInput.value = "";
@@ -433,8 +827,42 @@ type PopupRegion = any;
     recordDescriptionInput.disabled = false;
     isRecording = false;
     currentRecordingTemplate = null;
+    pendingQuickType = null;
+
+    if (recordingActiveBadge) recordingActiveBadge.hidden = true;
+    if (quickActionsGroup) quickActionsGroup.hidden = true;
+    if (undoLastRegionBtn) undoLastRegionBtn.disabled = true;
+    document
+      .querySelectorAll("[data-quick-type]")
+      .forEach((b) => b.classList.remove("active"));
+
     updateRecordingRegionsList([]);
+    clearDraft();
   }
+
+  // ── Region timeline ──────────────────────────────────────────────────────────
+  // Confidence colours shared between content-script and popup
+  const CONF_COLORS: Record<string, string> = {
+    strong: "#22c55e",
+    good: "#f59e0b",
+    fragile: "#f87171",
+  };
+
+  function confidenceFromSelector(selector: string): {
+    level: string;
+    color: string;
+  } {
+    const isStrong = /#|data-|aria-/.test(selector);
+    const level = isStrong
+      ? "strong"
+      : selector.split(" ").length > 2
+        ? "fragile"
+        : "good";
+    return { level, color: CONF_COLORS[level] ?? "#94a3b8" };
+  }
+
+  // Tracks which region we're editing inside the modal
+  let editingRegionIndex: number | null = null;
 
   function updateRecordingRegionsList(regions: PopupRegion[]) {
     if (!recordingRegionsList) return;
@@ -446,16 +874,153 @@ type PopupRegion = any;
     }
 
     recordingRegionsList.innerHTML = regions
-      .map(
-        (region) => `
-        <div class="region-item">
-          <span class="region-name">${region.name}</span>
-          <span class="region-count">${region.transformations.length} transforms</span>
-        </div>
-      `,
-      )
+      .map((region, index) => {
+        const selectorStr =
+          typeof region.selector === "string"
+            ? region.selector
+            : JSON.stringify(region.selector);
+        const truncated =
+          selectorStr.length > 36
+            ? selectorStr.slice(0, 33) + "…"
+            : selectorStr;
+        const { level, color } = confidenceFromSelector(selectorStr);
+        return `
+          <div class="region-timeline-item" style="border-left-color:${color}" data-region-index="${index}">
+            <span class="region-number" style="color:${color};font-weight:700;min-width:20px">${index + 1}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(region.name)}</div>
+              <div style="font-size:11px;color:#64748b;font-family:monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(truncated)}</div>
+            </div>
+            <span class="region-confidence-dot" title="${level}" style="background:${color}"></span>
+            <div class="region-item-actions">
+              <button class="btn-icon" data-region-up="${index}" title="Move up">↑</button>
+              <button class="btn-icon" data-region-down="${index}" title="Move down">↓</button>
+              <button class="btn-icon" data-region-edit="${index}" title="Edit">✎</button>
+              <button class="btn-icon" data-region-delete="${index}" title="Remove">✕</button>
+            </div>
+          </div>`;
+      })
       .join("");
+
+    // Edit button
+    recordingRegionsList
+      .querySelectorAll<HTMLButtonElement>("[data-region-edit]")
+      .forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const idx = parseInt(
+            btn.getAttribute("data-region-edit") ?? "-1",
+            10,
+          );
+          if (idx < 0 || !currentRecordingTemplate) return;
+          const region = currentRecordingTemplate.regions[idx];
+          if (!region) return;
+          editingRegionIndex = idx;
+          const nameIn = document.getElementById(
+            "modal-edit-region-name",
+          ) as HTMLInputElement;
+          const selIn = document.getElementById(
+            "modal-edit-region-selector",
+          ) as HTMLInputElement;
+          if (nameIn) nameIn.value = region.name;
+          if (selIn) {
+            selIn.value =
+              typeof region.selector === "string"
+                ? region.selector
+                : JSON.stringify(region.selector);
+          }
+          openModal("modal-edit-region");
+        });
+      });
+
+    // Delete button
+    recordingRegionsList
+      .querySelectorAll<HTMLButtonElement>("[data-region-delete]")
+      .forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const idx = parseInt(
+            btn.getAttribute("data-region-delete") ?? "-1",
+            10,
+          );
+          if (idx < 0 || !currentRecordingTemplate) return;
+          currentRecordingTemplate.regions.splice(idx, 1);
+          updateRecordingRegionsList(currentRecordingTemplate.regions);
+          if (recordingBadgeCount) {
+            recordingBadgeCount.textContent = String(
+              currentRecordingTemplate.regions.length,
+            );
+          }
+          if (undoLastRegionBtn) {
+            undoLastRegionBtn.disabled =
+              currentRecordingTemplate.regions.length === 0;
+          }
+          saveDraft();
+        });
+      });
+
+    // Reorder up
+    recordingRegionsList
+      .querySelectorAll<HTMLButtonElement>("[data-region-up]")
+      .forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const idx = parseInt(btn.getAttribute("data-region-up") ?? "-1", 10);
+          if (idx <= 0 || !currentRecordingTemplate) return;
+          const regionsRef = currentRecordingTemplate.regions;
+          [regionsRef[idx - 1], regionsRef[idx]] = [
+            regionsRef[idx],
+            regionsRef[idx - 1],
+          ];
+          updateRecordingRegionsList(regionsRef);
+          saveDraft();
+        });
+      });
+
+    // Reorder down
+    recordingRegionsList
+      .querySelectorAll<HTMLButtonElement>("[data-region-down]")
+      .forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const idx = parseInt(
+            btn.getAttribute("data-region-down") ?? "-1",
+            10,
+          );
+          if (!currentRecordingTemplate) return;
+          const regionsRef = currentRecordingTemplate.regions;
+          if (idx < 0 || idx >= regionsRef.length - 1) return;
+          [regionsRef[idx + 1], regionsRef[idx]] = [
+            regionsRef[idx],
+            regionsRef[idx + 1],
+          ];
+          updateRecordingRegionsList(regionsRef);
+          saveDraft();
+        });
+      });
   }
+
+  // ── Edit-region modal confirm ─────────────────────────────────────────────────
+  document
+    .getElementById("modal-edit-region-confirm")
+    ?.addEventListener("click", () => {
+      if (editingRegionIndex === null || !currentRecordingTemplate) return;
+      const nameIn = document.getElementById(
+        "modal-edit-region-name",
+      ) as HTMLInputElement;
+      const selIn = document.getElementById(
+        "modal-edit-region-selector",
+      ) as HTMLInputElement;
+      const newName = nameIn?.value.trim();
+      const newSel = selIn?.value.trim();
+      if (!newName) return;
+
+      const region = currentRecordingTemplate.regions[editingRegionIndex];
+      if (!region) return;
+      region.name = newName;
+      if (newSel) region.selector = newSel as any;
+
+      closeModal("modal-edit-region");
+      editingRegionIndex = null;
+      updateRecordingRegionsList(currentRecordingTemplate.regions);
+      saveDraft();
+    });
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Apply Tab
@@ -467,6 +1032,28 @@ type PopupRegion = any;
   const applyTemplateBtn = document.getElementById(
     "apply-template-btn",
   ) as HTMLButtonElement | null;
+  const applyModeSelect = document.getElementById(
+    "apply-mode-select",
+  ) as HTMLSelectElement | null;
+  const batchRootGroup = document.getElementById("batch-root-group");
+  const batchRootSelectorInput = document.getElementById(
+    "batch-root-selector-input",
+  ) as HTMLInputElement | null;
+  const validateRootSelectorBtn = document.getElementById(
+    "validate-root-selector-btn",
+  ) as HTMLButtonElement | null;
+  const applyDebugCheckbox = document.getElementById(
+    "apply-debug-checkbox",
+  ) as HTMLInputElement | null;
+
+  function syncApplyModeUi() {
+    if (!applyModeSelect || !batchRootGroup) return;
+    batchRootGroup.style.display =
+      applyModeSelect.value === "batch" ? "block" : "none";
+  }
+
+  applyModeSelect?.addEventListener("change", syncApplyModeUi);
+  syncApplyModeUi();
 
   async function loadTemplatesForApply() {
     const response = await sendMessage({ type: "list_templates" });
@@ -485,17 +1072,27 @@ type PopupRegion = any;
   applyTemplateBtn?.addEventListener("click", async () => {
     const templateId = applyTemplateSelect.value;
     if (!templateId) {
-      showStatus("Please select a template", "error");
+      showTabStatus("apply", "Please select a template", "error");
+      return;
+    }
+
+    const mode = applyModeSelect?.value === "batch" ? "batch" : "single";
+    const rootSelector = batchRootSelectorInput?.value.trim() ?? "";
+    if (mode === "batch" && rootSelector.length === 0) {
+      showTabStatus("apply", "Batch mode requires a root selector", "error");
       return;
     }
 
     applyTemplateBtn!.disabled = true;
-    showStatus("Extracting data...", "info");
+    showTabStatus("apply", "Extracting data...", "info");
 
     try {
       const response = await sendMessage({
         type: "apply_template",
         template_id: templateId,
+        mode,
+        root_selector: rootSelector,
+        debug: applyDebugCheckbox?.checked === true,
       });
 
       if (response.success) {
@@ -509,37 +1106,169 @@ type PopupRegion = any;
           mcpToolError ??
           null;
         if (backendError) {
-          showStatus("Extraction failed: " + String(backendError), "error");
+          showTabStatus(
+            "apply",
+            "Extraction failed: " + String(backendError),
+            "error",
+          );
           return;
         }
 
         displayResults(response.result);
-        showStatus("Extraction complete!", "success");
+        showTabStatus("apply", "Extraction complete!", "success");
       } else {
-        showStatus("Extraction failed: " + response.error, "error");
+        showTabStatus("apply", "Extraction failed: " + response.error, "error");
       }
     } catch (error) {
-      showStatus("Error during extraction: " + String(error), "error");
+      showTabStatus(
+        "apply",
+        "Error during extraction: " + String(error),
+        "error",
+      );
     } finally {
       applyTemplateBtn!.disabled = false;
     }
   });
 
-  function displayResults(result: any) {
-    const resultsContainer = document.getElementById("extraction-results");
+  validateRootSelectorBtn?.addEventListener("click", async () => {
+    const selectorCss = batchRootSelectorInput?.value.trim() ?? "";
+    if (!selectorCss) {
+      showTabStatus("apply", "Enter a root selector to validate", "error");
+      return;
+    }
+
+    validateRootSelectorBtn.disabled = true;
+    showTabStatus("apply", "Validating selector...", "info");
+
+    try {
+      const response = await sendMessage({
+        type: "inspect_selector",
+        selector_css: selectorCss,
+      });
+
+      if (!response.success) {
+        showTabStatus("apply", "Validation failed: " + response.error, "error");
+        return;
+      }
+
+      const textPayload = response.result?.result?.content?.[0]?.text;
+      const parsed =
+        typeof textPayload === "string"
+          ? (JSON.parse(textPayload) as Record<string, unknown>)
+          : (response.result as Record<string, unknown>);
+
+      const count = Number(parsed.match_count ?? 0);
+      const preview =
+        typeof parsed.preview === "string"
+          ? parsed.preview
+          : "Selector validated";
+      showTabStatus(
+        "apply",
+        `Selector matched ${count} element(s): ${preview}`,
+        "success",
+      );
+    } catch (error) {
+      showTabStatus("apply", "Validation error: " + String(error), "error");
+    } finally {
+      validateRootSelectorBtn.disabled = false;
+    }
+  });
+
+  function displayResults(result: any, container?: HTMLElement | null) {
+    const resultsContainer =
+      container ?? document.getElementById("extraction-results");
     if (!resultsContainer) return;
 
-    const data = normaliseExtractionResult(result);
+    const normalized = resultUtils.normalizeExtractionEnvelope(result);
+    const rowPreview = renderResultsTable(normalized.rows.slice(0, 10));
+    const jsonPayload = JSON.stringify(normalized.rawPayload, null, 2);
+    const csvPayload = resultUtils.recordsToCsv(normalized.rows);
+    const summaryChips = [
+      `<span class="summary-chip">Mode: ${normalized.mode}</span>`,
+      `<span class="summary-chip">Rows: ${normalized.rows.length}</span>`,
+    ];
+
+    if (typeof normalized.metadata.regions_successful === "number") {
+      summaryChips.push(
+        `<span class="summary-chip">Regions: ${normalized.metadata.regions_successful}/${normalized.metadata.total_regions ?? "?"}</span>`,
+      );
+    }
+
+    if (typeof normalized.metadata.elapsed_ms === "number") {
+      summaryChips.push(
+        `<span class="summary-chip">Elapsed: ${normalized.metadata.elapsed_ms}ms</span>`,
+      );
+    }
+
+    if (typeof normalized.metadata.root_selector === "string") {
+      summaryChips.push(
+        `<span class="summary-chip">Root: ${escapeHtml(normalized.metadata.root_selector)}</span>`,
+      );
+    }
+
+    const errorsHtml =
+      normalized.errors.length > 0
+        ? `<div class="results-errors"><strong>Errors</strong><ul>${normalized.errors
+            .map((error) => `<li>${escapeHtml(error)}</li>`)
+            .join("")}</ul></div>`
+        : "";
+
     const html = `
     <div class="results-panel">
       <h3>Extraction Results</h3>
-      <pre>${JSON.stringify(data, null, 2)}</pre>
-      <button class="btn btn-small" data-action="copy-results">Copy JSON</button>
+      <div class="results-summary">${summaryChips.join("")}</div>
+      ${rowPreview}
+      ${errorsHtml}
+      <div class="results-actions">
+        <button class="btn btn-small" data-action="copy-results">Copy JSON</button>
+        <button class="btn btn-small btn-secondary" data-action="download-json">Download JSON</button>
+        <button class="btn btn-small btn-secondary" data-action="download-csv" ${csvPayload ? "" : "disabled"}>Download CSV</button>
+      </div>
+      <details class="results-details">
+        <summary>Raw Payload</summary>
+        <pre>${escapeHtml(jsonPayload)}</pre>
+      </details>
+      ${normalized.debug ? `<details class="results-details"><summary>Debug</summary><pre>${escapeHtml(JSON.stringify(normalized.debug, null, 2))}</pre></details>` : ""}
     </div>
   `;
 
     resultsContainer.innerHTML = html;
-    (window as any).lastResults = JSON.stringify(data, null, 2);
+    (window as any).lastResults = jsonPayload;
+    (window as any).lastResultsCsv = csvPayload;
+  }
+
+  function renderResultsTable(rows: Record<string, unknown>[]): string {
+    if (rows.length === 0) {
+      return '<p class="empty-state">No rows returned.</p>';
+    }
+
+    const headers = Array.from(
+      rows.reduce((acc, row) => {
+        Object.keys(row).forEach((key) => acc.add(key));
+        return acc;
+      }, new Set<string>()),
+    );
+
+    const head = headers
+      .map((header) => `<th>${escapeHtml(header)}</th>`)
+      .join("");
+    const body = rows
+      .map((row) => {
+        const cells = headers
+          .map((header) => `<td>${escapeHtml(String(row[header] ?? ""))}</td>`)
+          .join("");
+        return `<tr>${cells}</tr>`;
+      })
+      .join("");
+
+    return `
+      <div class="results-table-wrap">
+        <table class="results-table">
+          <thead><tr>${head}</tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+    `;
   }
 
   document
@@ -549,47 +1278,68 @@ type PopupRegion = any;
       if (!target) return;
 
       const button = target.closest(
-        "button[data-action='copy-results']",
+        "button[data-action]",
       ) as HTMLButtonElement | null;
       if (!button) return;
 
-      void copyResultsToClipboard();
-    });
-
-  function normaliseExtractionResult(result: any): Record<string, any> {
-    if (result?.data && typeof result.data === "object") {
-      return result.data as Record<string, any>;
-    }
-
-    const textPayload = result?.result?.content?.[0]?.text;
-    if (typeof textPayload === "string") {
-      try {
-        const parsed = JSON.parse(textPayload) as Record<string, any>;
-        if (parsed?.data && typeof parsed.data === "object") {
-          return parsed.data as Record<string, any>;
-        }
-        return parsed;
-      } catch {
-        return { raw: textPayload };
+      const action = button.getAttribute("data-action");
+      if (action === "copy-results") {
+        void copyResultsToClipboard();
+      } else if (action === "download-json") {
+        downloadResults("json");
+      } else if (action === "download-csv") {
+        downloadResults("csv");
       }
-    }
-
-    return {};
-  }
+    });
 
   async function copyResultsToClipboard(): Promise<void> {
     const results = (window as any).lastResults;
     if (!results) {
-      showStatus("No results to copy", "error");
+      showTabStatus("apply", "No results to copy", "error");
       return;
     }
 
     try {
       await navigator.clipboard.writeText(results);
-      showStatus("Results copied to clipboard!", "success");
-    } catch (error) {
-      showStatus("Failed to copy results", "error");
+      showTabStatus("apply", "Results copied to clipboard!", "success");
+    } catch (_error) {
+      showTabStatus("apply", "Failed to copy results", "error");
     }
+  }
+
+  function downloadResults(format: "json" | "csv") {
+    const payload =
+      format === "json"
+        ? (window as any).lastResults
+        : (window as any).lastResultsCsv;
+    if (!payload) {
+      showTabStatus(
+        "apply",
+        `No ${format.toUpperCase()} results available`,
+        "error",
+      );
+      return;
+    }
+
+    const blob = new Blob([payload], {
+      type: format === "json" ? "application/json" : "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `stygian-extraction-results.${format}`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showTabStatus("apply", `${format.toUpperCase()} downloaded`, "success");
+  }
+
+  function escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -618,22 +1368,8 @@ type PopupRegion = any;
     message: string,
     type: "success" | "error" | "info" = "info",
   ) {
+    // Fallback: log + show in all status elements for cases where tab is ambiguous
     console.log(`[${type.toUpperCase()}]`, message);
-
-    const statusElements = document.querySelectorAll('[id$="-status"]');
-    statusElements.forEach((el) => {
-      el.textContent = message;
-      el.className = `status-message ${type}`;
-    });
-
-    // Auto-hide after 3 seconds
-    setTimeout(() => {
-      statusElements.forEach((el) => {
-        if (el.textContent === message) {
-          el.textContent = "";
-        }
-      });
-    }, 3000);
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -683,7 +1419,11 @@ type PopupRegion = any;
         backendUrlInput.value = response.url;
       }
     } catch (error) {
-      showStatus(`Failed to load backend URL: ${String(error)}`, "error");
+      showTabStatus(
+        "settings",
+        `Failed to load backend URL: ${String(error)}`,
+        "error",
+      );
     }
   }
 
@@ -713,15 +1453,19 @@ type PopupRegion = any;
   saveBackendUrlBtn?.addEventListener("click", async () => {
     const url = backendUrlInput?.value.trim();
     if (!url) {
-      showStatus("URL cannot be empty", "error");
+      showTabStatus("settings", "URL cannot be empty", "error");
       return;
     }
     const response = await sendMessage({ type: "set_backend_url", url });
     if (response.success) {
-      showStatus("Backend URL saved", "success");
+      showTabStatus("settings", "Backend URL saved", "success");
       await checkConnection();
     } else {
-      showStatus("Failed to save URL: " + response.error, "error");
+      showTabStatus(
+        "settings",
+        "Failed to save URL: " + response.error,
+        "error",
+      );
     }
   });
 
@@ -743,6 +1487,38 @@ type PopupRegion = any;
 
   console.log("[Popup] Stygian Plugin popup loaded");
 
+  // Restore draft if one exists
+  loadDraftIfExists();
+
   // Load templates on startup
   loadTemplates();
+
+  // ── Popup keyboard shortcut: R to start/stop recording ─────────────────────
+  document.addEventListener("keydown", (e) => {
+    const key = (e as KeyboardEvent).key;
+    // Only handle when not focused on an input/textarea
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLInputElement ||
+      active instanceof HTMLTextAreaElement
+    )
+      return;
+    if (key === "r" || key === "R") {
+      const recordTab = document.querySelector(
+        '[data-tab="record"]',
+      ) as HTMLElement | null;
+      const activeTab = document
+        .querySelector(".tab-btn.active")
+        ?.getAttribute("data-tab");
+      if (activeTab !== "record") {
+        recordTab?.click();
+        return;
+      }
+      if (isRecording) {
+        finishRecordingBtn?.click();
+      } else if (!startRecordingBtn?.disabled) {
+        startRecordingBtn?.click();
+      }
+    }
+  });
 })();

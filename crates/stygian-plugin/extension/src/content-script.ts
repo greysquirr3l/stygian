@@ -24,7 +24,9 @@ type CsElementWithPath = any;
   };
 
   let highlightedElement: Element | null = null;
+  let pendingElement: Element | null = null; // element awaiting region name
   let selectedElements: Set<Element> = new Set();
+  let regionHistory: CsRegion[] = []; // for undo
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Message Listener
@@ -90,6 +92,31 @@ type CsElementWithPath = any;
         }
         break;
 
+      case "extract_with_template_batch":
+        {
+          try {
+            const extracted = extractWithTemplateBatch(
+              message.template,
+              message.root_selector,
+            );
+            sendResponse({ success: true, ...extracted });
+          } catch (error) {
+            sendResponse({ success: false, error: String(error) });
+          }
+        }
+        break;
+
+      case "inspect_selector_local":
+        {
+          try {
+            const inspected = inspectSelectorLocal(message.selector_css);
+            sendResponse({ success: true, ...inspected });
+          } catch (error) {
+            sendResponse({ success: false, error: String(error) });
+          }
+        }
+        break;
+
       default:
         sendResponse({ success: false, error: "Unknown message type" });
     }
@@ -105,18 +132,15 @@ type CsElementWithPath = any;
     recordingState.active = true;
     recordingState.template_name = templateName;
     recordingState.regions = [];
+    regionHistory = [];
 
     console.log("[Content] Recording started:", templateName);
 
-    // Add recording UI
     showRecordingOverlay();
 
-    // Enable element selection on hover
     document.addEventListener("mouseover", onElementHover, true);
     document.addEventListener("mousedown", onElementClick, true);
-
-    // Allow Escape key to stop recording
-    document.addEventListener("keydown", onEscapeKey, true);
+    document.addEventListener("keydown", onRecordingKey, true);
   }
 
   function stopRecording() {
@@ -124,15 +148,16 @@ type CsElementWithPath = any;
 
     console.log("[Content] Recording stopped");
 
-    // Remove recording UI
     removeRecordingOverlay();
+    removeNameInputCard();
+    removeHoverTooltip();
 
-    // Disable element selection
     document.removeEventListener("mouseover", onElementHover, true);
     document.removeEventListener("mousedown", onElementClick, true);
-    document.removeEventListener("keydown", onEscapeKey, true);
+    document.removeEventListener("keydown", onRecordingKey, true);
 
     clearAllHighlights();
+    pendingElement = null;
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -140,71 +165,75 @@ type CsElementWithPath = any;
   // ─────────────────────────────────────────────────────────────────────────────
 
   function onElementHover(event: Event) {
-    if (!recordingState.active) return;
+    if (!recordingState.active || pendingElement) return;
 
     const target = event.target as Element;
+    // Skip our own injected UI elements
+    if ((target as HTMLElement).closest("[data-stygian]")) return;
     if (target === highlightedElement) return;
 
-    // Clear previous highlight
     if (highlightedElement) {
       unhighlightElement(highlightedElement);
     }
 
-    // Highlight new element
     highlightedElement = target;
-    highlightElement(target);
+    highlightElement(target, "hover");
+    showHoverTooltip(target);
   }
 
   function onElementClick(event: MouseEvent) {
     if (!recordingState.active) return;
+    if ((event.target as HTMLElement).closest("[data-stygian]")) return;
+    if (!highlightedElement) return;
 
     event.preventDefault();
     event.stopPropagation();
 
-    if (!highlightedElement) return;
-
-    // In recording mode, add this element as a region
-    const name = prompt('Enter region name (e.g., "product_title"):');
-    if (!name) return;
-
-    const path = getElementPath(highlightedElement);
-    const region: CsRegion = {
-      name,
-      selector: {
-        type: "dual",
-        css: path.css,
-        xpath: path.xpath,
-      },
-      schema: { type: "string" },
-      transformations: [],
-    };
-
-    recordingState.regions.push(region);
-    console.log("[Content] Region added:", name);
-
-    // Send update to popup
-    chrome.runtime.sendMessage({
-      type: "region_added",
-      region,
-    });
+    // Lock element and show name input card
+    pendingElement = highlightedElement;
+    unhighlightElement(highlightedElement);
+    highlightElement(pendingElement, "locked");
+    removeHoverTooltip();
+    showNameInputCard(pendingElement);
   }
 
-  function onEscapeKey(event: KeyboardEvent) {
+  function onRecordingKey(event: KeyboardEvent) {
     if (!recordingState.active) return;
 
-    if (event.key === "Escape" || event.code === "Escape") {
+    // Escape: cancel pending pick or stop recording
+    if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
-
-      console.log("[Content] Escape pressed - stopping recording");
-
+      if (pendingElement) {
+        unhighlightElement(pendingElement);
+        pendingElement = null;
+        removeNameInputCard();
+        return;
+      }
       stopRecording();
-
-      // Notify popup that recording was stopped
-      chrome.runtime.sendMessage({
-        type: "recording_stopped",
-      });
+      chrome.runtime.sendMessage({ type: "recording_stopped" });
+      return;
     }
+
+    // U: undo last region (only when no card is open)
+    if ((event.key === "u" || event.key === "U") && !pendingElement) {
+      const nameCard = document.getElementById("stygian-name-card");
+      if (nameCard) return; // card is open, let natural key handling proceed
+      event.preventDefault();
+      event.stopPropagation();
+      undoLastRegion();
+    }
+  }
+
+  function undoLastRegion() {
+    if (recordingState.regions.length === 0) return;
+    const removed = recordingState.regions.pop();
+    console.log("[Content] Undo region:", removed?.name);
+    updateOverlayCount();
+    chrome.runtime.sendMessage({
+      type: "region_undo",
+      regions: recordingState.regions,
+    });
   }
 
   function extractWithTemplate(template: CsExtractionTemplate): {
@@ -240,7 +269,61 @@ type CsElementWithPath = any;
     };
   }
 
-  function extractRegionValue(region: CsRegion): unknown {
+  function extractWithTemplateBatch(
+    template: CsExtractionTemplate,
+    rootSelector: string,
+  ): {
+    root_selector: string;
+    results: Array<Record<string, unknown>>;
+    total_matched: number;
+    successful: number;
+    debug: { evaluation_scope: string; first_root_html: string | null };
+  } {
+    if (typeof rootSelector !== "string" || rootSelector.trim().length === 0) {
+      throw new Error("Missing root selector");
+    }
+
+    const roots = Array.from(document.querySelectorAll(rootSelector));
+    if (roots.length === 0) {
+      throw new Error(`root_selector matched no elements: ${rootSelector}`);
+    }
+
+    const results = roots.map((root) => {
+      const regions = Array.isArray(template?.regions) ? template.regions : [];
+      const data: Record<string, unknown> = {};
+      let successfulRegions = 0;
+
+      for (const region of regions) {
+        const value = extractRegionValue(region, root);
+        if (value !== null && value !== undefined && value !== "") {
+          successfulRegions += 1;
+        }
+        data[region.name] = value;
+      }
+
+      return {
+        data,
+        successful_regions: successfulRegions,
+      };
+    });
+
+    return {
+      root_selector: rootSelector,
+      results,
+      total_matched: roots.length,
+      successful: results.filter((entry) => typeof entry.data === "object")
+        .length,
+      debug: {
+        evaluation_scope: "root_fragment",
+        first_root_html: roots[0]?.outerHTML?.slice(0, 2000) ?? null,
+      },
+    };
+  }
+
+  function extractRegionValue(
+    region: CsRegion,
+    root: ParentNode = document,
+  ): unknown {
     const selector = region?.selector;
     const cssSelector = selector?.css;
     const xpathSelector = selector?.xpath;
@@ -248,7 +331,14 @@ type CsElementWithPath = any;
     let node: Element | null = null;
     if (typeof cssSelector === "string" && cssSelector.length > 0) {
       try {
-        node = document.querySelector(cssSelector);
+        if (root instanceof Document) {
+          node = root.querySelector(cssSelector);
+        } else if (
+          root instanceof Element ||
+          root instanceof DocumentFragment
+        ) {
+          node = root.querySelector(cssSelector);
+        }
       } catch {
         // Ignore invalid selector; fallback to XPath.
       }
@@ -262,7 +352,7 @@ type CsElementWithPath = any;
       try {
         const result = document.evaluate(
           xpathSelector,
-          document,
+          root instanceof Node ? root : document,
           null,
           XPathResult.FIRST_ORDERED_NODE_TYPE,
           null,
@@ -275,6 +365,30 @@ type CsElementWithPath = any;
 
     const rawValue = node?.textContent?.trim() ?? "";
     return applyTransformations(rawValue, region?.transformations);
+  }
+
+  function inspectSelectorLocal(selectorCss: string): {
+    selector: string;
+    selector_type: string;
+    valid: boolean;
+    match_count: number;
+    preview: string;
+  } {
+    if (typeof selectorCss !== "string" || selectorCss.trim().length === 0) {
+      throw new Error("Selector cannot be empty");
+    }
+
+    const matches = Array.from(document.querySelectorAll(selectorCss));
+    const preview =
+      matches[0]?.textContent?.trim().slice(0, 120) ?? "No elements matched";
+
+    return {
+      selector: selectorCss,
+      selector_type: "css",
+      valid: true,
+      match_count: matches.length,
+      preview,
+    };
   }
 
   function applyTransformations(
@@ -354,26 +468,42 @@ type CsElementWithPath = any;
   // Element Highlighting
   // ─────────────────────────────────────────────────────────────────────────────
 
-  function highlightElement(element: Element) {
+  // mode: "hover" = blue, "locked" = amber, "confirmed" = green
+  function highlightElement(
+    element: Element,
+    mode: "hover" | "locked" | "confirmed" = "hover",
+  ) {
     const rect = element.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) return;
 
     const highlight = document.createElement("div");
     highlight.className = "stygian-highlight";
     highlight.setAttribute("data-stygian", "highlight");
-    highlight.style.position = "fixed";
-    highlight.style.top = rect.top + "px";
-    highlight.style.left = rect.left + "px";
-    highlight.style.width = rect.width + "px";
-    highlight.style.height = rect.height + "px";
-    highlight.style.backgroundColor = "rgba(52, 152, 219, 0.3)";
-    highlight.style.border = "2px solid #3498db";
-    highlight.style.borderRadius = "4px";
-    highlight.style.zIndex = "999998";
-    highlight.style.pointerEvents = "none";
+    highlight.style.cssText = `
+      position: fixed;
+      top: ${rect.top}px;
+      left: ${rect.left}px;
+      width: ${rect.width}px;
+      height: ${rect.height}px;
+      border-radius: 4px;
+      z-index: 999998;
+      pointer-events: none;
+      transition: background-color 0.1s, border-color 0.1s;
+    `;
+
+    if (mode === "hover") {
+      highlight.style.backgroundColor = "rgba(102, 126, 234, 0.18)";
+      highlight.style.border = "2px solid #667eea";
+    } else if (mode === "locked") {
+      highlight.style.backgroundColor = "rgba(251, 191, 36, 0.25)";
+      highlight.style.border = "2px solid #f59e0b";
+      highlight.style.boxShadow = "0 0 0 4px rgba(245, 158, 11, 0.2)";
+    } else {
+      highlight.style.backgroundColor = "rgba(72, 187, 120, 0.2)";
+      highlight.style.border = "2px solid #48bb78";
+    }
 
     document.body.appendChild(highlight);
-
-    // Store reference on element
     (element as any).__stygian_highlight = highlight;
   }
 
@@ -389,18 +519,16 @@ type CsElementWithPath = any;
     document.querySelectorAll('[data-stygian="highlight"]').forEach((el) => {
       el.remove();
     });
-
     highlightedElement = null;
     selectedElements.clear();
   }
 
   function highlightElementBySelector(selector: string) {
     clearAllHighlights();
-
     try {
       const elements = document.querySelectorAll(selector);
       elements.forEach((el) => {
-        highlightElement(el);
+        highlightElement(el, "confirmed");
         selectedElements.add(el);
       });
     } catch (e) {
@@ -409,10 +537,265 @@ type CsElementWithPath = any;
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // Confidence Scoring
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  interface SelectorConfidence {
+    level: "strong" | "good" | "fragile";
+    label: string;
+    color: string;
+    matchCount: number;
+  }
+
+  function getSelectorConfidence(
+    element: Element,
+    cssSelector: string,
+  ): SelectorConfidence {
+    let matchCount = 0;
+    try {
+      matchCount = document.querySelectorAll(cssSelector).length;
+    } catch {
+      matchCount = 0;
+    }
+
+    const hasId = /\#[\w-]+/.test(cssSelector);
+    const hasDataAttr = /\[data-/.test(cssSelector);
+    const hasNthChild = /nth-child|nth-of-type/.test(cssSelector);
+    const hasAriaAttr = /\[aria-/.test(cssSelector);
+
+    let level: "strong" | "good" | "fragile";
+    let label: string;
+    let color: string;
+
+    if ((hasId || hasDataAttr || hasAriaAttr) && matchCount === 1) {
+      level = "strong";
+      label = `Strong — 1 unique match`;
+      color = "#48bb78";
+    } else if (matchCount <= 3 && !hasNthChild) {
+      level = "good";
+      label = `Good — ${matchCount} match${matchCount !== 1 ? "es" : ""}`;
+      color = "#f6ad55";
+    } else {
+      level = "fragile";
+      label = `Fragile — ${matchCount} match${matchCount !== 1 ? "es" : ""}`;
+      color = "#fc8181";
+    }
+
+    return { level, label, color, matchCount };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Hover Tooltip
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  function showHoverTooltip(element: Element) {
+    removeHoverTooltip();
+
+    const path = getElementPath(element);
+    const confidence = getSelectorConfidence(element, path.css);
+    const rect = element.getBoundingClientRect();
+
+    const tag = element.tagName.toLowerCase();
+    const idPart = element.id ? `#${element.id}` : "";
+    const classPart =
+      element.className && typeof element.className === "string"
+        ? `.${element.className.trim().split(/\s+/).slice(0, 2).join(".")}`
+        : "";
+    const breadcrumb = `${tag}${idPart}${classPart}`;
+
+    const tooltip = document.createElement("div");
+    tooltip.id = "stygian-hover-tooltip";
+    tooltip.setAttribute("data-stygian", "tooltip");
+    tooltip.style.cssText = `
+      position: fixed;
+      background: rgba(15, 23, 42, 0.95);
+      color: white;
+      font-family: 'SF Mono', Monaco, Consolas, monospace;
+      font-size: 11px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      z-index: 999999;
+      pointer-events: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      max-width: 320px;
+      line-height: 1.5;
+    `;
+    tooltip.innerHTML = `
+      <div style="color:#93c5fd;font-weight:600;margin-bottom:2px">${breadcrumb}</div>
+      <div style="color:#cbd5e1;font-size:10px;margin-bottom:3px">${path.css.length > 50 ? path.css.slice(0, 50) + "…" : path.css}</div>
+      <div style="color:${confidence.color};font-size:10px">● ${confidence.label} · Click to add region</div>
+    `;
+
+    // Position: prefer below element, fall back to above
+    const top =
+      rect.bottom + 6 < window.innerHeight - 60
+        ? rect.bottom + 6
+        : rect.top - 56;
+    tooltip.style.top = `${Math.max(4, top)}px`;
+    tooltip.style.left = `${Math.min(rect.left, window.innerWidth - 330)}px`;
+
+    document.body.appendChild(tooltip);
+  }
+
+  function removeHoverTooltip() {
+    document.getElementById("stygian-hover-tooltip")?.remove();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Floating Name Input Card
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  function showNameInputCard(element: Element) {
+    removeNameInputCard();
+
+    const path = getElementPath(element);
+    const confidence = getSelectorConfidence(element, path.css);
+    const rect = element.getBoundingClientRect();
+    const textPreview = element.textContent?.trim().slice(0, 60) ?? "";
+
+    const card = document.createElement("div");
+    card.id = "stygian-name-card";
+    card.setAttribute("data-stygian", "name-card");
+    card.style.cssText = `
+      position: fixed;
+      background: white;
+      border: 1.5px solid #667eea;
+      border-radius: 10px;
+      padding: 14px 16px;
+      z-index: 999999;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 13px;
+      width: 280px;
+    `;
+
+    card.innerHTML = `
+      <div style="font-weight:600;color:#1e293b;margin-bottom:10px">Add Region</div>
+      <div style="margin-bottom:8px">
+        <label style="display:block;font-size:11px;color:#64748b;margin-bottom:4px;font-weight:500">REGION NAME</label>
+        <input id="stygian-region-name-input" type="text" placeholder='e.g. product_title'
+          style="width:100%;padding:7px 10px;border:1px solid #d0d7e0;border-radius:6px;font-size:13px;outline:none;box-sizing:border-box"
+          autocomplete="off" spellcheck="false" />
+      </div>
+      <div style="margin-bottom:10px;padding:6px 8px;background:#f8fafc;border-radius:4px;font-size:10px;color:#64748b;font-family:monospace">
+        ${path.css.length > 48 ? path.css.slice(0, 48) + "…" : path.css}
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${confidence.color}"></span>
+        <span style="font-size:11px;color:#64748b">${confidence.label}</span>
+        ${textPreview ? `<span style="font-size:10px;color:#94a3b8">· "${textPreview.length > 20 ? textPreview.slice(0, 20) + "…" : textPreview}"</span>` : ""}
+      </div>
+      <div style="display:flex;gap:8px">
+        <button id="stygian-cancel-btn" data-stygian="name-card"
+          style="flex:1;padding:7px;border:1px solid #e2e8f0;background:white;border-radius:6px;cursor:pointer;font-size:12px;color:#64748b">
+          Cancel (Esc)
+        </button>
+        <button id="stygian-add-btn" data-stygian="name-card"
+          style="flex:2;padding:7px;border:none;background:#667eea;color:white;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">
+          Add Region (Enter)
+        </button>
+      </div>
+    `;
+
+    // Position: prefer below the element
+    const top =
+      rect.bottom + 8 < window.innerHeight - 200
+        ? rect.bottom + 8
+        : rect.top - 210;
+    card.style.top = `${Math.max(8, top)}px`;
+    card.style.left = `${Math.min(Math.max(8, rect.left), window.innerWidth - 296)}px`;
+
+    document.body.appendChild(card);
+
+    const input = document.getElementById(
+      "stygian-region-name-input",
+    ) as HTMLInputElement;
+    const addBtn = document.getElementById("stygian-add-btn");
+    const cancelBtn = document.getElementById("stygian-cancel-btn");
+
+    input?.focus();
+
+    const confirmRegion = () => {
+      const name = input?.value.trim();
+      if (!name) {
+        input.style.border = "1.5px solid #fc8181";
+        input.focus();
+        return;
+      }
+      if (!pendingElement) return;
+
+      const confirmedPath = getElementPath(pendingElement);
+      const region: CsRegion = {
+        name,
+        selector: {
+          type: "dual",
+          css: confirmedPath.css,
+          xpath: confirmedPath.xpath,
+        },
+        schema: { type: "string" },
+        transformations: [],
+        _meta: {
+          confidence: confidence.level,
+          match_count: confidence.matchCount,
+        },
+      };
+
+      // Flash confirmed
+      unhighlightElement(pendingElement);
+      highlightElement(pendingElement, "confirmed");
+      setTimeout(() => {
+        if (pendingElement) unhighlightElement(pendingElement);
+        pendingElement = null;
+      }, 800);
+
+      recordingState.regions.push(region);
+      regionHistory.push(region);
+      updateOverlayCount();
+      removeNameInputCard();
+
+      console.log("[Content] Region added:", name);
+      chrome.runtime.sendMessage({ type: "region_added", region });
+    };
+
+    const cancelPick = () => {
+      if (pendingElement) {
+        unhighlightElement(pendingElement);
+        pendingElement = null;
+      }
+      removeNameInputCard();
+    };
+
+    addBtn?.addEventListener("click", confirmRegion);
+    cancelBtn?.addEventListener("click", cancelPick);
+
+    // Enter key on input
+    input?.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        confirmRegion();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        cancelPick();
+      }
+    });
+  }
+
+  function removeNameInputCard() {
+    document.getElementById("stygian-name-card")?.remove();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // Selector Generation
   // ─────────────────────────────────────────────────────────────────────────────
 
   function getElementPath(element: Element): { css: string; xpath: string } {
+    const helper = (globalThis as any).StygianSelectorUtils;
+    if (helper && typeof helper.getElementPath === "function") {
+      return helper.getElementPath(element);
+    }
+
     return {
       css: getCSSPath(element),
       xpath: getXPathPath(element),
@@ -477,70 +860,54 @@ type CsElementWithPath = any;
   // ─────────────────────────────────────────────────────────────────────────────
 
   function showRecordingOverlay() {
-    const overlay = document.createElement("div");
-    overlay.id = "stygian-recording-overlay";
-    overlay.setAttribute("data-stygian", "overlay");
-    overlay.innerHTML = `
-    <div style="
+    removeRecordingOverlay();
+
+    const bar = document.createElement("div");
+    bar.id = "stygian-recording-overlay";
+    bar.setAttribute("data-stygian", "overlay");
+    bar.style.cssText = `
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.7);
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-start;
-      align-items: center;
-      z-index: 999999;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15, 23, 42, 0.95);
+      color: white;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      pointer-events: none;
-    ">
-      <div style="
-        background: white;
-        padding: 12px 20px;
-        border-radius: 8px;
-        margin-top: 20px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-        pointer-events: auto;
-        display: flex;
-        gap: 8px;
-        align-items: center;
-      ">
-        <span style="color: #333; font-size: 14px; font-weight: 500;">
-          🔴 Recording: ${recordingState.template_name}
-        </span>
-        <span style="color: #666; font-size: 12px;">
-          Hover to preview, Click to add region
-        </span>
-      </div>
-      <div style="
-        color: white;
-        font-size: 12px;
-        margin-top: 10px;
-        background: rgba(0, 0, 0, 0.5);
-        padding: 8px 12px;
-        border-radius: 4px;
-      ">
-        Regions added: <strong>${recordingState.regions.length}</strong>
-      </div>
-    </div>
-  `;
+      font-size: 12px;
+      padding: 8px 16px;
+      border-radius: 999px;
+      z-index: 999999;
+      pointer-events: auto;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      white-space: nowrap;
+    `;
+    bar.innerHTML = `
+      <span style="color:#f87171;font-size:10px">●</span>
+      <span style="font-weight:600">Recording: ${escapeHtmlContent(recordingState.template_name)}</span>
+      <span id="stygian-region-count" style="background:rgba(255,255,255,0.15);padding:2px 8px;border-radius:999px">0 regions</span>
+      <span style="color:#94a3b8;font-size:11px">U=undo · Esc=stop</span>
+    `;
 
-    document.body.appendChild(overlay);
+    document.body.appendChild(bar);
+  }
 
-    // Overlay is not interactive, so we allow normal interaction through it
-    const overlayDiv = overlay.querySelector("div");
-    if (overlayDiv) {
-      overlayDiv.style.pointerEvents = "auto";
+  function updateOverlayCount() {
+    const el = document.getElementById("stygian-region-count");
+    if (el) {
+      const n = recordingState.regions.length;
+      el.textContent = `${n} region${n !== 1 ? "s" : ""}`;
     }
   }
 
   function removeRecordingOverlay() {
-    const overlay = document.getElementById("stygian-recording-overlay");
-    if (overlay) {
-      overlay.remove();
-    }
+    document.getElementById("stygian-recording-overlay")?.remove();
+  }
+
+  function escapeHtmlContent(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
   // ─────────────────────────────────────────────────────────────────────────────

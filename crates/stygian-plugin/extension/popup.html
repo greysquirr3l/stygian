@@ -24,18 +24,47 @@
         <button class="tab-btn" data-tab="settings">Settings</button>
       </nav>
 
+      <!-- ── Draft Recovery Banner ──────────────────────────────────────── -->
+      <div
+        id="draft-recovery-banner"
+        class="draft-banner"
+        style="display: none"
+      >
+        <div class="draft-banner-body">
+          <strong>Draft recording found</strong>
+          <span id="draft-banner-label" class="draft-banner-label"></span>
+        </div>
+        <div class="draft-banner-actions">
+          <button id="draft-resume-btn" class="btn btn-small btn-primary">
+            Resume
+          </button>
+          <button id="draft-discard-btn" class="btn btn-small btn-secondary">
+            Discard
+          </button>
+        </div>
+      </div>
+
       <!-- Templates Tab -->
       <div id="templates" class="tab-content active">
         <div class="tab-header">
           <h2>Extraction Templates</h2>
           <div class="button-group">
             <button id="new-template-btn" class="btn btn-primary">+ New</button>
-            <button id="import-template-btn" class="btn btn-secondary">Import JSON</button>
-            <button id="sync-templates-btn" class="btn btn-secondary">Sync from Server</button>
-            <input type="file" id="import-template-file" accept=".json" style="display:none" />
+            <button id="import-template-btn" class="btn btn-secondary">
+              Import JSON
+            </button>
+            <button id="sync-templates-btn" class="btn btn-secondary">
+              Sync from Server
+            </button>
+            <input
+              type="file"
+              id="import-template-file"
+              accept=".json"
+              style="display: none"
+            />
           </div>
         </div>
-
+        <div id="templates-status" class="status-message"></div>
         <div id="templates-list" class="templates-list">
           <p class="empty-state">
             No templates yet. Create one to get started!
@@ -49,6 +78,17 @@
           <h2>Record New Template</h2>
         </div>
 
+        <!-- Recording active indicator -->
+        <div
+          id="recording-active-badge"
+          class="recording-badge"
+          style="display: none"
+        >
+          <span class="recording-pulse"></span>
+          <span id="recording-badge-label">Recording…</span>
+          <span id="recording-badge-count" class="badge-count">0</span>
+        </div>
+
         <div class="form-group">
           <label>Template Name</label>
           <input
@@ -60,7 +100,9 @@
         </div>
 
         <div class="form-group">
-          <label>Description (optional)</label>
+          <label
+            >Description <span class="label-optional">(optional)</span></label
+          >
           <textarea
             id="record-description-input"
             placeholder="Describe what this template extracts"
@@ -68,17 +110,67 @@
           ></textarea>
         </div>
 
+        <!-- Quick-action shortcut buttons -->
+        <div class="form-group" id="quick-actions-group" style="display: none">
+          <label>Quick Add Region Type</label>
+          <div class="quick-actions-row">
+            <button class="btn btn-quick" data-quick-type="text">+ Text</button>
+            <button class="btn btn-quick" data-quick-type="link">+ Link</button>
+            <button class="btn btn-quick" data-quick-type="image">
+              + Image src
+            </button>
+            <button class="btn btn-quick" data-quick-type="number">
+              + Number
+            </button>
+            <button class="btn btn-quick" data-quick-type="table_row">
+              + Table row
+            </button>
+          </div>
+          <p class="hint">
+            Pre-configures region type defaults before you pick an element.
+          </p>
+        </div>
+
         <div class="form-group">
-          <h3>Regions to Record</h3>
-          <div id="recording-regions-list" class="regions-list"></div>
+          <div class="regions-header">
+            <h3>Captured Regions</h3>
+            <button
+              id="undo-last-region-btn"
+              class="btn btn-small btn-secondary"
+              disabled
+              title="Undo last captured region (U)"
+            >
+              &#8617; Undo
+            </button>
+          </div>
+          <div id="recording-regions-list" class="regions-list">
+            <p class="empty-state">
+              No regions yet — start recording then click elements in the page.
+            </p>
+          </div>
+        </div>
+
+        <!-- Test extraction while recording -->
+        <div id="record-test-group" class="form-group" style="display: none">
+          <button id="test-recording-btn" class="btn btn-secondary">
+            &#9654; Test Extraction
+          </button>
+          <p class="hint">
+            Runs a live preview against the current page without saving.
+          </p>
+          <div
+            id="record-test-results"
+            class="results-container"
+            style="margin-top: 8px"
+          ></div>
         </div>
 
         <div class="button-group">
           <button id="start-recording-btn" class="btn btn-success">
-            Start Recording
+            &#9679; Start Recording
           </button>
-          <button id="finish-recording-btn" class="btn btn-secondary" disabled>
-            Finish & Save
+          <button id="finish-recording-btn" class="btn btn-primary" disabled>
+            &#10003; Finish &amp; Save
           </button>
         </div>
 
@@ -96,6 +188,37 @@
           <select id="apply-template-select" class="input">
             <option value="">-- Choose a template --</option>
           </select>
+        </div>
+
+        <div class="form-group">
+          <label for="apply-mode-select">Extraction Mode</label>
+          <select id="apply-mode-select" class="input">
+            <option value="single">Single document</option>
+            <option value="batch">Batch by root selector</option>
+          </select>
+        </div>
+
+        <div id="batch-root-group" class="form-group" style="display: none">
+          <label for="batch-root-selector-input">Root Selector</label>
+          <div class="input-row">
+            <input
+              id="batch-root-selector-input"
+              type="text"
+              placeholder="e.g., tbody > tr"
+              class="input"
+            />
+            <button id="validate-root-selector-btn" class="btn btn-secondary">
+              Validate
+            </button>
+          </div>
+          <p class="hint">Use this for repeated cards, rows, or list items.</p>
+        </div>
+
+        <div class="form-group compact-toggle-row">
+          <label class="checkbox-row">
+            <input id="apply-debug-checkbox" type="checkbox" />
+            <span>Include debug diagnostics</span>
+          </label>
         </div>
 
         <div class="form-group">
@@ -124,9 +247,13 @@
               placeholder="http://localhost:3000"
               class="input"
             />
-            <button id="save-backend-url-btn" class="btn btn-primary">Save</button>
+            <button id="save-backend-url-btn" class="btn btn-primary">
+              Save
+            </button>
           </div>
-          <p class="hint">Run <code>stygian-plugin-mcp --transport http</code> locally.</p>
+          <p class="hint">
+            Run <code>stygian-plugin-mcp --transport http</code> locally.
+          </p>
         </div>
 
         <div class="form-group">
@@ -138,12 +265,129 @@
           <p id="connection-diagnostics" class="connection-diagnostics">
             Last check: never
           </p>
-          <button id="check-connection-btn" class="btn btn-secondary" style="margin-top:8px">
+          <button
+            id="check-connection-btn"
+            class="btn btn-secondary"
+            style="margin-top: 8px"
+          >
             Check Connection
+          </button>
+        </div>
+
+        <div id="settings-status" class="status-message"></div>
+      </div>
+    </div>
+    <!-- /.container -->
+
+    <!-- ── Modal Overlay ─────────────────────────────────────────────────── -->
+    <div id="modal-overlay" class="modal-overlay" style="display: none">
+      <!-- New Template Modal -->
+      <div id="modal-new-template" class="modal" style="display: none">
+        <div class="modal-header">
+          <h3>New Template</h3>
+          <button class="modal-close" data-modal="modal-new-template">
+            &times;
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Template Name</label>
+            <input
+              id="modal-new-name"
+              type="text"
+              placeholder="e.g., Product Listings"
+              class="input"
+            />
+          </div>
+          <div class="form-group">
+            <label
+              >Description <span class="label-optional">(optional)</span></label
+            >
+            <textarea
+              id="modal-new-description"
+              placeholder="What does this template extract?"
+              class="textarea"
+            ></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button
+            class="btn btn-secondary modal-cancel"
+            data-modal="modal-new-template"
+          >
+            Cancel
+          </button>
+          <button id="modal-new-confirm" class="btn btn-primary">Create</button>
+        </div>
+      </div>
+
+      <!-- Edit Region Name Modal -->
+      <div id="modal-edit-region" class="modal" style="display: none">
+        <div class="modal-header">
+          <h3>Edit Region</h3>
+          <button class="modal-close" data-modal="modal-edit-region">
+            &times;
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Region Name</label>
+            <input id="modal-edit-region-name" type="text" class="input" />
+          </div>
+          <div class="form-group">
+            <label>CSS Selector</label>
+            <input
+              id="modal-edit-region-selector"
+              type="text"
+              class="input"
+              spellcheck="false"
+            />
+            <p id="modal-edit-region-preview" class="hint"></p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button
+            class="btn btn-secondary modal-cancel"
+            data-modal="modal-edit-region"
+          >
+            Cancel
+          </button>
+          <button id="modal-edit-region-confirm" class="btn btn-primary">
+            Save
           </button>
         </div>
       </div>
 
+      <!-- Edit Template Name Modal -->
+      <div id="modal-edit-template" class="modal" style="display: none">
+        <div class="modal-header">
+          <h3>Edit Template</h3>
+          <button class="modal-close" data-modal="modal-edit-template">
+            &times;
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Template Name</label>
+            <input id="modal-edit-template-name" type="text" class="input" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button
+            class="btn btn-secondary modal-cancel"
+            data-modal="modal-edit-template"
+          >
+            Cancel
+          </button>
+          <button id="modal-edit-template-confirm" class="btn btn-primary">
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+    <!-- /#modal-overlay -->
+
+    <script src="dist/shared/result-utils.js"></script>
     <script src="dist/popup.js"></script>
   </body>
 </html>

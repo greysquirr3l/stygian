@@ -333,6 +333,12 @@ Extension popup → Settings → MCP Server URL → http://localhost:3000 → Sa
 The Settings tab also shows a live connection status dot (green/red) that pings
 `/health` on demand.
 
+The reference extension now also includes:
+
+- batch extraction mode backed by `plugin_extract_batch`
+- root selector validation against the current page
+- richer results summaries with JSON and CSV export
+
 For an end-to-end persistence pattern (extension extraction -> MCP routing -> sink/database
 ingestion), see [Plugin Persistence Pattern](./plugin-persistence-pattern.md).
 

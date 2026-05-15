@@ -22,9 +22,12 @@ See the mdBook pattern guide for the end-to-end flow:
 - **Visual Template Recording**: Click elements on a page to define extraction zones
 - **Reusable Templates**: Save templates and apply them across multiple pages
 - **Multi-Region Extraction**: Extract different types of data from different parts of a page
+- **Batch Extraction Mode**: Apply templates across repeated rows/cards using a root selector
+- **Selector Validation**: Validate root selectors against the live page before extraction
 - **Transformation Pipeline**: Apply transformations (trim, regex, lowercase, etc.) to extracted data
 - **Local Persistence**: Templates stored locally in Chrome storage (IndexedDB compatible)
 - **Backend Sync**: Optional sync to Stygian backend for team collaboration
+- **Result Export**: Copy JSON or download JSON/CSV directly from extraction results
 
 ## Installation
 
