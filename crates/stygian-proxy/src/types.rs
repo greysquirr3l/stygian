@@ -26,7 +26,7 @@ pub enum ProxyType {
     #[cfg(feature = "socks")]
     /// SOCKS5 proxy (requires the `socks` feature).
     Socks5,
-    /// CDN edge relay (Cloudflare, CloudFront, Azure Front Door, etc.).
+    /// CDN edge relay (`Cloudflare`, `CloudFront`, `Azure Front Door`, etc.).
     ///
     /// Traffic egresses through a CDN PoP rather than a traditional proxy
     /// server.  Provider metadata is carried in
@@ -447,7 +447,7 @@ pub struct ProxyConfig {
     pub connection_max_age_secs: Option<u64>,
 }
 
-fn default_health_check_jitter_pct() -> f32 {
+const fn default_health_check_jitter_pct() -> f32 {
     0.20
 }
 
