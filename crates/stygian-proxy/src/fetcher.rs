@@ -357,6 +357,7 @@ impl FreeListFetcher {
                     ProxyType::Socks4 => "socks4",
                     #[cfg(feature = "socks")]
                     ProxyType::Socks5 => "socks5",
+                    ProxyType::CdnEdge => "https",
                 };
                 Some(Proxy {
                     url: format!("{scheme}://{host}:{port}"),
@@ -594,6 +595,7 @@ impl FreeApiProxiesFetcher {
         match normalized.as_deref() {
             None | Some("" | "http") => Some(ProxyType::Http),
             Some("https") => Some(ProxyType::Https),
+            Some("cdn" | "cdn_edge") => Some(ProxyType::CdnEdge),
             #[cfg(feature = "socks")]
             Some("socks" | "socks5") => Some(ProxyType::Socks5),
             #[cfg(feature = "socks")]
@@ -634,6 +636,7 @@ impl FreeApiProxiesFetcher {
             ProxyType::Socks4 => "socks4",
             #[cfg(feature = "socks")]
             ProxyType::Socks5 => "socks5",
+            ProxyType::CdnEdge => "https",
         };
 
         let mut tags = self.tags.clone();
@@ -763,6 +766,208 @@ pub async fn load_from_fetcher(
 
     debug!(total, loaded, "Proxy list loaded into manager");
     Ok(loaded)
+}
+
+// ─── DnsTxtFetcher ───────────────────────────────────────────────────────────
+
+/// Fetches proxy endpoints from DNS TXT records.
+///
+/// Each TXT record at the configured zone should encode one proxy entry using
+/// the following colon-delimited format:
+///
+/// ```text
+/// host:port                        HTTP proxy, no auth
+/// host:port:https                  HTTPS proxy, no auth
+/// host:port:socks5                 SOCKS5 proxy (requires socks feature)
+/// host:port:socks5:user:pass       SOCKS5 proxy with auth
+/// host:port:http:user:pass         HTTP proxy with auth
+/// host:port:cdn_edge               CDN edge proxy
+/// host:port:cdn_edge:cloudflare    CDN edge proxy with provider metadata
+/// [::1]:port:http                  IPv6 host in bracket notation
+/// ```
+///
+/// Records that do not match the format are silently skipped.
+///
+/// # Example
+///
+/// ```no_run
+/// use stygian_proxy::fetcher::{DnsTxtFetcher, ProxyFetcher};
+///
+/// # async fn run() -> stygian_proxy::error::ProxyResult<()> {
+/// let fetcher = DnsTxtFetcher::new("proxies.internal.example.com");
+/// let proxies = fetcher.fetch().await?;
+/// println!("Discovered {} proxies via DNS", proxies.len());
+/// # Ok(())
+/// # }
+/// ```
+#[cfg(feature = "dns-fetcher")]
+pub struct DnsTxtFetcher {
+    zone: String,
+    tags: Vec<String>,
+}
+
+#[cfg(feature = "dns-fetcher")]
+impl DnsTxtFetcher {
+    /// Create a fetcher that queries TXT records for `zone`.
+    ///
+    /// `zone` is a DNS name such as `"proxies.internal.example.com"`.
+    pub fn new(zone: impl Into<String>) -> Self {
+        Self {
+            zone: zone.into(),
+            tags: vec!["dns-txt".into()],
+        }
+    }
+
+    /// Attach extra tags to every proxy discovered via this fetcher.
+    pub fn with_tags(mut self, tags: Vec<String>) -> Self {
+        self.tags.extend(tags);
+        self
+    }
+
+    /// Parse a single TXT record string into a [`Proxy`].
+    fn parse_record(&self, record: &str) -> Option<Proxy> {
+        let record = record.trim();
+        if record.is_empty() || record.starts_with('#') {
+            return None;
+        }
+        // Extract host and port, supporting bracketed IPv6 addresses.
+        let (host, port, remainder) = if let Some(rest) = record.strip_prefix('[') {
+            let end = rest.find(']')?;
+            let host = format!("[{}]", rest.get(..end)?);
+            let after = rest.get(end + 1..).unwrap_or("").trim_start_matches(':');
+            let colon = after.find(':').unwrap_or(after.len());
+            let port: u16 = after.get(..colon)?.trim().parse().ok()?;
+            let rem = after.get(colon + 1..).unwrap_or("");
+            (host, port, rem)
+        } else {
+            let first = record.find(':')?;
+            let host = record.get(..first)?.trim().to_string();
+            let rest = record.get(first + 1..)?;
+            let second = rest.find(':').unwrap_or(rest.len());
+            let port: u16 = rest.get(..second)?.trim().parse().ok()?;
+            let rem = rest.get(second + 1..).unwrap_or("");
+            (host, port, rem)
+        };
+        if host.is_empty() || port == 0 {
+            return None;
+        }
+        let parts: Vec<&str> = remainder.splitn(3, ':').collect();
+        let type_str = parts.first().map(|s| s.trim()).unwrap_or("http");
+        match type_str.to_ascii_lowercase().as_str() {
+            "cdn_edge" | "cdn" => {
+                let provider = parts
+                    .get(1)
+                    .copied()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string);
+                Some(Proxy {
+                    url: format!("https://{host}:{port}"),
+                    proxy_type: ProxyType::CdnEdge,
+                    username: None,
+                    password: None,
+                    weight: 1,
+                    tags: self.tags.clone(),
+                    capabilities: crate::types::ProxyCapabilities {
+                        is_cdn_edge: true,
+                        cdn_provider: provider,
+                        ..Default::default()
+                    },
+                })
+            }
+            type_str => {
+                let proxy_type = match type_str {
+                    "https" => ProxyType::Https,
+                    #[cfg(feature = "socks")]
+                    "socks5" | "socks" => ProxyType::Socks5,
+                    #[cfg(feature = "socks")]
+                    "socks4" => ProxyType::Socks4,
+                    _ => ProxyType::Http,
+                };
+                let scheme = match proxy_type {
+                    ProxyType::Http => "http",
+                    ProxyType::Https => "https",
+                    #[cfg(feature = "socks")]
+                    ProxyType::Socks4 => "socks4",
+                    #[cfg(feature = "socks")]
+                    ProxyType::Socks5 => "socks5",
+                    ProxyType::CdnEdge => "https",
+                };
+                let username = parts
+                    .get(1)
+                    .copied()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string);
+                let password = parts
+                    .get(2)
+                    .copied()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string);
+                Some(Proxy {
+                    url: format!("{scheme}://{host}:{port}"),
+                    proxy_type,
+                    username,
+                    password,
+                    weight: 1,
+                    tags: self.tags.clone(),
+                    capabilities: crate::types::ProxyCapabilities::default(),
+                })
+            }
+        }
+    }
+}
+
+#[cfg(feature = "dns-fetcher")]
+#[async_trait]
+impl ProxyFetcher for DnsTxtFetcher {
+    async fn fetch(&self) -> ProxyResult<Vec<Proxy>> {
+        use hickory_resolver::TokioAsyncResolver;
+        use hickory_resolver::config::{ResolverConfig, ResolverOpts};
+
+        let resolver =
+            TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
+
+        let lookup =
+            resolver
+                .txt_lookup(self.zone.as_str())
+                .await
+                .map_err(|e| ProxyError::FetchFailed {
+                    origin: self.zone.clone(),
+                    message: format!("DNS TXT lookup failed for '{}': {e}", self.zone),
+                })?;
+
+        let mut proxies: Vec<Proxy> = Vec::new();
+        for txt in lookup.iter() {
+            // Each TXT record may contain multiple character-strings; join them.
+            let record_str: String = txt
+                .iter()
+                .filter_map(|bytes| std::str::from_utf8(bytes).ok())
+                .collect::<Vec<_>>()
+                .join("");
+            if let Some(proxy) = self.parse_record(&record_str) {
+                proxies.push(proxy);
+            }
+        }
+
+        if proxies.is_empty() {
+            return Err(ProxyError::FetchFailed {
+                origin: self.zone.clone(),
+                message: format!(
+                    "no valid proxy records found in DNS TXT for '{}'",
+                    self.zone
+                ),
+            });
+        }
+
+        debug!(
+            zone = %self.zone,
+            count = proxies.len(),
+            "fetched proxy list from DNS TXT",
+        );
+        Ok(proxies)
+    }
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────

@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **stygian-proxy (health jitter)**: `ProxyConfig::health_check_jitter_pct` spreads
+  health-check wake intervals by ±N% using a CSPRNG, preventing thundering-herd
+  probes against shared targets
+- **stygian-proxy (CDN egress)**: `ProxyType::CdnEdge` variant for CDN-fronted egress
+  nodes; paired with `ProxyCapabilities::is_cdn_edge` and `cdn_provider` fields and
+  the `CapabilityRequirement::require_cdn_edge` filter
+- **stygian-proxy (persistent connections)**: `TransportPreference::PersistentTcp`
+  routing path with `ProxyConfig::max_requests_per_connection` and
+  `connection_max_age_secs` lifetime bounds
+- **stygian-proxy (DNS discovery)**: `DnsTxtFetcher` behind the `dns-fetcher` feature
+  gate resolves proxy lists from DNS TXT records via `hickory-resolver`
+- **stygian-proxy (TLS capability)**: `ProxyCapabilities::tls_profile` and
+  `CapabilityRequirement::require_tls_profile` for profile-aware proxy selection;
+  `ProxyManagerBridge::bind_proxy_with_tls_profile()` in the `browser` feature
 - **Extension (recorder UI)**: Reworked in-page recording experience with hover tooltip,
   selector confidence badges, in-page region naming card, undo support, and compact
   recording overlay with live region count

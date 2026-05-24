@@ -78,6 +78,56 @@ Use this strategy when proxies have different capacities, quotas, or observed sp
 
 ---
 
+## Capability filtering
+
+All four strategies operate on a pre-filtered `ProxyCandidate` slice. Before
+a strategy runs, `ProxyManager` filters the pool by `CapabilityRequirement`.
+Use `acquire_with_capabilities()` to express requirements at call time:
+
+```rust,no_run
+use stygian_proxy::types::CapabilityRequirement;
+
+let req = CapabilityRequirement {
+    require_tls_profile: Some("chrome_131".into()),
+    require_cdn_edge: false,
+    require_tags: vec!["us-east".into()],
+    ..CapabilityRequirement::default()
+};
+let handle = manager.acquire_with_capabilities(req).await?;
+```
+
+### ProxyCapabilities fields
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `tls_profile` | `Option<String>` | Named TLS fingerprint profile (`"chrome_131"`, `"firefox_133"`, …) |
+| `is_cdn_edge` | `bool` | `true` for CDN-fronted egress nodes (`ProxyType::CdnEdge`) |
+| `cdn_provider` | `Option<String>` | Optional CDN provider name (e.g. `"cloudflare"`) |
+| `tags` | `Vec<String>` | Arbitrary operator-defined labels |
+
+Annotate proxies at registration time:
+
+```rust,no_run
+use stygian_proxy::types::{Proxy, ProxyType, ProxyCapabilities};
+
+manager.add_proxy(Proxy {
+    url: "http://edge1.cdn.example.com:8080".into(),
+    proxy_type: ProxyType::CdnEdge,
+    capabilities: ProxyCapabilities {
+        tls_profile: Some("chrome_131".into()),
+        is_cdn_edge: true,
+        cdn_provider: Some("cloudflare".into()),
+        tags: vec!["eu-west".into()],
+    },
+    ..Default::default()
+}).await?;
+```
+
+Proxies whose capabilities do not satisfy a `CapabilityRequirement` are
+removed from the candidate slice before the rotation strategy runs.
+
+---
+
 ## LeastUsedStrategy
 
 Selects the healthy proxy with the **lowest total request count** at the time of the call.

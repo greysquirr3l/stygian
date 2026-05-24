@@ -34,7 +34,7 @@
 //! | `proxy_acquire` | – | `handle_token`, `proxy_url` |
 //! | `proxy_acquire_for_domain` | `domain` | `handle_token`, `proxy_url` |
 //! | `proxy_release` | `handle_token`, `success?` | success |
-//! | `proxy_acquire_with_capabilities` | `require_https_connect?`, `require_socks5_udp?`, `require_http3_tunnel?`, `require_geo_country?` | `handle_token`, `proxy_url` |
+//! | `proxy_acquire_with_capabilities` | `require_https_connect?`, `require_socks5_udp?`, `require_http3_tunnel?`, `require_geo_country?`, `require_cdn_edge?`, `require_tls_profile?` | `handle_token`, `proxy_url` |
 //! | `proxy_fetch_freelist` | `sources`, `tags?` | `loaded` |
 //! | `proxy_fetch_freeapiproxies` | `endpoint?`, `tags?` | `loaded` |
 
@@ -403,7 +403,9 @@ impl McpProxyServer {
                     "require_https_connect": { "type": "boolean", "description": "Require the proxy to support HTTPS CONNECT tunnelling (default: false)" },
                     "require_socks5_udp":    { "type": "boolean", "description": "Require SOCKS5 UDP relay support (default: false)" },
                     "require_http3_tunnel":  { "type": "boolean", "description": "Require HTTP/3 QUIC tunnel support (default: false)" },
-                    "require_geo_country":   { "type": "string",  "description": "ISO-3166-1 alpha-2 country code the egress IP must match (e.g. \"US\")" }
+                    "require_geo_country":   { "type": "string",  "description": "ISO-3166-1 alpha-2 country code the egress IP must match (e.g. \"US\")" },
+                    "require_cdn_edge":      { "type": "boolean", "description": "Require a CDN-edge proxy (default: false)" },
+                    "require_tls_profile":   { "type": "string",  "description": "Require a specific TLS fingerprint profile (e.g. \"chrome-131\", \"firefox-120\")" }
                 }
             }
         })
@@ -550,6 +552,7 @@ impl McpProxyServer {
                 "socks4" | "socks4a" => ProxyType::Socks4,
                 #[cfg(feature = "socks")]
                 "socks5" | "socks" => ProxyType::Socks5,
+                "cdn" | "cdn_edge" => ProxyType::CdnEdge,
                 "http" => ProxyType::Http,
                 other => {
                     return error_response(
@@ -801,6 +804,14 @@ impl McpProxyServer {
                 .unwrap_or(false),
             require_geo_country: args
                 .get("require_geo_country")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            require_cdn_edge: args
+                .get("require_cdn_edge")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            require_tls_profile: args
+                .get("require_tls_profile")
                 .and_then(Value::as_str)
                 .map(str::to_string),
         };

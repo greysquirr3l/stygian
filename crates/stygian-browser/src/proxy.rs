@@ -136,4 +136,20 @@ pub trait ProxySource: Send + Sync + fmt::Debug + 'static {
     /// Returns [`crate::error::BrowserError::ProxyUnavailable`] if no proxy
     /// is currently available (e.g. circuit breaker open, pool empty).
     async fn bind_proxy(&self) -> Result<(String, Box<dyn ProxyLease>)>;
+
+    /// Acquire a proxy that presents the specified TLS fingerprint profile.
+    ///
+    /// `profile` is an advisory hint such as `"chrome-131"` or `"firefox-120"`.
+    /// `None` means no preference — equivalent to calling
+    /// [`bind_proxy`](ProxySource::bind_proxy).
+    ///
+    /// The default implementation ignores `profile` and delegates to
+    /// [`bind_proxy`](ProxySource::bind_proxy).  Override this method when
+    /// the backing pool supports TLS-profile-aware selection.
+    async fn bind_proxy_with_tls_profile(
+        &self,
+        _profile: Option<&str>,
+    ) -> Result<(String, Box<dyn ProxyLease>)> {
+        self.bind_proxy().await
+    }
 }

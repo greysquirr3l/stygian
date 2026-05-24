@@ -127,6 +127,86 @@ impl BrowserProxySource for MyProxySource {
 
 ---
 
+## DNS TXT proxy discovery (`dns-fetcher` feature)
+
+Enable the `dns-fetcher` feature to resolve proxy lists from DNS TXT records.
+This is useful for infrastructure-managed proxy registries that publish endpoints
+via DNS rather than an HTTP API.
+
+```toml
+[dependencies]
+stygian-proxy = { version = "*", features = ["dns-fetcher"] }
+```
+
+`DnsTxtFetcher` implements `ProxyFetcher` and queries a DNS TXT record where each
+string is a proxy URL (`http://host:port` or `socks5://host:port`):
+
+```rust,no_run
+use stygian_proxy::DnsTxtFetcher;
+use stygian_proxy::fetcher::{ProxyFetcher, load_from_fetcher};
+use std::sync::Arc;
+use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let storage = Arc::new(MemoryProxyStore::default());
+    let manager = Arc::new(
+        ProxyManager::with_round_robin(Arc::clone(&storage), ProxyConfig::default())?
+    );
+
+    // Load proxies from DNS TXT at "proxies.internal.example.com"
+    let fetcher = DnsTxtFetcher::new("proxies.internal.example.com");
+    let loaded = load_from_fetcher(&fetcher, &manager).await?;
+    println!("loaded {loaded} proxies from DNS");
+
+    Ok(())
+}
+```
+
+The TXT record format is one proxy URL per string value:
+
+```
+proxies.internal.example.com. 60 IN TXT "http://10.0.1.5:8080"
+proxies.internal.example.com. 60 IN TXT "socks5://10.0.1.6:1080"
+```
+
+`DnsTxtFetcher` uses `hickory-resolver` under the hood. The system resolver is
+used by default; call `DnsTxtFetcher::with_resolver_config()` to supply a custom
+one.
+
+---
+
+## TLS-profile-aware browser binding
+
+`ProxyManagerBridge` also exposes `bind_proxy_with_tls_profile()`, which
+combines proxy acquisition with a `CapabilityRequirement` that matches a
+specific TLS fingerprint profile. This ensures the acquired proxy is
+capable of presenting the correct TLS fingerprint for the browser session.
+
+```rust,no_run
+use std::sync::Arc;
+use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
+use stygian_proxy::browser::ProxyManagerBridge;
+
+let bridge = ProxyManagerBridge::new(Arc::new(
+    ProxyManager::with_round_robin(
+        Arc::new(MemoryProxyStore::default()),
+        ProxyConfig::default(),
+    ).unwrap()
+));
+
+// Acquire a proxy that carries the "chrome_131" TLS profile
+let (proxy_url, handle) = bridge.bind_proxy_with_tls_profile("chrome_131").await?;
+// Pass proxy_url to your browser context; handle tracks the session outcome.
+handle.mark_success();
+```
+
+If no proxy in the pool satisfies the requested profile,
+`ProxyError::AllProxiesUnhealthy` is returned — the same error returned
+when no healthy proxy of any kind is available.
+
+---
+
 ## Failure tracking across integrations
 
 `ProxyHandle` uses RAII to track request outcomes. The same contract applies

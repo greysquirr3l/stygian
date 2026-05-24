@@ -36,6 +36,28 @@ let (cancel, _task) = manager.start();
 cancel.cancel();
 ```
 
+### Interval jitter
+
+To prevent all health-check probes from firing at the same instant (a
+"thundering herd" against shared infrastructure), set `health_check_jitter_pct`
+in `ProxyConfig`. Each sleep between cycles is perturbed by a random factor in
+`[1 − pct, 1 + pct)` using a thread-local CSPRNG.
+
+```rust,no_run
+use std::time::Duration;
+use stygian_proxy::ProxyConfig;
+
+let config = ProxyConfig {
+    health_check_interval: Duration::from_secs(60),
+    // Each cycle sleeps between 48 s and 72 s (±20%)
+    health_check_jitter_pct: 0.20,
+    ..ProxyConfig::default()
+};
+```
+
+`health_check_jitter_pct` is clamped to `[0.0, 0.99]`. Set it to `0.0`
+(the default) for a fixed interval.
+
 ### On-demand check
 
 Call `health_checker.check_once().await` to run a single probe cycle without
@@ -132,4 +154,32 @@ println!("total={} healthy={} open_circuits={}",
 | High-churn scraping (many short requests) | Lower `circuit_open_threshold` to 2–3; shorter `circuit_half_open_after` (10–15 s) |
 | Long-lived connections | Raise `circuit_open_threshold` to 10+; extend `circuit_half_open_after` (60–120 s) |
 | Residential proxies (naturally flaky) | Use `WeightedStrategy` with lower weights for known flaky proxies; keep threshold at default (5) |
+| Shared datacenter egress | Set `health_check_jitter_pct = 0.20–0.30` to spread probes across the interval window |
 | Dev / testing | `health_check_interval = 5 s`; `health_check_url` pointing to a local echo server |
+
+---
+
+## Persistent-connection config
+
+For workloads that benefit from reusing TCP connections across multiple requests
+(e.g. CONNECT-tunnelled HTTP/1.1 or HTTP/2), set `TransportPreference::PersistentTcp`
+at the routing layer and configure the lifetime bounds:
+
+```rust,no_run
+use stygian_proxy::ProxyConfig;
+
+let config = ProxyConfig {
+    // Retire a connection after 200 requests or 5 minutes, whichever comes first.
+    max_requests_per_connection: Some(200),
+    connection_max_age_secs: Some(300),
+    ..ProxyConfig::default()
+};
+```
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `max_requests_per_connection` | `None` | Maximum requests before connection retirement |
+| `connection_max_age_secs` | `None` | Wall-clock lifetime cap in seconds |
+
+When both fields are `None` the connection lifetime is governed entirely by the proxy
+server and TCP keepalive. Set either limit to prevent silent connection staleness.
