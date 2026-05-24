@@ -258,8 +258,8 @@ fn jitter_duration(base: Duration, jitter_pct: f32) -> Duration {
         return base;
     }
     let pct = jitter_pct.clamp(0.0, 0.99);
-    // gen::<f32>() ∈ [0.0, 1.0) → factor ∈ [1 − pct, 1 + pct)
-    let factor = 1.0_f32 + (rand::rng().random::<f32>() * 2.0_f32 - 1.0_f32) * pct;
+    // random::<f32>() ∈ [0.0, 1.0) → factor ∈ [1 − pct, 1 + pct)
+    let factor = (rand::rng().random::<f32>() * 2.0_f32 - 1.0_f32).mul_add(pct, 1.0_f32);
     base.mul_f32(factor.max(0.01))
 }
 

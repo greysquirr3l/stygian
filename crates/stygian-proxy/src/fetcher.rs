@@ -819,6 +819,7 @@ impl DnsTxtFetcher {
     }
 
     /// Attach extra tags to every proxy discovered via this fetcher.
+    #[must_use]
     pub fn with_tags(mut self, tags: Vec<String>) -> Self {
         self.tags.extend(tags);
         self
@@ -852,7 +853,7 @@ impl DnsTxtFetcher {
             return None;
         }
         let parts: Vec<&str> = remainder.splitn(3, ':').collect();
-        let type_str = parts.first().map(|s| s.trim()).unwrap_or("http");
+        let type_str = parts.first().map_or("http", |s| s.trim());
         match type_str.to_ascii_lowercase().as_str() {
             "cdn_edge" | "cdn" => {
                 let provider = parts

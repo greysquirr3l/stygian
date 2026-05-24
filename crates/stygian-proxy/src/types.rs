@@ -28,7 +28,7 @@ pub enum ProxyType {
     Socks5,
     /// CDN edge relay (`Cloudflare`, `CloudFront`, `Azure Front Door`, etc.).
     ///
-    /// Traffic egresses through a CDN PoP rather than a traditional proxy
+    /// Traffic egresses through a CDN point-of-presence rather than a traditional proxy
     /// server.  Provider metadata is carried in
     /// [`ProxyCapabilities::cdn_provider`].
     CdnEdge,
