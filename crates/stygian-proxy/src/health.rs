@@ -118,10 +118,11 @@ impl HealthChecker {
         Ok(self.with_profiled_client(requester))
     }
 
-    /// Spawn an infinite background task that checks proxies on every
-    /// `config.health_check_interval` tick.
+    /// Spawn an infinite background task that checks proxies on a jittered
+    /// sleep-based schedule derived from `config.health_check_interval`.
     ///
-    /// Cancel `token` to stop the task gracefully.  Missed ticks are skipped.
+    /// Each cycle sleeps for `jitter_duration(interval, jitter_pct)` before
+    /// running a probe pass.  Cancel `token` to stop the task gracefully.
     pub fn spawn(self, token: CancellationToken) -> JoinHandle<()> {
         tokio::spawn(async move {
             loop {
@@ -259,7 +260,10 @@ fn jitter_duration(base: Duration, jitter_pct: f32) -> Duration {
     }
     let pct = jitter_pct.clamp(0.0, 0.99);
     // random::<f32>() ∈ [0.0, 1.0) → factor ∈ [1 − pct, 1 + pct)
-    let factor = (rand::rng().random::<f32>() * 2.0_f32 - 1.0_f32).mul_add(pct, 1.0_f32);
+    let factor = rand::rng()
+        .random::<f32>()
+        .mul_add(2.0_f32, -1.0_f32)
+        .mul_add(pct, 1.0_f32);
     base.mul_f32(factor.max(0.01))
 }
 

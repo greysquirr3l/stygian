@@ -998,6 +998,7 @@ mod tests {
     // ── DnsTxtFetcher::parse_record ───────────────────────────────────────────
 
     #[cfg(feature = "dns-fetcher")]
+    #[expect(clippy::unwrap_used, reason = "test assertions on Option")]
     mod dns_txt {
         use super::*;
 
