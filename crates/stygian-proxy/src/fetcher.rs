@@ -366,7 +366,10 @@ impl FreeListFetcher {
                     password: None,
                     weight: 1,
                     tags: self.tags.clone(),
-                    capabilities: crate::types::ProxyCapabilities::default(),
+                    capabilities: crate::types::ProxyCapabilities {
+                        is_cdn_edge: matches!(proxy_type, ProxyType::CdnEdge),
+                        ..Default::default()
+                    },
                 })
             })
             .collect();
@@ -656,7 +659,10 @@ impl FreeApiProxiesFetcher {
             password: record.password.filter(|v| !v.trim().is_empty()),
             weight: 1,
             tags,
-            capabilities: crate::types::ProxyCapabilities::default(),
+            capabilities: crate::types::ProxyCapabilities {
+                is_cdn_edge: matches!(proxy_type, ProxyType::CdnEdge),
+                ..Default::default()
+            },
         })
     }
 
@@ -924,11 +930,19 @@ impl DnsTxtFetcher {
 #[async_trait]
 impl ProxyFetcher for DnsTxtFetcher {
     async fn fetch(&self) -> ProxyResult<Vec<Proxy>> {
-        use hickory_resolver::TokioAsyncResolver;
-        use hickory_resolver::config::{ResolverConfig, ResolverOpts};
+        use hickory_resolver::Resolver;
+        use hickory_resolver::config::ResolverConfig;
+        use hickory_resolver::net::runtime::TokioRuntimeProvider;
 
-        let resolver =
-            TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
+        let resolver = Resolver::builder_with_config(
+            ResolverConfig::default(),
+            TokioRuntimeProvider::default(),
+        )
+        .build()
+        .map_err(|e| ProxyError::FetchFailed {
+            origin: self.zone.clone(),
+            message: format!("failed to build DNS resolver: {e}"),
+        })?;
 
         let lookup =
             resolver
@@ -940,15 +954,19 @@ impl ProxyFetcher for DnsTxtFetcher {
                 })?;
 
         let mut proxies: Vec<Proxy> = Vec::new();
-        for txt in lookup.iter() {
+        for record in lookup.answers() {
+            use hickory_resolver::proto::rr::RData;
             // Each TXT record may contain multiple character-strings; join them.
-            let record_str: String = txt
-                .iter()
-                .filter_map(|bytes| std::str::from_utf8(bytes).ok())
-                .collect::<Vec<_>>()
-                .join("");
-            if let Some(proxy) = self.parse_record(&record_str) {
-                proxies.push(proxy);
+            if let RData::TXT(ref txt) = record.data {
+                let record_str: String = txt
+                    .txt_data
+                    .iter()
+                    .filter_map(|bytes| std::str::from_utf8(bytes).ok())
+                    .collect::<Vec<_>>()
+                    .join("");
+                if let Some(proxy) = self.parse_record(&record_str) {
+                    proxies.push(proxy);
+                }
             }
         }
 
@@ -976,6 +994,87 @@ impl ProxyFetcher for DnsTxtFetcher {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── DnsTxtFetcher::parse_record ───────────────────────────────────────────
+
+    #[cfg(feature = "dns-fetcher")]
+    mod dns_txt {
+        use super::*;
+
+        fn fetcher() -> DnsTxtFetcher {
+            DnsTxtFetcher::new("proxies.example.com")
+        }
+
+        #[test]
+        fn parse_http_host_port() {
+            let proxy = fetcher().parse_record("10.0.1.5:8080").unwrap();
+            assert_eq!(proxy.url, "http://10.0.1.5:8080");
+            assert_eq!(proxy.proxy_type, ProxyType::Http);
+            assert!(proxy.username.is_none());
+            assert!(proxy.password.is_none());
+        }
+
+        #[test]
+        fn parse_https_record() {
+            let proxy = fetcher().parse_record("10.0.1.5:443:https").unwrap();
+            assert_eq!(proxy.url, "https://10.0.1.5:443");
+            assert_eq!(proxy.proxy_type, ProxyType::Https);
+        }
+
+        #[test]
+        fn parse_cdn_edge_with_provider() {
+            let proxy = fetcher()
+                .parse_record("edge.cdn.example.com:443:cdn_edge:cloudflare")
+                .unwrap();
+            assert_eq!(proxy.url, "https://edge.cdn.example.com:443");
+            assert_eq!(proxy.proxy_type, ProxyType::CdnEdge);
+            assert!(proxy.capabilities.is_cdn_edge);
+            assert_eq!(
+                proxy.capabilities.cdn_provider.as_deref(),
+                Some("cloudflare")
+            );
+        }
+
+        #[test]
+        fn parse_cdn_edge_without_provider() {
+            let proxy = fetcher()
+                .parse_record("cdn.example.com:443:cdn_edge")
+                .unwrap();
+            assert!(proxy.capabilities.is_cdn_edge);
+            assert!(proxy.capabilities.cdn_provider.is_none());
+        }
+
+        #[test]
+        fn parse_auth_fields() {
+            let proxy = fetcher()
+                .parse_record("10.0.0.1:3128:http:alice:secret")
+                .unwrap();
+            assert_eq!(proxy.username.as_deref(), Some("alice"));
+            assert_eq!(proxy.password.as_deref(), Some("secret"));
+        }
+
+        #[test]
+        fn parse_ipv6_bracketed() {
+            let proxy = fetcher().parse_record("[::1]:8080").unwrap();
+            assert_eq!(proxy.url, "http://[::1]:8080");
+        }
+
+        #[test]
+        fn parse_empty_record_returns_none() {
+            assert!(fetcher().parse_record("").is_none());
+            assert!(fetcher().parse_record("   ").is_none());
+        }
+
+        #[test]
+        fn parse_comment_record_returns_none() {
+            assert!(fetcher().parse_record("# comment line").is_none());
+        }
+
+        #[test]
+        fn parse_invalid_port_returns_none() {
+            assert!(fetcher().parse_record("10.0.0.1:notaport").is_none());
+        }
+    }
 
     #[test]
     fn free_api_proxies_fetcher_request_url_no_params() {
