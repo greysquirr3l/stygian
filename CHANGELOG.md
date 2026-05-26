@@ -49,6 +49,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keep the plugin crate aligned with the current dependency set
 - `stygian-proxy`: retained `hickory-resolver` 0.24.x for 0.13.5 after
   validating that 0.26.x requires a separate API migration
+- `stygian-proxy (DNS discovery)`: hardened `DnsTxtFetcher` with strict zone
+  syntax validation, optional trusted zone-suffix allowlisting, per-lookup
+  timeout controls, and bounded TXT record parsing to reduce risk while the
+  resolver migration is pending
 - `workspace`: bumped workspace and internal crate version pins from `0.13.4`
   to `0.13.5` across all crate manifests for a consistent release line
 - **Extension popup**: Status messaging now routes per-tab (`templates`, `record`,
@@ -62,6 +66,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   undo events and using local fallback only when message delivery fails
 - **Extension popup**: Corrected test extraction response handling to consume
   `response.result` consistently
+
+### Security
+
+- `stygian-proxy`: `cargo audit` reports `RUSTSEC-2026-0119` through
+  `hickory-proto 0.24.4` via `hickory-resolver 0.24.x`; upgrading to
+  `hickory-resolver 0.26.1+` is currently blocked by resolver API changes in
+  the DNS TXT fetcher path and is tracked as follow-up migration work after
+  the 0.13.5 cut
 
 ## [0.13.4] - 2026-05-15
 

@@ -809,19 +809,63 @@ pub async fn load_from_fetcher(
 #[cfg(feature = "dns-fetcher")]
 pub struct DnsTxtFetcher {
     zone: String,
+    allowed_zone_suffixes: Vec<String>,
+    lookup_timeout: Duration,
     tags: Vec<String>,
 }
 
 #[cfg(feature = "dns-fetcher")]
 impl DnsTxtFetcher {
+    const DEFAULT_LOOKUP_TIMEOUT: Duration = Duration::from_secs(5);
+    const MAX_JOINED_TXT_RECORD_LEN: usize = 2 * 1024;
+
     /// Create a fetcher that queries TXT records for `zone`.
     ///
     /// `zone` is a DNS name such as `"proxies.internal.example.com"`.
     pub fn new(zone: impl Into<String>) -> Self {
         Self {
-            zone: zone.into(),
+            zone: zone.into().trim().to_string(),
+            allowed_zone_suffixes: Vec::new(),
+            lookup_timeout: Self::DEFAULT_LOOKUP_TIMEOUT,
             tags: vec!["dns-txt".into()],
         }
+    }
+
+    /// Restrict DNS discovery to zones that end with one of the provided suffixes.
+    ///
+    /// A zone is accepted when it exactly matches a suffix or is a child of it.
+    /// For example, with suffix `"internal.example.com"`, both
+    /// `"internal.example.com"` and `"proxy.internal.example.com"` are allowed.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_proxy::fetcher::DnsTxtFetcher;
+    ///
+    /// let _fetcher = DnsTxtFetcher::new("proxies.internal.example.com")
+    ///     .with_allowed_zone_suffixes(vec!["internal.example.com".to_string()]);
+    /// ```
+    #[must_use]
+    pub fn with_allowed_zone_suffixes(mut self, suffixes: Vec<String>) -> Self {
+        self.allowed_zone_suffixes = suffixes;
+        self
+    }
+
+    /// Set the timeout used for a single DNS TXT lookup.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use stygian_proxy::fetcher::DnsTxtFetcher;
+    ///
+    /// let _fetcher = DnsTxtFetcher::new("proxies.internal.example.com")
+    ///     .with_lookup_timeout(Duration::from_secs(3));
+    /// ```
+    #[must_use]
+    pub const fn with_lookup_timeout(mut self, timeout: Duration) -> Self {
+        self.lookup_timeout = timeout;
+        self
     }
 
     /// Attach extra tags to every proxy discovered via this fetcher.
@@ -829,6 +873,52 @@ impl DnsTxtFetcher {
     pub fn with_tags(mut self, tags: Vec<String>) -> Self {
         self.tags.extend(tags);
         self
+    }
+
+    fn normalize_zone(value: &str) -> String {
+        value.trim().trim_end_matches('.').to_ascii_lowercase()
+    }
+
+    fn validate_dns_zone(value: &str) -> bool {
+        let zone = Self::normalize_zone(value);
+        if zone.is_empty() || zone.len() > 253 {
+            return false;
+        }
+
+        for label in zone.split('.') {
+            if label.is_empty() || label.len() > 63 {
+                return false;
+            }
+
+            let bytes = label.as_bytes();
+            let first = bytes.first().copied();
+            let last = bytes.last().copied();
+            if first == Some(b'-') || last == Some(b'-') {
+                return false;
+            }
+
+            if !bytes
+                .iter()
+                .copied()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    fn zone_allowed(&self, zone: &str) -> bool {
+        if self.allowed_zone_suffixes.is_empty() {
+            return true;
+        }
+
+        let zone = Self::normalize_zone(zone);
+        self.allowed_zone_suffixes.iter().any(|suffix| {
+            let suffix = Self::normalize_zone(suffix);
+            zone == suffix || zone.ends_with(&format!(".{suffix}"))
+        })
     }
 
     /// Parse a single TXT record string into a [`Proxy`].
@@ -932,28 +1022,74 @@ impl ProxyFetcher for DnsTxtFetcher {
     async fn fetch(&self) -> ProxyResult<Vec<Proxy>> {
         use hickory_resolver::TokioAsyncResolver;
         use hickory_resolver::config::{ResolverConfig, ResolverOpts};
+        use tokio::time::timeout;
+
+        let zone = Self::normalize_zone(&self.zone);
+        if !Self::validate_dns_zone(&zone) {
+            return Err(ProxyError::ConfigError(format!(
+                "invalid DNS zone for DnsTxtFetcher: '{}'",
+                self.zone
+            )));
+        }
+
+        for suffix in &self.allowed_zone_suffixes {
+            if !Self::validate_dns_zone(suffix) {
+                return Err(ProxyError::ConfigError(format!(
+                    "invalid allowed DNS zone suffix for DnsTxtFetcher: '{suffix}'"
+                )));
+            }
+        }
+
+        if !self.zone_allowed(&zone) {
+            return Err(ProxyError::FetchFailed {
+                origin: zone.clone(),
+                message: format!("DNS zone '{zone}' rejected by trusted suffix policy"),
+            });
+        }
 
         let resolver =
             TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
 
-        let lookup =
-            resolver
-                .txt_lookup(self.zone.as_str())
-                .await
-                .map_err(|e| ProxyError::FetchFailed {
-                    origin: self.zone.clone(),
-                    message: format!("DNS TXT lookup failed for '{}': {e}", self.zone),
-                })?;
+        let lookup = timeout(self.lookup_timeout, resolver.txt_lookup(zone.as_str()))
+            .await
+            .map_err(|_| ProxyError::FetchFailed {
+                origin: zone.clone(),
+                message: format!(
+                    "DNS TXT lookup timed out for '{}' after {:?}",
+                    zone, self.lookup_timeout
+                ),
+            })?
+            .map_err(|e| ProxyError::FetchFailed {
+                origin: zone.clone(),
+                message: format!("DNS TXT lookup failed for '{zone}': {e}"),
+            })?;
 
         let mut proxies: Vec<Proxy> = Vec::new();
         for txt in lookup.iter() {
-            // Each TXT record may contain multiple character-strings; join them.
-            let record_str: String = txt
-                .txt_data()
-                .iter()
-                .filter_map(|bytes| std::str::from_utf8(bytes).ok())
-                .collect::<Vec<_>>()
-                .join("");
+            // Each TXT record may contain multiple character-strings; join them,
+            // but cap the total size to avoid pathological oversized inputs.
+            let mut record_str = String::new();
+            let mut skipped_for_size = false;
+            for bytes in txt.txt_data() {
+                if let Ok(fragment) = std::str::from_utf8(bytes) {
+                    if record_str.len().saturating_add(fragment.len())
+                        > Self::MAX_JOINED_TXT_RECORD_LEN
+                    {
+                        skipped_for_size = true;
+                        break;
+                    }
+                    record_str.push_str(fragment);
+                }
+            }
+            if skipped_for_size {
+                warn!(
+                    zone = %zone,
+                    max_len = Self::MAX_JOINED_TXT_RECORD_LEN,
+                    "skipping oversized DNS TXT record",
+                );
+                continue;
+            }
+
             if let Some(proxy) = self.parse_record(&record_str) {
                 proxies.push(proxy);
             }
@@ -961,16 +1097,13 @@ impl ProxyFetcher for DnsTxtFetcher {
 
         if proxies.is_empty() {
             return Err(ProxyError::FetchFailed {
-                origin: self.zone.clone(),
-                message: format!(
-                    "no valid proxy records found in DNS TXT for '{}'",
-                    self.zone
-                ),
+                origin: zone.clone(),
+                message: format!("no valid proxy records found in DNS TXT for '{zone}'"),
             });
         }
 
         debug!(
-            zone = %self.zone,
+            zone = %zone,
             count = proxies.len(),
             "fetched proxy list from DNS TXT",
         );
@@ -1063,6 +1196,50 @@ mod tests {
         #[test]
         fn parse_invalid_port_returns_none() {
             assert!(fetcher().parse_record("10.0.0.1:notaport").is_none());
+        }
+
+        #[test]
+        fn validate_dns_zone_accepts_valid_names() {
+            assert!(DnsTxtFetcher::validate_dns_zone(
+                "proxies.internal.example.com"
+            ));
+            assert!(DnsTxtFetcher::validate_dns_zone(
+                "PROXIES.INTERNAL.EXAMPLE.COM"
+            ));
+            assert!(DnsTxtFetcher::validate_dns_zone(
+                "proxy-1.internal.example.com"
+            ));
+            assert!(DnsTxtFetcher::validate_dns_zone(
+                "proxy.internal.example.com."
+            ));
+        }
+
+        #[test]
+        fn validate_dns_zone_rejects_invalid_names() {
+            assert!(!DnsTxtFetcher::validate_dns_zone(""));
+            assert!(!DnsTxtFetcher::validate_dns_zone("   "));
+            assert!(!DnsTxtFetcher::validate_dns_zone("-bad.example.com"));
+            assert!(!DnsTxtFetcher::validate_dns_zone("bad-.example.com"));
+            assert!(!DnsTxtFetcher::validate_dns_zone("bad..example.com"));
+            assert!(!DnsTxtFetcher::validate_dns_zone("bad_zone.example.com"));
+        }
+
+        #[test]
+        fn zone_allowed_matches_exact_or_child_suffix() {
+            let fetcher = DnsTxtFetcher::new("proxies.internal.example.com")
+                .with_allowed_zone_suffixes(vec!["internal.example.com".to_string()]);
+            assert!(fetcher.zone_allowed("internal.example.com"));
+            assert!(fetcher.zone_allowed("proxies.internal.example.com"));
+            assert!(!fetcher.zone_allowed("example.com"));
+            assert!(!fetcher.zone_allowed("evilinternal.example.com"));
+        }
+
+        #[test]
+        fn normalize_zone_trims_and_lowercases() {
+            assert_eq!(
+                DnsTxtFetcher::normalize_zone("  Proxies.Internal.Example.Com.  "),
+                "proxies.internal.example.com"
+            );
         }
     }
 
