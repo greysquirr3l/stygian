@@ -14,11 +14,16 @@ latency metrics, and integrates directly with both `stygian-graph` HTTP adapters
 | **Rotation strategies** | Round-robin, random, weighted (by proxy weight), least-used (by request count) |
 | **Per-proxy metrics** | Atomic latency and success-rate tracking — zero lock contention |
 | **Async health checker** | Configurable-interval background task; each proxy probed concurrently via `JoinSet` |
+| **Health-check jitter** | Per-cycle random ±N% interval spread via `health_check_jitter_pct` — prevents thundering-herd against shared targets |
 | **Circuit breaker** | Per-proxy lock-free FSM: `Closed → Open → HalfOpen`; auto-recovery after cooldown |
+| **Capability filtering** | Tag proxies with `tls_profile`, `is_cdn_edge`, and arbitrary tags; filter at acquire time via `CapabilityRequirement` |
+| **CDN-edge proxy type** | `ProxyType::CdnEdge` for CDN-fronted egress nodes alongside `Http`, `Https`, `Socks4`, `Socks5` |
+| **Persistent connections** | `TransportPreference::PersistentTcp` with configurable max-requests and connection max-age |
 | **In-memory pool** | No external database required; satisfies the `ProxyStoragePort` trait |
 | **graph integration** | `ProxyManagerPort` trait for `stygian-graph` HTTP adapters (feature `graph`) |
-| **browser integration** | Per-context proxy binding for `stygian-browser` (feature `browser`) |
+| **browser integration** | Per-context proxy binding for `stygian-browser` (feature `browser`); TLS-profile-aware via `bind_proxy_with_tls_profile` |
 | **SOCKS support** | `Socks4` and `Socks5` proxy types (feature `socks`) |
+| **DNS TXT discovery** | `DnsTxtFetcher` resolves proxy lists from DNS TXT records (feature `dns-fetcher`) |
 
 ---
 
@@ -80,13 +85,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 │                                         │
 │  ┌──────────────┐  ┌─────────────────┐  │
 │  │ HealthChecker│  │ CircuitBreakers │  │
-│  │  (background)│  │  (per proxy)    │  │
-│  └──────────────┘  └─────────────────┘  │
+  │ + jitter     │  │  (per proxy)    │  │
+  └──────────────┘  └─────────────────┘  │
 │                                         │
 │  ┌──────────────────────────────────┐   │
 │  │       RotationStrategy           │   │
 │  │  RoundRobin / Random / Weighted  │   │
 │  │  / LeastUsed                     │   │
+│  └──────────────────────────────────┘   │
+│                                         │
+│  ┌──────────────────────────────────┐   │
+│  │  CapabilityRequirement filter    │   │
+│  │  tls_profile / cdn_edge / tags   │   │
 │  └──────────────────────────────────┘   │
 │                                         │
 │  ┌──────────────────────────────────┐   │

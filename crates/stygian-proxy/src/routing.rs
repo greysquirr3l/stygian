@@ -20,6 +20,14 @@ pub enum TransportPreference {
     PreferH3,
     /// Always use HTTP/1.1 or HTTP/2 over a TCP CONNECT tunnel.
     ForceTcp,
+    /// Prefer a persistent TCP connection that spans multiple logical requests.
+    ///
+    /// Forces a TCP CONNECT tunnel and signals the HTTP client layer to keep
+    /// the underlying connection open between requests.  Connection lifetime
+    /// and per-connection request limits are governed by
+    /// [`crate::types::ProxyConfig::max_requests_per_connection`] and
+    /// [`crate::types::ProxyConfig::connection_max_age_secs`].
+    PersistentTcp,
 }
 
 /// Resolve the [`RoutingPath`] for a request given proxy capabilities and the
@@ -27,11 +35,12 @@ pub enum TransportPreference {
 ///
 /// # Decision logic
 ///
-/// | Preference   | `supports_http3_tunnel` | Result          |
-/// |--------------|------------------------|-----------------|
-/// | `PreferH3`   | `true`                 | `H3OverUdp`    |
-/// | `PreferH3`   | `false`                | `H1H2OverTcp`  |
-/// | `ForceTcp`   | any                    | `H1H2OverTcp`  |
+/// | Preference       | `supports_http3_tunnel` | Result           |
+/// |------------------|------------------------|------------------|
+/// | `PreferH3`       | `true`                 | `H3OverUdp`      |
+/// | `PreferH3`       | `false`                | `H1H2OverTcp`    |
+/// | `ForceTcp`       | any                    | `H1H2OverTcp`    |
+/// | `PersistentTcp`  | any                    | `PersistentTcp`  |
 ///
 /// # Example
 /// ```
@@ -59,6 +68,7 @@ pub const fn resolve_routing_path(
 ) -> RoutingPath {
     match preference {
         TransportPreference::ForceTcp => RoutingPath::H1H2OverTcp,
+        TransportPreference::PersistentTcp => RoutingPath::PersistentTcp,
         TransportPreference::PreferH3 => {
             if capabilities.supports_http3_tunnel {
                 RoutingPath::H3OverUdp
@@ -104,6 +114,18 @@ mod tests {
         assert_eq!(
             resolve_routing_path(&caps, TransportPreference::ForceTcp),
             RoutingPath::H1H2OverTcp,
+        );
+    }
+
+    #[test]
+    fn persistent_tcp_returns_persistent_tcp() {
+        let caps = ProxyCapabilities {
+            supports_http3_tunnel: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            resolve_routing_path(&caps, TransportPreference::PersistentTcp),
+            RoutingPath::PersistentTcp,
         );
     }
 }

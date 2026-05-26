@@ -138,6 +138,28 @@ impl stygian_browser::proxy::ProxySource for ProxyManagerBridge {
         let url = handle.proxy_url.clone();
         Ok((url, Box::new(ProxyLeaseAdapter(handle))))
     }
+
+    async fn bind_proxy_with_tls_profile(
+        &self,
+        profile: Option<&str>,
+    ) -> stygian_browser::error::Result<(String, Box<dyn stygian_browser::proxy::ProxyLease>)> {
+        let Some(profile) = profile else {
+            return stygian_browser::proxy::ProxySource::bind_proxy(self).await;
+        };
+        let req = crate::types::CapabilityRequirement {
+            require_tls_profile: Some(profile.to_string()),
+            ..Default::default()
+        };
+        let handle = self
+            .manager
+            .acquire_with_capabilities(&req)
+            .await
+            .map_err(|e| stygian_browser::error::BrowserError::ProxyUnavailable {
+                reason: e.to_string(),
+            })?;
+        let url = handle.proxy_url.clone();
+        Ok((url, Box::new(ProxyLeaseAdapter(handle))))
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

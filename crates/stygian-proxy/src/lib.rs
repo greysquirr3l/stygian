@@ -52,6 +52,8 @@ pub mod mcp;
 // Top-level re-exports
 pub use circuit_breaker::{CircuitBreaker, STATE_CLOSED, STATE_HALF_OPEN, STATE_OPEN};
 pub use error::{ProxyError, ProxyResult};
+#[cfg(feature = "dns-fetcher")]
+pub use fetcher::DnsTxtFetcher;
 pub use fetcher::{
     FreeApiProxiesFetcher, FreeListFetcher, FreeListSource, ProxyFetcher, load_from_fetcher,
 };

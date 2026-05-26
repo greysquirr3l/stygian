@@ -26,6 +26,12 @@ pub enum ProxyType {
     #[cfg(feature = "socks")]
     /// SOCKS5 proxy (requires the `socks` feature).
     Socks5,
+    /// CDN edge relay (`Cloudflare`, `CloudFront`, `Azure Front Door`, etc.).
+    ///
+    /// Traffic egresses through a CDN point-of-presence rather than a traditional proxy
+    /// server.  Provider metadata is carried in
+    /// [`ProxyCapabilities::cdn_provider`].
+    CdnEdge,
 }
 
 /// TLS-profiled request mode for proxy-side HTTP operations.
@@ -78,6 +84,23 @@ pub struct ProxyCapabilities {
     /// `None` means the provider did not supply confidence metadata.
     #[serde(default)]
     pub geo_confidence: Option<f32>,
+    /// `true` when this proxy routes through a CDN edge node rather than a
+    /// traditional SOCKS/HTTP proxy server.
+    #[serde(default)]
+    pub is_cdn_edge: bool,
+    /// CDN provider name when `is_cdn_edge` is `true`.
+    ///
+    /// Advisory — used for monitoring and routing hints.
+    /// Examples: `"cloudflare"`, `"cloudfront"`, `"azure-front-door"`.
+    #[serde(default)]
+    pub cdn_provider: Option<String>,
+    /// TLS fingerprint profile this proxy presents toward the upstream target.
+    ///
+    /// Advisory identifier such as `"chrome-131"`, `"firefox-120"`, or
+    /// `"curl"`.  Use with [`CapabilityRequirement::require_tls_profile`] to
+    /// select proxies by their TLS stack identity.  `None` means unknown.
+    #[serde(default)]
+    pub tls_profile: Option<String>,
 }
 
 impl ProxyCapabilities {
@@ -104,6 +127,14 @@ impl ProxyCapabilities {
         }
         if let Some(ref required_country) = req.require_geo_country
             && self.geo_country.as_deref() != Some(required_country.as_str())
+        {
+            return false;
+        }
+        if req.require_cdn_edge && !self.is_cdn_edge {
+            return false;
+        }
+        if let Some(ref required_profile) = req.require_tls_profile
+            && self.tls_profile.as_deref() != Some(required_profile.as_str())
         {
             return false;
         }
@@ -137,6 +168,16 @@ pub struct CapabilityRequirement {
     /// Require a specific egress country (ISO-3166-1 alpha-2).
     #[serde(default)]
     pub require_geo_country: Option<String>,
+    /// Require a CDN-edge proxy (`is_cdn_edge` must be `true`).
+    #[serde(default)]
+    pub require_cdn_edge: bool,
+    /// Require a specific TLS fingerprint profile.
+    ///
+    /// When `Some`, only proxies whose [`ProxyCapabilities::tls_profile`]
+    /// matches this value exactly are eligible.  Examples: `"chrome-131"`,
+    /// `"firefox-120"`, `"curl"`.
+    #[serde(default)]
+    pub require_tls_profile: Option<String>,
 }
 
 /// The protocol routing path resolved for an outbound request.
@@ -157,6 +198,10 @@ pub enum RoutingPath {
     H1H2OverTcp,
     /// HTTP/3 (QUIC) over a UDP relay — requires `supports_http3_tunnel`.
     H3OverUdp,
+    /// Persistent TCP CONNECT tunnel — connection is kept alive between requests.
+    ///
+    /// Selected when [`crate::routing::TransportPreference::PersistentTcp`] is used.
+    PersistentTcp,
 }
 
 /// A proxy endpoint with optional authentication credentials.
@@ -350,6 +395,9 @@ mod serde_duration_secs {
 /// assert_eq!(cfg.circuit_open_threshold, 5);
 /// assert_eq!(cfg.circuit_half_open_after, Duration::from_secs(30));
 /// assert!(cfg.profiled_request_mode.is_none());
+/// assert_eq!(cfg.health_check_jitter_pct, 0.20_f32);
+/// assert!(cfg.max_requests_per_connection.is_none());
+/// assert!(cfg.connection_max_age_secs.is_none());
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -362,6 +410,16 @@ pub struct ProxyConfig {
     /// Per-probe HTTP timeout (seconds).
     #[serde(with = "serde_duration_secs")]
     pub health_check_timeout: Duration,
+    /// Jitter factor applied to the health-check sleep window.
+    ///
+    /// `0.20` distributes each check window uniformly over
+    /// `interval × [0.80, 1.20)`, preventing synchronised fleet-wide check
+    /// storms.  Set to `0.0` to disable jitter.  Clamped to `[0.0, 0.99]`
+    /// at runtime.
+    ///
+    /// Default: `0.20` (±20 %).
+    #[serde(default = "default_health_check_jitter_pct")]
+    pub health_check_jitter_pct: f32,
     /// Consecutive failures before the circuit trips to OPEN.
     pub circuit_open_threshold: u32,
     /// How long to wait in OPEN before transitioning to HALF-OPEN (seconds).
@@ -378,6 +436,19 @@ pub struct ProxyConfig {
     /// Ignored when `tls-profiled` is disabled.
     #[serde(default)]
     pub profiled_request_mode: Option<ProfiledRequestMode>,
+    /// Maximum requests routed through one persistent TCP connection before it
+    /// is recycled.  `None` means no limit.  Only consulted when
+    /// [`crate::routing::TransportPreference::PersistentTcp`] is active.
+    #[serde(default)]
+    pub max_requests_per_connection: Option<u32>,
+    /// Maximum age of a persistent TCP connection in seconds before it is
+    /// replaced.  `None` means no age limit.
+    #[serde(default)]
+    pub connection_max_age_secs: Option<u64>,
+}
+
+const fn default_health_check_jitter_pct() -> f32 {
+    0.20
 }
 
 impl Default for ProxyConfig {
@@ -386,10 +457,13 @@ impl Default for ProxyConfig {
             health_check_url: "https://httpbin.org/ip".into(),
             health_check_interval: Duration::from_mins(1),
             health_check_timeout: Duration::from_secs(5),
+            health_check_jitter_pct: 0.20,
             circuit_open_threshold: 5,
             circuit_half_open_after: Duration::from_secs(30),
             sticky_policy: crate::session::StickyPolicy::default(),
             profiled_request_mode: None,
+            max_requests_per_connection: None,
+            connection_max_age_secs: None,
         }
     }
 }

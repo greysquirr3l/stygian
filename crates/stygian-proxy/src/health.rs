@@ -2,7 +2,9 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+use rand::RngExt;
 
 use tokio::sync::RwLock;
 use tokio::task::{JoinHandle, JoinSet};
@@ -116,21 +118,24 @@ impl HealthChecker {
         Ok(self.with_profiled_client(requester))
     }
 
-    /// Spawn an infinite background task that checks proxies on every
-    /// `config.health_check_interval` tick.
+    /// Spawn an infinite background task that checks proxies on a jittered
+    /// sleep-based schedule derived from `config.health_check_interval`.
     ///
-    /// Cancel `token` to stop the task gracefully.  Missed ticks are skipped.
+    /// Each cycle sleeps for `jitter_duration(interval, jitter_pct)` before
+    /// running a probe pass.  Cancel `token` to stop the task gracefully.
     pub fn spawn(self, token: CancellationToken) -> JoinHandle<()> {
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(self.config.health_check_interval);
-            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
+                let sleep_dur = jitter_duration(
+                    self.config.health_check_interval,
+                    self.config.health_check_jitter_pct,
+                );
                 tokio::select! {
                     () = token.cancelled() => {
                         tracing::info!("health checker: shutdown requested");
                         break;
                     }
-                    _ = interval.tick() => {
+                    () = tokio::time::sleep(sleep_dur) => {
                         self.check_all().await;
                     }
                 }
@@ -243,6 +248,23 @@ impl HealthChecker {
             "health check cycle complete"
         );
     }
+}
+
+/// Apply a random jitter factor to `base`.
+///
+/// `jitter_pct` is clamped to `[0.0, 0.99]`.  A value of `0.20` produces a
+/// sleep window uniformly distributed in `[base × 0.80, base × 1.20)`.
+fn jitter_duration(base: Duration, jitter_pct: f32) -> Duration {
+    if jitter_pct <= 0.0 {
+        return base;
+    }
+    let pct = jitter_pct.clamp(0.0, 0.99);
+    // random::<f32>() ∈ [0.0, 1.0) → factor ∈ [1 − pct, 1 + pct)
+    let factor = rand::rng()
+        .random::<f32>()
+        .mul_add(2.0_f32, -1.0_f32)
+        .mul_add(pct, 1.0_f32);
+    base.mul_f32(factor.max(0.01))
 }
 
 #[cfg(any(test, feature = "tls-profiled"))]
