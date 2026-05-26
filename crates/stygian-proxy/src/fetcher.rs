@@ -930,19 +930,11 @@ impl DnsTxtFetcher {
 #[async_trait]
 impl ProxyFetcher for DnsTxtFetcher {
     async fn fetch(&self) -> ProxyResult<Vec<Proxy>> {
-        use hickory_resolver::Resolver;
-        use hickory_resolver::config::ResolverConfig;
-        use hickory_resolver::net::runtime::TokioRuntimeProvider;
+        use hickory_resolver::TokioAsyncResolver;
+        use hickory_resolver::config::{ResolverConfig, ResolverOpts};
 
-        let resolver = Resolver::builder_with_config(
-            ResolverConfig::default(),
-            TokioRuntimeProvider::default(),
-        )
-        .build()
-        .map_err(|e| ProxyError::FetchFailed {
-            origin: self.zone.clone(),
-            message: format!("failed to build DNS resolver: {e}"),
-        })?;
+        let resolver =
+            TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
 
         let lookup =
             resolver
@@ -954,19 +946,16 @@ impl ProxyFetcher for DnsTxtFetcher {
                 })?;
 
         let mut proxies: Vec<Proxy> = Vec::new();
-        for record in lookup.answers() {
-            use hickory_resolver::proto::rr::RData;
+        for txt in lookup.iter() {
             // Each TXT record may contain multiple character-strings; join them.
-            if let RData::TXT(ref txt) = record.data {
-                let record_str: String = txt
-                    .txt_data
-                    .iter()
-                    .filter_map(|bytes| std::str::from_utf8(bytes).ok())
-                    .collect::<Vec<_>>()
-                    .join("");
-                if let Some(proxy) = self.parse_record(&record_str) {
-                    proxies.push(proxy);
-                }
+            let record_str: String = txt
+                .txt_data()
+                .iter()
+                .filter_map(|bytes| std::str::from_utf8(bytes).ok())
+                .collect::<Vec<_>>()
+                .join("");
+            if let Some(proxy) = self.parse_record(&record_str) {
+                proxies.push(proxy);
             }
         }
 

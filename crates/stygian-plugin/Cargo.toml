@@ -14,7 +14,7 @@ categories = ["web-programming", "text-processing"]
 async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-thiserror = "1.0"
+thiserror = "2.0"
 tokio = { version = "1.49", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -31,10 +31,10 @@ tower-http = { version = "0.6", features = ["cors", "trace"], optional = true }
 tower = { version = "0.5", optional = true }
 
 # Stygian crates
-stygian-graph = { path = "../stygian-graph", version = "0.13.4", optional = true }
+stygian-graph = { path = "../stygian-graph", version = "0.13.5", optional = true }
 
 # Parsing
-scraper = "0.25"
+scraper = "0.27"
 
 [dev-dependencies]
 tokio-test = "0.4"

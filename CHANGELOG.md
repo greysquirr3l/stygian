@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.5] - 2026-05-26
+
 ### Added
 
 - **stygian-proxy (health jitter)**: `ProxyConfig::health_check_jitter_pct` spreads
@@ -37,6 +39,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `docs (mdBook/proxy)`: expanded proxy docs with capability filtering,
+  persistent-connection configuration, DNS TXT discovery integration, and
+  health-check jitter behavior
+- `workspace`: refreshed direct dependencies for 0.13.5, including
+  `reqwest` 0.13.2 → 0.13.4, `serde_json` 1.0.149 → 1.0.150, `tokio` 1.52.1 →
+  1.52.3, and `tower-http` 0.6.8 → 0.6.11
+- `stygian-plugin`: bumped `scraper` 0.25 → 0.27 and `thiserror` 1.0 → 2.0 to
+  keep the plugin crate aligned with the current dependency set
+- `stygian-proxy`: retained `hickory-resolver` 0.24.x for 0.13.5 after
+  validating that 0.26.x requires a separate API migration
+- `workspace`: bumped workspace and internal crate version pins from `0.13.4`
+  to `0.13.5` across all crate manifests for a consistent release line
 - **Extension popup**: Status messaging now routes per-tab (`templates`, `record`,
   `apply`, `settings`) instead of broadcasting across all status elements
 - **Extension popup**: Record-tab testing now persists in-progress template edits before
