@@ -62,6 +62,7 @@ pub enum TransportPreference {
 ///     RoutingPath::H1H2OverTcp,
 /// );
 /// ```
+#[must_use]
 pub const fn resolve_routing_path(
     capabilities: &ProxyCapabilities,
     preference: TransportPreference,

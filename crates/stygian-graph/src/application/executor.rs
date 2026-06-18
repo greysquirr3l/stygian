@@ -5,6 +5,7 @@ pub struct PipelineExecutor;
 
 impl PipelineExecutor {
     /// Create a new pipeline executor
+    #[must_use]
     pub const fn new() -> Self {
         Self
     }

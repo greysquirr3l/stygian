@@ -103,6 +103,7 @@ impl StealthLevel {
     }
 
     /// Convert stealth level to string representation
+    #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match self {
             Self::None => "none",
@@ -179,6 +180,7 @@ impl BrowserAdapter {
     /// let adapter = BrowserAdapter::new();
     /// assert_eq!(adapter.name(), "browser");
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         Self {
             config: BrowserAdapterConfig::default(),
@@ -200,6 +202,7 @@ impl BrowserAdapter {
     /// };
     /// let adapter = BrowserAdapter::with_config(config);
     /// ```
+    #[must_use]
     pub const fn with_config(config: BrowserAdapterConfig) -> Self {
         Self { config }
     }

@@ -66,6 +66,7 @@ pub enum ProfiledRequestMode {
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[allow(clippy::struct_excessive_bools)] // 4 capability flags are clearer as named bools than a u8 bitmask
 pub struct ProxyCapabilities {
     /// Proxy supports the `CONNECT` method for HTTPS tunnelling.
     #[serde(default)]
@@ -115,6 +116,7 @@ impl ProxyCapabilities {
     /// let req2 = CapabilityRequirement { require_socks5_udp: true, ..Default::default() };
     /// assert!(!caps.satisfies(&req2));
     /// ```
+    #[must_use]
     pub fn satisfies(&self, req: &CapabilityRequirement) -> bool {
         if req.require_https_connect && !self.supports_https_connect {
             return false;
@@ -155,6 +157,7 @@ impl ProxyCapabilities {
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[allow(clippy::struct_excessive_bools)] // 4 requirement flags mirror ProxyCapabilities 1:1; bitmask refactor would be a breaking change
 pub struct CapabilityRequirement {
     /// Require `supports_https_connect`.
     #[serde(default)]
@@ -284,6 +287,7 @@ pub struct ProxyRecord {
 
 impl ProxyRecord {
     /// Create a new [`ProxyRecord`] wrapping `proxy` with a freshly generated UUID.
+    #[must_use]
     pub fn new(proxy: Proxy) -> Self {
         Self {
             id: Uuid::new_v4(),

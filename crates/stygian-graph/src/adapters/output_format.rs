@@ -173,6 +173,7 @@ impl OutputFormatter for CsvFormatter {
 /// let f = formatter_for(OutputFormat::Csv);
 /// assert_eq!(f.format_type(), OutputFormat::Csv);
 /// ```
+#[must_use]
 pub fn formatter_for(format: OutputFormat) -> Box<dyn OutputFormatter> {
     match format {
         OutputFormat::Jsonl => Box::new(JsonlFormatter),

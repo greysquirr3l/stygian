@@ -199,6 +199,7 @@ impl FreeListFetcher {
     /// use stygian_proxy::fetcher::{FreeListFetcher, FreeListSource};
     /// let _f = FreeListFetcher::new(vec![FreeListSource::TheSpeedXHttp]);
     /// ```
+    #[must_use]
     pub fn new(sources: Vec<FreeListSource>) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(10))

@@ -78,6 +78,7 @@ impl StorageRecord {
     /// assert!(!r.id.is_empty());
     /// assert!(r.timestamp_ms > 0);
     /// ```
+    #[must_use]
     pub fn new(pipeline_id: &str, node_name: &str, data: Value) -> Self {
         let id = uuid::Uuid::new_v4().to_string();
         let timestamp_ms = u64::try_from(
@@ -228,6 +229,7 @@ impl OutputFormat {
     /// assert_eq!(OutputFormat::Json.extension(), "json");
     /// assert_eq!(OutputFormat::Jsonl.extension(), "jsonl");
     /// ```
+    #[must_use]
     pub const fn extension(self) -> &'static str {
         match self {
             Self::Jsonl => "jsonl",
@@ -263,6 +265,11 @@ impl OutputFormat {
 /// ```
 pub trait OutputFormatter: Send + Sync {
     /// Serialise `records` to owned bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StygianError`] when serialisation fails (for example an
+    /// unwritable cell in CSV, a value the JSON encoder cannot represent, etc.).
     fn format(&self, records: &[StorageRecord]) -> Result<Vec<u8>>;
 
     /// Which format this formatter produces.

@@ -197,7 +197,7 @@ fn registry_deregister_removes_service() {
     let registry = ServiceRegistry::new();
     registry.register("temp".into(), Arc::new(NoopService));
     assert!(registry.get("temp").is_some());
-    registry.deregister("temp");
+    let _ = registry.deregister("temp");
     assert!(registry.get("temp").is_none());
 }
 

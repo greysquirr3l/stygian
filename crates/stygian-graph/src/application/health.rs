@@ -48,6 +48,7 @@ impl HealthStatus {
     /// assert!(HealthStatus::Healthy.is_healthy());
     /// assert!(!HealthStatus::Degraded("latency".into()).is_healthy());
     /// ```
+    #[must_use]
     pub const fn is_healthy(&self) -> bool {
         matches!(self, Self::Healthy)
     }
@@ -62,6 +63,7 @@ impl HealthStatus {
     /// assert!(HealthStatus::Degraded("high latency".into()).is_operational());
     /// assert!(!HealthStatus::Unhealthy("connection refused".into()).is_operational());
     /// ```
+    #[must_use]
     pub const fn is_operational(&self) -> bool {
         !matches!(self, Self::Unhealthy(_))
     }
@@ -198,6 +200,7 @@ impl HealthReport {
     /// r.register("db", HealthStatus::Healthy);
     /// assert!(r.report().is_ready());
     /// ```
+    #[must_use]
     pub fn is_ready(&self) -> bool {
         self.components.iter().all(|c| c.status.is_operational())
     }
@@ -218,6 +221,7 @@ impl HealthReport {
     /// // One unhealthy component doesn't kill the process while others are healthy
     /// assert!(r.report().is_live());
     /// ```
+    #[must_use]
     pub fn is_live(&self) -> bool {
         // Dead when ALL components are unhealthy (or no components registered)
         if self.components.is_empty() {
@@ -239,6 +243,7 @@ impl HealthReport {
     /// r.register("db", HealthStatus::Healthy);
     /// assert_eq!(r.report().http_status_code(), 200u16);
     /// ```
+    #[must_use]
     pub fn http_status_code(&self) -> u16 {
         if self.is_ready() { 200 } else { 503 }
     }
@@ -297,6 +302,7 @@ impl HealthReporter {
     /// let r = HealthReporter::new();
     /// assert!(r.report().components.is_empty());
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         Self {
             components: RwLock::new(HashMap::new()),

@@ -60,6 +60,7 @@ pub struct IdempotencyKey(Ulid);
 
 impl IdempotencyKey {
     /// Generate a new unique idempotency key.
+    #[must_use]
     pub fn generate() -> Self {
         Self(Ulid::new())
     }
@@ -74,6 +75,7 @@ impl IdempotencyKey {
     }
 
     /// The cache key used to store this record.
+    #[must_use]
     pub fn cache_key(&self) -> String {
         format!("idempotency:{}", &self.0)
     }
@@ -157,6 +159,7 @@ impl From<CachedOutput> for ServiceOutput {
 
 impl IdempotencyRecord {
     /// Create a new pending record (marks operation as in-flight).
+    #[must_use]
     pub fn new_pending(key: IdempotencyKey, ttl: Duration) -> Self {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -172,6 +175,7 @@ impl IdempotencyRecord {
     }
 
     /// Check whether this record has expired.
+    #[must_use]
     pub fn is_expired(&self) -> bool {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -203,6 +207,7 @@ impl<C: CachePort> IdempotencyStore<C> {
     ///
     /// let store = IdempotencyStore::new(Arc::new(MemoryCache::new()));
     /// ```
+    #[must_use]
     pub const fn new(cache: Arc<C>) -> Self {
         Self {
             cache,
@@ -211,6 +216,7 @@ impl<C: CachePort> IdempotencyStore<C> {
     }
 
     /// Create a store with a custom TTL.
+    #[must_use]
     pub fn with_ttl(cache: Arc<C>, ttl: Duration) -> Self {
         let ttl = ttl.min(MAX_TTL);
         Self {
@@ -222,6 +228,11 @@ impl<C: CachePort> IdempotencyStore<C> {
     /// Check whether a result is already cached for this key.
     ///
     /// Returns `None` if not found or expired.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StygianError::Cache`] when the underlying cache read fails, or
+    /// when the cached payload is not a valid [`IdempotencyRecord`].
     pub async fn get(&self, key: IdempotencyKey) -> Result<Option<IdempotencyRecord>> {
         let cache_key = key.cache_key();
         let Some(json) = self.cache.get(&cache_key).await? else {
@@ -245,6 +256,11 @@ impl<C: CachePort> IdempotencyStore<C> {
     ///
     /// Returns `true` if the claim was acquired (key was not already present).
     /// Returns `false` if another worker already claimed this key.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StygianError::Cache`] when the underlying cache read or write
+    /// fails.
     pub async fn claim(&self, key: IdempotencyKey) -> Result<bool> {
         let cache_key = key.cache_key();
 
@@ -262,6 +278,10 @@ impl<C: CachePort> IdempotencyStore<C> {
     }
 
     /// Store a completed result for the given key.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StygianError::Cache`] when the underlying cache write fails.
     pub async fn store(
         &self,
         key: IdempotencyKey,
@@ -289,6 +309,10 @@ impl<C: CachePort> IdempotencyStore<C> {
     }
 
     /// Mark an operation as failed.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StygianError::Cache`] when the underlying cache write fails.
     pub async fn mark_failed(&self, key: IdempotencyKey) -> Result<()> {
         let cache_key = key.cache_key();
 
@@ -312,6 +336,10 @@ impl<C: CachePort> IdempotencyStore<C> {
     }
 
     /// Invalidate a key (force re-execution on next attempt).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StygianError::Cache`] when the underlying cache delete fails.
     pub async fn invalidate(&self, key: IdempotencyKey) -> Result<()> {
         self.cache.invalidate(&key.cache_key()).await
     }

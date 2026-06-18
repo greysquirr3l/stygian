@@ -65,6 +65,7 @@ pub struct ProxyManagerBridge {
 
 impl ProxyManagerBridge {
     /// Create a new bridge backed by `manager`.
+    #[must_use]
     pub const fn new(manager: Arc<ProxyManager>) -> Self {
         Self { manager }
     }

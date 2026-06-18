@@ -47,6 +47,7 @@ pub struct OllamaConfig {
 
 impl OllamaConfig {
     /// Create config with defaults
+    #[must_use]
     pub fn new() -> Self {
         Self {
             base_url: DEFAULT_BASE_URL.to_string(),
@@ -91,11 +92,18 @@ impl OllamaProvider {
     /// use stygian_graph::adapters::ai::ollama::OllamaProvider;
     /// let p = OllamaProvider::new();
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         Self::with_config(OllamaConfig::new())
     }
 
     /// Create with custom configuration
+    ///
+    /// # Panics
+    ///
+    /// Panics if the underlying HTTP client fails to build. With `rustls` as the
+    /// TLS backend this is unreachable in practice (build only fails when no TLS
+    /// backend is configured).
     ///
     /// # Example
     ///
@@ -104,6 +112,7 @@ impl OllamaProvider {
     /// let config = OllamaConfig::new().with_model("llama3.2:latest");
     /// let p = OllamaProvider::with_config(config);
     /// ```
+    #[must_use]
     pub fn with_config(config: OllamaConfig) -> Self {
         // SAFETY: TLS backend (rustls) is always available; build() only fails if no TLS backend.
         #[allow(clippy::expect_used)]

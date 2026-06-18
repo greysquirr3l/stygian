@@ -48,6 +48,7 @@ pub enum ServiceStatus {
 
 impl ServiceStatus {
     /// Returns `true` when [`ServiceStatus::Healthy`] or [`ServiceStatus::Degraded`]
+    #[must_use]
     pub const fn is_available(&self) -> bool {
         matches!(self, Self::Healthy | Self::Degraded(_))
     }
@@ -88,6 +89,7 @@ impl ServiceRegistry {
     /// let r = ServiceRegistry::new();
     /// assert!(r.get("anything").is_none());
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         Self {
             entries: Arc::new(RwLock::new(HashMap::new())),
@@ -109,6 +111,7 @@ impl ServiceRegistry {
     ///
     /// assert!(r.get("noop").is_some());
     /// ```
+    #[must_use]
     pub fn builder() -> RegistryBuilder {
         RegistryBuilder::new()
     }
@@ -116,6 +119,11 @@ impl ServiceRegistry {
     /// Register (or replace) a service at runtime.
     ///
     /// The service's initial status is set to [`ServiceStatus::Unknown`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal `RwLock` is poisoned (i.e. another thread panicked
+    /// while holding the write lock). Treat this as unrecoverable.
     ///
     /// # Example
     ///
@@ -139,6 +147,12 @@ impl ServiceRegistry {
     /// Look up a service by name.
     ///
     /// Returns `None` if the service is not registered.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal `RwLock` is poisoned (i.e. another thread panicked
+    /// while holding the read lock). Treat this as unrecoverable.
+    #[must_use]
     pub fn get(&self, name: &str) -> Option<Arc<dyn ScrapingService>> {
         self.entries
             .read()
@@ -150,6 +164,12 @@ impl ServiceRegistry {
     /// Return the current [`ServiceStatus`] for the named service.
     ///
     /// Returns `None` if no service is registered under that name.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal `RwLock` is poisoned (i.e. another thread panicked
+    /// while holding the read lock). Treat this as unrecoverable.
+    #[must_use]
     pub fn status(&self, name: &str) -> Option<ServiceStatus> {
         self.entries
             .read()
@@ -159,6 +179,11 @@ impl ServiceRegistry {
     }
 
     /// List all registered service names.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal `RwLock` is poisoned (i.e. another thread panicked
+    /// while holding the read lock). Treat this as unrecoverable.
     ///
     /// # Example
     ///
@@ -174,6 +199,7 @@ impl ServiceRegistry {
     /// names.sort();
     /// assert_eq!(names, vec!["a", "b"]);
     /// ```
+    #[must_use]
     pub fn names(&self) -> Vec<String> {
         self.entries.read().unwrap().keys().cloned().collect()
     }
@@ -181,6 +207,12 @@ impl ServiceRegistry {
     /// Remove a service from the registry.
     ///
     /// Returns `true` if a service was removed, `false` if it was not registered.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal `RwLock` is poisoned (i.e. another thread panicked
+    /// while holding the write lock). Treat this as unrecoverable.
+    #[must_use]
     pub fn deregister(&self, name: &str) -> bool {
         self.entries.write().unwrap().remove(name).is_some()
     }
@@ -190,6 +222,11 @@ impl ServiceRegistry {
     /// Each service's name is pinged by executing a [`crate::ports::ServiceInput`]
     /// with a no-op URL. Results update the stored [`ServiceStatus`]. Returns a
     /// snapshot map of `name → status` after the checks complete.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal `RwLock` is poisoned (i.e. another thread panicked
+    /// while holding the lock). Treat this as unrecoverable.
     #[allow(clippy::unused_async)]
     pub async fn health_check_all(&self) -> HashMap<String, ServiceStatus> {
         let entries_snapshot: Vec<(String, Arc<dyn ScrapingService>)> = {
@@ -233,6 +270,11 @@ impl ServiceRegistry {
     /// Update stored status for a named service directly.
     ///
     /// Useful for external health-check feedback (e.g., from readiness probes).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal `RwLock` is poisoned (i.e. another thread panicked
+    /// while holding the write lock). Treat this as unrecoverable.
     pub fn update_status(&self, name: &str, status: ServiceStatus) {
         let mut guard = self.entries.write().unwrap();
         if let Some(entry) = guard.get_mut(name) {
@@ -284,6 +326,12 @@ impl RegistryBuilder {
     }
 
     /// Build the registry from accumulated registrations.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the registry's internal `RwLock` is poisoned (i.e. another thread
+    /// panicked while holding the write lock). Treat this as unrecoverable.
+    #[must_use]
     pub fn build(self) -> ServiceRegistry {
         let registry = ServiceRegistry::new();
         {
@@ -318,6 +366,7 @@ impl RegistryBuilder {
 ///
 /// global_registry().register("noop".to_string(), Arc::new(NoopService));
 /// ```
+#[must_use]
 pub fn global_registry() -> &'static ServiceRegistry {
     static INSTANCE: LazyLock<ServiceRegistry> = LazyLock::new(ServiceRegistry::new);
     &INSTANCE

@@ -59,6 +59,7 @@ pub enum ContentType {
 impl ContentType {
     /// Detect content type from a MIME type string or file extension
     #[allow(clippy::case_sensitive_file_extension_comparisons)]
+    #[must_use]
     pub fn detect(mime_or_ext: &str) -> Self {
         let lower = mime_or_ext.to_lowercase();
         if lower.contains("csv") || lower.ends_with(".csv") {
@@ -138,6 +139,7 @@ impl MultiModalAdapter {
     ///
     /// let adapter = MultiModalAdapter::new(MultiModalConfig::default(), None);
     /// ```
+    #[must_use]
     pub fn new(config: MultiModalConfig, vision_provider: Option<Arc<dyn AIProvider>>) -> Self {
         Self {
             config,

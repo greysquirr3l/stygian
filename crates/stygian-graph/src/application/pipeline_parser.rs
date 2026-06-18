@@ -193,6 +193,12 @@ impl PipelineDefinition {
     /// let def = PipelineParser::from_str(toml).unwrap();
     /// assert!(def.validate().is_ok());
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PipelineError`] variants when a service or node name is empty,
+    /// a node references an unknown service, an edge references an unknown node,
+    /// or the parsed graph is malformed.
     pub fn validate(&self) -> Result<(), PipelineError> {
         let service_names: HashSet<&str> = self.services.iter().map(|s| s.name.as_str()).collect();
         let node_names: HashSet<&str> = self.nodes.iter().map(|n| n.name.as_str()).collect();
@@ -304,6 +310,11 @@ impl PipelineDefinition {
     /// let registered = vec!["http".to_string(), "claude".to_string()];
     /// assert!(def.validate_against_registry(&registered).is_ok());
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PipelineError::UnknownService`] when a node references a
+    /// service that is not in the supplied `registered_services` list.
     pub fn validate_against_registry<S: AsRef<str>>(
         &self,
         registered_services: &[S],
@@ -393,6 +404,11 @@ impl PipelineDefinition {
     /// assert_eq!(order[0], "a");
     /// assert_eq!(order[2], "c");
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PipelineError`] variants when the graph contains a cycle, an
+    /// edge references an unknown node, or the graph is otherwise malformed.
     pub fn topological_order(&self) -> Result<Vec<String>, PipelineError> {
         self.detect_cycles()?;
 
@@ -458,6 +474,7 @@ impl PipelineDefinition {
     /// assert!(dot.contains("digraph"));
     /// assert!(dot.contains(r#""a" -> "b""#));
     /// ```
+    #[must_use]
     pub fn to_dot(&self) -> String {
         let mut out = String::from("digraph pipeline {\n  rankdir=LR;\n");
         for node in &self.nodes {
@@ -499,6 +516,7 @@ impl PipelineDefinition {
     /// assert!(mermaid.contains("flowchart LR"));
     /// assert!(mermaid.contains("fetch --> parse"));
     /// ```
+    #[must_use]
     pub fn to_mermaid(&self) -> String {
         let mut out = String::from("flowchart LR\n");
         for node in &self.nodes {
@@ -572,6 +590,11 @@ impl PipelineParser {
     ///
     /// assert_eq!(def.nodes[0].name, "n1");
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PipelineError`] variants when the supplied TOML is malformed
+    /// or fails to deserialize into a [`PipelineDefinition`].
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(toml: &str) -> Result<PipelineDefinition, PipelineError> {
         Ok(toml::from_str(toml)?)
@@ -589,6 +612,12 @@ impl PipelineParser {
     /// let def = PipelineParser::from_file("pipeline.toml").unwrap();
     /// assert!(!def.nodes.is_empty());
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PipelineError`] variants when the file cannot be read, the
+    /// TOML is malformed, or the deserialized pipeline definition fails
+    /// validation during template expansion.
     pub fn from_file(path: &str) -> Result<PipelineDefinition, PipelineError> {
         let content = std::fs::read_to_string(path)?;
         let mut def: PipelineDefinition = toml::from_str(&content)?;

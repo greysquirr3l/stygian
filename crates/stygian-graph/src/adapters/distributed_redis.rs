@@ -107,6 +107,11 @@ impl RedisWorkQueue {
     }
 
     /// Create from an existing pool (share pool with [`RedisCache`](crate::adapters::cache_redis::RedisCache)).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StygianError::Cache`] when the consumer group cannot be
+    /// created on the configured stream.
     pub async fn from_pool(pool: Pool, config: RedisWorkQueueConfig) -> Result<Self> {
         let queue = Self { pool, config };
         queue.ensure_consumer_group().await?;
@@ -170,6 +175,11 @@ impl RedisWorkQueue {
     }
 
     /// Reclaim stuck tasks from crashed consumers via XCLAIM.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StygianError::Cache`] when the Redis pool returns an error or
+    /// the XCLAIM/XPENDING pipeline fails.
     pub async fn reclaim_stuck_tasks(&self) -> Result<Vec<WorkTask>> {
         let mut conn = self.pool.get().await.map_err(|e| {
             StygianError::Cache(CacheError::ReadFailed(format!("Redis pool error: {e}")))

@@ -49,6 +49,7 @@ pub struct CopilotConfig {
 
 impl CopilotConfig {
     /// Create config with token and defaults
+    #[must_use]
     pub fn new(token: String) -> Self {
         Self {
             token,
@@ -81,11 +82,18 @@ impl CopilotProvider {
     /// use stygian_graph::adapters::ai::copilot::CopilotProvider;
     /// let p = CopilotProvider::new("ghp_...".to_string());
     /// ```
+    #[must_use]
     pub fn new(token: String) -> Self {
         Self::with_config(CopilotConfig::new(token))
     }
 
     /// Create with custom configuration
+    ///
+    /// # Panics
+    ///
+    /// Panics if the underlying HTTP client fails to build. With `rustls` as the
+    /// TLS backend this is unreachable in practice (build only fails when no TLS
+    /// backend is configured).
     ///
     /// # Example
     ///
@@ -94,6 +102,7 @@ impl CopilotProvider {
     /// let config = CopilotConfig::new("ghp_...".to_string()).with_model("Meta-Llama-3.1-405B-Instruct");
     /// let p = CopilotProvider::with_config(config);
     /// ```
+    #[must_use]
     pub fn with_config(config: CopilotConfig) -> Self {
         // SAFETY: TLS backend (rustls) is always available; build() only fails if no TLS backend.
         #[allow(clippy::expect_used)]

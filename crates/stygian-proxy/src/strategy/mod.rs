@@ -82,6 +82,7 @@ pub type BoxedRotationStrategy = Arc<dyn RotationStrategy>;
 ///
 /// Returns references into the original slice, so no allocation is needed
 /// beyond the returned `Vec`.
+#[must_use]
 pub fn healthy_candidates(all: &[ProxyCandidate]) -> Vec<&ProxyCandidate> {
     all.iter().filter(|c| c.healthy).collect()
 }
@@ -111,6 +112,7 @@ pub fn healthy_candidates(all: &[ProxyCandidate]) -> Vec<&ProxyCandidate> {
 /// let result = capable_healthy_candidates(&candidates, &req);
 /// assert_eq!(result.len(), 1);
 /// ```
+#[must_use]
 pub fn capable_healthy_candidates<'a>(
     all: &'a [ProxyCandidate],
     req: &CapabilityRequirement,

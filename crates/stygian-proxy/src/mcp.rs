@@ -253,6 +253,7 @@ impl McpProxyServer {
     /// bg.await.unwrap();
     /// # });
     /// ```
+    #[must_use]
     pub fn start_background(&self) -> (CancellationToken, JoinHandle<()>) {
         self.manager.start()
     }

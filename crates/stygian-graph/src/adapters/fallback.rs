@@ -88,6 +88,7 @@ impl FallbackChainService {
     ///
     /// let builder = FallbackChainService::builder();
     /// ```
+    #[must_use]
     pub const fn builder() -> FallbackChainBuilder {
         FallbackChainBuilder::new()
     }
@@ -110,6 +111,7 @@ impl FallbackChainService {
     ///
     /// assert_eq!(chain.len(), 2);
     /// ```
+    #[must_use]
     pub const fn len(&self) -> usize {
         self.entries.len()
     }
@@ -126,6 +128,7 @@ impl FallbackChainService {
     /// let chain = FallbackChainService::builder().build();
     /// assert!(chain.is_empty());
     /// ```
+    #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
@@ -250,6 +253,7 @@ impl FallbackChainBuilder {
     ///
     /// let builder = FallbackChainBuilder::new();
     /// ```
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             entries: Vec::new(),
@@ -315,6 +319,7 @@ impl FallbackChainBuilder {
     /// let chain = FallbackChainBuilder::new().build();
     /// assert!(chain.is_empty());
     /// ```
+    #[must_use]
     pub fn build(self) -> FallbackChainService {
         FallbackChainService {
             entries: self.entries,
@@ -342,6 +347,7 @@ impl Default for FallbackChainBuilder {
 ///
 /// let breaker = default_primary_breaker();
 /// ```
+#[must_use]
 pub fn default_primary_breaker() -> CircuitBreakerImpl {
     CircuitBreakerImpl::new(5, Duration::from_secs(30))
 }
@@ -359,6 +365,7 @@ pub fn default_primary_breaker() -> CircuitBreakerImpl {
 ///
 /// let breaker = default_fallback_breaker();
 /// ```
+#[must_use]
 pub fn default_fallback_breaker() -> CircuitBreakerImpl {
     #[allow(clippy::duration_suboptimal_units)]
     {

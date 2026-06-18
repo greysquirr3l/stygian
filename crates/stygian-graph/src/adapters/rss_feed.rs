@@ -61,6 +61,7 @@ pub struct RssFeedAdapter {
 
 impl RssFeedAdapter {
     /// Create a new RSS feed adapter.
+    #[must_use]
     pub const fn new(client: reqwest::Client) -> Self {
         Self { client }
     }

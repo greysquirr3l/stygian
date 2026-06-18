@@ -41,6 +41,7 @@ pub struct MemoryCache {
 
 impl MemoryCache {
     /// Create a new memory cache
+    #[must_use]
     pub fn new() -> Self {
         Self {
             store: Arc::new(RwLock::new(HashMap::new())),
@@ -148,6 +149,7 @@ impl DashMapCache {
     ///
     /// let cache = DashMapCache::new(Duration::from_secs(30));
     /// ```
+    #[must_use]
     pub fn new(cleanup_interval: Duration) -> Self {
         let store: Arc<DashMap<String, TtlEntry>> = Arc::new(DashMap::new());
         let weak = Arc::downgrade(&store);
@@ -164,11 +166,13 @@ impl DashMapCache {
     }
 
     /// Return the number of live (non-expired) entries.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.store.iter().filter(|e| !e.is_expired()).count()
     }
 
     /// Returns `true` if the cache contains no live entries.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -249,6 +253,7 @@ impl BoundedLruCache {
     ///
     /// let cache = BoundedLruCache::new(NonZeroUsize::new(256).unwrap());
     /// ```
+    #[must_use]
     pub fn new(capacity: std::num::NonZeroUsize) -> Self {
         Self {
             inner: tokio::sync::Mutex::new(lru::LruCache::new(capacity)),
@@ -324,6 +329,7 @@ impl CachePort for BoundedLruCache {
 /// assert_eq!(v, Some("abc".to_string()));
 /// # });
 /// ```
+#[must_use]
 pub fn global_cache() -> &'static DashMapCache {
     static INSTANCE: LazyLock<DashMapCache> =
         LazyLock::new(|| DashMapCache::new(Duration::from_mins(5)));

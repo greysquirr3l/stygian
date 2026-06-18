@@ -49,6 +49,7 @@ pub struct OpenAIConfig {
 
 impl OpenAIConfig {
     /// Create config with API key and defaults
+    #[must_use]
     pub fn new(api_key: String) -> Self {
         Self {
             api_key,
@@ -83,11 +84,18 @@ impl OpenAIProvider {
     /// use stygian_graph::adapters::ai::openai::OpenAIProvider;
     /// let p = OpenAIProvider::new("sk-...".to_string());
     /// ```
+    #[must_use]
     pub fn new(api_key: String) -> Self {
         Self::with_config(OpenAIConfig::new(api_key))
     }
 
     /// Create with custom configuration
+    ///
+    /// # Panics
+    ///
+    /// Panics if the underlying HTTP client fails to build. With `rustls` as the
+    /// TLS backend this is unreachable in practice (build only fails when no TLS
+    /// backend is configured).
     ///
     /// # Example
     ///
@@ -96,6 +104,7 @@ impl OpenAIProvider {
     /// let config = OpenAIConfig::new("sk-...".to_string()).with_model("gpt-4");
     /// let p = OpenAIProvider::with_config(config);
     /// ```
+    #[must_use]
     pub fn with_config(config: OpenAIConfig) -> Self {
         // SAFETY: TLS backend (rustls) is always available; build() only fails if no TLS backend.
         #[allow(clippy::expect_used)]

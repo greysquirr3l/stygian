@@ -409,6 +409,7 @@ impl ApiServer {
     /// Create an `ApiServer` from environment variables.
     ///
     /// Reads `STYGIAN_API_KEY` (defaults to `"dev-key"` if unset).
+    #[must_use]
     pub fn from_env() -> Self {
         let key = std::env::var("STYGIAN_API_KEY").unwrap_or_else(|_| "dev-key".to_string());
         Self::new(key)

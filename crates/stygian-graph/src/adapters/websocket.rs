@@ -80,6 +80,7 @@ pub struct WebSocketSource {
 
 impl WebSocketSource {
     /// Create a new WebSocket source with custom configuration.
+    #[must_use]
     pub const fn new(config: WebSocketConfig) -> Self {
         Self { config }
     }

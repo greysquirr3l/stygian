@@ -51,6 +51,7 @@ pub struct AxumWebhookTrigger {
 
 impl AxumWebhookTrigger {
     /// Create a new [`AxumWebhookTrigger`].
+    #[must_use]
     pub fn new() -> Self {
         let (tx, rx) = broadcast::channel(256);
         Self {
