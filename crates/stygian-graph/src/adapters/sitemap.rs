@@ -310,7 +310,7 @@ fn parse_urlset(xml: &str) -> Result<Vec<SitemapEntry>> {
             }
             Ok(Event::Text(ref t)) => {
                 if let (Some(builder), Some(tag)) = (&mut current, &current_tag) {
-                    let text = t.unescape().unwrap_or_default().trim().to_string();
+                    let text = t.xml10_content().unwrap_or_default().trim().to_string();
                     if !text.is_empty() {
                         match tag.as_str() {
                             "loc" => builder.loc = Some(text),
@@ -367,7 +367,7 @@ fn parse_sitemapindex(xml: &str) -> Result<Vec<String>> {
                 }
             }
             Ok(Event::Text(ref t)) if in_loc => {
-                let text = t.unescape().unwrap_or_default().trim().to_string();
+                let text = t.xml10_content().unwrap_or_default().trim().to_string();
                 if !text.is_empty() {
                     urls.push(text);
                 }
