@@ -87,7 +87,7 @@ const fn target_class_label(c: TargetClass) -> &'static str {
 /// };
 /// assert_eq!(entry.risk_delta(), ChallengeOutcome::HardChallenge.risk_delta());
 /// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChallengeMemoryEntry {
     /// Lower-cased host the outcome was recorded for.
     pub domain: String,
@@ -109,7 +109,7 @@ impl ChallengeMemoryEntry {
     /// and is therefore bounded by
     /// [`MAX_RISK_DELTA`][crate::challenge_feedback::MAX_RISK_DELTA].
     #[must_use]
-    pub fn risk_delta(&self) -> f64 {
+    pub const fn risk_delta(&self) -> f64 {
         self.last_outcome.risk_delta()
     }
 }
@@ -247,6 +247,12 @@ fn current_unix_secs() -> u64 {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
     use std::thread;

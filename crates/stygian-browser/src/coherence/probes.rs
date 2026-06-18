@@ -229,7 +229,7 @@ pub struct CoherenceProbe {
 impl CoherenceProbe {
     /// Build a new runner with default settings.
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { _private: () }
     }
 
@@ -374,6 +374,12 @@ const _: fn() -> Option<BrowserError> = || None;
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
     use crate::coherence::report::{

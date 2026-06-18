@@ -88,7 +88,7 @@ use crate::vendor_classifier::VendorId;
 /// let outcome = validator.validate(&contract, None, 60);
 /// assert!(matches!(outcome, ValidationOutcome::Ok { .. }));
 /// ```
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValidationOutcome {
     /// Validator accepted the submission.
     Ok {
@@ -148,7 +148,7 @@ impl ValidationOutcome {
 
     /// Borrow the underlying error when [`Rejected`][Self::Rejected].
     #[must_use]
-    pub fn error(&self) -> Option<&TokenLifecycleError> {
+    pub const fn error(&self) -> Option<&TokenLifecycleError> {
         match self {
             Self::Rejected(err) => Some(err),
             Self::Ok { .. } => None,
@@ -229,7 +229,7 @@ impl TokenValidator {
     /// assert_eq!(validator.policy().len(), 11);
     /// ```
     #[must_use]
-    pub fn new(nonce_book: NonceBook, policy: TokenPolicyTable) -> Self {
+    pub const fn new(nonce_book: NonceBook, policy: TokenPolicyTable) -> Self {
         Self { nonce_book, policy }
     }
 
@@ -440,7 +440,7 @@ let binding_required = vendor_policy.require_session_binding()
 ///   [`ChallengeClass::None`] / `CookieRefresh`.
 /// - **`Unknown`** only issues the safe defaults
 ///   (`None`, `CookieRefresh`, `Unknown`).
-fn is_applicable(vendor: VendorId, challenge_class: ChallengeClass) -> bool {
+const fn is_applicable(vendor: VendorId, challenge_class: ChallengeClass) -> bool {
     use ChallengeClass as C;
     use VendorId as V;
     match vendor {
@@ -472,6 +472,12 @@ fn is_applicable(vendor: VendorId, challenge_class: ChallengeClass) -> bool {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
 

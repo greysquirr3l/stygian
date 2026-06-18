@@ -121,8 +121,9 @@ pub struct Evidence {
 /// plus a per-source count summary.
 ///
 /// The bundle is **append-only**: the classifier never drops or
-/// re-orders evidence after the match phase. The
-/// [`source_summary`][Self::source_summary] is a precomputed
+/// re-orders evidence after the match phase.
+///
+/// The [`source_summary`][Self::source_summary] is a precomputed
 /// `BTreeMap` so consumers can render a compact "matched
 /// `n_cookies` cookie + `n_headers` header" summary without
 /// walking the evidence vector.
@@ -154,13 +155,13 @@ pub struct EvidenceBundle {
 impl EvidenceBundle {
     /// Total number of evidence items in the bundle.
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.items.len()
     }
 
     /// `true` when the bundle is empty (no signals matched).
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.items.is_empty()
     }
 
@@ -171,6 +172,12 @@ impl EvidenceBundle {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
 
@@ -226,8 +233,8 @@ mod tests {
             .into_iter()
             .collect(),
         };
-        let headers: Vec<&Evidence> = bundle.for_source(EvidenceSource::Header).collect();
-        assert_eq!(headers.len(), 2);
+        let headers = bundle.for_source(EvidenceSource::Header).count();
+        assert_eq!(headers, 2);
         assert_eq!(bundle.len(), 3);
         assert!(!bundle.is_empty());
     }

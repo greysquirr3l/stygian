@@ -167,7 +167,7 @@ impl std::fmt::Display for ReliabilityBand {
 /// Clamp `value` to `[0.0, 1.0]`. NaN maps to `0.0`.
 #[inline]
 #[must_use]
-pub(crate) fn clamp_unit(value: f32) -> f32 {
+pub(crate) const fn clamp_unit(value: f32) -> f32 {
     if value.is_nan() {
         0.0
     } else {
@@ -176,6 +176,12 @@ pub(crate) fn clamp_unit(value: f32) -> f32 {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
 

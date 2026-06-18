@@ -28,13 +28,15 @@ impl<V> TtlEntry<V> {
 
 /// Generic capacity-bounded LRU store with per-entry TTL.
 ///
-/// The store is the shared backing primitive used by every short-horizon
-/// in-memory cache in this crate: the investigation report cache
-/// ([`MemoryInvestigationCache`]) and the challenge feedback memory
-/// ([`crate::challenge_feedback::ChallengeMemory`]). Centralising the
-/// eviction + expiry logic keeps both consumers consistent (LRU at the
-/// `max_entries` cap, TTL expiry on read) and avoids introducing a
-/// parallel "second cache store" with its own semantics.
+/// The store is the shared backing primitive used by every
+/// short-horizon in-memory cache in this crate: the investigation
+/// report cache ([`MemoryInvestigationCache`]) and the challenge
+/// feedback memory ([`crate::challenge_feedback::ChallengeMemory`]).
+///
+/// Centralising the eviction + expiry logic keeps both consumers
+/// consistent (LRU at the `max_entries` cap, TTL expiry on read)
+/// and avoids introducing a parallel "second cache store" with
+/// its own semantics.
 ///
 /// The store is `Send + Sync` so it can sit behind an `Arc` and be
 /// shared across async tasks.
@@ -281,6 +283,12 @@ impl InvestigationReportCache for RedisInvestigationCache {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
     use crate::types::{AntiBotProvider, Detection, InvestigationReport};

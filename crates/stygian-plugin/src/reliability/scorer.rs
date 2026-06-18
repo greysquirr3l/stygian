@@ -271,6 +271,12 @@ fn build_reasons(
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
     use crate::domain::{IdempotencyKey, RegionStatus};

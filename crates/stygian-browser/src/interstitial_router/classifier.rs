@@ -120,7 +120,7 @@ impl PageSignature {
 
     /// Builder: set the queue position hint.
     #[must_use]
-    pub fn with_queue_position(mut self, position: u32) -> Self {
+    pub const fn with_queue_position(mut self, position: u32) -> Self {
         self.queue_position_hint = Some(position);
         self
     }

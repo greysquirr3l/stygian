@@ -94,7 +94,7 @@ pub struct PlaybookOverrides {
 
 /// Resolved acquisition block: the merge of overrides, playbook, and
 /// global defaults. Each field carries a [`ResolutionSource`] tag.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResolvedAcquisition {
     /// Resolved acquisition mode.
     pub mode: AcquisitionModeHint,
@@ -172,7 +172,7 @@ impl ResolvedPlaybook {
     /// let _hints = resolved.to_runtime_policy_hints();
     /// ```
     #[must_use]
-    pub fn to_runtime_policy_hints(&self) -> crate::acquisition::RuntimePolicyHints {
+    pub const fn to_runtime_policy_hints(&self) -> crate::acquisition::RuntimePolicyHints {
         crate::acquisition::RuntimePolicyHints {
             execution_mode: Some(self.acquisition.execution_mode),
             session_mode: Some(self.acquisition.session_mode),
@@ -267,6 +267,7 @@ impl PlaybookResolver {
         // function will refuse to build, surfacing the failure at
         // task completion rather than runtime.
         let playbooks = crate::playbooks::builtin::builtin_playbooks();
+        #[allow(clippy::expect_used)]
         Self::from_playbooks(playbooks).expect("builtin playbooks are validated at compile time")
     }
 
@@ -530,7 +531,7 @@ impl PlaybookResolver {
     }
 }
 
-fn source_for_mode(
+const fn source_for_mode(
     overrides: &PlaybookOverrides,
     _playbook: &AcquisitionDefaults,
     _default: AcquisitionModeHint,
@@ -545,7 +546,7 @@ fn source_for_mode(
     }
 }
 
-fn source_for_scalar(override_set: bool, is_global_default: bool) -> ResolutionSource {
+const fn source_for_scalar(override_set: bool, is_global_default: bool) -> ResolutionSource {
     if override_set {
         ResolutionSource::RequestOverride
     } else if is_global_default {
@@ -555,12 +556,18 @@ fn source_for_scalar(override_set: bool, is_global_default: bool) -> ResolutionS
     }
 }
 
-fn tier_source(override_set: bool, is_global_default: bool) -> ResolutionSource {
+const fn tier_source(override_set: bool, is_global_default: bool) -> ResolutionSource {
     source_for_scalar(override_set, is_global_default)
 }
 
 #[cfg(test)]
-#[allow(clippy::similar_names)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::similar_names
+)]
 mod tests {
     use super::*;
 

@@ -110,18 +110,20 @@ pub const DEFAULT_PROXY_WEIGHT: f64 = 0.80;
 pub const DEFAULT_EXTRACTION_WEIGHT: f64 = 0.70;
 
 /// Default ceiling below which a per-target score is
-/// classified as `Noise`. A weight of `0.20` means a
-/// lone canary blip (max weight ≈ `1.00`) is **not**
-/// enough on its own to escape the noise band — the
-/// detector waits for a second source or a more severe
-/// canary drop.
+/// classified as `Noise`.
+///
+/// A weight of `0.20` means a lone canary blip (max
+/// weight ≈ `1.00`) is **not** enough on its own to
+/// escape the noise band — the detector waits for a
+/// second source or a more severe canary drop.
 pub const DEFAULT_NOISE_CEILING: f64 = 0.20;
 
 /// Default floor at or above which a per-target score
-/// is classified as `Probable`. A weight of `0.55`
-/// means a canary-only regression (max `1.00`) does
-/// not reach `Probable` without pairing with another
-/// source.
+/// is classified as `Probable`.
+///
+/// A weight of `0.55` means a canary-only regression
+/// (max `1.00`) does not reach `Probable` without
+/// pairing with another source.
 pub const DEFAULT_PROBABLE_FLOOR: f64 = 0.55;
 
 /// Configurable thresholds and source weights for
@@ -628,7 +630,7 @@ fn aggregate_target(
     }
 }
 
-fn source_weight_for(source: DeltaSource, thresholds: ChangeFeedThresholds) -> f64 {
+const fn source_weight_for(source: DeltaSource, thresholds: ChangeFeedThresholds) -> f64 {
     match source {
         DeltaSource::Canary => thresholds.canary_weight,
         DeltaSource::Proxy => thresholds.proxy_weight,
@@ -636,7 +638,7 @@ fn source_weight_for(source: DeltaSource, thresholds: ChangeFeedThresholds) -> f
     }
 }
 
-fn clamp_unit(value: f64) -> f64 {
+const fn clamp_unit(value: f64) -> f64 {
     if value.is_nan() {
         0.0
     } else {
@@ -670,6 +672,12 @@ fn build_event(
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
 
@@ -732,7 +740,7 @@ mod tests {
         );
         assert_eq!(report.suspected_targets, vec!["example.com".to_string()]);
         assert_eq!(sink.len(), 1);
-        let event = &sink.events()[0];
+        let event = sink.events().into_iter().next().expect("event emitted");
         assert_eq!(event.affected_target, "example.com");
         assert_eq!(event.classification, ChangeClassification::Suspected);
     }
@@ -769,7 +777,7 @@ mod tests {
         );
         assert_eq!(report.probable_targets, vec!["example.com".to_string()]);
         assert_eq!(sink.len(), 1);
-        let event = &sink.events()[0];
+        let event = sink.events().into_iter().next().expect("event emitted");
         assert_eq!(event.classification, ChangeClassification::Probable);
     }
 
@@ -969,7 +977,7 @@ mod tests {
         .with_evidence("current_score", "0.55");
         let report = detector.detect(&[delta], &sink);
         assert_eq!(sink.len(), 1);
-        let event = &sink.events()[0];
+        let event = sink.events().into_iter().next().expect("event emitted");
         assert_eq!(event.vendor_hint, Some(VendorId::DataDome));
         assert_eq!(event.target_class, Some(TargetClass::HighSecurity));
         assert_eq!(

@@ -487,7 +487,12 @@ pub fn probe_by_id(id: IntegrityProbeId) -> Option<&'static IntegrityProbe> {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
 
@@ -617,7 +622,7 @@ mod tests {
         assert_eq!(finding.outcome, IntegrityProbeOutcome::TrapSuspected);
         assert!(finding.is_trap());
         assert!(!finding.is_confirmed());
-        assert!((finding.contribution() - probe.weight * 0.5).abs() < 1e-9);
+        assert!((probe.weight.mul_add(-0.5, finding.contribution())).abs() < 1e-9);
     }
 
     #[test]

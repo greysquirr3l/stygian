@@ -1,11 +1,15 @@
 #![allow(
+    clippy::unwrap_used,
     clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
     clippy::cast_precision_loss,
     clippy::float_cmp,
     clippy::cast_lossless,
     clippy::similar_names,
     clippy::uninlined_format_args,
-    clippy::format_push_string
+    clippy::format_push_string,
+    clippy::missing_const_for_fn
 )]
 
 //! T90 — Vendor-to-playbook auto-resolution integration tests.

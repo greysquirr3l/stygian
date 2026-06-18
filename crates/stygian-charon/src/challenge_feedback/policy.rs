@@ -60,7 +60,7 @@ impl ChallengeFeedbackPolicy {
     /// one-minute default so the loop cannot accidentally live
     /// forever.
     #[must_use]
-    pub fn with_ttl(mut self, ttl: std::time::Duration) -> Self {
+    pub const fn with_ttl(mut self, ttl: std::time::Duration) -> Self {
         self.ttl = if ttl.is_zero() {
             std::time::Duration::from_mins(1)
         } else {
@@ -268,6 +268,12 @@ fn clamp_to_policy(policy: &ChallengeFeedbackPolicy, raw_delta: f64) -> f64 {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
     use crate::challenge_feedback::ChallengeOutcome;

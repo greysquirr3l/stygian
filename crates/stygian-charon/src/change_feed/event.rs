@@ -241,7 +241,7 @@ impl DeltaSummary {
     }
 }
 
-fn sanitise_score(score: f64) -> f64 {
+const fn sanitise_score(score: f64) -> f64 {
     if score.is_nan() {
         0.0
     } else {
@@ -418,12 +418,18 @@ impl ChangeFeedReport {
     /// Total target count (noise + suspected +
     /// probable).
     #[must_use]
-    pub fn target_count(&self) -> usize {
+    pub const fn target_count(&self) -> usize {
         self.noise_targets.len() + self.suspected_targets.len() + self.probable_targets.len()
     }
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
 

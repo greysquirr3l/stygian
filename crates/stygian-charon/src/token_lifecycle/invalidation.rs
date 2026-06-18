@@ -275,12 +275,18 @@ impl InvalidationReason {
     /// assert_eq!(reason.label(), "contract_missing");
     /// ```
     #[must_use]
-    pub fn label(&self) -> &'static str {
+    pub const fn label(&self) -> &'static str {
         self.kind().label()
     }
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
 

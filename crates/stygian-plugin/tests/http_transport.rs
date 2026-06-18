@@ -1,3 +1,10 @@
+#![allow(
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::missing_const_for_fn
+)]
 //! Integration tests for the HTTP transport of the stygian-plugin MCP server.
 //!
 //! These tests spin up the actual axum server on a random port, make real HTTP

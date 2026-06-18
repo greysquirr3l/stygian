@@ -279,7 +279,7 @@ impl ScoringState {
         if matched {
             self.matched_count += 1;
         }
-        self.sum_scores += check.score * weight;
+        self.sum_scores = weight.mul_add(check.score, self.sum_scores);
         self.sum_weights += weight;
         self.checks.push(check);
     }

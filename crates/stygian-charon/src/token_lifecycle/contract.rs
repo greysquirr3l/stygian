@@ -227,7 +227,7 @@ impl TokenContract {
     /// assert_eq!(contract.age_secs(50), 0);
     /// ```
     #[must_use]
-    pub fn age_secs(&self, now_unix_secs: u64) -> u64 {
+    pub const fn age_secs(&self, now_unix_secs: u64) -> u64 {
         now_unix_secs.saturating_sub(self.issued_at_unix_secs)
     }
 
@@ -262,12 +262,18 @@ impl TokenContract {
     /// assert!(contract.is_expired(120));
     /// ```
     #[must_use]
-    pub fn is_expired(&self, now_unix_secs: u64) -> bool {
+    pub const fn is_expired(&self, now_unix_secs: u64) -> bool {
         self.age_secs(now_unix_secs) >= self.ttl.as_secs()
     }
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
 

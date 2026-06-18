@@ -38,7 +38,7 @@ pub const CLOUDFLARE_TOML: &str = include_str!("../../data/vendors/cloudflare.to
 /// [`crate::vendor_classifier::VendorClassifier::with_builtin_defaults`].
 /// Each embedded TOML is parsed and validated; the first failure
 /// is returned as an error.
-pub(crate) fn builtin_vendors() -> Vec<VendorDefinition> {
+pub fn builtin_vendors() -> Vec<VendorDefinition> {
     vec![
         parse_builtin(DATADOME_TOML),
         parse_builtin(PERIMETER_X_TOML),
@@ -48,6 +48,11 @@ pub(crate) fn builtin_vendors() -> Vec<VendorDefinition> {
 }
 
 fn parse_builtin(toml_text: &str) -> VendorDefinition {
+    // Embedded TOML is compile-time validated by
+    // `compile_check_builtin_vendors`; runtime panic is only possible
+    // if the binary was tampered with post-compilation, so this is a
+    // deliberate programmer-error guard.
+    #[allow(clippy::panic)]
     parse_vendor_definition(toml_text)
         .unwrap_or_else(|err| panic!("builtin vendor TOML is invalid: {err}"))
 }
@@ -61,6 +66,12 @@ fn compile_check_builtin_vendors() -> Result<(), crate::vendor_classifier::error
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
     use crate::vendor_classifier::evidence::EvidenceSource;

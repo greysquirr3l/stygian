@@ -105,7 +105,7 @@ impl RouterDecision {
     /// `classified_at_unix_ms` (useful for tests and
     /// deterministic replay).
     #[must_use]
-    pub fn with_timestamp(mut self, unix_ms: u64) -> Self {
+    pub const fn with_timestamp(mut self, unix_ms: u64) -> Self {
         self.classified_at_unix_ms = unix_ms;
         self
     }
@@ -125,13 +125,13 @@ impl RouterDecision {
 
     /// Dedicated acquisition route.
     #[must_use]
-    pub fn route(&self) -> &InterstitialRoute {
+    pub const fn route(&self) -> &InterstitialRoute {
         &self.route
     }
 
     /// Per-signature evidence.
     #[must_use]
-    pub fn evidence(&self) -> &PageSignatureEvidence {
+    pub const fn evidence(&self) -> &PageSignatureEvidence {
         &self.evidence
     }
 
@@ -222,10 +222,12 @@ impl fmt::Display for RouterDecision {
 
 /// Wrapper struct that records the router decision
 /// alongside the original [`PageSignature`][super::PageSignature]
-/// for audit / replay. Not currently part of the
-/// acquisition result schema, but the type is exposed so
-/// downstream tooling that wants to log the full
-/// decision-derivation can build one.
+/// for audit / replay.
+///
+/// Not currently part of the acquisition result schema,
+/// but the type is exposed so downstream tooling that
+/// wants to log the full decision-derivation can build
+/// one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RouterDecisionLog {
     /// The original signature.
@@ -237,7 +239,7 @@ pub struct RouterDecisionLog {
 impl RouterDecisionLog {
     /// Build a log record from a signature + decision pair.
     #[must_use]
-    pub fn new(signature: super::PageSignature, decision: RouterDecision) -> Self {
+    pub const fn new(signature: super::PageSignature, decision: RouterDecision) -> Self {
         Self { signature, decision }
     }
 }

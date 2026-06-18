@@ -185,7 +185,7 @@ impl IntegrityRiskScore {
         let mut skipped = 0usize;
         for f in findings {
             if f.outcome.contributes() {
-                numerator += f.weight * f.outcome.severity();
+                numerator = f.weight.mul_add(f.outcome.severity(), numerator);
                 denominator += f.weight;
                 contributing += 1;
             } else {
@@ -220,7 +220,7 @@ impl IntegrityRiskScore {
     }
 }
 
-fn clamp_unit(value: f64) -> f64 {
+const fn clamp_unit(value: f64) -> f64 {
     // NaN handling first because f64::clamp returns NaN for NaN
     // input, but our contract maps NaN to 0.0 explicitly. After the
     // NaN short-circuit, `f64::clamp(0.0, 1.0)` is the cleanest
@@ -265,6 +265,10 @@ impl IntegrityCanaryPolicy {
     /// use [`Self::try_with_thresholds`] for a fallible variant.
     #[must_use]
     pub fn with_thresholds(suspected_threshold: f64, confirmed_threshold: f64) -> Self {
+        // Panics on invalid thresholds by design — the public doc
+        // explicitly steers callers to `try_with_thresholds` for a
+        // fallible path. This is the documented programmer-error guard.
+        #[allow(clippy::expect_used)]
         Self::try_with_thresholds(suspected_threshold, confirmed_threshold)
             .expect("integrity canary thresholds must be finite and strictly ordered")
     }
@@ -449,7 +453,7 @@ impl IntegrityCanaryReport {
 
     /// Number of findings that fired with a trap outcome.
     #[must_use]
-    pub fn trap_count(&self) -> usize {
+    pub const fn trap_count(&self) -> usize {
         self.trap_findings.len()
     }
 
@@ -483,7 +487,13 @@ pub struct MitigationHint {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::float_cmp)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::float_cmp,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
     use crate::integrity_canary::probes::{

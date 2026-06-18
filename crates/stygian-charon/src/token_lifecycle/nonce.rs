@@ -166,7 +166,7 @@ impl NonceBook {
 
     /// Configured TTL for the backing store.
     #[must_use]
-    pub fn ttl(&self) -> Duration {
+    pub const fn ttl(&self) -> Duration {
         self.store.ttl()
     }
 
@@ -252,6 +252,12 @@ impl NonceBook {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
 

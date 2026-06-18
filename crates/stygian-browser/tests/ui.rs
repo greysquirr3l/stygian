@@ -1,3 +1,10 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::missing_const_for_fn
+)]
 //! trybuild UI tests — verify that the `#[derive(Extract)]` proc-macro emits
 //! the expected compiler diagnostics.
 //!

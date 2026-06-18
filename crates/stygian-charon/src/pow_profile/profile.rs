@@ -146,7 +146,7 @@ impl PowFailureMode {
 /// assert!(!failed.solved);
 /// assert_eq!(failed.failure_mode, Some(PowFailureMode::Timeout));
 /// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PowCapabilitySample {
     /// `true` if the challenge was solved; `false` if it
     /// terminated in a failure mode.
@@ -218,7 +218,7 @@ impl PowCapabilitySample {
 /// assert_eq!(profile.solved_count, 2);
 /// assert_eq!(profile.retry_count, 1);
 /// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PowCapabilityProfile {
     /// Lower-cased host the profile was observed for.
     pub domain: String,
@@ -279,7 +279,7 @@ impl PowCapabilityProfile {
     /// Total number of attempts inside the window (solved +
     /// failed).
     #[must_use]
-    pub fn total_attempts(&self) -> u32 {
+    pub const fn total_attempts(&self) -> u32 {
         self.solved_count.saturating_add(self.failed_count)
     }
 
@@ -371,7 +371,7 @@ impl PowCapabilityProfile {
     /// profile is not silently shrunk by a merge with a
     /// default-widow one. `recorded_at_unix_secs` is
     /// refreshed to the current wall-clock time.
-    pub fn merge_profile(&mut self, other: &PowCapabilityProfile) {
+    pub fn merge_profile(&mut self, other: &Self) {
         self.solved_count = self.solved_count.saturating_add(other.solved_count);
         self.failed_count = self.failed_count.saturating_add(other.failed_count);
         self.retry_count = self.retry_count.saturating_add(other.retry_count);
@@ -396,10 +396,7 @@ fn update_latency_percentiles(
     // observation and the p95 is the largest observation.
     // We approximate both with a running estimator that
     // blends the prior p50/p95 with the new observation.
-    let p50 = match prev_p50 {
-        Some(prev) => (prev / 2).saturating_add(new_latency_ms / 2),
-        None => new_latency_ms,
-    };
+    let p50 = prev_p50.map_or(new_latency_ms, |prev| (prev / 2).saturating_add(new_latency_ms / 2));
     let p95 = match prev_p95 {
         Some(prev) => {
             // p95 is more sensitive to the largest observation:
@@ -422,6 +419,12 @@ fn current_unix_secs() -> u64 {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
 

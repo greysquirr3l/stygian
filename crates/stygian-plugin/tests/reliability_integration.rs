@@ -11,6 +11,12 @@
 //! by a `TempDir` to keep tests hermetic.
 
 #![cfg_attr(test, allow(clippy::panic))]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::missing_const_for_fn
+)]
 
 use std::sync::Arc;
 use tempfile::TempDir;

@@ -43,7 +43,7 @@ pub const DEFAULT_MANUAL_TOML: &str =
 /// [`crate::vendor_resolver::VendorResolver::with_builtin_defaults`].
 /// Each embedded TOML is parsed and validated; the first failure is
 /// returned as an error.
-pub(crate) fn builtin_resolution_rules() -> Vec<ResolutionRule> {
+pub fn builtin_resolution_rules() -> Vec<ResolutionRule> {
     vec![
         parse_builtin(TIER2_HOSTILE_TOML),
         parse_builtin(TIER1_JS_CLOUDFLARE_TOML),
@@ -53,6 +53,11 @@ pub(crate) fn builtin_resolution_rules() -> Vec<ResolutionRule> {
 }
 
 fn parse_builtin(toml_text: &str) -> ResolutionRule {
+    // Embedded TOML is compile-time validated by
+    // `compile_check_builtin_resolution_rules`; runtime panic is only
+    // possible if the binary was tampered with post-compilation, so
+    // this is a deliberate programmer-error guard.
+    #[allow(clippy::panic)]
     parse_resolution_rule(toml_text)
         .unwrap_or_else(|err| panic!("builtin resolution rule TOML is invalid: {err}"))
 }
@@ -72,6 +77,12 @@ fn compile_check_builtin_resolution_rules()
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
     use crate::vendor_classifier::VendorId;

@@ -309,6 +309,12 @@ fn insert_pow_escalation_hint(hints: &mut BTreeMap<String, String>, level: &str)
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
 

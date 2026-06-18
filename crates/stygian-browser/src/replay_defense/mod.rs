@@ -569,7 +569,7 @@ impl ReplayDefenseDecision {
     /// [`BrowserPool::release_context`][crate::pool::BrowserPool::release_context]
     /// and short-circuit the run.
     #[must_use]
-    pub fn requires_forced_refresh(&self, policy: &ReplayDefensePolicy) -> bool {
+    pub const fn requires_forced_refresh(&self, policy: &ReplayDefensePolicy) -> bool {
         if policy.force_reset_on_drift && matches!(self, Self::SignatureDrift { .. }) {
             return true;
         }
@@ -887,6 +887,12 @@ mod duration_ms {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
 

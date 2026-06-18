@@ -285,10 +285,10 @@ impl PowCapabilityScorer {
             return SPARSE_FALLBACK_SCORE;
         }
 
-        let raw = self.weights.success * success_rate
-            + self.weights.latency * latency_score
-            + self.weights.retry * retry_score
-            + self.weights.failure * failure_score;
+        let raw = self
+            .weights
+            .failure
+            .mul_add(failure_score, self.weights.retry.mul_add(retry_score, self.weights.latency.mul_add(latency_score, self.weights.success * success_rate)));
         let normalised = raw / weight_sum;
         clamp_unit(normalised)
     }
@@ -311,20 +311,17 @@ impl PowCapabilityScorer {
     }
 
     fn latency_score(&self, profile: &PowCapabilityProfile) -> f64 {
-        match profile.solve_latency_ms_p95 {
-            Some(p95) => {
-                // Latency values are well within f64 mantissa
-                // precision (5_000ms × 100 < 2^23); the `as`
-                // conversion is intentional and bounded by
-                // the configured latency budget.
-                #[allow(clippy::cast_precision_loss)]
-                let budget = self.latency_budget_ms as f64;
-                #[allow(clippy::cast_precision_loss)]
-                let ratio = ((p95 as f64) / budget).clamp(0.0, 1.0);
-                1.0 - ratio
-            }
-            None => 1.0,
-        }
+        profile.solve_latency_ms_p95.map_or(1.0, |p95| {
+            // Latency values are well within f64 mantissa
+            // precision (5_000ms × 100 < 2^23); the `as`
+            // conversion is intentional and bounded by
+            // the configured latency budget.
+            #[allow(clippy::cast_precision_loss)]
+            let budget = self.latency_budget_ms as f64;
+            #[allow(clippy::cast_precision_loss)]
+            let ratio = ((p95 as f64) / budget).clamp(0.0, 1.0);
+            1.0 - ratio
+        })
     }
 
     fn retry_score(&self, profile: &PowCapabilityProfile) -> f64 {
@@ -349,7 +346,7 @@ pub fn band_for_score(score: f64) -> PowCapabilityBand {
     }
 }
 
-fn clamp_unit(value: f64) -> f64 {
+const fn clamp_unit(value: f64) -> f64 {
     if value.is_nan() {
         0.0
     } else {
@@ -358,6 +355,12 @@ fn clamp_unit(value: f64) -> f64 {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
     use crate::pow_profile::profile::{PowCapabilityProfile, PowCapabilitySample};

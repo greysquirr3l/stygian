@@ -1,6 +1,12 @@
 //! Integration tests for the MCP request handler and protocol
 
 #![cfg_attr(test, allow(clippy::panic))]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::missing_const_for_fn
+)]
 
 use serde_json::json;
 use std::sync::Arc;

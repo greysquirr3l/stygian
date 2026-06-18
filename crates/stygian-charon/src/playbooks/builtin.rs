@@ -54,7 +54,7 @@ pub const UNKNOWN_TOML: &str = include_str!("../../data/playbooks/unknown.toml")
 /// by [`crate::playbooks::PlaybookResolver::with_builtin_defaults`].
 /// Each embedded TOML is parsed and validated; the first failure is
 /// returned as an error.
-pub(crate) fn builtin_playbooks() -> Vec<Playbook> {
+pub fn builtin_playbooks() -> Vec<Playbook> {
     vec![
         parse_builtin("tier1-static", TIER1_STATIC_TOML),
         parse_builtin("tier1-js", TIER1_JS_TOML),
@@ -64,6 +64,11 @@ pub(crate) fn builtin_playbooks() -> Vec<Playbook> {
 }
 
 fn parse_builtin(id: &str, toml_text: &str) -> Playbook {
+    // Embedded TOML is compile-time validated by
+    // `compile_check_builtin_playbooks`; runtime panic is only possible
+    // if the binary was tampered with post-compilation, so this is a
+    // deliberate programmer-error guard.
+    #[allow(clippy::panic)]
     let pb: Playbook = toml::from_str(toml_text)
         .unwrap_or_else(|err| panic!("builtin playbook '{id}' TOML is invalid: {err}"));
     assert!(
@@ -71,6 +76,7 @@ fn parse_builtin(id: &str, toml_text: &str) -> Playbook {
         "builtin playbook '{id}' has mismatched id field: '{}'",
         pb.id
     );
+    #[allow(clippy::panic)]
     pb.validate()
         .unwrap_or_else(|err| panic!("builtin playbook '{id}' failed validation: {err}"));
     pb
@@ -104,6 +110,12 @@ fn reparse(id: &str) -> Result<Playbook, ValidationError> {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
     use crate::acquisition::AcquisitionModeHint;

@@ -257,7 +257,7 @@ impl TransportObservation {
 
     /// Number of HTTP/2 observations that were supplied.
     #[must_use]
-    pub fn http2_observation_count(&self) -> usize {
+    pub const fn http2_observation_count(&self) -> usize {
         let mut n = 0;
         if self.http2_settings.is_some() {
             n += 1;
@@ -303,9 +303,12 @@ pub fn compare_header_order(expected: &[&str], observed: &[String]) -> HeaderOrd
 }
 
 /// Compare an observed pseudo-header order against the Chrome 136
-/// reference. The reference is the only stable observation we have
-/// for pseudo-headers; mismatches fall into "wrong order" rather than
-/// "wrong set" because the set is fixed by the HTTP/2 spec.
+/// reference.
+///
+/// The reference is the only stable observation we have
+/// for pseudo-headers; mismatches fall into "wrong order"
+/// rather than "wrong set" because the set is fixed by the
+/// HTTP/2 spec.
 ///
 /// Exposed for callers that want to reuse the same matcher the
 /// scoring logic uses.
@@ -315,6 +318,12 @@ pub fn compare_pseudo_header_order(observed: &[String]) -> HeaderOrderMatch {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
     use crate::tls_validation::{CHROME_131_JA3, CHROME_136_HTTP2_SETTINGS};

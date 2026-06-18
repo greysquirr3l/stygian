@@ -207,8 +207,10 @@ pub fn build_diagnostic_bundle_with_vendor_classifier(
 
 /// Build a [`DiagnosticBundle`] with a caller-supplied
 /// [`VendorClassifier`] **and** an optional
-/// [`snapshot::NormalizedFingerprintSnapshot`]. This is the most
-/// general bundle constructor; every other builder delegates here.
+/// [`snapshot::NormalizedFingerprintSnapshot`].
+///
+/// This is the most general bundle constructor; every other builder
+/// delegates here.
 ///
 /// # Errors
 ///
@@ -364,6 +366,12 @@ fn redact_url_query(url: &mut String) {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
 

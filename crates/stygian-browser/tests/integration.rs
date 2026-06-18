@@ -1,3 +1,10 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::missing_const_for_fn
+)]
 //! Integration tests for stygian-browser.
 //!
 //! These tests require a real Chrome/Chromium binary on the host.  They are

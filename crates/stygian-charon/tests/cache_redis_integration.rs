@@ -1,4 +1,11 @@
 #![cfg(feature = "redis-cache")]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::missing_const_for_fn
+)]
 
 use std::time::Duration;
 

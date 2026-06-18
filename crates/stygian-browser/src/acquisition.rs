@@ -127,7 +127,7 @@ pub struct TransportRealismContext {
 impl TransportRealismContext {
     /// Build a context with the default profile and no observation.
     #[must_use]
-    pub fn new(profile: TransportProfile) -> Self {
+    pub const fn new(profile: TransportProfile) -> Self {
         Self {
             profile,
             observation: None,
@@ -1519,6 +1519,12 @@ fn host_hint(url: &str) -> Option<String> {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
 

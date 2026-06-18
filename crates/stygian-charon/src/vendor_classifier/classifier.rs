@@ -213,7 +213,7 @@ impl VendorClassifier {
     /// [`DEFAULT_HIGH_CONFIDENCE_THRESHOLD`]. Override with
     /// [`with_threshold`][Self::with_threshold].
     #[must_use]
-    pub fn new(definitions: Vec<VendorDefinition>) -> Self {
+    pub const fn new(definitions: Vec<VendorDefinition>) -> Self {
         Self {
             definitions,
             threshold: DEFAULT_HIGH_CONFIDENCE_THRESHOLD,
@@ -288,13 +288,13 @@ impl VendorClassifier {
 
     /// Number of vendor definitions currently registered.
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.definitions.len()
     }
 
     /// `true` when the registry has no definitions.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.definitions.is_empty()
     }
 
@@ -355,6 +355,12 @@ impl VendorClassifier {
                     .iter()
                     .find(|d| d.id == score.vendor)
                     .is_some_and(|d| {
+                        // Compound (pattern, source) key match: the
+                        // vendor's pattern `s.pattern` is compared
+                        // against the matched literal `e.signal` plus
+                        // the channel `e.source` — the same-name
+                        // comparison is intentional, not a typo.
+                        #[allow(clippy::suspicious_operation_groupings)]
                         d.signals
                             .iter()
                             .any(|s| s.pattern == e.signal && s.source == e.source)
@@ -607,6 +613,12 @@ fn extract_cookies(headers: &BTreeMap<String, String>) -> Vec<String> {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use std::collections::BTreeMap;
 

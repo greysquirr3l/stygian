@@ -245,14 +245,14 @@ impl ChangeDeltaInput {
 
     /// Attach a target class to the delta.
     #[must_use]
-    pub fn with_target_class(mut self, target_class: TargetClass) -> Self {
+    pub const fn with_target_class(mut self, target_class: TargetClass) -> Self {
         self.target_class = Some(target_class);
         self
     }
 
     /// Attach a vendor hint to the delta.
     #[must_use]
-    pub fn with_vendor(mut self, vendor: VendorId) -> Self {
+    pub const fn with_vendor(mut self, vendor: VendorId) -> Self {
         self.vendor_hint = Some(vendor);
         self
     }
@@ -276,7 +276,7 @@ impl ChangeDeltaInput {
     }
 }
 
-fn sanitise_weight(weight: f64) -> f64 {
+const fn sanitise_weight(weight: f64) -> f64 {
     if weight.is_nan() {
         0.0
     } else {
@@ -285,6 +285,12 @@ fn sanitise_weight(weight: f64) -> f64 {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
 

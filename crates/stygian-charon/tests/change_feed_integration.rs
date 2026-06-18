@@ -1,4 +1,11 @@
-#![allow(clippy::expect_used, clippy::similar_names)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::similar_names,
+    clippy::missing_const_for_fn
+)]
 
 //! T88 — Anti-bot change-detection feed integration tests.
 //!

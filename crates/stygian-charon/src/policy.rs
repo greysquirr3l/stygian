@@ -72,7 +72,9 @@ pub fn build_runtime_policy(
         | AntiBotProvider::FingerprintCom => 0.3,
     };
 
-    let mut risk = blocked_ratio * 0.7 + requirements.confidence * provider_weight;
+    let mut risk = requirements
+        .confidence
+        .mul_add(provider_weight, blocked_ratio * 0.7);
     if has_429 {
         risk += 0.1;
     }
@@ -221,6 +223,12 @@ const fn to_f64(value: u64) -> f64 {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use std::collections::BTreeMap;
 

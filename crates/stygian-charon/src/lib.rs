@@ -20,9 +20,10 @@ pub mod bundle;
 /// Investigation report cache backends and cache key helpers.
 #[cfg(feature = "caching")]
 pub mod cache;
-/// Anti-bot change-detection feed (T88). Detects
-/// canary, proxy, and extraction deltas and emits
-/// actionable incident packets via the metrics
+/// Anti-bot change-detection feed (T88).
+///
+/// Detects canary, proxy, and extraction deltas and
+/// emits actionable incident packets via the metrics
 /// surface and the diagnostics payload.
 #[cfg(feature = "caching")]
 pub mod change_feed;
@@ -38,10 +39,12 @@ pub mod classifier;
 pub mod token_lifecycle;
 /// Vendor fingerprinting confidence classifier (T89).
 pub mod vendor_classifier;
-/// Vendor-to-playbook auto-resolution (T90). Bridges the vendor
-/// classifier and the playbook resolver, with multi-vendor
-/// precedence, merge rules, and a `Manual` fallback that keeps
-/// existing manual mode selection working unchanged.
+/// Vendor-to-playbook auto-resolution (T90).
+///
+/// Bridges the vendor classifier and the playbook resolver,
+/// with multi-vendor precedence, merge rules, and a `Manual`
+/// fallback that keeps existing manual mode selection working
+/// unchanged.
 pub mod vendor_resolver;
 /// Mode differential regression runner across snapshot capture modes.
 pub mod differential;
@@ -53,14 +56,17 @@ pub mod investigation;
 /// acquisition / proxy / pacing / escalation knobs with
 /// deterministic precedence.
 pub mod playbooks;
-/// Proof-of-work capability profile (T93). Quantifies
-/// solve latency, success rate, retry count, and failure
-/// modes into a deterministic unit-interval score, with
-/// sparse-telemetry fallback and a policy mapper that
-/// nudges the runtime policy toward a posture matching
-/// the observed capability. Persistence reuses the same
-/// `LruTtlStore` primitive T83 / T91 use (no new cache
-/// store; PoW key namespace is `charon:pow:...`).
+/// Proof-of-work capability profile (T93).
+///
+/// Quantifies solve latency, success rate, retry count, and
+/// failure modes into a deterministic unit-interval score,
+/// with sparse-telemetry fallback and a policy mapper that
+/// nudges the runtime policy toward a posture matching the
+/// observed capability.
+///
+/// Persistence reuses the same `LruTtlStore` primitive
+/// T83 / T91 use (no new cache store; PoW key namespace is
+/// `charon:pow:...`).
 #[cfg(feature = "caching")]
 pub mod pow_profile;
 /// Telemetry and metrics collection (feature-gated).

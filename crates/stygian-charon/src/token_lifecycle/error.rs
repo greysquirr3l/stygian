@@ -59,7 +59,7 @@ impl TokenLifecycleError {
 
     /// Vendor family the error is attributed to.
     #[must_use]
-    pub fn vendor_family(&self) -> VendorId {
+    pub const fn vendor_family(&self) -> VendorId {
         self.reason.vendor_family()
     }
 }

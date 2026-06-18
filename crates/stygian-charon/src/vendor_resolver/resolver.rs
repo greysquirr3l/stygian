@@ -101,7 +101,7 @@ use crate::vendor_resolver::rules::{MergeStrategy, ResolutionRule, VendorRuleMat
 /// caller had in effect before the resolver was invoked (this is
 /// the "non-breaking integration with existing manual mode
 /// selection" guarantee from the T90 spec).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum StrategyMarker {
     /// Resolver chose a playbook deterministically.
@@ -147,7 +147,7 @@ impl StrategyMarker {
 /// Each entry records the rule id, whether it fired, the
 /// [`MergeStrategy`] it applied, and a short human-readable note
 /// the operator log can render verbatim.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppliedRule {
     /// Rule id.
     pub rule_id: String,
@@ -311,6 +311,12 @@ impl VendorResolver {
     #[must_use]
     pub fn with_builtin_defaults() -> Self {
         let rules = crate::vendor_resolver::builtins::builtin_resolution_rules();
+        // Baseline rules are compile-time validated by
+        // `compile_check_builtin_resolution_rules`; runtime failure
+        // is only possible if the binary was tampered with
+        // post-compilation, so this is a deliberate
+        // programmer-error guard.
+        #[allow(clippy::expect_used)]
         Self::from_rules(rules).expect("builtin resolution rules are validated at compile time")
     }
 
@@ -322,13 +328,13 @@ impl VendorResolver {
 
     /// Number of rules currently registered.
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.rules.len()
     }
 
     /// `true` when no rules are registered.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.rules.is_empty()
     }
 
@@ -376,7 +382,7 @@ impl VendorResolver {
                     rule_id: rule.id.clone(),
                     fired: true,
                     merge_strategy: rule.merge_strategy,
-                    note: note.clone(),
+                    note,
                 });
                 fired = Some(rule);
                 break;
@@ -589,7 +595,7 @@ fn manual_fallback_rule() -> &'static ResolutionRule {
     &FALLBACK
 }
 
-fn winning_target_class(
+const fn winning_target_class(
     rule: &ResolutionRule,
     winning: Option<&VendorRuleMatch>,
     _classification: &VendorClassification,
@@ -691,7 +697,13 @@ impl PlaybookResolverExt for PlaybookResolver {
 }
 
 #[cfg(test)]
-#[allow(clippy::similar_names)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::similar_names
+)]
 mod tests {
     use super::*;
     use crate::vendor_classifier::{Evidence, EvidenceBundle, EvidenceSource};

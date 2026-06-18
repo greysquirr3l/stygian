@@ -165,7 +165,7 @@ impl PowCapabilityStore {
 
     /// Configured TTL for the backing store.
     #[must_use]
-    pub fn ttl(&self) -> Duration {
+    pub const fn ttl(&self) -> Duration {
         self.store.ttl()
     }
 
@@ -246,6 +246,12 @@ fn current_unix_secs() -> u64 {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
     use std::thread;

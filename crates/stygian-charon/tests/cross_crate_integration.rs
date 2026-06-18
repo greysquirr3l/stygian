@@ -1,10 +1,14 @@
 #![allow(
+    clippy::unwrap_used,
     clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
     clippy::cast_precision_loss,
     clippy::float_cmp,
     clippy::cast_lossless,
     clippy::format_push_string,
-    clippy::uninlined_format_args
+    clippy::uninlined_format_args,
+    clippy::missing_const_for_fn
 )]
 
 use stygian_charon::{

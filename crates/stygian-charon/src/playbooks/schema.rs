@@ -33,7 +33,7 @@ use crate::types::{ExecutionMode, SessionMode, TargetClass, TelemetryLevel};
 /// assert_eq!(defaults.session_mode, SessionMode::Stateless);
 /// assert_eq!(defaults.telemetry_level, TelemetryLevel::Standard);
 /// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AcquisitionDefaults {
     /// Recommended acquisition mode (see [`AcquisitionModeHint`]).
     pub mode: AcquisitionModeHint,
@@ -75,7 +75,7 @@ impl AcquisitionDefaults {
     /// supplied, so a playbook's `acquisition` block can be left
     /// blank and still produce a coherent runner config.
     #[must_use]
-    pub fn default_for(target_class: TargetClass) -> Self {
+    pub const fn default_for(target_class: TargetClass) -> Self {
         match target_class {
             TargetClass::Api => Self {
                 mode: AcquisitionModeHint::Fast,
@@ -133,7 +133,7 @@ impl Default for AcquisitionDefaults {
 /// };
 /// assert_eq!(overrides.mode, Some(AcquisitionModeHint::Hostile));
 /// ```
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AcquisitionOverrides {
     /// Optional mode override.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -170,7 +170,7 @@ pub struct AcquisitionOverrides {
 /// assert!(pref.require_sticky);
 /// assert!(pref.max_latency_ms.is_some());
 /// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProxyPreference {
     /// Preferred wire protocol (`"http"`, `"https"`, or `"socks5"`).
     pub preferred_protocol: String,
@@ -246,7 +246,7 @@ pub struct PacingProfile {
 impl PacingProfile {
     /// Build a pacing profile appropriate for a target class.
     #[must_use]
-    pub fn default_for(target_class: TargetClass) -> Self {
+    pub const fn default_for(target_class: TargetClass) -> Self {
         match target_class {
             TargetClass::Api => Self {
                 rate_limit_rps: 5.0,
@@ -300,7 +300,7 @@ impl Default for PacingProfile {
 /// assert_eq!(capped.ceiling(), AcquisitionModeHint::Hostile);
 /// assert_eq!(linear.stages(), vec![AcquisitionModeHint::Fast, AcquisitionModeHint::Hostile]);
 /// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EscalationStrategy {
     /// A single ceiling mode — the runner may escalate up to (and
@@ -506,7 +506,7 @@ impl Playbook {
 /// let _hints = pb.to_runtime_policy_hints();
 /// ```
     #[must_use]
-    pub fn to_runtime_policy_hints(&self) -> crate::acquisition::RuntimePolicyHints {
+    pub const fn to_runtime_policy_hints(&self) -> crate::acquisition::RuntimePolicyHints {
         crate::acquisition::RuntimePolicyHints {
             execution_mode: Some(self.acquisition.execution_mode),
             session_mode: Some(self.acquisition.session_mode),
@@ -647,6 +647,12 @@ fn validate_escalation(pb: &Playbook) -> Result<(), ValidationError> {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
 

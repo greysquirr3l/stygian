@@ -321,6 +321,12 @@ fn truncate_url(url: &str) -> String {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::super::policy::{
         DEFAULT_HARD_BLOCK_ESCALATION, DEFAULT_MAX_TRANSIENT_HOPS, DEFAULT_QUEUE_MAX_RETRIES,

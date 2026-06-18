@@ -122,7 +122,7 @@ impl IdentitySurface {
     /// `true` when **no** field is populated — useful for asserting a
     /// context was probed but produced no observations.
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.user_agent.is_none()
             && self.platform.is_none()
             && self.languages.is_none()
@@ -181,7 +181,7 @@ pub enum ContextObservation {
 impl ContextObservation {
     /// Convenience constructor for an [`Observed`][Self::Observed] surface.
     #[must_use]
-    pub fn observed(surface: IdentitySurface) -> Self {
+    pub const fn observed(surface: IdentitySurface) -> Self {
         Self::Observed { surface }
     }
 
@@ -209,7 +209,7 @@ impl ContextObservation {
 
     /// Borrow the captured surface, when observed.
     #[must_use]
-    pub fn surface(&self) -> Option<&IdentitySurface> {
+    pub const fn surface(&self) -> Option<&IdentitySurface> {
         match self {
             Self::Observed { surface } => Some(surface),
             Self::Skipped { .. } => None,
@@ -328,7 +328,7 @@ impl CoherenceDriftReport {
     /// observed contexts are coherent). Skipped contexts are not
     /// counted as drift.
     #[must_use]
-    pub fn is_coherent(&self) -> bool {
+    pub const fn is_coherent(&self) -> bool {
         self.drifts.is_empty()
     }
 
@@ -389,10 +389,10 @@ pub enum ContextPair {
 
 impl ContextPair {
     /// All three pairs in deterministic order.
-    pub const ALL: [ContextPair; 3] = [
-        ContextPair::TopIframe,
-        ContextPair::TopWorker,
-        ContextPair::IframeWorker,
+    pub const ALL: [Self; 3] = [
+        Self::TopIframe,
+        Self::TopWorker,
+        Self::IframeWorker,
     ];
 
     /// Resolve the [`ContextKind`] for side `a` / `b`.
@@ -609,7 +609,12 @@ pub fn signature_field_names() -> &'static BTreeSet<&'static str> {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
     use crate::freshness::{DomainClass, FreshnessCheckInput, FreshnessContract, FreshnessPolicyKind};
@@ -740,14 +745,11 @@ mod tests {
         let worker = ContextObservation::observed(surface_worker_differs_in_hardware());
         let report = build_report(top, iframe, worker, None);
         // Top↔iframe must be clean
-        let top_iframe_drift: Vec<&DriftDiagnostic> = report
+        let top_iframe_drift_exists = report
             .drifts
             .iter()
-            .filter(|d| {
-                d.context_a == ContextKind::Top && d.context_b == ContextKind::Iframe
-            })
-            .collect();
-        assert!(top_iframe_drift.is_empty());
+            .any(|d| d.context_a == ContextKind::Top && d.context_b == ContextKind::Iframe);
+        assert!(!top_iframe_drift_exists);
         // Top↔worker + Iframe↔worker must contain only known-limitation
         // diagnostics
         for d in &report.drifts {
