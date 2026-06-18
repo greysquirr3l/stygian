@@ -1,4 +1,7 @@
 # pyright: reportPrivateUsage=false
+# pylint: disable=import-error,wrong-import-position
+# pylint: disable=missing-function-docstring,missing-class-docstring
+# pylint: disable=too-many-public-methods,too-many-lines
 """Unit tests for the stealth canary trend detector (T84).
 
 Run with:

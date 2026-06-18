@@ -304,7 +304,7 @@ def evaluate_trend(
 
     # Rule 1: monotonic regression (last N strictly decreasing).
     # Window is chronological: oldest of the last N first, current last.
-    monotonic_window = [*history_list[-(config.monotonic_runs - 1) :], current]
+    monotonic_window = [*history_list[-(config.monotonic_runs - 1):], current]
     if len(monotonic_window) >= 2 and _consecutive_drops(monotonic_window) >= (
         config.monotonic_runs - 1
     ):
@@ -437,10 +437,12 @@ class HistoryEntry:
     trend_observations: list[dict] = field(default_factory=list)
 
     def to_jsonl(self) -> str:
+        """Serialize this history entry into one JSONL record."""
         return json.dumps(self.__dict__, separators=(",", ":"))
 
     @classmethod
     def from_jsonl(cls, line: str) -> "HistoryEntry":
+        """Parse one JSONL record into a ``HistoryEntry`` instance."""
         data = json.loads(line)
         if not isinstance(data, dict):
             raise ValueError(f"history line is not an object: {line!r}")

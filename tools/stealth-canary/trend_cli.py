@@ -56,6 +56,7 @@ _HERE = pathlib.Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
+# pylint: disable=wrong-import-position
 import trend  # noqa: E402  (path-adjusted import)
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -132,7 +133,7 @@ def _env_baseline(env_name: str) -> float | None:
         value = float(raw)
     except ValueError:
         return None
-    if not (0.0 <= value <= 1.0):
+    if not 0.0 <= value <= 1.0:
         return None
     return value
 
@@ -342,6 +343,7 @@ def build_markdown(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse CLI args, evaluate canary trend verdicts, and emit outputs."""
     parser = argparse.ArgumentParser(
         description="Stealth canary trend detector (T84)",
     )
