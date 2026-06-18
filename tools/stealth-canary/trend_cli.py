@@ -58,7 +58,6 @@ if str(_HERE) not in sys.path:
 
 import trend  # noqa: E402  (path-adjusted import)
 
-
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -85,9 +84,7 @@ def _load_required_targets(path: pathlib.Path) -> dict[str, dict[str, Any]]:
             )
         label = entry.get("label")
         if not isinstance(label, str) or not label.strip():
-            raise SystemExit(
-                f"required-targets file {path} entry #{idx} missing label"
-            )
+            raise SystemExit(f"required-targets file {path} entry #{idx} missing label")
         out[label] = entry
     return out
 
@@ -99,8 +96,7 @@ def _load_canary_config(path: pathlib.Path) -> dict[str, dict[str, Any]]:
     raw_entries = doc.get("canary")
     if not isinstance(raw_entries, list) or not raw_entries:
         raise SystemExit(
-            f"canary config {path} must contain a non-empty "
-            "[[canary]] table list"
+            f"canary config {path} must contain a non-empty " "[[canary]] table list"
         )
     out: dict[str, dict[str, Any]] = {}
     for entry in raw_entries:
@@ -165,9 +161,7 @@ def _resolve_baselines(
         if value is not None:
             return value, env_name
     raw_baseline = entry.get("baseline")
-    if isinstance(raw_baseline, (int, float)) and (
-        0.0 <= float(raw_baseline) <= 1.0
-    ):
+    if isinstance(raw_baseline, (int, float)) and 0.0 <= float(raw_baseline) <= 1.0:
         return float(raw_baseline), "required-targets.toml:baseline"
     return None, None
 
@@ -215,9 +209,7 @@ def _verdict_table(verdicts: list[trend.TrendVerdict]) -> str:
         "|---|---|---:|---:|---:|---:|---|---|",
     ]
     for v in verdicts:
-        rolling = (
-            f"{v.rolling_mean:.4f}" if v.rolling_mean is not None else "—"
-        )
+        rolling = f"{v.rolling_mean:.4f}" if v.rolling_mean is not None else "—"
         delta = f"{v.delta:+.4f}" if v.delta is not None else "—"
         baseline = (
             f"{v.baseline:.4f}{' ⚠️' if v.baseline_breach else ''}"
@@ -252,10 +244,8 @@ def _ownership_table(
             secondary = entry.get("secondary", "—")
             runbook = entry.get("runbook", "—")
             artifacts = ", ".join(f"`{a}`" for a in entry.get("artifacts", []))
-            lines.append(
-                f"| `{label}` | {owner} | {secondary} | {runbook} | "
-                f"{artifacts} |"
-            )
+            lines.append(f"| `{label}` | {owner} | {secondary} | {runbook} | ")
+            lines[-1] += f"{artifacts} |"
             continue
         owner = entry.get("owner", "—")
         secondary = entry.get("secondary", "—")
@@ -263,10 +253,8 @@ def _ownership_table(
         artifacts = ", ".join(f"`{a}`" for a in entry.get("artifacts", []))
         if verdict.is_hard_fail:
             owner = f"🛑 {owner}"
-        lines.append(
-            f"| `{label}` | {owner} | {secondary} | {runbook} | "
-            f"{artifacts} |"
-        )
+        lines.append(f"| `{label}` | {owner} | {secondary} | {runbook} | ")
+        lines[-1] += f"{artifacts} |"
     return "\n".join(lines)
 
 
@@ -283,15 +271,10 @@ def _build_markdown(
     hard_fails = [v for v in verdicts.values() if v.is_hard_fail]
     headline = "## Stealth Canary — Trend Report"
     if hard_fails:
-        headline += (
-            " 🛑\n\n"
-            "**At least one required canary target is hard-fail.**"
-        )
+        headline += " 🛑\n\n" "**At least one required canary target is hard-fail.**"
     else:
-        headline += (
-            "\n\nAll required canary targets are stable "
-            "(or trend-insufficient)."
-        )
+        headline += "\n\nAll required canary targets are stable "
+        headline += "(or trend-insufficient)."
 
     detector = (
         f"**Detector config:** window={config.window}, "
@@ -459,16 +442,16 @@ def main(argv: list[str] | None = None) -> int:
                 label=label,
                 score=float(score),
                 threshold=(
-                    float(threshold)
-                    if isinstance(threshold, (int, float))
-                    else 0.0
+                    float(threshold) if isinstance(threshold, (int, float)) else 0.0
                 ),
                 ok=bool(ok) if isinstance(ok, bool) else False,
                 run_id=args.run_id,
                 captured_at_epoch_ms=now_ms,
-                trend_observations=list(trend_observations)
-                if isinstance(trend_observations, list)
-                else [],
+                trend_observations=(
+                    list(trend_observations)
+                    if isinstance(trend_observations, list)
+                    else []
+                ),
             )
         )
     if new_entries:
@@ -490,8 +473,7 @@ def main(argv: list[str] | None = None) -> int:
         label: current_by_label.get(label, 0.0) for label in eval_labels
     }
     eval_history: dict[str, list[float]] = {
-        label: trend.history_to_score_map(history, label)
-        for label in eval_labels
+        label: trend.history_to_score_map(history, label) for label in eval_labels
     }
     eval_severity: dict[str, str] = {
         label: (
@@ -521,8 +503,7 @@ def main(argv: list[str] | None = None) -> int:
                 current_score=verdict.current_score,
                 status=verdict.status,
                 reason=(
-                    verdict.reason
-                    + f" (baseline from {baseline_sources[label]})"
+                    verdict.reason + f" (baseline from {baseline_sources[label]})"
                     if verdict.baseline_breach
                     else verdict.reason
                 ),

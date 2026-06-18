@@ -25,10 +25,7 @@ import sys
 import tomllib
 from typing import Any, NoReturn
 
-
-REQUIRED_TARGETS_PATH = pathlib.Path(
-    "tools/stealth-canary/data/required-targets.toml"
-)
+REQUIRED_TARGETS_PATH = pathlib.Path("tools/stealth-canary/data/required-targets.toml")
 CANARY_CONFIG_PATH = pathlib.Path(".github/stealth-canary.toml")
 
 
@@ -68,10 +65,7 @@ def _validate_canary_config(path: pathlib.Path) -> list[str]:
 
         label = entry.get("label")
         if not isinstance(label, str) or not label.strip():
-            fail(
-                f"{path} entry #{idx} requires "
-                "non-empty string field 'label'"
-            )
+            fail(f"{path} entry #{idx} requires " "non-empty string field 'label'")
         labels.append(label)
 
         threshold = entry.get("threshold", 0.90)
@@ -79,16 +73,12 @@ def _validate_canary_config(path: pathlib.Path) -> list[str]:
             fail(f"{path} entry #{idx} field 'threshold' must be numeric")
         threshold = float(threshold)
         if threshold < 0.0 or threshold > 1.0:
-            fail(
-                f"{path} entry #{idx} field 'threshold' "
-                "must be within [0.0, 1.0]"
-            )
+            fail(f"{path} entry #{idx} field 'threshold' " "must be within [0.0, 1.0]")
 
         advisory = entry.get("advisory", False)
         if not isinstance(advisory, bool):
             fail(
-                f"{path} entry #{idx} field 'advisory' "
-                "must be boolean when present"
+                f"{path} entry #{idx} field 'advisory' " "must be boolean when present"
             )
 
         if not advisory:
@@ -114,10 +104,7 @@ def _validate_required_targets(path: pathlib.Path) -> list[str]:
 
         label = entry.get("label")
         if not isinstance(label, str) or not label.strip():
-            fail(
-                f"{path} entry #{idx} requires "
-                "non-empty string field 'label'"
-            )
+            fail(f"{path} entry #{idx} requires " "non-empty string field 'label'")
         labels.append(label)
 
         url = entry.get("url")
@@ -129,31 +116,21 @@ def _validate_required_targets(path: pathlib.Path) -> list[str]:
             fail(f"{path} entry #{idx} field 'threshold' must be numeric")
         threshold = float(threshold)
         if threshold < 0.0 or threshold > 1.0:
-            fail(
-                f"{path} entry #{idx} field 'threshold' "
-                "must be within [0.0, 1.0]"
-            )
+            fail(f"{path} entry #{idx} field 'threshold' " "must be within [0.0, 1.0]")
 
         description = entry.get("description")
         if not isinstance(description, str) or not description.strip():
             fail(
-                f"{path} entry #{idx} requires non-empty "
-                "string field 'description'"
+                f"{path} entry #{idx} requires non-empty " "string field 'description'"
             )
 
         owner = entry.get("owner")
         if not isinstance(owner, str) or not owner.strip():
-            fail(
-                f"{path} entry #{idx} requires "
-                "non-empty string field 'owner'"
-            )
+            fail(f"{path} entry #{idx} requires " "non-empty string field 'owner'")
 
         runbook = entry.get("runbook")
         if not isinstance(runbook, str) or not runbook.strip():
-            fail(
-                f"{path} entry #{idx} requires "
-                "non-empty string field 'runbook'"
-            )
+            fail(f"{path} entry #{idx} requires " "non-empty string field 'runbook'")
 
         artifacts = entry.get("artifacts")
         if not isinstance(artifacts, list) or not artifacts:
@@ -189,8 +166,7 @@ def _validate_required_targets(path: pathlib.Path) -> list[str]:
             baseline = float(baseline)
             if baseline < 0.0 or baseline > 1.0:
                 fail(
-                    f"{path} entry #{idx} field 'baseline' "
-                    "must be within [0.0, 1.0]"
+                    f"{path} entry #{idx} field 'baseline' " "must be within [0.0, 1.0]"
                 )
 
     return labels

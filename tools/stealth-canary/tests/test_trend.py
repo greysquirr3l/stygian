@@ -38,7 +38,6 @@ sys.path.insert(0, str(_HERE.parent))
 import trend  # noqa: E402
 import trend_cli  # noqa: E402
 
-
 # ── Pure trend math ──────────────────────────────────────────────────────────
 
 
@@ -419,9 +418,7 @@ class TestBaselineEnvVars(unittest.TestCase):
             (
                 browserscan_value,
                 browserscan_source,
-            ) = trend_cli.resolve_baselines(
-                "browserscan", {"baseline": 0.85}
-            )
+            ) = trend_cli.resolve_baselines("browserscan", {"baseline": 0.85})
         self.assertEqual(creepjs_value, 0.90)
         self.assertEqual(creepjs_source, "STYGIAN_TREND_BASELINE_CREEPJS")
         self.assertEqual(browserscan_value, 0.92)
@@ -433,7 +430,8 @@ class TestBaselineEnvVars(unittest.TestCase):
     def test_resolve_baselines_falls_back_to_data_file(self) -> None:
         with mock.patch.dict(os.environ, {}, clear=True):
             value, source = trend_cli.resolve_baselines(
-                "creepjs", {"baseline": 0.50}
+                "creepjs",
+                {"baseline": 0.50},
             )
         self.assertEqual(value, 0.50)
         self.assertEqual(source, "required-targets.toml:baseline")
@@ -651,9 +649,7 @@ artifacts = ["probe-report.json"]
                             "threshold": 0.50,
                             "ok": True,
                             "run_id": f"seed-{idx}",
-                            "captured_at_epoch_ms": (
-                                1_700_000_000_000 + idx * 1000
-                            ),
+                            "captured_at_epoch_ms": (1_700_000_000_000 + idx * 1000),
                         }
                     )
                     + "\n"
@@ -705,11 +701,7 @@ artifacts = ["probe-report.json"]
         self.assertIn("https://example.com/runs/123", md)
         # History was appended
         with history.open("r", encoding="utf-8") as handle:
-            lines = [
-                line
-                for line in handle.read().splitlines()
-                if line.strip()
-            ]
+            lines = [line for line in handle.read().splitlines() if line.strip()]
         # 10 seed + 2 current = 12
         self.assertEqual(len(lines), 12)
 

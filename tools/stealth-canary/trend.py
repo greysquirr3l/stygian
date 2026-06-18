@@ -130,7 +130,8 @@ class TrendConfig:
                 "STYGIAN_TREND_DELTA_THRESHOLD", cls.delta_threshold
             ),
             monotonic_runs=_int(
-                "STYGIAN_TREND_MONOTONIC_RUNS", cls.monotonic_runs
+                "STYGIAN_TREND_MONOTONIC_RUNS",
+                cls.monotonic_runs,
             ),
             min_history=_int("STYGIAN_TREND_MIN_HISTORY", cls.min_history),
         )
@@ -303,7 +304,7 @@ def evaluate_trend(
 
     # Rule 1: monotonic regression (last N strictly decreasing).
     # Window is chronological: oldest of the last N first, current last.
-    monotonic_window = [*history_list[-(config.monotonic_runs - 1):], current]
+    monotonic_window = [*history_list[-(config.monotonic_runs - 1) :], current]
     if len(monotonic_window) >= 2 and _consecutive_drops(monotonic_window) >= (
         config.monotonic_runs - 1
     ):
@@ -496,7 +497,8 @@ def write_history(path: str, entries: Iterable[HistoryEntry]) -> int:
 
 
 def history_to_score_map(
-    entries: Sequence[HistoryEntry], label: str
+    entries: Sequence[HistoryEntry],
+    label: str,
 ) -> list[float]:
     """Extract the chronological score list for a single label."""
 
@@ -504,7 +506,8 @@ def history_to_score_map(
 
 
 def severity_for_label(
-    entries: Sequence[HistoryEntry], label: str
+    entries: Sequence[HistoryEntry],
+    label: str,
 ) -> str | None:
     """Return the most-recent T92 ``CanaryTrendObservation`` severity
     attached to the most recent history entry for ``label``.
