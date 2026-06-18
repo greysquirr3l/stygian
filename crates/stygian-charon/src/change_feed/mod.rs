@@ -65,7 +65,8 @@
 //! ## Metrics surface
 //!
 //! When the `metrics` feature is enabled, the
-//! [`MetricsCollector`][crate::metrics::MetricsCollector]
+//! `MetricsCollector` (see `crate::metrics::MetricsCollector`; only compiled
+//! with `--features metrics`)
 //! implements [`ChangeEventSink`] so the detector
 //! records events directly into the existing
 //! Prometheus exporter. The `change_feed_*` series
