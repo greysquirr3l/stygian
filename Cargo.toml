@@ -75,7 +75,7 @@ indicatif = "0.18"
 
 # API server
 axum = { version = "0.8", features = ["macros"] }
-tower-http = { version = "0.6", features = ["cors", "trace", "compression-full"] }
+tower-http = { version = "0.7", features = ["cors", "trace", "compression-full"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 
 # TLS configuration
