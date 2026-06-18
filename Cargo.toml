@@ -68,7 +68,7 @@ rand = "0.10"
 dashmap = "6"
 lru = "0.16"
 base64 = "0.22"
-prometheus-client = "0.24"
+prometheus-client = "0.25"
 figment = { version = "0.10", features = ["toml", "env"] }
 clap = { version = "4", features = ["derive"] }
 indicatif = "0.18"
