@@ -3241,7 +3241,6 @@ checksum = "331e97a1af0bf59823e6eadffe373d7b27f485be8748f71471c662c1f269b7fb"
 dependencies = [
  "encoding_rs",
  "memchr",
- "serde",
 ]
 
 [[package]]
@@ -4489,7 +4488,7 @@ dependencies = [
  "petgraph",
  "prometheus-client",
  "proptest",
- "quick-xml 0.37.5",
+ "quick-xml 0.38.4",
  "rayon",
  "redis",
  "reqwest 0.13.4",
