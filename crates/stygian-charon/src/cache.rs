@@ -6,22 +6,126 @@ use std::time::{Duration, Instant};
 
 use crate::types::{InvestigationReport, TargetClass};
 
+/// One TTL-bounded entry stored in an [`LruTtlStore`].
 #[derive(Debug, Clone)]
-struct CacheEntry {
-    report: InvestigationReport,
+struct TtlEntry<V> {
+    value: V,
     expires_at: Instant,
 }
 
-impl CacheEntry {
-    fn new(report: InvestigationReport, ttl: Duration) -> Self {
+impl<V> TtlEntry<V> {
+    fn new(value: V, ttl: Duration) -> Self {
         Self {
-            report,
+            value,
             expires_at: Instant::now() + ttl,
         }
     }
 
     fn is_expired(&self) -> bool {
         Instant::now() >= self.expires_at
+    }
+}
+
+/// Generic capacity-bounded LRU store with per-entry TTL.
+///
+/// The store is the shared backing primitive used by every short-horizon
+/// in-memory cache in this crate: the investigation report cache
+/// ([`MemoryInvestigationCache`]) and the challenge feedback memory
+/// ([`crate::challenge_feedback::ChallengeMemory`]). Centralising the
+/// eviction + expiry logic keeps both consumers consistent (LRU at the
+/// `max_entries` cap, TTL expiry on read) and avoids introducing a
+/// parallel "second cache store" with its own semantics.
+///
+/// The store is `Send + Sync` so it can sit behind an `Arc` and be
+/// shared across async tasks.
+pub(crate) struct LruTtlStore<V> {
+    ttl: Duration,
+    inner: Mutex<lru::LruCache<String, TtlEntry<V>>>,
+}
+
+impl<V: Clone> LruTtlStore<V> {
+    /// Create a new store with the given capacity (entries) and TTL.
+    #[must_use]
+    pub(crate) fn new(capacity: NonZeroUsize, ttl: Duration) -> Self {
+        Self {
+            ttl,
+            inner: Mutex::new(lru::LruCache::new(capacity)),
+        }
+    }
+
+    /// Configured per-entry TTL.
+    #[must_use]
+    pub(crate) const fn ttl(&self) -> Duration {
+        self.ttl
+    }
+
+    /// Look up a value by key. Returns `None` if the key is absent or
+    /// has expired (in which case the entry is also evicted).
+    pub(crate) fn get(&self, key: &str) -> Option<V> {
+        let Ok(mut cache) = self.inner.lock() else {
+            return None;
+        };
+
+        match cache.get(key) {
+            Some(entry) if entry.is_expired() => {
+                cache.pop(key);
+                None
+            }
+            Some(entry) => Some(entry.value.clone()),
+            None => None,
+        }
+    }
+
+    /// Peek at a value without updating LRU recency. Useful for
+    /// "read-modify-write" patterns (e.g. incrementing an observation
+    /// counter without bumping the LRU order on the read).
+    #[allow(dead_code)]
+    pub(crate) fn peek(&self, key: &str) -> Option<V> {
+        let Ok(cache) = self.inner.lock() else {
+            return None;
+        };
+
+        match cache.peek(key) {
+            Some(entry) if entry.is_expired() => None,
+            Some(entry) => Some(entry.value.clone()),
+            None => None,
+        }
+    }
+
+    /// Insert or replace a value, applying the configured TTL.
+    pub(crate) fn put(&self, key: String, value: V) {
+        let Ok(mut cache) = self.inner.lock() else {
+            return;
+        };
+
+        cache.put(key, TtlEntry::new(value, self.ttl));
+    }
+
+    /// Invalidate a single key. No-op if the key is absent.
+    pub(crate) fn invalidate(&self, key: &str) {
+        if let Ok(mut cache) = self.inner.lock() {
+            cache.pop(key);
+        }
+    }
+
+    /// Remove all entries.
+    pub(crate) fn clear(&self) {
+        if let Ok(mut cache) = self.inner.lock() {
+            cache.clear();
+        }
+    }
+
+    /// Number of entries currently retained (including expired-but-
+    /// not-yet-evicted ones; expired entries are dropped on next read).
+    #[allow(dead_code)]
+    pub(crate) fn len(&self) -> usize {
+        self.inner.lock().map_or(0, |cache| cache.len())
+    }
+
+    /// `true` if the store has zero entries.
+    #[allow(dead_code)]
+    pub(crate) fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
@@ -54,8 +158,7 @@ pub fn investigation_cache_key(har_json: &str, target_class: TargetClass) -> Str
 
 /// In-memory capacity-bounded LRU cache with TTL for investigation reports.
 pub struct MemoryInvestigationCache {
-    ttl: Duration,
-    inner: Mutex<lru::LruCache<String, CacheEntry>>,
+    store: LruTtlStore<InvestigationReport>,
 }
 
 impl MemoryInvestigationCache {
@@ -63,46 +166,38 @@ impl MemoryInvestigationCache {
     #[must_use]
     pub fn new(capacity: NonZeroUsize, ttl: Duration) -> Self {
         Self {
-            ttl,
-            inner: Mutex::new(lru::LruCache::new(capacity)),
+            store: LruTtlStore::new(capacity, ttl),
         }
+    }
+
+    /// Number of entries currently retained.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.store.len()
+    }
+
+    /// `true` if the cache has zero entries.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.store.is_empty()
     }
 }
 
 impl InvestigationReportCache for MemoryInvestigationCache {
     fn get(&self, key: &str) -> Option<InvestigationReport> {
-        let Ok(mut cache) = self.inner.lock() else {
-            return None;
-        };
-
-        match cache.get(key) {
-            Some(entry) if entry.is_expired() => {
-                cache.pop(key);
-                None
-            }
-            Some(entry) => Some(entry.report.clone()),
-            None => None,
-        }
+        self.store.get(key)
     }
 
     fn put(&self, key: String, report: InvestigationReport) {
-        let Ok(mut cache) = self.inner.lock() else {
-            return;
-        };
-
-        cache.put(key, CacheEntry::new(report, self.ttl));
+        self.store.put(key, report);
     }
 
     fn invalidate(&self, key: &str) {
-        if let Ok(mut cache) = self.inner.lock() {
-            cache.pop(key);
-        }
+        self.store.invalidate(key);
     }
 
     fn clear(&self) {
-        if let Ok(mut cache) = self.inner.lock() {
-            cache.clear();
-        }
+        self.store.clear();
     }
 }
 

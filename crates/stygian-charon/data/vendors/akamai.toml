@@ -1,0 +1,51 @@
+# T89 baseline vendor definition — Akamai Bot Manager.
+#
+# Akamai Bot Manager surfaces:
+#   - `_abck` and `bm_sz` cookies
+#   - `bm_sv` and `akamai` headers
+#   - `/_bm/` challenge URL paths
+#   - The `akamaibot` / `bot manager` script markers
+id = "akamai"
+display_name = "Akamai Bot Manager"
+description = "Akamai Bot Manager (_abck / bm_sz cookies, akamai script)."
+tier = 1
+
+[[signals]]
+pattern = "_abck="
+source = "cookie"
+weight = 5
+
+[[signals]]
+pattern = "bm_sz="
+source = "cookie"
+weight = 5
+
+[[signals]]
+pattern = "bm_sv="
+source = "header"
+weight = 5
+
+[[signals]]
+pattern = "akamai"
+source = "header"
+weight = 3
+
+[[signals]]
+pattern = "x-akamai"
+source = "header"
+weight = 4
+
+[[signals]]
+pattern = "/_bm/"
+source = "challenge_url"
+weight = 4
+
+[[signals]]
+pattern = "akamaibot"
+source = "body_marker"
+weight = 5
+
+[[signals]]
+pattern = "bot manager"
+source = "body_marker"
+weight = 3

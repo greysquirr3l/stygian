@@ -1,0 +1,56 @@
+# T89 baseline vendor definition — Cloudflare.
+#
+# Cloudflare signals:
+#   - `__cf_bm` cookie
+#   - `cf-ray`, `cf-cache-status`, `cf-chl-bypass` headers
+#   - `cdn-cgi/challenge-platform` / `cdn-cgi/trace` challenge paths
+#   - `Attention required! | cloudflare` body marker
+id = "cloudflare"
+display_name = "Cloudflare"
+description = "Cloudflare bot management and challenge stack (cf-ray, __cf_bm, cdn-cgi)."
+tier = 1
+
+[[signals]]
+pattern = "__cf_bm="
+source = "cookie"
+weight = 5
+
+[[signals]]
+pattern = "cf-ray"
+source = "header"
+weight = 5
+
+[[signals]]
+pattern = "cf-chl-bypass"
+source = "header"
+weight = 5
+
+[[signals]]
+pattern = "cf-cache-status"
+source = "header"
+weight = 3
+
+[[signals]]
+pattern = "server: cloudflare"
+source = "header"
+weight = 3
+
+[[signals]]
+pattern = "cdn-cgi/challenge-platform"
+source = "challenge_url"
+weight = 4
+
+[[signals]]
+pattern = "cdn-cgi/trace"
+source = "challenge_url"
+weight = 3
+
+[[signals]]
+pattern = "attention required! | cloudflare"
+source = "body_marker"
+weight = 4
+
+[[signals]]
+pattern = "cloudflare"
+source = "body_marker"
+weight = 2

@@ -1,0 +1,51 @@
+# T89 baseline vendor definition — PerimeterX / HUMAN.
+#
+# PerimeterX was rebranded as HUMAN Security in 2022. The
+# fingerprinting stack ships the same artefacts under both names:
+#   - `_px3`, `_px2`, `_px` cookies
+#   - `x-px` and `pxhd` headers
+#   - The `perimeterx` / `humansecurity` markers in the JS payload
+id = "perimeter_x"
+display_name = "PerimeterX (HUMAN Security)"
+description = "PerimeterX / HUMAN Security bot defender stack."
+tier = 1
+
+[[signals]]
+pattern = "_px3="
+source = "cookie"
+weight = 5
+
+[[signals]]
+pattern = "_px2="
+source = "cookie"
+weight = 5
+
+[[signals]]
+pattern = "_px="
+source = "cookie"
+weight = 4
+
+[[signals]]
+pattern = "x-px"
+source = "header"
+weight = 4
+
+[[signals]]
+pattern = "pxhd"
+source = "header"
+weight = 4
+
+[[signals]]
+pattern = "1/captcha"
+source = "challenge_url"
+weight = 4
+
+[[signals]]
+pattern = "perimeterx"
+source = "body_marker"
+weight = 5
+
+[[signals]]
+pattern = "humansecurity"
+source = "body_marker"
+weight = 4

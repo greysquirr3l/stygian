@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 /// - **`HighSecurity`**: Banking, auth, sensitive data; higher block ratio acceptable.
 /// - **Unknown**: Default classification when unable to determine target type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TargetClass {
     /// REST API or GraphQL endpoint; expect clean machine-to-machine paths.
     Api,
@@ -326,6 +327,7 @@ pub struct RequirementsProfile {
 
 /// High-level execution mode for a target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ExecutionMode {
     /// Standard HTTP adapters.
     Http,
@@ -335,6 +337,7 @@ pub enum ExecutionMode {
 
 /// Session persistence mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SessionMode {
     /// No explicit session persistence.
     Stateless,
@@ -344,6 +347,7 @@ pub enum SessionMode {
 
 /// Recommended anti-bot telemetry level.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TelemetryLevel {
     /// Minimal telemetry.
     Basic,

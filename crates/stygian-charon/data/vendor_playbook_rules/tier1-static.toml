@@ -1,0 +1,23 @@
+# T90 baseline resolution rule — tier1-static
+#
+# Maps benign vendors (currently `Unknown` + zero-confidence
+# classifications) to the `tier1-static` playbook. The rule only
+# fires when the classifier reports an explicit `Unknown` vendor
+# with confidence `0.0` — i.e. nothing matched at all. This keeps
+# the static rule from accidentally swallowing a single low-weight
+# signal that should be reported as `Manual` instead.
+#
+# Precedence: priority 100 (last resort before the manual fallback).
+id = "tier1-static"
+playbook_id = "tier1-static"
+target_class = "content_site"
+priority = 100
+merge_strategy = "single"
+description = "Unknown / no-signal classifications → tier1-static playbook"
+min_confidence = 0.0
+min_score = 0
+require_unknown_vendor = true
+
+[[vendors]]
+vendor = "unknown"
+weight = 1

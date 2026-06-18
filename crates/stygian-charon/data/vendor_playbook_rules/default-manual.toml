@@ -1,0 +1,18 @@
+# T90 baseline resolution rule — default-manual
+#
+# Sentinel rule that fires when no higher-priority rule matched and
+# the classification is **not** a clean `Unknown` (i.e. we matched
+# at least one vendor but the score/confidence gates failed). The
+# resolver surfaces this as the `Manual` strategy marker so the
+# caller can preserve its existing manual mode selection
+# (non-breaking with the pre-T90 acquisition runner).
+#
+# Precedence: priority 1000 (lowest). Always evaluated last.
+id = "default-manual"
+playbook_id = ""
+target_class = "unknown"
+priority = 1000
+merge_strategy = "manual"
+description = "Low-confidence or unmatched vendor → Manual strategy marker"
+min_confidence = 0.0
+min_score = 0

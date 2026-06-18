@@ -1,0 +1,32 @@
+# T85 baseline playbook — tier1-static
+#
+# Static, cacheable content sites that do not require JavaScript
+# execution. The cheapest path in the runner ladder: direct HTTP,
+# no sticky session, no warmup, low retry budget.
+id = "tier1-static"
+target_class = "content_site"
+description = "Static content sites with no JavaScript challenge (Tier 1, static)."
+
+[acquisition]
+mode = "fast"
+execution_mode = "http"
+session_mode = "stateless"
+telemetry_level = "basic"
+enable_warmup = false
+retry_budget = 2
+backoff_base_ms = 250
+
+[proxy_preference]
+preferred_protocol = "https"
+require_sticky = false
+require_residential = false
+max_latency_ms = 1500
+
+[pacing]
+rate_limit_rps = 3.0
+jitter_pct = 0.10
+min_request_interval_ms = 300
+
+[escalation]
+kind = "capped"
+ceiling = "resilient"

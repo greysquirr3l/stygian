@@ -1,0 +1,32 @@
+# T85 baseline playbook — unknown
+#
+# Fallback playbook used when the resolver cannot match the target
+# class to a dedicated playbook. Always safe: no sticky session, no
+# residential proxy, no warmup, moderate retry budget.
+id = "unknown"
+target_class = "unknown"
+description = "Fallback playbook when no dedicated playbook matches."
+
+[acquisition]
+mode = "resilient"
+execution_mode = "http"
+session_mode = "stateless"
+telemetry_level = "standard"
+enable_warmup = false
+retry_budget = 3
+backoff_base_ms = 300
+
+[proxy_preference]
+preferred_protocol = "https"
+require_sticky = false
+require_residential = false
+max_latency_ms = 2000
+
+[pacing]
+rate_limit_rps = 2.0
+jitter_pct = 0.10
+min_request_interval_ms = 500
+
+[escalation]
+kind = "capped"
+ceiling = "resilient"

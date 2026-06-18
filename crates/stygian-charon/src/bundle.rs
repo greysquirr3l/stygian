@@ -8,6 +8,8 @@ use crate::policy::plan_from_report;
 use crate::probe::{ProbePackReport, challenge_probe_pack, run_probe_pack};
 use crate::snapshot;
 use crate::types::{InvestigationBundle, InvestigationReport, RequirementsProfile, RuntimePolicy};
+use crate::vendor_classifier::VendorClassification;
+use crate::vendor_classifier::VendorClassifier;
 
 /// Controls how sensitive fields are treated when serialising a [`DiagnosticBundle`].
 ///
@@ -64,6 +66,8 @@ pub struct BundleMetadata {
 /// - `policy` — planned [`RuntimePolicy`]
 /// - `probe_report` — outcome of the built-in [`challenge_probe_pack`]
 /// - `coherence_violations` — list of `{ rule_id, message, paths }` objects; empty when clean
+/// - `vendor_classification` — T89 vendor-fingerprinting classification
+///   (additive, `#[serde(default, skip_serializing_if = "Option::is_none")]`)
 ///
 /// # Example
 ///
@@ -92,6 +96,17 @@ pub struct DiagnosticBundle {
     /// via [`build_diagnostic_bundle_with_snapshot`].
     #[serde(default)]
     pub coherence_violations: Vec<BundleCoherenceViolation>,
+    /// T89 vendor fingerprinting classification (additive field).
+    ///
+    /// Populated when the bundle is built from a HAR that contains
+    /// enough information to identify a vendor; absent (and skipped
+    /// during serialisation) otherwise. The field uses
+    /// `#[serde(default, skip_serializing_if = "Option::is_none")]`
+    /// so older JSON payloads (pre-T89) deserialize unchanged and
+    /// newer payloads that did not detect a vendor omit the field
+    /// rather than emit `"vendor_classification": null`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vendor_classification: Option<VendorClassification>,
 }
 
 /// A redacted coherence violation record.
@@ -119,6 +134,16 @@ pub enum BundleError {
 /// probe pack. Applies the given [`BundleRedactionPolicy`] to sanitise sensitive
 /// fields before returning.
 ///
+/// The T89 vendor classification is computed from the HAR using
+/// [`VendorClassifier::with_builtin_defaults`]. When no vendor-specific
+/// signals are detected, the resulting `vendor_classification` field is
+/// still populated with an "unknown" classification (so consumers can
+/// always inspect the field), but the JSON form omits it via
+/// `skip_serializing_if = "Option::is_none"`.
+/// Pass a custom classifier via
+/// [`build_diagnostic_bundle_with_vendor_classifier`] to override the
+/// threshold or supply custom vendor definitions.
+///
 /// # Errors
 ///
 /// Returns [`BundleError::Har`] when the HAR payload is invalid.
@@ -136,13 +161,18 @@ pub fn build_diagnostic_bundle(
     har_json: &str,
     redaction_policy: BundleRedactionPolicy,
 ) -> Result<DiagnosticBundle, BundleError> {
-    build_diagnostic_bundle_inner(har_json, redaction_policy, None)
+    let classifier = VendorClassifier::with_builtin_defaults();
+    build_diagnostic_bundle_with_vendor_classifier(har_json, redaction_policy, &classifier)
 }
 
 /// Build a [`DiagnosticBundle`] including fingerprint coherence results.
 ///
 /// Identical to [`build_diagnostic_bundle`] but also evaluates coherence rules
 /// against the supplied [`snapshot::NormalizedFingerprintSnapshot`].
+/// The vendor classification uses
+/// [`VendorClassifier::with_builtin_defaults`]; pass
+/// [`build_diagnostic_bundle_full`] to supply a custom classifier
+/// together with a snapshot.
 ///
 /// # Errors
 ///
@@ -152,34 +182,41 @@ pub fn build_diagnostic_bundle_with_snapshot(
     redaction_policy: BundleRedactionPolicy,
     snap: &snapshot::NormalizedFingerprintSnapshot,
 ) -> Result<DiagnosticBundle, BundleError> {
-    build_diagnostic_bundle_inner(har_json, redaction_policy, Some(snap))
+    let classifier = VendorClassifier::with_builtin_defaults();
+    build_diagnostic_bundle_full(har_json, redaction_policy, &classifier, Some(snap))
 }
 
-/// Convert an [`InvestigationBundle`] into a [`DiagnosticBundle`] (no HAR needed).
+/// Build a [`DiagnosticBundle`] with a caller-supplied
+/// [`VendorClassifier`].
 ///
-/// Useful when the caller already has an `InvestigationBundle` and only needs to
-/// enrich it with probe outcomes and metadata.
-#[must_use]
-pub fn diagnostic_bundle_from_investigation(
-    bundle: InvestigationBundle,
-    redaction_policy: BundleRedactionPolicy,
-) -> DiagnosticBundle {
-    let probe_report = run_probe_pack(&challenge_probe_pack());
-    let mut result = DiagnosticBundle {
-        metadata: make_metadata(redaction_policy),
-        report: bundle.report,
-        requirements: bundle.requirements,
-        policy: bundle.policy,
-        probe_report,
-        coherence_violations: Vec::new(),
-    };
-    apply_redaction(&mut result);
-    result
-}
-
-fn build_diagnostic_bundle_inner(
+/// Use this when the operator wants a custom threshold or
+/// additional [`VendorDefinition`] entries (e.g. Tier 2 vendors).
+/// The classifier is **stateless**, so callers can build it once
+/// and reuse it across many `build_diagnostic_bundle_*` invocations.
+///
+/// # Errors
+///
+/// Returns [`BundleError::Har`] when the HAR payload is invalid.
+pub fn build_diagnostic_bundle_with_vendor_classifier(
     har_json: &str,
     redaction_policy: BundleRedactionPolicy,
+    classifier: &VendorClassifier,
+) -> Result<DiagnosticBundle, BundleError> {
+    build_diagnostic_bundle_full(har_json, redaction_policy, classifier, None)
+}
+
+/// Build a [`DiagnosticBundle`] with a caller-supplied
+/// [`VendorClassifier`] **and** an optional
+/// [`snapshot::NormalizedFingerprintSnapshot`]. This is the most
+/// general bundle constructor; every other builder delegates here.
+///
+/// # Errors
+///
+/// Returns [`BundleError::Har`] when the HAR payload is invalid.
+pub fn build_diagnostic_bundle_full(
+    har_json: &str,
+    redaction_policy: BundleRedactionPolicy,
+    classifier: &VendorClassifier,
     snap: Option<&snapshot::NormalizedFingerprintSnapshot>,
 ) -> Result<DiagnosticBundle, BundleError> {
     let report = investigate_har(har_json)?;
@@ -199,6 +236,17 @@ fn build_diagnostic_bundle_inner(
     });
 
     let probe_report = run_probe_pack(&challenge_probe_pack());
+    // The vendor classification is best-effort: if the HAR is
+    // unparseable for the classifier's purposes (it consumes the
+    // same HAR shape as `investigate_har`), we keep the
+    // `vendor_classification` field at `None` so the JSON form
+    // omits it via `skip_serializing_if`. We also drop the field
+    // when the classifier reports "unknown" with no evidence, so
+    // empty HARs do not produce noise in the diagnostic payload.
+    let vendor_classification = classifier
+        .classify_har(har_json)
+        .ok()
+        .filter(|c| c.is_identified() || !c.evidence.is_empty());
 
     let mut bundle = DiagnosticBundle {
         metadata: make_metadata(redaction_policy),
@@ -207,10 +255,34 @@ fn build_diagnostic_bundle_inner(
         policy: plan.policy,
         probe_report,
         coherence_violations,
+        vendor_classification,
     };
 
     apply_redaction(&mut bundle);
     Ok(bundle)
+}
+
+/// Convert an [`InvestigationBundle`] into a [`DiagnosticBundle`] (no HAR needed).
+///
+/// Useful when the caller already has an `InvestigationBundle` and only needs to
+/// enrich it with probe outcomes and metadata.
+#[must_use]
+pub fn diagnostic_bundle_from_investigation(
+    bundle: InvestigationBundle,
+    redaction_policy: BundleRedactionPolicy,
+) -> DiagnosticBundle {
+    let probe_report = run_probe_pack(&challenge_probe_pack());
+    let mut result = DiagnosticBundle {
+        metadata: make_metadata(redaction_policy),
+        report: bundle.report,
+        requirements: bundle.requirements,
+        policy: bundle.policy,
+        probe_report,
+        coherence_violations: Vec::new(),
+        vendor_classification: None,
+    };
+    apply_redaction(&mut result);
+    result
 }
 
 fn make_metadata(redaction_policy: BundleRedactionPolicy) -> BundleMetadata {

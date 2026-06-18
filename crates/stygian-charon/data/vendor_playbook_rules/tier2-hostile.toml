@@ -1,0 +1,43 @@
+# T90 baseline resolution rule — tier2-hostile
+#
+# Maps active anti-bot vendors (DataDome, PerimeterX, Akamai Bot Manager,
+# plus the Tier 2 challenge vendors that share the same escalation
+# posture) to the `tier2-hostile` playbook.
+#
+# Precedence: this rule has the highest priority in the baseline bundle
+# (`priority = 0`). When any of the listed vendors cross the
+# confidence/score gate, the resolver selects `tier2-hostile`
+# regardless of which other vendors also matched — the "escalate to
+# the strongest vendor" rule documented in the module rustdoc.
+id = "tier2-hostile"
+playbook_id = "tier2-hostile"
+target_class = "high_security"
+priority = 0
+merge_strategy = "strongest_vendor"
+description = "Hostile anti-bot vendors → tier2-hostile playbook"
+min_confidence = 0.60
+min_score = 5
+
+[[vendors]]
+vendor = "datadome"
+weight = 10
+
+[[vendors]]
+vendor = "perimeter_x"
+weight = 10
+
+[[vendors]]
+vendor = "akamai"
+weight = 10
+
+[[vendors]]
+vendor = "kasada"
+weight = 9
+
+[[vendors]]
+vendor = "imperva"
+weight = 9
+
+[[vendors]]
+vendor = "shape_security"
+weight = 9

@@ -36,6 +36,16 @@
       "title": "Assessments by Escalation Level",
       "type": "bar",
       "query": "slo_escalation_level_total"
+    },
+    {
+      "title": "Change-Feed Events by Classification (T88)",
+      "type": "bar",
+      "query": "change_feed_events_total"
+    },
+    {
+      "title": "Change-Feed Detection Cycles (T88)",
+      "type": "stat",
+      "query": "change_feed_runs_total"
     }
   ]
 }
