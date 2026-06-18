@@ -11,6 +11,11 @@
 #   threshold  – minimum pass score in the range 0.0–1.0 (default: 0.90)
 #   label      – human-readable name shown in probe output and PR/issue bodies
 #   advisory   – when true, a failure opens an issue but does NOT block the build
+#
+# The companion file `tools/stealth-canary/data/required-targets.toml`
+# enumerates the **non-advisory** (hard-fail) target set with ownership
+# / runbook / artifact pointers. The validate_stealth_canary.py script
+# enforces that every label referenced there is declared here.
 
 # ── Synthetic check ─────────────────────────────────────────────────────────
 # Navigates to about:blank, which loads instantly and has no external
@@ -21,6 +26,22 @@
 url       = "about:blank"
 label     = "synthetic-injection"
 threshold = 0.95
+
+# ── T58 Tier 1 anti-bot observatory targets ──────────────────────────────────
+# Open-source fingerprint observatories (CI-safe, no auth required).
+# Pairs with the optional `STYGIAN_TIER1_BASELINE_CREEPJS` /
+# `STYGIAN_TIER1_BASELINE_BROWSERSCAN` env vars (T58 closure) and the
+# T84 trend-aware hard-gate in `tools/stealth-canary/`.
+
+[[canary]]
+url       = "https://abrahamjuliot.github.io/creepjs/"
+label     = "creepjs"
+threshold = 0.50
+
+[[canary]]
+url       = "https://www.browserscan.net/"
+label     = "browserscan"
+threshold = 0.90
 
 # ── Real-world checks (advisory) ────────────────────────────────────────────
 # These test against sites that run their own bot-detection suites.  A drop

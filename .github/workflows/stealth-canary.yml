@@ -21,6 +21,8 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   THRESHOLD: ${{ inputs.threshold || '0.95' }}
+  HISTORY_PATH: history/canary-history.jsonl
+  REQUIRED_TARGETS: tools/stealth-canary/data/required-targets.toml
 
 jobs:
   # ── Stage 1: Run verify_stealth against configured canary targets ────────
@@ -57,6 +59,13 @@ jobs:
 
       - name: Build stealth probe
         run: cargo build --example stealth_probe --all-features
+
+      - name: Restore trend history
+        uses: actions/cache@v5
+        with:
+          path: history
+          key: ${{ runner.os }}-stealth-canary-history-v1
+          restore-keys: ${{ runner.os }}-stealth-canary-history-
 
       - name: Run stealth probe (configured canaries)
         id: probe
@@ -145,12 +154,53 @@ jobs:
           fi
 
           jq -r '
-            "## Stealth Canary Results",
+            "## Stealth Canary Probe Results",
             "",
             "| label | url | threshold | score_pct | ok | advisory |",
             "|---|---|---:|---:|---|---|",
             (.[] | "| \(.label) | \(.url) | \(.threshold) | \((.score_pct // 0)) | \(.ok) | \(.advisory) |")
           ' probe-report.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run trend detector (T84)
+        id: trend
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -u
+          mkdir -p history
+          python3 tools/stealth-canary/trend_cli.py \
+            --probe-report probe-report.json \
+            --canary-config .github/stealth-canary.toml \
+            --required-targets "${REQUIRED_TARGETS}" \
+            --history "${HISTORY_PATH}" \
+            --run-id "${GITHUB_RUN_ID}" \
+            --run-url "${GITHUB_RUN_URL}" \
+            --verdict canary-verdict.json \
+            --summary canary-summary.md \
+            --artifact probe-report.json \
+            --artifact probe-stderr.txt \
+            --artifact "${HISTORY_PATH}" \
+            --artifact tools/stealth-canary/data/required-targets.toml
+          TREND_EXIT=$?
+          set +e
+
+          if [[ "${TREND_EXIT}" -ne 0 ]]; then
+            echo "trend_regression=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "trend_regression=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Append the trend summary to the job summary alongside the probe results.
+          cat canary-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Persist trend history for next run
+        if: always()
+        run: |
+          mkdir -p history
+          if [[ -f "${HISTORY_PATH}" ]]; then
+            cp "${HISTORY_PATH}" history/canary-history.jsonl
+          fi
 
       - name: Upload probe report
         if: always()
@@ -161,8 +211,18 @@ jobs:
             probe-report.json
             probe-stderr.txt
 
+      - name: Upload trend artifacts (T84)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trend-report
+          path: |
+            canary-verdict.json
+            canary-summary.md
+            history/canary-history.jsonl
+
       - name: Create or update regression issue
-        if: steps.probe.outputs.issue == 'true'
+        if: steps.probe.outputs.issue == 'true' || steps.trend.outputs.trend_regression == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -185,6 +245,15 @@ jobs:
             } | head -20
           )"
 
+          TREND_FAILS="$(
+            jq -r '
+              .verdicts
+              | to_entries[]
+              | select(.value.is_hard_fail == true)
+              | "- **\(.key)**: status=\(.value.status) current=\(.value.current_score) rolling_mean=\(.value.rolling_mean // "n/a") reason=\(.value.reason)"
+            ' canary-verdict.json 2>/dev/null
+          )"
+
           if [[ -z "${FAILED_TARGETS}" ]]; then
             FAILED_TARGETS="_(none parsed; see uploaded probe report)_"
           fi
@@ -193,23 +262,58 @@ jobs:
             FAILED_CHECKS="_(see uploaded probe report)_"
           fi
 
+          if [[ -z "${TREND_FAILS}" ]]; then
+            TREND_FAILS="_(no trend-axis hard-fails)_"
+          fi
+
+          OWNERSHIP_BLOCK="$(
+            jq -r '
+              .required_labels as $labels
+              | ["label", "owner", "secondary", "runbook"]
+              | join(" | ")
+              , "--- | --- | --- | ---"
+              , (
+                $labels[]
+                | "- \(.) | see `tools/stealth-canary/data/required-targets.toml` | see data file | see data file"
+              )
+            ' canary-verdict.json 2>/dev/null
+          )"
+
           cat > "${ISSUE_BODY_FILE}" <<EOF
           ## Stealth regression detected
 
           **Date**: ${DATE}
 
-          The daily stealth canary detected one or more failing targets from \`.github/stealth-canary.toml\`.
+          The daily stealth canary detected one or more failing targets from \`.github/stealth-canary.toml\`, **or** the T84 trend detector flagged a regression over the rolling window.
 
-          ### Failed targets
+          ### Failed targets (probe axis)
+
           ${FAILED_TARGETS}
 
           ### Failed checks
+
           ${FAILED_CHECKS}
 
-          ### Details
-          Run: ${RUN_URL}
+          ### Trend-axis hard-fails (T84)
 
-          Download the \`probe-report\` artifact from the run above for the full JSON report and stderr output.
+          ${TREND_FAILS}
+
+          ### Ownership & runbook
+
+          ${OWNERSHIP_BLOCK}
+
+          Full ownership / runbook / artifact pointers live in \`tools/stealth-canary/data/required-targets.toml\` and the rendered Markdown in the workflow step summary.
+
+          ### Artifacts
+
+          Download these artifacts from the run for the full diagnostic context:
+
+          - \`probe-report\` — raw per-target JSON + stderr (\`stealth_probe\` output)
+          - \`trend-report\` — verdict JSON, Markdown summary, and the rolling history JSONL
+
+          ### Details
+
+          Run: ${RUN_URL}
           EOF
 
           EXISTING=$(gh issue list \
@@ -227,9 +331,14 @@ jobs:
           fi
 
       - name: Fail if hard regression detected
-        if: steps.probe.outputs.regression == 'true'
+        if: steps.probe.outputs.regression == 'true' || steps.trend.outputs.trend_regression == 'true'
         run: |
-          echo "❌ Stealth regression detected (hard fail)"
+          echo "Stealth regression detected (hard fail)"
+          if [[ "${{ steps.probe.outputs.regression }}" == "true" ]]; then
+            echo "- probe axis: at least one non-advisory canary target failed its threshold"
+          fi
+          if [[ "${{ steps.trend.outputs.trend_regression }}" == "true" ]]; then
+            echo "- trend axis: T84 trend detector flagged a regression over the rolling window"
+          fi
           echo "Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           exit 1
-

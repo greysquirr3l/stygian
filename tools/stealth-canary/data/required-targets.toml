@@ -1,0 +1,70 @@
+# Stealth canary — required non-advisory (hard-fail) target set (T84).
+#
+# Each entry below is a target that MUST pass for the canary workflow
+# to succeed. Targets listed here are the merge-blocking floor of the
+# stealth CI gate; a failure here fails the workflow (exit 1), opens a
+# "Stealth regression detected" issue, and surfaces in the workflow
+# step summary.
+#
+# Advisory targets (sannysoft, vastel-bot-detector, etc.) live in
+# `.github/stealth-canary.toml` with `advisory = true`. They open
+# issues but never fail the workflow.
+#
+# The workflow uses this file to:
+#   1. Decide which target labels count as hard-fail (any label that
+#      is present in this file is hard-fail by definition; the
+#      `advisory` flag in `.github/stealth-canary.toml` is also
+#      respected, but presence in this file is the binding signal).
+#   2. Emit the ownership / runbook / artifact pointers in the
+#      Markdown summary.
+#   3. Drive the trend-aware gating (the required target set is the
+#      set of trend keys; the trend signal is computed per target).
+#
+# Fields:
+#   label       — must match a `label` in `.github/stealth-canary.toml`
+#   url         — informational; the live URL is sourced from
+#                 `.github/stealth-canary.toml`
+#   threshold   — informational; the live threshold is sourced from
+#                 `.github/stealth-canary.toml`
+#   description — one-line summary shown in the Markdown summary
+#   owner       — primary on-call team / GitHub handle
+#   secondary   — secondary on-call team / GitHub handle (optional)
+#   runbook     — relative path or URL to the operational runbook
+#   artifacts   — list of artifact paths/URLs produced on failure
+#                 (HAR captures, canary JSON, screenshots, …)
+
+[[required]]
+label       = "synthetic-injection"
+url         = "about:blank"
+threshold   = 0.95
+description = "Synthetic self-test: about:blank + Advanced stealth. Scores below 0.95 mean our own injection scripts are broken."
+owner       = "@greysquirr3l"
+secondary   = "@stygian-charon-on-call"
+runbook     = "docs/stealth-canary-governance.md#synthetic-injection"
+artifacts   = ["probe-report.json", "probe-stderr.txt", "history/canary-history.jsonl"]
+
+# ── T58 Tier 1 anti-bot observatory targets ──────────────────────────────────
+# These are the same targets the Tier 1 non-regression test in
+# `stygian-browser::validation::tests::tier1_non_regression_against_optional_baseline`
+# uses (CreepJS + BrowserScan). They are CI-safe (no auth required) and
+# serve as the canary's open-internet floor.
+
+[[required]]
+label       = "creepjs"
+url         = "https://abrahamjuliot.github.io/creepjs/"
+threshold   = 0.50
+description = "CreepJS open-source fingerprint observatory (Tier 1). Detects surface-shape leaks (navigator, prototypes, fonts, canvas)."
+owner       = "@greysquirr3l"
+secondary   = "@stygian-charon-on-call"
+runbook     = "docs/stealth-canary-governance.md#creepjs"
+artifacts   = ["probe-report.json", "probe-stderr.txt", "history/canary-history.jsonl"]
+
+[[required]]
+label       = "browserscan"
+url         = "https://www.browserscan.net/"
+threshold   = 0.90
+description = "BrowserScan authenticity percentage (Tier 1). Detects automation/timing/canvas/navigator drift."
+owner       = "@greysquirr3l"
+secondary   = "@stygian-charon-on-call"
+runbook     = "docs/stealth-canary-governance.md#browserscan"
+artifacts   = ["probe-report.json", "probe-stderr.txt", "history/canary-history.jsonl"]

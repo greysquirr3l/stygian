@@ -1,0 +1,71 @@
+name: Stealth Gate Audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-required-check:
+    name: Verify required status check for stealth gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Verify branch protection requires stealth check on main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          TARGET_BRANCH: main
+        run: |
+          set -euo pipefail
+
+          query='query($owner:String!, $repo:String!) {
+            repository(owner:$owner, name:$repo) {
+              branchProtectionRules(first:100) {
+                nodes {
+                  pattern
+                  requiresStatusChecks
+                  requiredStatusCheckContexts
+                }
+              }
+            }
+          }'
+
+          json=$(gh api graphql -f query="$query" -F owner="$OWNER" -F repo="$REPO")
+
+          contexts=$(
+            printf '%s' "$json" | jq -r --arg branch "$TARGET_BRANCH" '
+              .data.repository.branchProtectionRules.nodes
+              | map(select(.pattern == $branch and .requiresStatusChecks == true))
+              | .[0].requiredStatusCheckContexts // []
+              | .[]
+            '
+          )
+
+          if [[ -z "$contexts" ]]; then
+            echo "No required status check contexts found for branch protection pattern '$TARGET_BRANCH'." >&2
+            echo "Expected a required status check containing 'Stealth probe'." >&2
+            exit 1
+          fi
+
+          if ! printf '%s\n' "$contexts" | grep -q 'Stealth probe'; then
+            echo "Required status checks for '$TARGET_BRANCH' do not include a stealth gate." >&2
+            echo "Found contexts:" >&2
+            printf '%s\n' "$contexts" >&2
+            echo "Expected a context containing 'Stealth probe'." >&2
+            exit 1
+          fi
+
+          echo "Stealth required status check is configured for '$TARGET_BRANCH'."
+          {
+            echo "## Stealth Gate Audit"
+            echo
+            echo "Verified required status checks for branch protection pattern '$TARGET_BRANCH'."
+            echo
+            echo "Configured contexts:"
+            printf '%s\n' "$contexts" | sed 's/^/- /'
+          } >> "$GITHUB_STEP_SUMMARY"
