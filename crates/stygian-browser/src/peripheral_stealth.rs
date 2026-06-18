@@ -54,6 +54,7 @@ use crate::profile::{FingerprintProfile, Os};
 /// assert!(cfg.pdf_viewer);
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)] // public config struct — 7 orthogonal peripheral stealth toggles read more clearly as bools than a bitmask
 pub struct PeripheralStealthConfig {
     /// Adjust iframe `contentWindow.innerWidth` to differ from parent.
     pub iframe_inner_width: bool,

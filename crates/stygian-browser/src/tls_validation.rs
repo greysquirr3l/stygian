@@ -76,6 +76,7 @@ pub const CHROME_136_HTTP2_SETTINGS: &[(u32, u32)] = &[
 /// assert!(report.is_ok()); // empty report with all-match defaults is ok
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[allow(clippy::struct_excessive_bools)] // mirrors the wire format of the per-check TLS validation report — 4 orthogonal match booleans read more clearly as bools
 pub struct TlsValidationReport {
     /// The expected JA3 hash (from reference captures).
     pub ja3_expected: String,

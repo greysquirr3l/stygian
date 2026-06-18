@@ -204,6 +204,12 @@ pub struct BenchmarkReport {
 
 impl BenchmarkReport {
     /// Serialize the report as deterministic pretty JSON.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`serde_json::Error`] if any of the report fields cannot
+    /// be serialised (this should not occur for the supported numeric,
+    /// string, and `Vec<BenchmarkItem>` fields).
     pub fn to_json_pretty(&self) -> Result<String, serde_json::Error> {
         let mut root = Map::new();
         root.insert(

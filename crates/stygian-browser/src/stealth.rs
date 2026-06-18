@@ -25,6 +25,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::freshness::signature_hash;
+
 // ─── StealthConfig ────────────────────────────────────────────────────────────
 
 /// Feature flags controlling which stealth techniques are active.
@@ -37,6 +39,7 @@ use serde::{Deserialize, Serialize};
 /// assert!(cfg.spoof_navigator);
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)] // public, stable config type — 5 orthogonal stealth flags read more clearly as bools than as a bitmask
 pub struct StealthConfig {
     /// Override navigator properties (webdriver, platform, userAgent, etc.)
     pub spoof_navigator: bool,
@@ -64,11 +67,13 @@ impl Default for StealthConfig {
 
 impl StealthConfig {
     /// All stealth features enabled (maximum evasion).
+    #[must_use]
     pub fn paranoid() -> Self {
         Self::default()
     }
 
     /// Only navigator and CDP protection (low overhead).
+    #[must_use]
     pub const fn minimal() -> Self {
         Self {
             spoof_navigator: true,
@@ -80,6 +85,7 @@ impl StealthConfig {
     }
 
     /// All stealth features disabled.
+    #[must_use]
     pub const fn disabled() -> Self {
         Self {
             spoof_navigator: false,
@@ -129,6 +135,7 @@ pub struct NavigatorProfile {
 
 impl NavigatorProfile {
     /// A typical Windows 10 Chrome 131 profile.
+    #[must_use]
     pub fn windows_chrome() -> Self {
         Self {
             user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
@@ -147,6 +154,7 @@ impl NavigatorProfile {
     }
 
     /// A typical macOS Chrome 131 profile.
+    #[must_use]
     pub fn mac_chrome() -> Self {
         Self {
             user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 \
@@ -163,6 +171,7 @@ impl NavigatorProfile {
     }
 
     /// A typical Linux Chrome 131 profile (common in data-centre environments).
+    #[must_use]
     pub fn linux_chrome() -> Self {
         Self {
             user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 \
@@ -176,6 +185,38 @@ impl NavigatorProfile {
             webgl_vendor: "Mesa/X.org".to_string(),
             webgl_renderer: "llvmpipe (LLVM 15.0.7, 256 bits)".to_string(),
         }
+    }
+
+    /// Stable signature hash for this navigator profile.
+    ///
+    /// Used by the freshness contract layer to detect identity
+    /// rotation: equal profiles produce equal hashes, and any field
+    /// change rotates the signature. The hash is deterministic and
+    /// I/O-free.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_browser::stealth::NavigatorProfile;
+    ///
+    /// let p = NavigatorProfile::windows_chrome();
+    /// let sig = p.signature();
+    /// assert!(sig.starts_with("fnv64:"));
+    /// assert_eq!(sig, NavigatorProfile::windows_chrome().signature());
+    /// ```
+    #[must_use]
+    pub fn signature(&self) -> String {
+        use std::fmt::Write as _;
+        let mut buf = String::new();
+        let _ = writeln!(&mut buf, "ua={}", self.user_agent);
+        let _ = writeln!(&mut buf, "platform={}", self.platform);
+        let _ = writeln!(&mut buf, "vendor={}", self.vendor);
+        let _ = writeln!(&mut buf, "hw={}", self.hardware_concurrency);
+        let _ = writeln!(&mut buf, "dm={}", self.device_memory);
+        let _ = writeln!(&mut buf, "tp={}", self.max_touch_points);
+        let _ = writeln!(&mut buf, "webgl_vendor={}", self.webgl_vendor);
+        let _ = write!(&mut buf, "webgl_renderer={}", self.webgl_renderer);
+        signature_hash(&[buf.as_str()])
     }
 }
 
@@ -207,6 +248,7 @@ pub struct StealthProfile {
 
 impl StealthProfile {
     /// Build a new profile from config flags and identity values.
+    #[must_use]
     pub const fn new(config: StealthConfig, navigator: NavigatorProfile) -> Self {
         Self { config, navigator }
     }
@@ -215,6 +257,7 @@ impl StealthProfile {
     /// `Page.addScriptToEvaluateOnNewDocument`.
     ///
     /// Returns an empty string if all stealth flags are disabled.
+    #[must_use]
     pub fn injection_script(&self) -> String {
         let mut parts: Vec<String> = Vec::new();
 
@@ -867,6 +910,19 @@ mod tests {
     fn disabled_config_produces_empty_script() {
         let p = StealthProfile::new(StealthConfig::disabled(), NavigatorProfile::default());
         assert_eq!(p.injection_script(), "");
+    }
+
+    #[test]
+    fn navigator_signature_is_stable_and_changes_with_profile() {
+        let a = NavigatorProfile::windows_chrome().signature();
+        let b = NavigatorProfile::windows_chrome().signature();
+        assert_eq!(a, b, "identical profiles must produce equal signatures");
+        let c = NavigatorProfile::mac_chrome().signature();
+        assert_ne!(
+            a, c,
+            "different profiles must produce different signatures"
+        );
+        assert!(a.starts_with("fnv64:"));
     }
 
     #[test]

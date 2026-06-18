@@ -91,6 +91,7 @@ impl SessionSnapshot {
     /// Returns `true` if the snapshot has exceeded its TTL.
     ///
     /// Always returns `false` when no TTL is set.
+    #[must_use]
     pub fn is_expired(&self) -> bool {
         let Some(ttl) = self.ttl_secs else {
             return false;
@@ -103,6 +104,7 @@ impl SessionSnapshot {
     }
 
     /// Age of the snapshot.
+    #[must_use]
     pub fn age(&self) -> Duration {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)

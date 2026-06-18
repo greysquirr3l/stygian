@@ -60,6 +60,7 @@ pub enum HeadlessMode {
 
 impl HeadlessMode {
     /// Read from `STYGIAN_HEADLESS_MODE` env var (`new`/`legacy`).
+    #[must_use]
     pub fn from_env() -> Self {
         match std::env::var("STYGIAN_HEADLESS_MODE")
             .unwrap_or_default()
@@ -106,6 +107,7 @@ impl StealthLevel {
     }
 
     /// Parse `source_url` from `STYGIAN_SOURCE_URL` (`0` disables).
+    #[must_use]
     pub fn from_env() -> Self {
         match std::env::var("STYGIAN_STEALTH_LEVEL")
             .unwrap_or_default()
@@ -342,6 +344,7 @@ impl Default for BrowserConfig {
 
 impl BrowserConfig {
     /// Create a configuration builder with defaults pre-populated.
+    #[must_use]
     pub fn builder() -> BrowserConfigBuilder {
         BrowserConfigBuilder {
             config: Self::default(),
@@ -428,6 +431,7 @@ impl BrowserConfig {
     ///
     /// Returns the anti-detection baseline args merged with any user-supplied
     /// extras from [`BrowserConfig::args`].
+    #[must_use]
     pub fn effective_args(&self) -> Vec<String> {
         let mut args = vec![
             "--disable-blink-features=AutomationControlled".to_string(),
@@ -478,6 +482,13 @@ impl BrowserConfig {
     /// let errors = cfg.validate().unwrap_err();
     /// assert!(!errors.is_empty());
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(Vec<String>)` listing every validation failure when
+    /// one or more invariant is violated (pool sizing, timeouts, argument
+    /// shapes, etc.). An empty `Err` vec is never produced — the `Ok(())`
+    /// path means every check passed.
     pub fn validate(&self) -> Result<(), Vec<String>> {
         let mut errors: Vec<String> = Vec::new();
 
@@ -890,6 +901,7 @@ impl BrowserConfigBuilder {
     }
 
     /// Build the final [`BrowserConfig`].
+    #[must_use]
     pub fn build(self) -> BrowserConfig {
         self.config
     }

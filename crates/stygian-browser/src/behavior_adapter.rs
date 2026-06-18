@@ -252,6 +252,7 @@ impl PolymorphicBehaviorAdapter {
     }
 
     /// Return the selected adapter kind.
+    #[must_use]
     pub const fn kind(&self) -> AdapterKind {
         self.kind
     }

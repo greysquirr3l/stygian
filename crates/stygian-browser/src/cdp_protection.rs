@@ -80,6 +80,7 @@ impl CdpFixMode {
     ///
     /// Accepts (case-insensitive): `addBinding`, `isolated`, `enableDisable`, `none`.
     /// Falls back to [`CdpFixMode::AddBinding`] for any unknown value.
+    #[must_use]
     pub fn from_env() -> Self {
         match std::env::var("STYGIAN_CDP_FIX_MODE")
             .unwrap_or_default()
@@ -139,6 +140,7 @@ impl CdpProtection {
     /// let p = CdpProtection::new(CdpFixMode::AddBinding, None);
     /// assert_eq!(p.mode, CdpFixMode::AddBinding);
     /// ```
+    #[must_use]
     pub const fn new(mode: CdpFixMode, source_url: Option<String>) -> Self {
         Self { mode, source_url }
     }
@@ -147,6 +149,7 @@ impl CdpProtection {
     ///
     /// - `STYGIAN_CDP_FIX_MODE` → [`CdpFixMode::from_env`]
     /// - `STYGIAN_SOURCE_URL`   → custom source URL string (`0` to disable)
+    #[must_use]
     pub fn from_env() -> Self {
         Self {
             mode: CdpFixMode::from_env(),
@@ -172,6 +175,7 @@ impl CdpProtection {
     /// assert!(script.contains("bundle.js"));
     /// assert!(!script.is_empty());
     /// ```
+    #[must_use]
     pub fn build_injection_script(&self) -> String {
         if self.mode == CdpFixMode::None {
             return String::new();
@@ -237,6 +241,7 @@ impl CdpProtection {
     }
 
     /// Whether protection is active (mode is not [`CdpFixMode::None`]).
+    #[must_use]
     pub fn is_active(&self) -> bool {
         self.mode != CdpFixMode::None
     }

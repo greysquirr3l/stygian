@@ -124,6 +124,14 @@ impl BrowserPool {
     /// # Ok(())
     /// # }
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::Pool`] when the pool fails to warm up the
+    /// minimum number of browser instances (e.g. zero `min_size`, browser
+    /// launch failures, CDP handshake errors), or
+    /// [`BrowserError::Config`] when `BrowserConfig::validate` reports
+    /// invariant violations before the warm-up phase runs.
     pub async fn new(config: BrowserConfig) -> Result<Arc<Self>> {
         let max_size = config.pool.max_size;
         let min_size = config.pool.min_size;
@@ -150,6 +158,39 @@ impl BrowserPool {
         ));
 
         Ok(Arc::new(pool))
+    }
+
+    /// Construct a [`BrowserPool`] without launching any browser or
+    /// spawning background tasks. Intended for unit tests that only
+    /// exercise code paths that read pool state (e.g. freshness
+    /// short-circuits in [`AcquisitionRunner`][crate::acquisition::AcquisitionRunner]).
+    ///
+    /// Any attempt to actually acquire a browser from a placeholder
+    /// pool will fail with [`BrowserError::PoolExhausted`] after a
+    /// short bounded wait. The placeholder uses `max_size = 0` (so
+    /// the slow-path launch attempt is skipped) and a 50 ms
+    /// `acquire_timeout` (so the poll-for-release path returns
+    /// `PoolExhausted` deterministically rather than racing the
+    /// runner's `total_timeout`). This keeps unit tests
+    /// deterministic and avoids the 10 s `launch_timeout` that the
+    /// default config would otherwise impose.
+    #[cfg(test)]
+    #[must_use]
+    pub fn placeholder() -> Arc<Self> {
+        use std::time::Duration;
+        let mut config = BrowserConfig::default();
+        config.pool.acquire_timeout = Duration::from_millis(50);
+        config.launch_timeout = Duration::from_millis(50);
+        Arc::new(Self {
+            config: Arc::new(config),
+            semaphore: Arc::new(Semaphore::new(0)),
+            inner: Arc::new(Mutex::new(PoolInner {
+                shared: std::collections::VecDeque::new(),
+                scoped: std::collections::HashMap::new(),
+            })),
+            active_count: Arc::new(AtomicUsize::new(0)),
+            max_size: 0,
+        })
     }
 
     // ─── Warmup ───────────────────────────────────────────────────────────────
@@ -688,6 +729,7 @@ impl BrowserPool {
     /// # Ok(())
     /// # }
     /// ```
+    #[must_use]
     pub fn stats(&self) -> PoolStats {
         PoolStats {
             active: self.active_count.load(Ordering::Relaxed),
@@ -732,6 +774,7 @@ impl BrowserHandle {
     /// Borrow the underlying [`BrowserInstance`].
     ///
     /// Returns `None` if the handle has already been released via [`release`](Self::release).
+    #[must_use]
     pub const fn browser(&self) -> Option<&BrowserInstance> {
         self.instance.as_ref()
     }
@@ -746,6 +789,7 @@ impl BrowserHandle {
     /// The context that owns this handle, if scoped via [`BrowserPool::acquire_for`].
     ///
     /// Returns `None` for handles obtained with [`BrowserPool::acquire`].
+    #[must_use]
     pub fn context_id(&self) -> Option<&str> {
         self.context_id.as_deref()
     }
@@ -944,8 +988,8 @@ mod tests {
 
     #[test]
     fn pool_entry_last_used_ordering() {
-        use std::time::Duration;
-        let now = std::time::Instant::now();
+        use std::time::{Duration, Instant};
+        let now = Instant::now();
         let older = now.checked_sub(Duration::from_secs(400)).unwrap_or(now);
         let idle_timeout = Duration::from_mins(5);
         // Simulate eviction check: entry older than idle_timeout should be evicted

@@ -98,6 +98,7 @@ pub struct ProxyLocation {
 
 impl ProxyLocation {
     /// US East Coast (New York) preset.
+    #[must_use]
     pub fn new_us_east() -> Self {
         Self {
             latitude: 40.7128,
@@ -109,6 +110,7 @@ impl ProxyLocation {
     }
 
     /// US West Coast (Los Angeles) preset.
+    #[must_use]
     pub fn new_us_west() -> Self {
         Self {
             latitude: 34.0522,
@@ -120,6 +122,7 @@ impl ProxyLocation {
     }
 
     /// UK (London) preset.
+    #[must_use]
     pub fn new_uk() -> Self {
         Self {
             latitude: 51.5074,
@@ -131,6 +134,7 @@ impl ProxyLocation {
     }
 
     /// Central Europe (Frankfurt) preset.
+    #[must_use]
     pub fn new_eu_central() -> Self {
         Self {
             latitude: 50.1109,
@@ -142,6 +146,7 @@ impl ProxyLocation {
     }
 
     /// Asia Pacific (Singapore) preset.
+    #[must_use]
     pub fn new_apac() -> Self {
         Self {
             latitude: 1.3521,
@@ -201,6 +206,7 @@ impl WebRtcConfig {
     /// let cfg = WebRtcConfig { policy: WebRtcPolicy::AllowAll, ..Default::default() };
     /// assert!(cfg.is_permissive());
     /// ```
+    #[must_use]
     pub fn is_permissive(&self) -> bool {
         self.policy == WebRtcPolicy::AllowAll && self.location.is_none()
     }
@@ -219,6 +225,7 @@ impl WebRtcConfig {
     /// let args = cfg.chrome_args();
     /// assert!(args.iter().any(|a| a.contains("disable_non_proxied_udp")));
     /// ```
+    #[must_use]
     pub fn chrome_args(&self) -> Vec<String> {
         match self.policy {
             WebRtcPolicy::AllowAll => vec![],
@@ -243,6 +250,7 @@ impl WebRtcConfig {
     /// let script = cfg.injection_script();
     /// assert!(script.contains("RTCPeerConnection"));
     /// ```
+    #[must_use]
     pub fn injection_script(&self) -> String {
         let mut parts: Vec<String> = Vec::new();
 

@@ -655,6 +655,13 @@ impl FingerprintProfile {
     /// p.platform.max_touch_points = 3;
     /// assert!(p.validate().is_err());
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(Vec<String>)` listing every internal consistency
+    /// violation detected (mobile OS without touch points, desktop with
+    /// suspicious touch points, mismatched platform/user-agent pairs, etc.).
+    /// `Ok(())` is returned when no rule fires.
     pub fn validate(&self) -> Result<(), Vec<String>> {
         let mut errors: Vec<String> = Vec::new();
 

@@ -673,6 +673,61 @@ async fn parent_returns_node() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// `outer_html()` should include deeply nested descendants used by mesh-style
+/// page builders (for example, Wix Studio / Editor X wrappers).
+#[tokio::test]
+#[ignore = "requires Chrome"]
+async fn outer_html_includes_deep_mesh_descendants() -> Result<(), Box<dyn std::error::Error>> {
+    let instance = BrowserInstance::launch(test_config()).await?;
+    let mut page = instance.new_page().await?;
+
+    let html = r#"
+<html><body>
+    <section data-block-level-container="ClassicSection">
+        <div data-mesh-id="mesh-container-1">
+            <div data-mesh-id="mesh-container-2">
+                <div data-mesh-id="mesh-container-3">
+                    <div class="wixui-rich-text" data-testid="richTextElement">
+                        <p>Mesh content here</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</body></html>
+"#;
+
+    page.navigate(
+        &data_url(html),
+        WaitUntil::Selector("[data-block-level-container=\"ClassicSection\"]".to_string()),
+        Duration::from_secs(15),
+    )
+    .await?;
+
+    let sections = page
+        .query_selector_all("[data-block-level-container=\"ClassicSection\"]")
+        .await?;
+    assert!(!sections.is_empty(), "expected at least one section");
+
+    let section = sections
+        .first()
+        .ok_or_else(|| std::io::Error::other("expected section node"))?;
+
+    let outer = section.outer_html().await?;
+    assert!(
+        outer.contains("data-mesh-id=\"mesh-container-3\""),
+        "outer_html should include deep mesh descendants; got: {outer}"
+    );
+    assert!(
+        outer.contains("Mesh content here"),
+        "outer_html should include deep text content; got: {outer}"
+    );
+
+    page.close().await?;
+    instance.shutdown().await?;
+    Ok(())
+}
+
 /// `next_sibling()` advances to the next element in the same parent.
 ///
 /// DOM: `<ul><li id="a">A</li><li id="b">B</li></ul>`
@@ -1009,4 +1064,678 @@ mod similarity_tests {
         instance.shutdown().await?;
         Ok(())
     }
+}
+
+// ─── Freshness contracts (T79) ────────────────────────────────────────────────
+
+/// End-to-end freshness rejection path:
+/// build a stale contract, hand it to the runner via
+/// `AcquisitionRequest::freshness_contract`, and assert that the
+/// runner rejects the request without contacting the network and
+/// reports a structured `stale_ttl` decision.
+///
+/// This exercises the integration of the freshness module into the
+/// `acquisition-runner` feature path on a live browser pool.
+///
+/// Run with:
+///
+/// ```sh
+/// cargo test -p stygian-browser --test integration \
+///     freshness_runner_rejects_stale_session -- --ignored --nocapture
+/// ```
+#[tokio::test]
+#[ignore = "requires real Chrome binary and external network access"]
+async fn freshness_runner_rejects_stale_session() -> Result<(), Box<dyn std::error::Error>> {
+    use stygian_browser::freshness::{FreshnessContract, FreshnessPolicyKind};
+    use stygian_browser::{AcquisitionMode, AcquisitionRequest, AcquisitionRunner};
+    use std::time::Duration;
+
+    let pool = BrowserPool::new(test_config()).await?;
+    let runner = AcquisitionRunner::new(pool);
+
+    // Build a contract that has clearly expired (1 ms TTL, captured an
+    // hour ago). The runner must reject before touching the browser.
+    let captured_ms = stygian_browser::freshness::unix_epoch_ms()
+        .saturating_sub(60 * 60 * 1_000);
+    let stale = FreshnessContract::with_signature(
+        "example.com",
+        "sha256:test-signature",
+        captured_ms,
+        Duration::from_millis(1),
+        FreshnessPolicyKind::Strict,
+    )?;
+
+    let request = AcquisitionRequest {
+        url: "https://example.com/".to_string(),
+        mode: AcquisitionMode::Fast,
+        total_timeout: Duration::from_secs(10),
+        freshness_contract: Some(stale),
+        ..AcquisitionRequest::default()
+    };
+
+    let result = runner.run(request).await;
+
+    assert!(!result.success, "stale contract must not succeed");
+    let report = result
+        .freshness
+        .as_ref()
+        .ok_or_else(|| std::io::Error::other("freshness report missing"))?;
+    assert!(report.decision.is_invalid(), "decision must be invalid");
+    assert_eq!(
+        report.decision.label(),
+        "stale_ttl",
+        "expected stale_ttl decision"
+    );
+    let reason = report
+        .decision
+        .reason()
+        .ok_or_else(|| std::io::Error::other("reason missing"))?;
+    assert_eq!(reason.contract_domain, "example.com");
+    assert_eq!(
+        reason.contract_signature.as_deref(),
+        Some("sha256:test-signature")
+    );
+    assert!(reason.elapsed_ms > reason.max_age_ms);
+    assert_eq!(result.attempted.len(), 0, "no stages should be attempted");
+    assert_eq!(result.failures.len(), 1);
+    assert_eq!(
+        result.failures.first().map(|f| f.kind),
+        Some(stygian_browser::StageFailureKind::Setup)
+    );
+
+    Ok(())
+}
+
+// ─── Cross-context coherence probes (T80) ─────────────────────────────────────
+
+/// End-to-end coherence probe path: navigate to a real page, run
+/// `CoherenceProbe::run`, and assert the report contains
+/// per-context identity surfaces plus (best-effort) drift
+/// diagnostics.
+///
+/// This exercises the cross-context probe integration on a live
+/// browser pool. The probe is **default-on**, so no feature gate
+/// is required. Worker probes are best-effort: when the runtime
+/// does not support `Worker`, the worker slot is reported as
+/// `Skipped` and the test still passes.
+///
+/// Run with:
+///
+/// ```sh
+/// cargo test -p stygian-browser --test integration \
+///     coherence_probe_emits_per_context_report -- --ignored --nocapture
+/// ```
+#[tokio::test]
+#[ignore = "requires real Chrome binary and external network access"]
+async fn coherence_probe_emits_per_context_report() -> Result<(), Box<dyn std::error::Error>> {
+    use stygian_browser::coherence::CoherenceProbe;
+
+    let pool = BrowserPool::new(test_config()).await?;
+    let handle = pool.acquire().await?;
+    let mut page = handle
+        .browser()
+        .ok_or("browser handle no longer valid")?
+        .new_page()
+        .await?;
+
+    page.navigate(
+        "https://example.com",
+        WaitUntil::DomContentLoaded,
+        Duration::from_secs(30),
+    )
+    .await?;
+
+    let probe = CoherenceProbe::new();
+    let report = probe.run(&page).await?;
+
+    // Top-level + iframe contexts must be observed on a live browser.
+    assert!(
+        report.top.is_observed(),
+        "top-level context must be observed, got: {:?}",
+        report.top
+    );
+    assert!(
+        report.iframe.is_observed(),
+        "iframe context must be observed, got: {:?}",
+        report.iframe
+    );
+    // Worker context is best-effort: observed when supported,
+    // skipped otherwise. Either is acceptable.
+    if let Some(surface) = report.worker.surface() {
+        // When observed, user_agent MUST be present (every browser
+        // exposes navigator.userAgent in a worker).
+        assert!(
+            surface.user_agent.is_some(),
+            "worker observation must include user_agent"
+        );
+    }
+    assert!(
+        report.observed_context_count() >= 2,
+        "expected at least top + iframe observed, got: {}/3",
+        report.observed_context_count()
+    );
+
+    // Top ↔ iframe should be coherent on a clean browser (no UA,
+    // platform, or languages drift).
+    let top_iframe_drifts: Vec<&stygian_browser::coherence::DriftDiagnostic> = report
+        .drifts
+        .iter()
+        .filter(|d| {
+            d.context_a == stygian_browser::coherence::ContextKind::Top
+                && d.context_b == stygian_browser::coherence::ContextKind::Iframe
+        })
+        .collect();
+    let top_iframe_hard: Vec<&&stygian_browser::coherence::DriftDiagnostic> = top_iframe_drifts
+        .iter()
+        .filter(|d| {
+            d.severity == stygian_browser::coherence::DriftSeverity::Hard
+        })
+        .collect();
+    assert!(
+        top_iframe_hard.is_empty(),
+        "no hard drift should exist between top and iframe, got: {top_iframe_hard:?}"
+    );
+
+    // Sanity: the report is JSON-serialisable.
+    let _ = serde_json::to_string(&report)?;
+
+    page.close().await?;
+    handle.release().await;
+    Ok(())
+}
+
+// ─── Replay defense (T81) ─────────────────────────────────────────────────────
+
+/// End-to-end replay-defense forced refresh path: drive a live
+/// browser through the `AcquisitionRunner` with a stale
+/// `ReplayDefenseContext` and confirm the runner
+/// 1. short-circuits with `ReplayDefenseTriggered`,
+/// 2. attaches a `ReplayDefenseReport` to the result, and
+/// 3. invalidates the sticky pool slots for the target host
+///    via `BrowserPool::release_context`.
+///
+/// The test uses a 1 s `rotation_interval` so a context captured
+/// 1 hour ago triggers a `RotationDue` decision — deterministic,
+/// no real signature drift required.
+///
+/// Run with:
+///
+/// ```sh
+/// cargo test -p stygian-browser --test integration \
+///     replay_defense_forces_refresh_on_signature_drift -- --ignored --nocapture
+/// ```
+#[tokio::test]
+#[ignore = "requires real Chrome binary and external network access"]
+async fn replay_defense_forces_refresh_on_signature_drift()
+-> Result<(), Box<dyn std::error::Error>> {
+    use stygian_browser::replay_defense::{ReplayDefensePolicy, ReplayDefenseState};
+    use stygian_browser::{AcquisitionMode, AcquisitionRequest, AcquisitionRunner};
+    use std::time::Duration;
+
+    let pool = BrowserPool::new(test_config()).await?;
+    let runner = AcquisitionRunner::new(pool);
+
+    // Capture the state 1 hour in the past with a 1 second
+    // rotation interval so the policy's `RotationDue` check fires
+    // immediately. The state carries a `sha256:` signature that the
+    // runner observes, so signature drift is also detected.
+    let captured_ms = stygian_browser::replay_defense::unix_epoch_ms()
+        .saturating_sub(60 * 60 * 1_000);
+    let state = ReplayDefenseState::with_fingerprint(
+        "example.com",
+        "sha256:test-signature",
+        Some("nonce-001"),
+        captured_ms,
+    );
+    let policy = ReplayDefensePolicy {
+        rotation_interval: Duration::from_secs(1),
+        nonce_validity_window: Duration::from_secs(1),
+        force_reset_on_drift: true,
+    };
+    let context = stygian_browser::ReplayDefenseContext::with_policy(policy, state);
+
+    let request = AcquisitionRequest {
+        url: "https://example.com/".to_string(),
+        mode: AcquisitionMode::Fast,
+        total_timeout: Duration::from_secs(10),
+        replay_defense: Some(context),
+        ..AcquisitionRequest::default()
+    };
+
+    let result = runner.run(request).await;
+
+    assert!(!result.success, "replay defense must reject the run");
+    let report = result
+        .replay_defense
+        .as_ref()
+        .ok_or_else(|| std::io::Error::other("replay defense report missing"))?;
+    assert!(report.decision.is_invalid(), "decision must be invalid");
+    assert!(
+        report.forced_refresh,
+        "forced_refresh flag must be set, got: {report:?}"
+    );
+    // Either RotationDue or NonceExpired is acceptable here because
+    // both elapsed (1 hour) and nonce age (1 hour) exceed the 1 s
+    // windows.
+    let label = report.decision.label();
+    assert!(
+        label == "rotation_due" || label == "nonce_expired",
+        "expected rotation_due or nonce_expired, got: {label}"
+    );
+    assert_eq!(result.attempted.len(), 0, "no stages should be attempted");
+    assert_eq!(result.failures.len(), 1);
+    assert_eq!(
+        result.failures.first().map(|f| f.kind),
+        Some(stygian_browser::StageFailureKind::ReplayDefenseTriggered)
+    );
+
+    Ok(())
+}
+
+// ─── Transport realism (T82) ──────────────────────────────────────────────
+
+/// End-to-end transport-realism path: drive a live browser through
+/// the `AcquisitionRunner` with a [`TransportRealismContext`] and
+/// confirm the runner attaches a [`TransportRealismReport`] to the
+/// result that includes the documented additive JSON sections.
+///
+/// The test uses the Chrome 136 reference observation so the score
+/// resolves to a strong match without needing a real TLS capture.
+/// This proves the `AcquisitionResult::transport_realism` field is
+/// populated and the diagnostic payload (when forwarded through the
+/// [`DiagnosticReport::with_transport_realism`] builder) includes
+/// the new `transport_realism` section in a backward-compatible
+/// way.
+///
+/// Run with:
+///
+/// ```sh
+/// cargo test -p stygian-browser --test integration \
+///     transport_realism_section_appears_in_diagnostic_payload -- --ignored --nocapture
+/// ```
+#[tokio::test]
+#[ignore = "requires real Chrome binary and external network access"]
+async fn transport_realism_section_appears_in_diagnostic_payload()
+-> Result<(), Box<dyn std::error::Error>> {
+    use stygian_browser::diagnostic::DiagnosticReport;
+    use stygian_browser::transport_realism::{
+        TransportObservation, TransportProfile,
+    };
+    use stygian_browser::{
+        AcquisitionMode, AcquisitionRequest, AcquisitionRunner, TransportRealismContext,
+    };
+    use std::time::Duration;
+
+    let pool = BrowserPool::new(test_config()).await?;
+    let runner = AcquisitionRunner::new(pool);
+
+    // Chrome 136 reference observation → strong match, well-covered.
+    let observation = TransportObservation::chrome_136_reference();
+    let profile = TransportProfile::default();
+    let context = TransportRealismContext::with_observation(profile, observation);
+
+    let request = AcquisitionRequest {
+        url: "https://example.com/".to_string(),
+        mode: AcquisitionMode::Fast,
+        total_timeout: Duration::from_secs(15),
+        transport_realism: Some(context),
+        ..AcquisitionRequest::default()
+    };
+
+    let result = runner.run(request).await;
+
+    // The runner attaches a transport_realism report on every run
+    // where the context is supplied — success or failure.
+    let realism_report = result
+        .transport_realism
+        .as_ref()
+        .ok_or_else(|| std::io::Error::other("transport realism report missing"))?;
+    assert_eq!(realism_report.profile_name, "chrome-136");
+    assert!(
+        realism_report.compatibility.score > 0.5,
+        "chrome 136 reference observation should score high, got: {}",
+        realism_report.compatibility.score
+    );
+    assert!(
+        realism_report.compatibility.is_high_confidence(),
+        "coverage should be high, got: {:?}",
+        realism_report.compatibility
+    );
+    assert_eq!(realism_report.compatibility.total_checks, 3);
+
+    // DiagnosticReport::with_transport_realism wires the new section
+    // in. The JSON must contain the new `transport_realism` key but
+    // must NOT rename any pre-existing field — this is the
+    // backward-compatible contract.
+    let diagnostic = DiagnosticReport::new(Vec::new())
+        .with_transport_realism(realism_report.clone());
+    let json = serde_json::to_string(&diagnostic)?;
+    assert!(
+        json.contains("\"transport_realism\""),
+        "diagnostic JSON must include transport_realism section, got: {json}"
+    );
+    // Pre-existing fields are preserved.
+    assert!(
+        json.contains("\"checks\""),
+        "diagnostic JSON must preserve pre-existing checks field"
+    );
+    assert!(
+        json.contains("\"passed_count\""),
+        "diagnostic JSON must preserve pre-existing passed_count field"
+    );
+    // Round-trip: deserialize back and verify the section survives.
+    let restored: DiagnosticReport = serde_json::from_str(&json)?;
+    let restored_realism = restored
+        .transport_realism
+        .as_ref()
+        .ok_or_else(|| std::io::Error::other("restored transport realism missing"))?;
+    assert_eq!(restored_realism.profile_name, "chrome-136");
+    #[allow(clippy::float_cmp)]
+    let _ = (
+        restored_realism.compatibility.score,
+        realism_report.compatibility.score,
+    );
+    assert!((restored_realism.compatibility.score - realism_report.compatibility.score).abs() < 1e-9);
+
+    Ok(())
+}
+
+// ─── JavaScript integrity trap canary (T92) ──────────────────────────────────
+
+/// End-to-end integrity canary probe path: navigate to a real page,
+/// run the built-in [`IntegrityProbe`][stygian_browser::integrity_canary::IntegrityProbe]
+/// set via CDP `Runtime.evaluate`, parse each probe's JSON output
+/// into a [`ProbeFinding`][stygian_browser::integrity_canary::ProbeFinding],
+/// build an [`IntegrityCanaryReport`][stygian_browser::integrity_canary::IntegrityCanaryReport],
+/// and assert the report includes trap findings + mitigation hints.
+///
+/// The probe set is **default-on**, so no feature gate is required.
+/// On a clean browser the score is `0.0` (Clean classification) and
+/// no mitigation hints are emitted — the test still asserts the
+/// report carries the per-probe findings + score so downstream
+/// automation sees a stable schema even on clean runs.
+///
+/// Run with:
+///
+/// ```sh
+/// cargo test -p stygian-browser --test integration \
+///     integrity_canary_emits_trap_findings_and_hints -- --ignored --nocapture
+/// ```
+#[tokio::test]
+#[ignore = "requires real Chrome binary and external network access"]
+#[allow(clippy::too_many_lines)]
+async fn integrity_canary_emits_trap_findings_and_hints()
+-> Result<(), Box<dyn std::error::Error>> {
+    use stygian_browser::diagnostic::DiagnosticReport;
+    use stygian_browser::integrity_canary::{
+        all_probes, IntegrityCanaryReport, IntegrityProbeOutcome,
+        IntegrityRiskClassification,
+    };
+
+    let pool = BrowserPool::new(test_config()).await?;
+    let handle = pool.acquire().await?;
+    let mut page = handle
+        .browser()
+        .ok_or("browser handle no longer valid")?
+        .new_page()
+        .await?;
+
+    page.navigate(
+        "https://example.com",
+        WaitUntil::DomContentLoaded,
+        Duration::from_secs(30),
+    )
+    .await?;
+
+    // Run each probe against the live page and collect findings.
+    let mut findings = Vec::new();
+    for probe in all_probes() {
+        let raw: String = page.eval(probe.script).await?;
+        findings.push(probe.parse_output(&raw));
+    }
+
+    // Build the report. Even on a clean browser the report must
+    // carry the full finding set so the diagnostic payload schema
+    // is stable across runs.
+    let report = IntegrityCanaryReport::from_findings(findings.clone());
+    assert_eq!(
+        report.findings.len(),
+        all_probes().len(),
+        "report must carry one finding per probe in the catalogue"
+    );
+
+    // The aggregate score is in `[0.0, 1.0]` and the classification
+    // is one of the three documented bands.
+    assert!(
+        (0.0..=1.0).contains(&report.score.value),
+        "score must be in [0.0, 1.0], got: {}",
+        report.score.value
+    );
+    let classification = report.score.classification;
+    assert!(
+        matches!(
+            classification,
+            IntegrityRiskClassification::Clean
+                | IntegrityRiskClassification::Suspected
+                | IntegrityRiskClassification::Confirmed
+        ),
+        "classification must be Clean / Suspected / Confirmed, got: {classification:?}"
+    );
+
+    // Trap findings + mitigation hints: on a clean browser there
+    // are no traps so trap_findings and mitigation_hints are
+    // empty. The schema contract is that they're empty Vecs (not
+    // missing) so downstream automation can iterate them safely.
+    let fired_clean_or_skipped = report.findings.iter().all(|f| {
+        matches!(
+            f.outcome,
+            IntegrityProbeOutcome::Clean | IntegrityProbeOutcome::Skipped
+        )
+    });
+    if fired_clean_or_skipped {
+        assert!(
+            report.trap_findings.is_empty(),
+            "clean browser must produce no trap findings"
+        );
+        assert!(
+            report.mitigation_hints.is_empty(),
+            "clean browser must produce no mitigation hints"
+        );
+    } else {
+        // If any trap fired, verify the mitigation hint schema
+        // matches the documented contract.
+        for hint in &report.mitigation_hints {
+            assert!(
+                !hint.probe_id.is_empty(),
+                "mitigation hint must carry the probe id"
+            );
+            assert!(
+                !hint.hint.is_empty(),
+                "mitigation hint text must be non-empty"
+            );
+            assert!(
+                matches!(
+                    hint.outcome,
+                    IntegrityProbeOutcome::TrapSuspected
+                        | IntegrityProbeOutcome::TrapConfirmed
+                ),
+                "mitigation hint must reference a fired trap"
+            );
+        }
+    }
+
+    // DiagnosticReport integration: the canary report attaches
+    // additively without breaking the legacy schema.
+    let diagnostic =
+        DiagnosticReport::new(Vec::new()).with_integrity_canary(report.clone());
+    let json = serde_json::to_string(&diagnostic)?;
+    assert!(
+        json.contains("\"integrity_canary\""),
+        "diagnostic JSON must include integrity_canary section, got: {json}"
+    );
+    // Pre-existing fields are preserved.
+    assert!(
+        json.contains("\"checks\""),
+        "diagnostic JSON must preserve pre-existing checks field"
+    );
+    assert!(
+        json.contains("\"passed_count\""),
+        "diagnostic JSON must preserve pre-existing passed_count field"
+    );
+    // Round-trip: deserialize back and verify the section survives.
+    let restored: DiagnosticReport = serde_json::from_str(&json)?;
+    let restored_canary = restored
+        .integrity_canary
+        .as_ref()
+        .ok_or_else(|| std::io::Error::other("restored integrity_canary missing"))?;
+    assert_eq!(
+        restored_canary.score.classification, report.score.classification,
+        "classification must survive JSON round-trip"
+    );
+    assert_eq!(
+        restored_canary.findings.len(),
+        report.findings.len(),
+        "findings count must survive JSON round-trip"
+    );
+
+    Ok(())
+}
+
+// ─── Queue and interstitial detection routing (T94) ────────────────────────────
+
+/// End-to-end interstitial routing path: drive a live
+/// browser through the `AcquisitionRunner` with a
+/// classified `InterstitialContext` and confirm the
+/// runner
+/// 1. attaches the `RouterDecision` to the result,
+/// 2. short-circuits with `InterstitialRouted` for
+///    classified states, and
+/// 3. bypasses the generic ladder (no stages attempted).
+///
+/// The test attaches deterministic page signatures that
+/// classify as `HardBlock` (403 + "access denied"
+/// marker), `Queue` ("please wait" body marker), and
+/// `Transient` (3xx redirect). The hard-block and queue
+/// classifications must short-circuit; the transient one
+/// must fall through.
+///
+/// Run with:
+///
+/// ```sh
+/// cargo test -p stygian-browser --test integration \
+///     interstitial_routing_short_circuits_runner -- --ignored --nocapture
+/// ```
+#[tokio::test]
+#[ignore = "requires real Chrome binary and external network access"]
+async fn interstitial_routing_short_circuits_runner()
+-> Result<(), Box<dyn std::error::Error>> {
+    use stygian_browser::interstitial_router::PageSignature;
+    use stygian_browser::{InterstitialContext};
+    use stygian_browser::{
+        AcquisitionMode, AcquisitionRequest, AcquisitionRunner, StageFailureKind,
+    };
+    use std::time::Duration;
+
+    // Sub-test 1: hard-block classification must short-circuit.
+    {
+        let pool = BrowserPool::new(test_config()).await?;
+        let runner = AcquisitionRunner::new(pool);
+        let signature = PageSignature::new("https://example.com/blocked", Some(403))
+            .with_body_marker("access denied");
+        let context = InterstitialContext::new(signature);
+
+        let request = AcquisitionRequest {
+            url: "https://example.com/".to_string(),
+            mode: AcquisitionMode::Fast,
+            total_timeout: Duration::from_secs(10),
+            interstitial: Some(context),
+            ..AcquisitionRequest::default()
+        };
+
+        let result = runner.run(request).await;
+        let decision = result
+            .interstitial
+            .as_ref()
+            .ok_or_else(|| std::io::Error::other("interstitial decision missing"))?;
+        assert_eq!(decision.kind().label(), "hard_block");
+        assert!(decision.is_classified());
+        assert_eq!(result.attempted.len(), 0, "no stages attempted");
+        assert_eq!(result.failures.len(), 1);
+        assert_eq!(
+            result.failures.first().map(|f| f.kind),
+            Some(StageFailureKind::InterstitialRouted)
+        );
+    }
+
+    // Sub-test 2: queue classification also short-circuits.
+    {
+        let pool = BrowserPool::new(test_config()).await?;
+        let runner = AcquisitionRunner::new(pool);
+        let signature = PageSignature::new("https://example.com/queue", Some(200))
+            .with_body_marker("please wait")
+            .with_queue_position(5);
+        let context = InterstitialContext::new(signature);
+
+        let request = AcquisitionRequest {
+            url: "https://example.com/".to_string(),
+            mode: AcquisitionMode::Fast,
+            total_timeout: Duration::from_secs(10),
+            interstitial: Some(context),
+            ..AcquisitionRequest::default()
+        };
+
+        let result = runner.run(request).await;
+        let decision = result
+            .interstitial
+            .as_ref()
+            .ok_or_else(|| std::io::Error::other("interstitial decision missing"))?;
+        assert_eq!(decision.kind().label(), "queue");
+        assert_eq!(
+            result.failures.first().map(|f| f.kind),
+            Some(StageFailureKind::InterstitialRouted)
+        );
+    }
+
+    // Sub-test 3: transient classification does NOT
+    // short-circuit; the runner falls through to the
+    // ladder. The live pool will attempt the stages
+    // (which may succeed or fail depending on the
+    // network), but the interstitial decision is still
+    // attached to the result.
+    {
+        let pool = BrowserPool::new(test_config()).await?;
+        let runner = AcquisitionRunner::new(pool);
+        let signature = PageSignature::new("https://example.com/redirect", Some(302));
+        let context = InterstitialContext::new(signature);
+
+        let request = AcquisitionRequest {
+            url: "https://example.com/".to_string(),
+            mode: AcquisitionMode::Fast,
+            total_timeout: Duration::from_secs(15),
+            interstitial: Some(context),
+            ..AcquisitionRequest::default()
+        };
+
+        let result = runner.run(request).await;
+        let decision = result
+            .interstitial
+            .as_ref()
+            .ok_or_else(|| std::io::Error::other("interstitial decision missing"))?;
+        assert_eq!(decision.kind().label(), "transient");
+        assert!(!decision.is_classified());
+        // The transient decision must NOT trigger a
+        // short-circuit, so the runner may have attempted
+        // some stages (or timed out). Either is acceptable;
+        // what we strictly require is that no
+        // InterstitialRouted failure is present.
+        assert!(
+            result
+                .failures
+                .iter()
+                .all(|f| f.kind != StageFailureKind::InterstitialRouted),
+            "transient interstitial must not short-circuit"
+        );
+    }
+
+    Ok(())
 }

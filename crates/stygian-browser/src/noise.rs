@@ -375,6 +375,7 @@ impl NoiseEngine {
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[allow(clippy::struct_excessive_bools)] // public, stable config type — 4 orthogonal noise surface toggles read more clearly as bools
 pub struct NoiseConfig {
     /// Fixed seed for reproducibility. If `None`, a random seed is generated
     /// at [`NoiseEngine`] construction time.

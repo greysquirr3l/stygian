@@ -57,6 +57,7 @@ pub enum ResourceType {
 }
 
 impl ResourceType {
+    #[must_use]
     pub const fn as_cdp_str(&self) -> &'static str {
         match self {
             Self::Image => "Image",
@@ -84,6 +85,7 @@ pub struct ResourceFilter {
 
 impl ResourceFilter {
     /// Block all media resources (images, fonts, CSS, audio/video).
+    #[must_use]
     pub fn block_media() -> Self {
         Self {
             blocked: vec![
@@ -95,6 +97,7 @@ impl ResourceFilter {
         }
     }
 
+    #[must_use]
     pub fn block_images_and_fonts() -> Self {
         Self {
             blocked: vec![ResourceType::Image, ResourceType::Font],
@@ -109,12 +112,14 @@ impl ResourceFilter {
         self
     }
 
+    #[must_use]
     pub fn should_block(&self, cdp_type: &str) -> bool {
         self.blocked
             .iter()
             .any(|r| r.as_cdp_str().eq_ignore_ascii_case(cdp_type))
     }
 
+    #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.blocked.is_empty()
     }
@@ -276,19 +281,69 @@ impl NodeHandle {
 
     /// Return the element's `outerHTML`.
     ///
+    /// The primary path uses Chromium's element `outer_html()` command. Some
+    /// highly dynamic pages can intermittently return an empty payload even
+    /// when the node is still present, so this method falls back to a direct
+    /// JS evaluation (`this.outerHTML`) before returning an empty string.
+    ///
     ///
     /// # Errors
     ///
     /// invalidated.
     pub async fn outer_html(&self) -> Result<String> {
-        timeout(self.cdp_timeout, self.element.outer_html())
+        let primary = timeout(self.cdp_timeout, self.element.outer_html())
             .await
             .map_err(|_| BrowserError::Timeout {
                 operation: "NodeHandle::outer_html".to_string(),
                 duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
             })?
-            .map_err(|e| self.cdp_err_or_stale(&e, "outer_html"))
-            .map(Option::unwrap_or_default)
+            .map_err(|e| self.cdp_err_or_stale(&e, "outer_html"))?;
+
+        if let Some(html) = primary
+            && !html.trim().is_empty()
+        {
+            return Ok(html);
+        }
+
+        let fallback_html = self.outer_html_via_js().await?;
+        if !fallback_html.trim().is_empty() {
+            return Ok(fallback_html);
+        }
+
+        Ok(String::new())
+    }
+
+    async fn outer_html_via_js(&self) -> Result<String> {
+        let returns = timeout(
+            self.cdp_timeout,
+            self.element.call_js_fn(
+                r"function() {
+                    if (typeof this.outerHTML === 'string' && this.outerHTML.length > 0) {
+                        return this.outerHTML;
+                    }
+                    try {
+                        return new XMLSerializer().serializeToString(this);
+                    } catch (_) {
+                        return '';
+                    }
+                }",
+                true,
+            ),
+        )
+        .await
+        .map_err(|_| BrowserError::Timeout {
+            operation: "NodeHandle::outer_html_via_js".to_string(),
+            duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
+        })?
+        .map_err(|e| self.cdp_err_or_stale(&e, "outer_html_via_js"))?;
+
+        Ok(returns
+            .result
+            .value
+            .as_ref()
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string())
     }
 
     ///
@@ -1267,12 +1322,19 @@ impl PageHandle {
     }
 
     /// Borrow the underlying chromiumoxide [`Page`].
+    #[must_use]
     pub const fn inner(&self) -> &Page {
         &self.page
     }
 
     /// Close this page (tab).
     ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::Timeout`] when the close call does not
+    /// complete within the 5-second timeout, and
+    /// [`BrowserError::CdpError`] for underlying chromiumoxide failures
+    /// while issuing the `Page.close` CDP command.
     pub async fn close(self) -> Result<()> {
         timeout(Duration::from_secs(5), self.page.clone().close())
             .await
@@ -1381,6 +1443,14 @@ impl PageHandle {
 
     /// Run stealth checks and attach transport diagnostics (JA3/JA4/HTTP3).
     ///
+    /// # Errors
+    ///
+    /// Propagates any [`BrowserError`] returned by the inner
+    /// [`Self::verify_stealth`] call (which surfaces CDP / selector /
+    /// evaluation failures from the underlying stealth probe). The
+    /// `navigator.userAgent` read uses `eval` and is best-effort — its
+    /// failure is logged and downgraded to an empty string so the
+    /// transport-diagnostic block can still be attached.
     pub async fn verify_stealth_with_transport(
         &self,
         observed: Option<crate::diagnostic::TransportObservations>,
