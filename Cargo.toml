@@ -83,7 +83,7 @@ rustls = { version = "0.23", default-features = false, features = ["std", "tls12
 webpki-roots = "0.26"
 
 # Cryptography (webhook signature verification)
-hmac = "0.12"
+hmac = "0.13"
 sha2 = "0.10"
 
 # Data pipeline
