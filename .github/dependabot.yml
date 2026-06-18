@@ -1,0 +1,49 @@
+# Dependabot configuration for stygian
+# Tracks both Rust crate updates and GitHub Actions version bumps.
+# The pinned-actions scorecard alert (DependencyUpdateToolID) requires
+# *some* dependency update tool to be present; this is the simplest
+# option that fits the project.
+version: 2
+updates:
+  # Cargo workspace dependencies
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    # Group minor/patch updates so the auto-merge workflow can land them
+    # without manual review. Major version bumps are kept separate for
+    # human review because they can break public APIs (see PROGRESS.md
+    # for examples).
+    groups:
+      cargo-minor-patch:
+        update-types: ["minor", "patch"]
+    # Limit open PRs to keep the queue manageable
+    open-pull-requests-limit: 10
+    # Ignore tooling-only updates that should be done via PR
+    ignore:
+      - dependency-name: "stygian-*"
+        # Don't have dependabot bump internal workspace members
+
+  # GitHub Actions: keeps the SHA-pinned action list up to date.
+  # The .github/workflows/* files use `uses: owner/action@<sha> # version`
+  # pinning; dependabot will create PRs that update both the SHA and the
+  # trailing comment.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    groups:
+      github-actions:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+    # We pin actions by SHA, so dependabot updates are safe by default
+    # (the SHA and the version comment are updated together). No
+    # commit-message convention override needed.
+    commit-message:
+      prefix: "ci"

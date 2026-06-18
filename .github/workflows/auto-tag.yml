@@ -5,15 +5,20 @@ on:
     branches:
       - main
 
-permissions:
-  contents: write
+# Top-level permissions are read-all by default; the only job needs
+# `contents: write` (declared at the job level). This narrows the
+# blast radius of a compromised action and satisfies the
+# TokenPermissionsID scorecard check.
+permissions: read-all
 
 jobs:
   tag:
     name: Push version tag if missing
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
 

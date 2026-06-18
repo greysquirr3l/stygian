@@ -1,0 +1,66 @@
+name: CodeQL
+
+on:
+  push:
+    branches:
+      - main
+      - phase-13-anti-bot-resilience
+  pull_request:
+    branches:
+      - main
+  schedule:
+    # Weekly scheduled scan to catch regressions between PRs.
+    # Cron: 06:30 UTC on Tuesdays (after the Dependabot run on Mondays).
+    - cron: "30 6 * * 2"
+
+# Minimal top-level permissions: only read what the workflow needs.
+# The CodeQL analysis itself runs with no extra token scope because
+# the default GITHUB_TOKEN is sufficient for code scanning uploads.
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      # 'security-events: write' is required to upload SARIF results.
+      security-events: write
+      contents: read
+      actions: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: rust
+            build-mode: none
+          # JavaScript for the TypeScript Chrome extension in
+          # crates/stygian-plugin/extension/.
+          - language: javascript-typescript
+            build-mode: none
+          - language: python
+            build-mode: none
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-extended,security-and-quality
+
+      # Autobuild attempts to build the language. For rust we let
+      # cargo handle dependency resolution on the analyze step.
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+        if: matrix.build-mode == 'normal'
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
