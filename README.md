@@ -8,6 +8,7 @@
 [![Security Audit](https://github.com/greysquirr3l/stygian/actions/workflows/security.yml/badge.svg)](https://github.com/greysquirr3l/stygian/actions/workflows/security.yml)
 [![Documentation](https://github.com/greysquirr3l/stygian/actions/workflows/docs.yml/badge.svg)](https://github.com/greysquirr3l/stygian/actions/workflows/docs.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/greysquirr3l/stygian/badge)](https://securityscorecards.dev/viewer/?uri=github.com/greysquirr3l/stygian)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/9118/badge)](https://www.bestpractices.dev/projects/9118)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![License: Commercial](https://img.shields.io/badge/License-Commercial-green.svg)](LICENSE-COMMERCIAL.md)
 
