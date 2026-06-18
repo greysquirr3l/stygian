@@ -16,6 +16,7 @@ pub struct McpRequestHandler {
 
 impl McpRequestHandler {
     /// Create a new request handler
+    #[must_use]
     pub const fn new(server: Arc<McpPluginServer>, config: Config) -> Self {
         Self { server, config }
     }

@@ -24,21 +24,25 @@ pub struct IdempotencyKey(ulid::Ulid);
 
 impl IdempotencyKey {
     /// Generate a new idempotency key
+    #[must_use]
     pub fn new() -> Self {
         Self(ulid::Ulid::new())
     }
 
     /// Create from an existing ULID
+    #[must_use]
     pub const fn from_ulid(ulid: ulid::Ulid) -> Self {
         Self(ulid)
     }
 
     /// Get the inner ULID
+    #[must_use]
     pub const fn inner(&self) -> ulid::Ulid {
         self.0
     }
 
     /// Get timestamp when this key was generated
+    #[must_use]
     pub const fn timestamp(&self) -> u64 {
         self.0.timestamp_ms()
     }

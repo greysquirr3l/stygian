@@ -122,6 +122,15 @@ impl Transformation {
     }
 
     /// Apply this transformation to a value
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::PluginError::InvalidTransformation`] when the
+    /// transformation has an invalid regex pattern, an unknown `Coerce`
+    /// target type, or an unparseable input (e.g. numeric coercion on a
+    /// non-numeric value). Returns
+    /// [`crate::error::PluginError::ExtractionError`] when a `Filter`
+    /// rejects the value or a `RegexExtract` pattern does not match.
     pub fn apply(&self, value: &str) -> crate::Result<String> {
         match self {
             Self::Trim => Ok(value.trim().to_string()),
@@ -162,6 +171,12 @@ impl Transformation {
     }
 
     /// Apply a chain of transformations to a value
+    ///
+    /// # Errors
+    ///
+    /// Propagates any [`crate::error::PluginError`] raised by the first
+    /// failing transformation in the chain — see [`Transformation::apply`]
+    /// for the per-variant failure modes.
     pub fn apply_chain(transformations: &[Self], mut value: String) -> crate::Result<String> {
         for transformation in transformations {
             value = transformation.apply(&value)?;

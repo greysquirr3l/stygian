@@ -38,6 +38,7 @@ impl Selector {
     }
 
     /// Get the primary selector (CSS if available, otherwise `XPath`)
+    #[must_use]
     pub fn primary(&self) -> &str {
         match self {
             Self::Css(s) | Self::XPath(s) => s,
@@ -46,6 +47,7 @@ impl Selector {
     }
 
     /// Get the fallback selector (`XPath` if available)
+    #[must_use]
     pub fn fallback(&self) -> Option<&str> {
         match self {
             Self::Both { xpath, .. } => Some(xpath),
@@ -54,6 +56,12 @@ impl Selector {
     }
 
     /// Validate selector syntax (basic checks)
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::PluginError::SelectorError`] when the CSS
+    /// selector is empty, references an unknown pseudo-element, the `XPath`
+    /// expression is empty, or the `XPath` brackets are unbalanced.
     pub fn validate(&self) -> crate::Result<()> {
         match self {
             Self::Css(s) => {

@@ -11,6 +11,7 @@ use stygian_graph::prelude::*;
 use crate::IdempotencyKey;
 use crate::domain::ExtractionRequest;
 use crate::ports::{IdempotencyKeyStore, PluginExtractionPort, PluginTemplateStore};
+use crate::reliability::ReliabilityScorer;
 
 /// Adapter implementing `ScrapingService` using plugin extraction
 ///
@@ -65,7 +66,35 @@ impl ScrapingService for PluginExtractionAdapter {
             input.url, input.params
         );
 
-        // Extract template ID and idempotency key from params
+        let (template, idempotency_key) = self.resolve_inputs(&input).await?;
+
+        if let Some(cached_output) = self.try_cache_hit(&idempotency_key).await {
+            return Ok(cached_output);
+        }
+
+        let html = extract_html_from_input(&input)?;
+        let request =
+            ExtractionRequest::new(template, input.url.clone(), html).with_idempotency_key(idempotency_key);
+
+        let mut result = self.extraction_port.execute(&request).await.map_err(|e| {
+            StygianError::Service(ServiceError::Unavailable(format!("extraction failed: {e}")))
+        })?;
+
+        self.finalize_result(&idempotency_key, &mut result).await
+    }
+
+    fn name(&self) -> &'static str {
+        "plugin-extraction"
+    }
+}
+
+impl PluginExtractionAdapter {
+    /// Parse the `template_id` and `idempotency_key` params and load the
+    /// template from the store.
+    async fn resolve_inputs(
+        &self,
+        input: &ServiceInput,
+    ) -> Result<(crate::domain::ExtractionTemplate, IdempotencyKey)> {
         let template_id = input
             .params
             .get("template_id")
@@ -78,21 +107,18 @@ impl ScrapingService for PluginExtractionAdapter {
 
         let idempotency_key_str = input.params.get("idempotency_key").and_then(Value::as_str);
 
-        // Parse template ID
         let template_uuid = uuid::Uuid::parse_str(template_id).map_err(|e| {
             StygianError::Service(ServiceError::Unavailable(format!(
                 "invalid template_id: {e}"
             )))
         })?;
 
-        // Retrieve template from store
         let template = self.template_store.get(&template_uuid).await.map_err(|e| {
             StygianError::Service(ServiceError::Unavailable(format!(
                 "failed to load template: {e}"
             )))
         })?;
 
-        // Create or reuse idempotency key
         let idempotency_key = if let Some(key_str) = idempotency_key_str {
             key_str.parse::<IdempotencyKey>().map_err(|e| {
                 StygianError::Service(ServiceError::Unavailable(format!(
@@ -103,55 +129,55 @@ impl ScrapingService for PluginExtractionAdapter {
             IdempotencyKey::new()
         };
 
-        // Check for cached result (idempotency)
-        match self.idempotency_store.get_result(&idempotency_key).await {
-            Ok(Some(cached)) => {
-                info!("Plugin extraction cache hit for key: {}", idempotency_key);
-                return Ok(ServiceOutput {
-                    data: serde_json::to_string(&cached.data).unwrap_or_default(),
-                    metadata: json!({
-                        "extraction": cached.data,
-                        "metadata": cached.metadata,
-                        "cached": true,
-                    }),
-                });
-            }
-            Ok(None) => {}
+        Ok((template, idempotency_key))
+    }
+
+    /// Check the idempotency store for a cached result and, if present,
+    /// build the corresponding `ServiceOutput` (including the T87
+    /// reliability score).
+    async fn try_cache_hit(&self, idempotency_key: &IdempotencyKey) -> Option<ServiceOutput> {
+        let cached = match self.idempotency_store.get_result(idempotency_key).await {
+            Ok(Some(cached)) => cached,
+            Ok(None) => return None,
             Err(e) => {
                 tracing::warn!(
                     "idempotency lookup failed for key {}: {}",
                     idempotency_key,
                     e
                 );
+                return None;
             }
-        }
-
-        // Determine HTML source: prefer params["html"], but can be passed via URL if it's full HTML
-        let html = if let Some(html_str) = input.params.get("html").and_then(|v| v.as_str()) {
-            // HTML explicitly provided in params (from fallback chain)
-            html_str.to_string()
-        } else if input.url.starts_with('<') {
-            // URL field actually contains HTML (edge case)
-            input.url.clone()
-        } else {
-            // No HTML available; cannot proceed
-            return Err(StygianError::Service(ServiceError::Unavailable(
-                "No HTML content provided in params['html'] or URL; plugin extraction cannot proceed".to_string(),
-            )));
         };
+        info!("Plugin extraction cache hit for key: {}", idempotency_key);
+        let cached_score = cached
+            .metadata
+            .reliability
+            .clone()
+            .unwrap_or_else(|| ReliabilityScorer::new().score_extraction(&cached, 0));
+        Some(ServiceOutput {
+            data: serde_json::to_string(&cached.data).unwrap_or_default(),
+            metadata: json!({
+                "extraction": cached.data,
+                "metadata": cached.metadata,
+                "reliability": cached_score,
+                "cached": true,
+            }),
+        })
+    }
 
-        let request = ExtractionRequest::new(template, input.url.clone(), html)
-            .with_idempotency_key(idempotency_key);
+    /// Attach the T87 reliability score to the result, persist it in the
+    /// idempotency cache, and assemble the final `ServiceOutput`.
+    async fn finalize_result(
+        &self,
+        idempotency_key: &IdempotencyKey,
+        result: &mut crate::domain::ExtractionResult,
+    ) -> Result<ServiceOutput> {
+        let score = ReliabilityScorer::new().score_extraction(result, 0);
+        result.metadata.reliability = Some(score.clone());
 
-        // Execute extraction
-        let result = self.extraction_port.execute(&request).await.map_err(|e| {
-            StygianError::Service(ServiceError::Unavailable(format!("extraction failed: {e}")))
-        })?;
-
-        // Cache the result
         if let Err(e) = self
             .idempotency_store
-            .store_result(&idempotency_key, &result)
+            .store_result(idempotency_key, result)
             .await
         {
             tracing::warn!(
@@ -161,28 +187,45 @@ impl ScrapingService for PluginExtractionAdapter {
             );
         }
 
-        info!("Plugin extraction completed: {} regions successful", {
-            result
-                .metadata
-                .region_status
-                .values()
-                .filter(|s| s.success)
-                .count()
-        });
+        let successful_regions = result
+            .metadata
+            .region_status
+            .values()
+            .filter(|s| s.success)
+            .count();
+        info!(
+            "Plugin extraction completed: {} regions successful, reliability={:.3} ({})",
+            successful_regions, score.overall, score.band
+        );
 
         Ok(ServiceOutput {
             data: serde_json::to_string(&result.data).unwrap_or_default(),
             metadata: json!({
                 "extraction": result.data,
                 "metadata": result.metadata,
+                "reliability": score,
                 "cached": false,
             }),
         })
     }
+}
 
-    fn name(&self) -> &'static str {
-        "plugin-extraction"
+/// Pull HTML for extraction from the [`ServiceInput`].
+///
+/// Prefers `params["html"]` (the fallback-chain flow), but accepts the URL
+/// field directly when it looks like inline HTML. Returns an error when
+/// neither source is available.
+fn extract_html_from_input(input: &ServiceInput) -> Result<String> {
+    if let Some(html_str) = input.params.get("html").and_then(|v| v.as_str()) {
+        return Ok(html_str.to_string());
     }
+    if input.url.starts_with('<') {
+        return Ok(input.url.clone());
+    }
+    Err(StygianError::Service(ServiceError::Unavailable(
+        "No HTML content provided in params['html'] or URL; plugin extraction cannot proceed"
+            .to_string(),
+    )))
 }
 
 #[cfg(test)]
