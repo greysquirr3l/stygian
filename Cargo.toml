@@ -84,7 +84,7 @@ webpki-roots = "0.26"
 
 # Cryptography (webhook signature verification)
 hmac = "0.13"
-sha2 = "0.10"
+sha2 = "0.11"
 
 # Data pipeline
 csv = "1.3"
