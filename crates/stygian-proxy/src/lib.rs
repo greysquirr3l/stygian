@@ -10,7 +10,8 @@
 //! - Async health checker with configurable intervals
 //! - Per-proxy circuit breaker (`Closed -> Open -> HalfOpen`)
 //! - In-memory proxy pool (no external DB required)
-//! - `graph` feature: [`ProxyManagerPort`] trait for stygian-graph HTTP adapters
+//! - `graph` feature: `ProxyManagerPort` trait for stygian-graph HTTP adapters
+//!   (see `crate::graph`; only compiled with `--features graph`)
 //! - `browser` feature: per-context proxy binding for stygian-browser
 //!
 //! ## Quick start

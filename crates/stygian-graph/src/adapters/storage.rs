@@ -6,7 +6,7 @@
 //! | --------- | -------------- | --------------- |
 //! | [`NullStorage`](storage::NullStorage) | always | no-op (tests / dry-run) |
 //! | [`FileStorage`](storage::FileStorage) | always | `.jsonl` files on local disk |
-//! | [`PostgresStorage`](storage::PostgresStorage) | `feature = "postgres"` | PostgreSQL via sqlx |
+//! | `PostgresStorage` (`storage::postgres::PostgresStorage`) | `feature = "postgres"` | PostgreSQL via sqlx |
 
 use crate::domain::error::{Result, ServiceError, StygianError};
 use crate::ports::storage::{StoragePort, StorageRecord};
