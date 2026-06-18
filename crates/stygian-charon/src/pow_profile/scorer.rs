@@ -120,7 +120,7 @@ impl Default for ProfileWeights {
 /// score.
 ///
 /// The bands are the **policy** surface — the policy mapper
-/// in [`crate::pow_profile::policy`] consumes a band and
+/// in `crate::pow_profile::policy` consumes a band and
 /// returns deterministic escalation / pacing adjustments.
 /// Callers that want a continuous score use
 /// [`PowCapabilityScorer::score`] directly.

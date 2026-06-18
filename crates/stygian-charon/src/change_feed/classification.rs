@@ -296,8 +296,9 @@ impl ChangeClassification {
 ///
 /// The default sink is a thread-safe `Vec<ChangeEvent>`
 /// wrapped in a `Mutex`. The detector owns the sink;
-/// callers consume events from it via [`ChangeEventSink::drain`]
-/// or [`ChangeEventSink::events`].
+/// callers consume events from it via
+/// [`InMemoryChangeFeedSink::drain`] or
+/// [`InMemoryChangeFeedSink::events`].
 ///
 /// The sink is the **primary emission surface** — it is
 /// always available, independent of the optional

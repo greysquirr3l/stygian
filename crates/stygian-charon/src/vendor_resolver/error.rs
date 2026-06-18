@@ -58,7 +58,8 @@ pub enum VendorResolverError {
         rule_id: String,
     },
 
-    /// A `[[vendors]]` entry referenced an unknown [`VendorId`].
+    /// A `[[vendors]]` entry referenced an unknown
+    /// [`crate::vendor_classifier::VendorId`].
     #[error("resolution rule '{rule_id}' references unknown vendor '{vendor_id}'")]
     UnknownVendor {
         /// Rule id that referenced the unknown vendor.

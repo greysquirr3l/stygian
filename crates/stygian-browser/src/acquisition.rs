@@ -74,7 +74,7 @@ pub enum StrategyUsed {
 /// [`BrowserPool::release_context`][crate::pool::BrowserPool::release_context]
 /// to invalidate the sticky session for the target host before
 /// short-circuiting with a structured
-/// [`StageFailureKind::Setup`][StageFailureKind::Setup] failure.
+/// [`StageFailureKind::Setup`] failure.
 #[derive(Debug, Clone)]
 pub struct ReplayDefenseContext {
     /// Policy to apply to the supplied state.
@@ -167,7 +167,7 @@ impl TransportRealismContext {
 /// attempt plus the [`InterstitialPolicy`] that controls
 /// the router's behaviour. When the context is set, the
 /// runner evaluates the signature via the
-/// [`InterstitialRouter`][crate::interstitial_router::InterstitialRouter]
+/// [`InterstitialRouter`]
 /// **before** any stage executes:
 ///
 /// 1. The resulting [`RouterDecision`] is attached to
@@ -277,10 +277,10 @@ pub struct AcquisitionRequest {
     /// Optional [`InterstitialContext`] (T94) — typed
     /// `AcquisitionRunner` failure-recovery hint. When set,
     /// the runner classifies the supplied
-    /// [`PageSignature`][crate::interstitial_router::PageSignature]
-    /// via the [`InterstitialRouter`][crate::interstitial_router::InterstitialRouter]
+    /// [`PageSignature`]
+    /// via the [`InterstitialRouter`]
     /// before any stage executes. The resulting
-    /// [`RouterDecision`][crate::interstitial_router::RouterDecision]
+    /// [`RouterDecision`]
     /// is attached to [`AcquisitionResult::interstitial`].
     /// When the decision is non-`Transient` **and** the
     /// policy's
@@ -341,13 +341,13 @@ pub enum StageFailureKind {
     /// classified decision (`Queue` / `Challenge` / `HardBlock`).
     ///
     /// Emitted by [`AcquisitionRunner::run`] when the supplied
-    /// [`InterstitialContext`][crate::interstitial_router::InterstitialContext]
+    /// [`InterstitialContext`]
     /// classifies a previously-observed
-    /// [`PageSignature`][crate::interstitial_router::PageSignature]
+    /// [`PageSignature`]
     /// as a queue / challenge / hard block and the configured
     /// [`InterstitialPolicy::short_circuit_on_classified`][crate::interstitial_router::InterstitialPolicy::short_circuit_on_classified]
     /// is `true` (the default). The full
-    /// [`RouterDecision`][crate::interstitial_router::RouterDecision]
+    /// [`RouterDecision`]
     /// is attached to [`AcquisitionResult::interstitial`] so
     /// downstream tooling can dispatch the dedicated route
     /// without burning through the generic ladder.

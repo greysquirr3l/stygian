@@ -177,7 +177,8 @@ impl MemoryProxyStore {
     ///
     /// # Errors
     ///
-    /// Returns [`ProxyError::Storage`] when any supplied proxy URL is invalid
+    /// Returns [`crate::error::ProxyError::StorageError`] when any supplied
+    /// proxy URL is invalid
     /// or a duplicate of an existing entry.
     pub async fn with_proxies(proxies: Vec<Proxy>) -> ProxyResult<Self> {
         let store = Self::default();

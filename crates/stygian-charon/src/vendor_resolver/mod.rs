@@ -21,7 +21,7 @@
 //! | `1000`   | `default-manual`       | *(catch-all)*                                                | `Manual` strategy marker          | `Manual`          |
 //!
 //! Lower priority numbers win. When a rule's
-//! [`min_confidence`][crate::vendor_resolver::rules::ResolutionRule::min_confidence]
+//! [`ResolutionRule::min_confidence`]
 //! gate passes **and** at least one of its listed vendors is in the
 //! classifier's ranked scoreboard, the rule fires.
 //!
@@ -31,7 +31,7 @@
 //! ties broken by [`VendorId`][crate::vendor_classifier::VendorId]
 //! discriminant order). When the scoreboard lists multiple
 //! vendors that match the fired rule, the
-//! [`MergeStrategy`][crate::vendor_resolver::rules::MergeStrategy]
+//! [`MergeStrategy`]
 //! determines how the rule consolidates them into a single
 //! decision:
 //!

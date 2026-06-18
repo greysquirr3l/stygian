@@ -34,7 +34,7 @@
 //! The LRU+TTL store is **shared** with the existing investigation
 //! report cache
 //! ([`crate::cache::MemoryInvestigationCache`]). It is exposed here
-//! as the crate-private [`LruTtlStore`][crate::cache::LruTtlStore]
+//! as the crate-private `LruTtlStore`
 //! helper so the challenge memory and the investigation cache
 //! share eviction + expiry semantics and we do not introduce a
 //! parallel "second cache store" with its own semantics.

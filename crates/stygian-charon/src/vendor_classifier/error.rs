@@ -46,7 +46,8 @@ pub enum VendorError {
         vendor_id: String,
     },
 
-    /// The vendor id from the TOML does not match the [`VendorId`]
+    /// The vendor id from the TOML does not match the
+    /// [`crate::vendor_classifier::VendorId`]
     /// taxonomy.
     #[error("vendor '{vendor_id}' is not part of the supported taxonomy")]
     UnknownVendorId {

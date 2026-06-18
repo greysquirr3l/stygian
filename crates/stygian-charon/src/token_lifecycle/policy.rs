@@ -398,7 +398,7 @@ impl TokenPolicyTable {
 /// order so the JSON form is byte-stable. Used by
 /// [`TokenPolicyTable::with_builtin_defaults`] and by the
 /// compile-time validation in
-/// [`compile_check_builtin_token_policies`].
+/// `compile_check_builtin_token_policies`.
 ///
 /// # Example
 ///

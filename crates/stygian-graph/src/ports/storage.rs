@@ -268,8 +268,9 @@ pub trait OutputFormatter: Send + Sync {
     ///
     /// # Errors
     ///
-    /// Returns [`StygianError`] when serialisation fails (for example an
-    /// unwritable cell in CSV, a value the JSON encoder cannot represent, etc.).
+    /// Returns [`crate::domain::error::StygianError`] when serialisation fails
+    /// (for example an unwritable cell in CSV, a value the JSON encoder cannot
+    /// represent, etc.).
     fn format(&self, records: &[StorageRecord]) -> Result<Vec<u8>>;
 
     /// Which format this formatter produces.

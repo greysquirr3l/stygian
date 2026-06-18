@@ -127,10 +127,10 @@ impl BrowserPool {
     ///
     /// # Errors
     ///
-    /// Returns [`BrowserError::Pool`] when the pool fails to warm up the
+    /// Returns [`BrowserError::PoolExhausted`] when the pool fails to warm up the
     /// minimum number of browser instances (e.g. zero `min_size`, browser
     /// launch failures, CDP handshake errors), or
-    /// [`BrowserError::Config`] when `BrowserConfig::validate` reports
+    /// [`BrowserError::ConfigError`] when `BrowserConfig::validate` reports
     /// invariant violations before the warm-up phase runs.
     pub async fn new(config: BrowserConfig) -> Result<Arc<Self>> {
         let max_size = config.pool.max_size;

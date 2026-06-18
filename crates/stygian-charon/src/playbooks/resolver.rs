@@ -245,7 +245,7 @@ impl PlaybookResolver {
     /// Panics if any embedded baseline TOML fails to parse or
     /// validate. This is a **compile-time** failure guarded by
     /// the `compile_check_builtin_playbooks` test in
-    /// [`crate::playbooks::builtin`]; the panic in production
+    /// `crate::playbooks::builtin`; the panic in production
     /// surfaces a regression in the embedded data as a hard
     /// startup error.
     ///

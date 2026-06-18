@@ -82,7 +82,8 @@
 //! This module is **default-on** and is always compiled as
 //! part of the `stygian-browser` crate. No new feature gate
 //! is introduced; the integration is purely additive on
-//! [`AcquisitionRequest`] and [`AcquisitionResult`].
+//! [`crate::acquisition::AcquisitionRequest`] and
+//! [`crate::acquisition::AcquisitionResult`].
 //!
 //! # Example
 //!

@@ -199,7 +199,12 @@ jobs:
         run: |
           mkdir -p history
           if [[ -f "${HISTORY_PATH}" ]]; then
-            cp "${HISTORY_PATH}" history/canary-history.jsonl
+            dest_path="history/canary-history.jsonl"
+            src_abs="$(cd "$(dirname "${HISTORY_PATH}")" && pwd)/$(basename "${HISTORY_PATH}")"
+            dest_abs="$(cd "$(dirname "${dest_path}")" && pwd)/$(basename "${dest_path}")"
+            if [[ "${src_abs}" != "${dest_abs}" ]]; then
+              cp "${HISTORY_PATH}" "${dest_path}"
+            fi
           fi
 
       - name: Upload probe report

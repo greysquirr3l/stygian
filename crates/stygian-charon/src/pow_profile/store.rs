@@ -101,7 +101,7 @@ const fn target_class_label(c: TargetClass) -> &'static str {
 /// Capacity-bounded LRU+TTL store of
 /// [`PowCapabilityProfile`]s.
 ///
-/// Reuses the same [`LruTtlStore`][crate::cache::LruTtlStore]
+/// Reuses the same `LruTtlStore`
 /// primitive the T83 [`ChallengeMemory`][crate::challenge_feedback::ChallengeMemory]
 /// and the T91 [`NonceBook`][crate::token_lifecycle::NonceBook]
 /// use. That keeps eviction + expiry semantics consistent
@@ -174,7 +174,7 @@ impl PowCapabilityStore {
     /// looks up the existing profile (if any), merges the
     /// sample into it, and re-inserts the updated profile
     /// under the LRU+TTL semantics shared with
-    /// [`crate::cache::LruTtlStore`].
+    /// `LruTtlStore`.
     ///
     /// The LRU recency is **not** bumped on the read so a
     /// high-volume key does not crowd out less common keys

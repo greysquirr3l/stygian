@@ -225,7 +225,7 @@ impl VendorClassifier {
     /// `crates/stygian-charon/data/vendors/`.
     ///
     /// The compile-time check
-    /// [`compile_check_builtin_vendors`][crate::vendor_classifier::compile_check_builtin_vendors]
+    /// `compile_check_builtin_vendors`
     /// guarantees that every embedded TOML is valid; if it
     /// regresses, the build will fail.
     ///

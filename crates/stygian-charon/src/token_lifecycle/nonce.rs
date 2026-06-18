@@ -3,7 +3,7 @@
 //! The [`NonceBook`] is a capacity-bounded LRU+TTL store that
 //! tracks every nonce the validator has **seen**, along with
 //! the vendor family, challenge class, and observation count.
-//! It reuses the same [`LruTtlStore`][crate::cache::LruTtlStore]
+//! It reuses the same `LruTtlStore`
 //! primitive the [`ChallengeMemory`][crate::challenge_feedback::ChallengeMemory]
 //! uses (T83) — that keeps eviction + expiry semantics
 //! consistent across both short-horizon stores and satisfies
@@ -21,7 +21,7 @@ use crate::vendor_classifier::VendorId;
 /// Default TTL for nonce observations: **10 minutes**.
 ///
 /// Aligned with the
-/// [`DEFAULT_CHALLENGE_TTL`][crate::challenge_feedback::DEFAULT_CHALLENGE_TTL]
+/// `DEFAULT_CHALLENGE_TTL`
 /// default so the two stores share an "after ten minutes we
 /// forget" horizon. Long enough to span a typical scraping
 /// session, short enough that an evicted nonce can be re-issued
@@ -60,7 +60,7 @@ pub fn nonce_book_key(vendor: VendorId, nonce: &str) -> String {
 /// observation was tagged with (so a stale nonce re-entry from
 /// a different vendor still surfaces the right audit context),
 /// along with the observation count for monotonic accounting.
-/// The TTL is owned by the [`LruTtlStore`][crate::cache::LruTtlStore]
+/// The TTL is owned by the `LruTtlStore`
 /// backing the [`NonceBook`].
 ///
 /// # Example
@@ -91,7 +91,7 @@ pub struct NonceObservation {
 /// [`NonceObservation`][crate::token_lifecycle::NonceObservation]s.
 ///
 /// The store reuses the same
-/// [`LruTtlStore`][crate::cache::LruTtlStore] primitive the
+/// `LruTtlStore` primitive the
 /// [`ChallengeMemory`][crate::challenge_feedback::ChallengeMemory]
 /// uses (T83). That keeps eviction + expiry semantics
 /// consistent across both short-horizon stores and satisfies

@@ -70,7 +70,7 @@ pub const RISK_CONFIRMED_THRESHOLD_DEFAULT: f64 = 0.65;
 /// Aggregate risk classification.
 ///
 /// Three bands, mapped from the score via
-/// [`IntegrityRiskScore::classify`]:
+/// [`IntegrityCanaryPolicy::classify`]:
 ///
 /// - [`Clean`](Self::Clean) — score below the suspected threshold.
 /// - [`Suspected`](Self::Suspected) — score at or above the
@@ -275,7 +275,7 @@ impl IntegrityCanaryPolicy {
     ///
     /// # Errors
     ///
-    /// Returns a [`IntegrityCanaryPolicyError::InvalidThresholds`]
+    /// Returns an `IntegrityCanaryPolicyError::InvalidThresholds`
     /// when either threshold is `NaN` or when the suspected
     /// threshold is greater than or equal to the confirmed
     /// threshold.
@@ -326,7 +326,7 @@ impl IntegrityCanaryPolicy {
     ///
     /// # Errors
     ///
-    /// Returns [`IntegrityCanaryPolicyError::InvalidThresholds`]
+    /// Returns `IntegrityCanaryPolicyError::InvalidThresholds`
     /// when `suspected_threshold >= confirmed_threshold`.
     pub fn validate(&self) -> Result<(), IntegrityCanaryPolicyError> {
         if self.suspected_threshold.is_nan() || self.confirmed_threshold.is_nan() {

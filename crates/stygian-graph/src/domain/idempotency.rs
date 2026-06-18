@@ -231,7 +231,8 @@ impl<C: CachePort> IdempotencyStore<C> {
     ///
     /// # Errors
     ///
-    /// Returns [`StygianError::Cache`] when the underlying cache read fails, or
+    /// Returns [`crate::domain::error::StygianError::Cache`] when the
+    /// underlying cache read fails, or
     /// when the cached payload is not a valid [`IdempotencyRecord`].
     pub async fn get(&self, key: IdempotencyKey) -> Result<Option<IdempotencyRecord>> {
         let cache_key = key.cache_key();
@@ -259,8 +260,8 @@ impl<C: CachePort> IdempotencyStore<C> {
     ///
     /// # Errors
     ///
-    /// Returns [`StygianError::Cache`] when the underlying cache read or write
-    /// fails.
+    /// Returns [`crate::domain::error::StygianError::Cache`] when the
+    /// underlying cache read or write fails.
     pub async fn claim(&self, key: IdempotencyKey) -> Result<bool> {
         let cache_key = key.cache_key();
 
@@ -281,7 +282,8 @@ impl<C: CachePort> IdempotencyStore<C> {
     ///
     /// # Errors
     ///
-    /// Returns [`StygianError::Cache`] when the underlying cache write fails.
+    /// Returns [`crate::domain::error::StygianError::Cache`] when the
+    /// underlying cache write fails.
     pub async fn store(
         &self,
         key: IdempotencyKey,
@@ -312,7 +314,8 @@ impl<C: CachePort> IdempotencyStore<C> {
     ///
     /// # Errors
     ///
-    /// Returns [`StygianError::Cache`] when the underlying cache write fails.
+    /// Returns [`crate::domain::error::StygianError::Cache`] when the
+    /// underlying cache write fails.
     pub async fn mark_failed(&self, key: IdempotencyKey) -> Result<()> {
         let cache_key = key.cache_key();
 
@@ -339,7 +342,8 @@ impl<C: CachePort> IdempotencyStore<C> {
     ///
     /// # Errors
     ///
-    /// Returns [`StygianError::Cache`] when the underlying cache delete fails.
+    /// Returns [`crate::domain::error::StygianError::Cache`] when the
+    /// underlying cache delete fails.
     pub async fn invalidate(&self, key: IdempotencyKey) -> Result<()> {
         self.cache.invalidate(&key.cache_key()).await
     }

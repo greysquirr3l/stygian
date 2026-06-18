@@ -266,7 +266,7 @@ impl ProxyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`ProxyError::Storage`] when the underlying storage backend
+    /// Returns [`ProxyError::StorageError`] when the underlying storage backend
     /// rejects the new proxy record.
     #[allow(clippy::significant_drop_tightening)]
     pub async fn add_proxy(&self, proxy: Proxy) -> ProxyResult<Uuid> {
@@ -286,7 +286,7 @@ impl ProxyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`ProxyError::Storage`] when the underlying storage backend
+    /// Returns [`ProxyError::StorageError`] when the underlying storage backend
     /// reports the proxy as missing or the remove call fails.
     pub async fn remove_proxy(&self, id: Uuid) -> ProxyResult<()> {
         self.storage.remove(id).await?;
@@ -389,7 +389,7 @@ impl ProxyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`ProxyError::Storage`] when the storage backend cannot list
+    /// Returns [`ProxyError::StorageError`] when the storage backend cannot list
     /// proxies, or [`ProxyError::NoCompatibleProxy`] when no healthy proxy
     /// is available.
     pub async fn acquire_proxy(&self) -> ProxyResult<ProxyHandle> {
@@ -419,7 +419,7 @@ impl ProxyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`ProxyError::Storage`] when the storage backend cannot list
+    /// Returns [`ProxyError::StorageError`] when the storage backend cannot list
     /// proxies, or [`ProxyError::NoCompatibleProxy`] when no healthy proxy
     /// satisfies the supplied [`CapabilityRequirement`].
     pub async fn acquire_with_capabilities(
@@ -498,7 +498,7 @@ impl ProxyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`ProxyError::Storage`] when the storage backend fails, or
+    /// Returns [`ProxyError::StorageError`] when the storage backend fails, or
     /// [`ProxyError::NoCompatibleProxy`] when no healthy proxy is available
     /// (including when a sticky-bound proxy is unhealthy and the fallback
     /// also exhausts the pool).
@@ -549,7 +549,7 @@ impl ProxyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`ProxyError::Storage`] when the storage backend cannot list
+    /// Returns [`ProxyError::StorageError`] when the storage backend cannot list
     /// proxies, or when the internal lock is poisoned.
     pub async fn pool_stats(&self) -> ProxyResult<PoolStats> {
         let records = self.storage.list().await?;

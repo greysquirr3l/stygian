@@ -371,7 +371,7 @@ impl Default for EscalationStrategy {
 /// Tag describing which tier of the precedence ladder contributed
 /// each field to a [`ResolvedPlaybook`](crate::playbooks::ResolvedPlaybook).
 ///
-/// Used by [`crate::playbooks::ResolvedPlaybook::source_for`] so
+/// Used by `crate::playbooks::ResolvedPlaybook` source metadata fields so
 /// downstream observers can verify the deterministic precedence is
 /// being honoured.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

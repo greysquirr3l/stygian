@@ -66,7 +66,7 @@
 //! ## Persistence
 //!
 //! The persistence layer reuses the same
-//! [`LruTtlStore`][crate::cache::LruTtlStore] primitive
+//! `LruTtlStore` primitive
 //! the T83 [`ChallengeMemory`][crate::challenge_feedback::ChallengeMemory]
 //! and the T91 [`NonceBook`][crate::token_lifecycle::NonceBook]
 //! use. That keeps eviction + expiry semantics consistent

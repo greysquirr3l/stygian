@@ -67,7 +67,7 @@ const fn target_class_label(c: TargetClass) -> &'static str {
 /// `(domain, target_class)` pair, along with a count of how many
 /// times the runner has recorded an outcome for that key (capped at
 /// `u32::MAX` for monotonic counters). The TTL is owned by the
-/// [`LruTtlStore`][crate::cache::LruTtlStore] backing the
+/// `LruTtlStore` backing the
 /// [`ChallengeMemory`] — once the LRU entry expires, the whole
 /// entry is dropped and the runner falls back to the unadjusted
 /// risk score.
@@ -117,7 +117,7 @@ impl ChallengeMemoryEntry {
 /// Short-horizon, capacity-bounded LRU memory of challenge outcomes
 /// keyed by `(domain, target_class)`.
 ///
-/// The store reuses the same [`LruTtlStore`][crate::cache::LruTtlStore]
+/// The store reuses the same `LruTtlStore`
 /// primitive that backs the investigation report cache. That keeps
 /// eviction + expiry semantics consistent across both caches and
 /// satisfies the "no new cache store" requirement.
@@ -151,8 +151,8 @@ impl ChallengeMemory {
     }
 
     /// Create a new challenge memory with
-    /// [`DEFAULT_CHALLENGE_CAPACITY`] and
-    /// [`DEFAULT_CHALLENGE_TTL`].
+    /// `DEFAULT_CHALLENGE_CAPACITY` and
+    /// `DEFAULT_CHALLENGE_TTL`.
     #[must_use]
     pub fn with_default_ttl(capacity: NonZeroUsize) -> Self {
         Self::new(capacity, DEFAULT_CHALLENGE_TTL)

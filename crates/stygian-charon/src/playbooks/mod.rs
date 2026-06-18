@@ -1,17 +1,22 @@
 //! Target-class playbook schema (T85).
 //!
-//! A [`Playbook`] is the **codified, opinionated strategy** for one
+//! A [`crate::playbooks::Playbook`] is the **codified, opinionated
+//! strategy** for one
 //! anti-bot tier. It bundles four operator-facing knobs into a single
 //! document:
 //!
-//! 1. [`AcquisitionDefaults`] — the acquisition mode / execution mode /
+//! 1. [`crate::playbooks::AcquisitionDefaults`] — the acquisition mode /
+//!    execution mode /
 //!    session mode / retry budget the runner should start with.
-//! 2. [`ProxyPreference`] — which proxy flavour (datacenter /
+//! 2. [`crate::playbooks::ProxyPreference`] — which proxy flavour
+//!    (datacenter /
 //!    residential / mobile / SOCKS5) and which sticky-session
 //!    constraints the proxy manager should honour.
-//! 3. [`PacingProfile`] — pacing rate, jitter, and minimum
+//! 3. [`crate::playbooks::PacingProfile`] — pacing rate, jitter, and
+//!    minimum
 //!    inter-request interval.
-//! 4. [`EscalationStrategy`] — the deterministic ladder the runner
+//! 4. [`crate::playbooks::EscalationStrategy`] — the deterministic
+//!    ladder the runner
 //!    should climb when the current stage fails.
 //!
 //! Playbooks live on disk as TOML data files in
@@ -21,9 +26,11 @@
 //!
 //! # Validation
 //!
-//! Every public mutator or loader path calls [`Playbook::validate`] to
+//! Every public mutator or loader path calls
+//! [`crate::playbooks::Playbook::validate`] to
 //! ensure the four knobs are internally consistent. Validation errors
-//! are reported as [`ValidationError`] variants that include the
+//! are reported as [`crate::playbooks::ValidationError`] variants that
+//! include the
 //! **field path** (`pacing.rate_limit_rps`) and the **bad value**
 //! (e.g. `"-0.5"`) so operators can locate the offending line in the
 //! TOML without having to re-run the loader.

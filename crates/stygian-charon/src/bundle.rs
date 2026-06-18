@@ -190,7 +190,8 @@ pub fn build_diagnostic_bundle_with_snapshot(
 /// [`VendorClassifier`].
 ///
 /// Use this when the operator wants a custom threshold or
-/// additional [`VendorDefinition`] entries (e.g. Tier 2 vendors).
+/// additional [`crate::vendor_classifier::VendorDefinition`] entries
+/// (e.g. Tier 2 vendors).
 /// The classifier is **stateless**, so callers can build it once
 /// and reuse it across many `build_diagnostic_bundle_*` invocations.
 ///

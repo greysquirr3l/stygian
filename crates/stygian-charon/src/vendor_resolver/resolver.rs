@@ -283,7 +283,7 @@ impl VendorResolver {
     /// `crates/stygian-charon/data/vendor_playbook_rules/`.
     ///
     /// The compile-time check
-    /// [`compile_check_builtin_resolution_rules`][crate::vendor_resolver::builtins::compile_check_builtin_resolution_rules]
+    /// `compile_check_builtin_resolution_rules`
     /// guarantees that every embedded TOML is valid; if it
     /// regresses, the build will fail.
     ///

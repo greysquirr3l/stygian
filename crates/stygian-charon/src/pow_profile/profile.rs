@@ -196,7 +196,7 @@ impl PowCapabilitySample {
 /// to produce a deterministic score. The profile is the
 /// unit of persistence: the store keys profiles by
 /// `(domain, target_class, vendor_family)` and re-uses the
-/// LRU+TTL primitive from T83's [`crate::cache::LruTtlStore`]
+/// LRU+TTL primitive from T83's `LruTtlStore`
 /// (the same primitive that backs `ChallengeMemory`).
 ///
 /// # Example
