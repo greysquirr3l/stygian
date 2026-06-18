@@ -14,9 +14,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use super::policy::{
-    InterstitialKind, InterstitialRoute, InterstitialSeverity,
-};
+use super::policy::{InterstitialKind, InterstitialRoute, InterstitialSeverity};
 
 /// Evidence the classifier extracted from a [`PageSignature`][super::PageSignature].
 ///
@@ -240,7 +238,10 @@ impl RouterDecisionLog {
     /// Build a log record from a signature + decision pair.
     #[must_use]
     pub const fn new(signature: super::PageSignature, decision: RouterDecision) -> Self {
-        Self { signature, decision }
+        Self {
+            signature,
+            decision,
+        }
     }
 }
 

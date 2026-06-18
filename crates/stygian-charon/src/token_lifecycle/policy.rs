@@ -80,7 +80,11 @@ impl TokenPolicy {
         single_use: bool,
         require_session_binding: bool,
     ) -> Self {
-        let default_ttl = if default_ttl > max_ttl { max_ttl } else { default_ttl };
+        let default_ttl = if default_ttl > max_ttl {
+            max_ttl
+        } else {
+            default_ttl
+        };
         Self {
             default_ttl,
             max_ttl,
@@ -595,17 +599,16 @@ mod tests {
 
     #[test]
     fn policy_table_is_additive_after_override() {
-        let table = TokenPolicyTable::with_builtin_defaults()
-            .with_policy(
-                VendorId::Cloudflare,
-                TokenPolicy::new(
-                    Duration::from_mins(1),
-                    Duration::from_mins(2),
-                    true,
-                    true,
-                    true,
-                ),
-            );
+        let table = TokenPolicyTable::with_builtin_defaults().with_policy(
+            VendorId::Cloudflare,
+            TokenPolicy::new(
+                Duration::from_mins(1),
+                Duration::from_mins(2),
+                true,
+                true,
+                true,
+            ),
+        );
         // Cloudflare override applied.
         assert_eq!(
             table.policy(VendorId::Cloudflare).default_ttl(),

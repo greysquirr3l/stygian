@@ -249,12 +249,24 @@ impl InvalidationReason {
     #[must_use]
     pub const fn challenge_class(&self) -> ChallengeClass {
         match self {
-            Self::Expired { challenge_class, .. }
-            | Self::NonceMismatch { challenge_class, .. }
-            | Self::NonceReplayed { challenge_class, .. }
-            | Self::SessionBindingMiss { challenge_class, .. }
-            | Self::ContractMissing { challenge_class, .. }
-            | Self::NotApplicable { challenge_class, .. } => *challenge_class,
+            Self::Expired {
+                challenge_class, ..
+            }
+            | Self::NonceMismatch {
+                challenge_class, ..
+            }
+            | Self::NonceReplayed {
+                challenge_class, ..
+            }
+            | Self::SessionBindingMiss {
+                challenge_class, ..
+            }
+            | Self::ContractMissing {
+                challenge_class, ..
+            }
+            | Self::NotApplicable {
+                challenge_class, ..
+            } => *challenge_class,
         }
     }
 

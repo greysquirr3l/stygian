@@ -146,7 +146,10 @@ fn default_pseudo_header_order() -> Vec<String> {
 }
 
 fn default_header_order() -> Vec<String> {
-    HEADER_ORDER_CHROME_136.iter().map(|s| (*s).to_string()).collect()
+    HEADER_ORDER_CHROME_136
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect()
 }
 
 impl Default for TransportProfile {
@@ -249,10 +252,16 @@ mod tests {
         assert_eq!(profile.expected_http2_check_count(), 3);
         assert!(!profile.require_http2_observations);
         assert!(profile.expectations.contains(TransportProfile::SETTINGS));
-        assert!(profile
-            .expectations
-            .contains(TransportProfile::PSEUDO_HEADER_ORDER));
-        assert!(profile.expectations.contains(TransportProfile::HEADER_ORDER));
+        assert!(
+            profile
+                .expectations
+                .contains(TransportProfile::PSEUDO_HEADER_ORDER)
+        );
+        assert!(
+            profile
+                .expectations
+                .contains(TransportProfile::HEADER_ORDER)
+        );
     }
 
     #[test]
@@ -272,8 +281,7 @@ mod tests {
 
     #[test]
     fn with_expectations_toggles_all_three_flags() {
-        let profile = TransportProfile::default()
-            .with_expectation_bits(0);
+        let profile = TransportProfile::default().with_expectation_bits(0);
         assert!(!profile.has_any_http2_expectation());
         assert_eq!(profile.expected_http2_check_count(), 0);
     }

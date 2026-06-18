@@ -74,7 +74,10 @@ fn detector_emits_suspected_event_for_single_advisory_canary_delta() {
     assert_eq!(event.classification, ChangeClassification::Suspected);
     assert!(event.event_id.starts_with("cf-"));
     assert!(event.event_id.ends_with("-example.com"));
-    assert_eq!(event.delta_summary.headline, "integrity probe webdriver regressed");
+    assert_eq!(
+        event.delta_summary.headline,
+        "integrity probe webdriver regressed"
+    );
     assert!(event.delta_summary.score > 0.0);
     assert!(
         event
@@ -111,10 +114,7 @@ fn detector_emits_no_event_for_pure_noise_deltas() {
         ),
     ];
     let report = detector.detect(&deltas, &sink);
-    assert_eq!(
-        report.aggregate_classification,
-        ChangeClassification::Noise
-    );
+    assert_eq!(report.aggregate_classification, ChangeClassification::Noise);
     assert_eq!(report.noise_targets.len(), 2);
     assert!(report.suspected_targets.is_empty());
     assert!(report.probable_targets.is_empty());
@@ -177,8 +177,7 @@ fn threshold_round_trip_through_config_struct() {
         .with_extraction_weight(0.65);
 
     let json = serde_json::to_string(&thresholds).expect("serialise");
-    let parsed: ChangeFeedThresholds =
-        serde_json::from_str(&json).expect("deserialise");
+    let parsed: ChangeFeedThresholds = serde_json::from_str(&json).expect("deserialise");
     assert_eq!(thresholds, parsed);
 
     let detector = ChangeDetector::new().with_thresholds(thresholds);
@@ -228,7 +227,10 @@ fn report_serialises_to_runbook_diagnostic_shape() {
     assert!(obj.contains_key("events"));
     assert!(obj.contains_key("thresholds"));
 
-    let events = obj.get("events").and_then(|v| v.as_array()).expect("events");
+    let events = obj
+        .get("events")
+        .and_then(|v| v.as_array())
+        .expect("events");
     assert_eq!(events.len(), 1);
     let event = &events[0];
     let event_obj = event.as_object().expect("event object");
@@ -348,5 +350,8 @@ fn synthetic_canary_regression_generates_event_packet() {
     assert_eq!(report.noise_targets, replay.noise_targets);
     assert_eq!(report.suspected_targets, replay.suspected_targets);
     assert_eq!(report.probable_targets, replay.probable_targets);
-    assert_eq!(report.aggregate_classification, replay.aggregate_classification);
+    assert_eq!(
+        report.aggregate_classification,
+        replay.aggregate_classification
+    );
 }

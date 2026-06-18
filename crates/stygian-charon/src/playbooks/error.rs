@@ -156,7 +156,12 @@ mod tests {
 
     #[test]
     fn invalid_field_message_includes_field_and_value() {
-        let err = ValidationError::invalid_field("tier1-js", "pacing.rate_limit_rps", "-0.5", "must be > 0");
+        let err = ValidationError::invalid_field(
+            "tier1-js",
+            "pacing.rate_limit_rps",
+            "-0.5",
+            "must be > 0",
+        );
         let msg = err.to_string();
         assert!(msg.contains("tier1-js"));
         assert!(msg.contains("pacing.rate_limit_rps"));

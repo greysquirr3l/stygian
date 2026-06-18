@@ -140,11 +140,8 @@ impl CanaryTrendObservation {
     /// without recomputing.
     #[must_use]
     pub fn from_report(report: &IntegrityCanaryReport) -> Self {
-        let fired_probe_ids: Vec<String> = report
-            .trap_findings
-            .iter()
-            .map(|f| f.id.clone())
-            .collect();
+        let fired_probe_ids: Vec<String> =
+            report.trap_findings.iter().map(|f| f.id.clone()).collect();
 
         let mut signature_parts: Vec<String> = Vec::with_capacity(report.findings.len() * 3);
         for f in &report.findings {
@@ -193,9 +190,7 @@ impl CanaryTrendObservation {
 )]
 mod tests {
     use super::*;
-    use crate::integrity_canary::probes::{
-        IntegrityProbe, IntegrityProbeOutcome, ProbeFinding,
-    };
+    use crate::integrity_canary::probes::{IntegrityProbe, IntegrityProbeOutcome, ProbeFinding};
     use crate::integrity_canary::report::{
         IntegrityCanaryPolicy, IntegrityCanaryReport, IntegrityRiskClassification,
     };
@@ -216,12 +211,14 @@ mod tests {
 
     #[test]
     fn observation_signature_changes_with_finding_set() {
-        let report_a = IntegrityCanaryReport::from_findings(vec![
-            IntegrityProbe::confirmed_finding("a", 0.5, "x"),
-        ]);
-        let report_b = IntegrityCanaryReport::from_findings(vec![
-            IntegrityProbe::confirmed_finding("b", 0.5, "y"),
-        ]);
+        let report_a =
+            IntegrityCanaryReport::from_findings(vec![IntegrityProbe::confirmed_finding(
+                "a", 0.5, "x",
+            )]);
+        let report_b =
+            IntegrityCanaryReport::from_findings(vec![IntegrityProbe::confirmed_finding(
+                "b", 0.5, "y",
+            )]);
         let obs_a = CanaryTrendObservation::from_report(&report_a);
         let obs_b = CanaryTrendObservation::from_report(&report_b);
         assert_ne!(obs_a.signature, obs_b.signature);
@@ -237,9 +234,9 @@ mod tests {
         assert!(!obs.is_confirmed());
 
         // Confirmed report → Confirmed trend
-        let report = IntegrityCanaryReport::from_findings(vec![
-            IntegrityProbe::confirmed_finding("a", 1.0, "x"),
-        ]);
+        let report = IntegrityCanaryReport::from_findings(vec![IntegrityProbe::confirmed_finding(
+            "a", 1.0, "x",
+        )]);
         let obs = CanaryTrendObservation::from_report(&report);
         assert_eq!(obs.severity, TrendSeverity::Confirmed);
         assert!(obs.has_trap_signal());
@@ -324,9 +321,9 @@ mod tests {
 
     #[test]
     fn observation_serializes_with_snake_case_keys() {
-        let report = IntegrityCanaryReport::from_findings(vec![
-            IntegrityProbe::confirmed_finding("a", 0.5, "x"),
-        ]);
+        let report = IntegrityCanaryReport::from_findings(vec![IntegrityProbe::confirmed_finding(
+            "a", 0.5, "x",
+        )]);
         let obs = CanaryTrendObservation::from_report(&report);
         let json = serde_json::to_string(&obs).expect("serialize");
         assert!(json.contains("\"signature\""), "got: {json}");
@@ -334,14 +331,8 @@ mod tests {
         assert!(json.contains("\"severity\""), "got: {json}");
         assert!(json.contains("\"trap_count\""), "got: {json}");
         assert!(json.contains("\"confirmed_count\""), "got: {json}");
-        assert!(
-            json.contains("\"fired_probe_ids\""),
-            "got: {json}"
-        );
-        assert!(
-            json.contains("\"captured_at_epoch_ms\""),
-            "got: {json}"
-        );
+        assert!(json.contains("\"fired_probe_ids\""), "got: {json}");
+        assert!(json.contains("\"captured_at_epoch_ms\""), "got: {json}");
     }
 
     #[test]
@@ -354,19 +345,10 @@ mod tests {
     #[test]
     fn trend_severity_from_score_round_trips_classification() {
         let mut score = IntegrityRiskScore::clean();
-        assert_eq!(
-            TrendSeverity::from_score(&score),
-            TrendSeverity::Clean
-        );
+        assert_eq!(TrendSeverity::from_score(&score), TrendSeverity::Clean);
         score.classification = IntegrityRiskClassification::Suspected;
-        assert_eq!(
-            TrendSeverity::from_score(&score),
-            TrendSeverity::Suspected
-        );
+        assert_eq!(TrendSeverity::from_score(&score), TrendSeverity::Suspected);
         score.classification = IntegrityRiskClassification::Confirmed;
-        assert_eq!(
-            TrendSeverity::from_score(&score),
-            TrendSeverity::Confirmed
-        );
+        assert_eq!(TrendSeverity::from_score(&score), TrendSeverity::Confirmed);
     }
 }

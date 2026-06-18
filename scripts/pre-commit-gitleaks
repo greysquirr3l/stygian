@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Dedicated gitleaks pre-commit hook.
+
+set -euo pipefail
+
+echo "-> Running gitleaks (staged)..."
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "   gitleaks not installed, skipping"
+  exit 0
+fi
+
+gitleaks protect --staged --verbose

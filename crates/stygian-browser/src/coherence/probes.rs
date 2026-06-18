@@ -358,9 +358,7 @@ async fn run_probe(page: &PageHandle, script: &str, label: &'static str) -> Cont
                 raw = %json,
                 "coherence probe returned invalid JSON",
             );
-            ContextObservation::skipped(format!(
-                "{label} JSON decode failed: {err}"
-            ))
+            ContextObservation::skipped(format!("{label} JSON decode failed: {err}"))
         }
     }
 }
@@ -382,9 +380,7 @@ const _: fn() -> Option<BrowserError> = || None;
 )]
 mod tests {
     use super::*;
-    use crate::coherence::report::{
-        ContextKind, ContextPair, DriftSeverity, build_report,
-    };
+    use crate::coherence::report::{ContextKind, ContextPair, DriftSeverity, build_report};
 
     #[test]
     fn top_level_probe_uses_old_style_function_and_json_stringify() {
@@ -393,10 +389,7 @@ mod tests {
         assert!(TOP_LEVEL_PROBE.contains("var r={};"));
         assert!(TOP_LEVEL_PROBE.contains("JSON.stringify(r)"));
         assert!(!TOP_LEVEL_PROBE.contains("=>"), "no arrow functions");
-        assert!(
-            !TOP_LEVEL_PROBE.contains("let "),
-            "no `let` declarations"
-        );
+        assert!(!TOP_LEVEL_PROBE.contains("let "), "no `let` declarations");
         assert!(
             !TOP_LEVEL_PROBE.contains("const "),
             "no `const` declarations"
@@ -466,7 +459,11 @@ mod tests {
         // Missing fields are allowed; the deserialiser fills them with None.
         let raw = r#"{"user_agent":"Mozilla/5.0"}"#;
         let parsed: ProbeOutput = serde_json::from_str(raw).expect("decode");
-        let surface = parsed.into_observation().surface().expect("surface").clone();
+        let surface = parsed
+            .into_observation()
+            .surface()
+            .expect("surface")
+            .clone();
         assert_eq!(surface.user_agent.as_deref(), Some("Mozilla/5.0"));
         assert!(surface.platform.is_none());
         assert!(surface.webdriver.is_none());

@@ -341,8 +341,8 @@ mod tests {
             obs.http2_pseudo_header_order.as_deref(),
             Some(PSEUDO_HEADER_ORDER_CHROME_136)
                 .map(|s| s.iter().map(|x| (*x).to_string()).collect::<Vec<_>>())
-            .as_ref()
-            .map(|v| &v[..])
+                .as_ref()
+                .map(|v| &v[..])
         );
     }
 

@@ -23,10 +23,12 @@ use crate::interstitial_router::{
     InterstitialPolicy, InterstitialRouter, PageSignature, RouterDecision,
 };
 use crate::page::WaitUntil;
-use crate::replay_defense::{ReplayDefenseCheckInput, ReplayDefenseReport, ReplayDefenseState};
 use crate::replay_defense::ReplayDefensePolicy;
-use crate::transport_realism::{score as score_transport_realism, TransportObservation,
-    TransportProfile, TransportRealismReport};
+use crate::replay_defense::{ReplayDefenseCheckInput, ReplayDefenseReport, ReplayDefenseState};
+use crate::transport_realism::{
+    TransportObservation, TransportProfile, TransportRealismReport,
+    score as score_transport_realism,
+};
 
 /// Opinionated acquisition mode for the escalation ladder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,10 +95,7 @@ impl ReplayDefenseContext {
 
     /// Build a context with the supplied policy and state.
     #[must_use]
-    pub const fn with_policy(
-        policy: ReplayDefensePolicy,
-        state: ReplayDefenseState,
-    ) -> Self {
+    pub const fn with_policy(policy: ReplayDefensePolicy, state: ReplayDefenseState) -> Self {
         Self { policy, state }
     }
 }
@@ -603,8 +602,7 @@ impl AcquisitionRunner {
         let Some(context) = request.replay_defense.as_ref() else {
             return false;
         };
-        let observed_host = host_hint(&request.url)
-            .unwrap_or_else(|| context.state.domain.clone());
+        let observed_host = host_hint(&request.url).unwrap_or_else(|| context.state.domain.clone());
         let observed_signature = context.state.signature.clone();
         let observed_nonce = context.state.nonce.clone();
         let input = ReplayDefenseCheckInput::new(
@@ -661,10 +659,7 @@ impl AcquisitionRunner {
     /// structured [`StageFailureKind::InterstitialRouted`]
     /// failure onto `result.failures`. Returns `true` when
     /// the runner should short-circuit.
-    fn evaluate_interstitial(
-        request: &AcquisitionRequest,
-        result: &mut AcquisitionResult,
-    ) -> bool {
+    fn evaluate_interstitial(request: &AcquisitionRequest, result: &mut AcquisitionResult) -> bool {
         let Some(context) = request.interstitial.as_ref() else {
             return false;
         };
@@ -722,8 +717,7 @@ impl AcquisitionRunner {
         // executes. An invalid contract is a deterministic, structured
         // rejection — no I/O is performed and the runner returns early.
         if let Some(contract) = request.freshness_contract.as_ref() {
-            let observed_host = host_hint(&request.url)
-                .unwrap_or_else(|| contract.domain.clone());
+            let observed_host = host_hint(&request.url).unwrap_or_else(|| contract.domain.clone());
             let observed_signature: Option<String> = None;
             let input = FreshnessCheckInput::new(
                 &observed_host,
@@ -1700,8 +1694,8 @@ mod tests {
 
     #[tokio::test]
     async fn rotation_due_replay_defense_short_circuits_runner() {
-        use crate::replay_defense::{ReplayDefensePolicy, ReplayDefenseState};
         use crate::ReplayDefenseContext;
+        use crate::replay_defense::{ReplayDefensePolicy, ReplayDefenseState};
         use std::time::Duration;
 
         let past_ms = crate::replay_defense::unix_epoch_ms().saturating_sub(120_000);
@@ -1741,17 +1735,12 @@ mod tests {
 
     #[tokio::test]
     async fn nonce_expired_replay_defense_short_circuits_runner() {
-        use crate::replay_defense::{ReplayDefensePolicy, ReplayDefenseState};
         use crate::ReplayDefenseContext;
+        use crate::replay_defense::{ReplayDefensePolicy, ReplayDefenseState};
         use std::time::Duration;
 
         let past_ms = crate::replay_defense::unix_epoch_ms().saturating_sub(120_000);
-        let state = ReplayDefenseState::new(
-            "example.com",
-            None,
-            Some("nonce-001"),
-            past_ms,
-        );
+        let state = ReplayDefenseState::new("example.com", None, Some("nonce-001"), past_ms);
         let policy = ReplayDefensePolicy {
             nonce_validity_window: Duration::from_secs(1),
             ..ReplayDefensePolicy::default()
@@ -1781,17 +1770,13 @@ mod tests {
 
     #[tokio::test]
     async fn signature_drift_replay_defense_short_circuits_runner() {
-        use crate::replay_defense::{ReplayDefensePolicy, ReplayDefenseState};
         use crate::ReplayDefenseContext;
+        use crate::replay_defense::{ReplayDefensePolicy, ReplayDefenseState};
         use std::time::Duration;
 
         let captured = crate::replay_defense::unix_epoch_ms();
-        let state = ReplayDefenseState::with_fingerprint(
-            "example.com",
-            "sha256:abc",
-            None,
-            captured,
-        );
+        let state =
+            ReplayDefenseState::with_fingerprint("example.com", "sha256:abc", None, captured);
         // force_reset_on_drift = true (default)
         let policy = ReplayDefensePolicy {
             force_reset_on_drift: true,
@@ -1834,8 +1819,8 @@ mod tests {
 
     #[tokio::test]
     async fn valid_replay_defense_state_does_not_short_circuit() {
-        use crate::replay_defense::{ReplayDefensePolicy, ReplayDefenseState};
         use crate::ReplayDefenseContext;
+        use crate::replay_defense::{ReplayDefensePolicy, ReplayDefenseState};
         use std::time::Duration;
 
         let captured = crate::replay_defense::unix_epoch_ms();
@@ -1875,17 +1860,14 @@ mod tests {
 
     #[test]
     fn replay_defense_context_with_default_policy_uses_baseline() {
-        use crate::replay_defense::ReplayDefenseState;
         use crate::ReplayDefenseContext;
+        use crate::replay_defense::ReplayDefenseState;
 
         let state = ReplayDefenseState::new("example.com", None, None, 0);
         let context = ReplayDefenseContext::new(state);
         // Default policy: 30 min rotation, 5 min nonce, force_reset_on_drift
         assert_eq!(context.policy.rotation_interval, Duration::from_mins(30));
-        assert_eq!(
-            context.policy.nonce_validity_window,
-            Duration::from_mins(5)
-        );
+        assert_eq!(context.policy.nonce_validity_window, Duration::from_mins(5));
         assert!(context.policy.force_reset_on_drift);
     }
 
@@ -1893,8 +1875,8 @@ mod tests {
 
     #[tokio::test]
     async fn interstitial_hard_block_short_circuits_runner() {
-        use crate::interstitial_router::PageSignature;
         use crate::InterstitialContext;
+        use crate::interstitial_router::PageSignature;
         use std::time::Duration;
 
         let signature = PageSignature::new("https://example.com/blocked", Some(403))
@@ -1929,8 +1911,8 @@ mod tests {
 
     #[tokio::test]
     async fn interstitial_queue_short_circuits_runner() {
-        use crate::interstitial_router::PageSignature;
         use crate::InterstitialContext;
+        use crate::interstitial_router::PageSignature;
         use std::time::Duration;
 
         let signature = PageSignature::new("https://example.com/queue", Some(200))
@@ -1965,8 +1947,8 @@ mod tests {
 
     #[tokio::test]
     async fn interstitial_challenge_short_circuits_runner() {
-        use crate::interstitial_router::PageSignature;
         use crate::InterstitialContext;
+        use crate::interstitial_router::PageSignature;
         use std::time::Duration;
 
         let signature = PageSignature::new(
@@ -2004,8 +1986,8 @@ mod tests {
 
     #[tokio::test]
     async fn interstitial_transient_does_not_short_circuit() {
-        use crate::interstitial_router::PageSignature;
         use crate::InterstitialContext;
+        use crate::interstitial_router::PageSignature;
         use std::time::Duration;
 
         let signature = PageSignature::new("https://example.com/redirect", Some(302));

@@ -146,9 +146,9 @@ fn perimeterx_integrity_check_ttl_clamped_to_policy_max() {
     );
     let outcome = v.validate(&contract, None, 60);
     match outcome {
-        ValidationOutcome::Ok {
-            effective_ttl, ..
-        } => assert_eq!(effective_ttl, Duration::from_mins(30)),
+        ValidationOutcome::Ok { effective_ttl, .. } => {
+            assert_eq!(effective_ttl, Duration::from_mins(30));
+        }
         ValidationOutcome::Rejected(err) => panic!("expected accept after clamp, got {err:?}"),
     }
 }
@@ -171,10 +171,7 @@ fn akamai_proof_of_work_token_rejected_after_ttl() {
         ValidationOutcome::Rejected(err) => {
             assert_eq!(err.reason.kind(), InvalidationKind::Expired);
             assert_eq!(err.reason.vendor_family(), VendorId::Akamai);
-            assert_eq!(
-                err.reason.challenge_class(),
-                ChallengeClass::ProofOfWork
-            );
+            assert_eq!(err.reason.challenge_class(), ChallengeClass::ProofOfWork);
         }
         ValidationOutcome::Ok { .. } => panic!("expected TTL reject"),
     }
@@ -240,7 +237,10 @@ fn invalidation_reason_label_is_stable_across_kinds() {
         0,
     );
     let expired_outcome = v.validate(&expired, None, 5 * 60);
-    assert_eq!(expired_outcome.invalidation_kind(), Some(InvalidationKind::Expired));
+    assert_eq!(
+        expired_outcome.invalidation_kind(),
+        Some(InvalidationKind::Expired)
+    );
 
     let mut nonce_missing = make_contract(
         VendorId::Cloudflare,
@@ -357,10 +357,7 @@ fn invalid_token_reuse_triggers_violation_path() {
         ValidationOutcome::Rejected(err) => {
             assert_eq!(err.reason.kind(), InvalidationKind::NonceReplayed);
             assert_eq!(err.reason.vendor_family(), VendorId::Cloudflare);
-            assert_eq!(
-                err.reason.challenge_class(),
-                ChallengeClass::Interstitial
-            );
+            assert_eq!(err.reason.challenge_class(), ChallengeClass::Interstitial);
             match &err.reason {
                 stygian_charon::token_lifecycle::InvalidationReason::NonceReplayed {
                     observation_count,

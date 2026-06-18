@@ -187,9 +187,10 @@ impl PowCapabilityStore {
         sample: &PowCapabilitySample,
     ) {
         let key = pow_profile_key(domain, target_class, vendor);
-        let mut profile = self.store.peek(&key).unwrap_or_else(|| {
-            PowCapabilityProfile::new(domain, target_class, vendor)
-        });
+        let mut profile = self
+            .store
+            .peek(&key)
+            .unwrap_or_else(|| PowCapabilityProfile::new(domain, target_class, vendor));
         profile.merge(sample);
         // Refresh the recorded_at_unix_secs to the current
         // wall clock so the merge timestamp stays useful
@@ -266,7 +267,11 @@ mod tests {
             &PowCapabilitySample::solved(1_000, 0),
         );
         let profile = store
-            .lookup("example.com", TargetClass::ContentSite, VendorId::Cloudflare)
+            .lookup(
+                "example.com",
+                TargetClass::ContentSite,
+                VendorId::Cloudflare,
+            )
             .expect("profile");
         assert_eq!(profile.domain, "example.com");
         assert_eq!(profile.solved_count, 1);
@@ -277,31 +282,31 @@ mod tests {
     #[test]
     fn record_sample_merges_into_existing_profile() {
         let store = PowCapabilityStore::new(NonZeroUsize::new(4).unwrap(), DEFAULT_POW_TTL);
-        let key = ("example.com", TargetClass::ContentSite, VendorId::Cloudflare);
-        store.record_sample(
-            key.0,
-            key.1,
-            key.2,
-            &PowCapabilitySample::solved(1_000, 0),
+        let key = (
+            "example.com",
+            TargetClass::ContentSite,
+            VendorId::Cloudflare,
         );
+        store.record_sample(key.0, key.1, key.2, &PowCapabilitySample::solved(1_000, 0));
+        store.record_sample(key.0, key.1, key.2, &PowCapabilitySample::solved(1_500, 1));
         store.record_sample(
             key.0,
             key.1,
             key.2,
-            &PowCapabilitySample::solved(1_500, 1),
-        );
-        store.record_sample(
-            key.0,
-            key.1,
-            key.2,
-            &PowCapabilitySample::failed(2_000, 1, crate::pow_profile::profile::PowFailureMode::Timeout),
+            &PowCapabilitySample::failed(
+                2_000,
+                1,
+                crate::pow_profile::profile::PowFailureMode::Timeout,
+            ),
         );
         let profile = store.lookup(key.0, key.1, key.2).expect("profile");
         assert_eq!(profile.solved_count, 2);
         assert_eq!(profile.failed_count, 1);
         assert_eq!(profile.retry_count, 2);
         assert_eq!(
-            profile.failure_modes.get(&crate::pow_profile::profile::PowFailureMode::Timeout),
+            profile
+                .failure_modes
+                .get(&crate::pow_profile::profile::PowFailureMode::Timeout),
             Some(&1)
         );
     }
@@ -328,7 +333,11 @@ mod tests {
             &PowCapabilitySample::solved(3_000, 0),
         );
         let cs_cf = store
-            .lookup("example.com", TargetClass::ContentSite, VendorId::Cloudflare)
+            .lookup(
+                "example.com",
+                TargetClass::ContentSite,
+                VendorId::Cloudflare,
+            )
             .unwrap();
         let api_cf = store
             .lookup("example.com", TargetClass::Api, VendorId::Cloudflare)
@@ -358,7 +367,8 @@ mod tests {
 
     #[test]
     fn entries_decay_after_ttl() {
-        let store = PowCapabilityStore::new(NonZeroUsize::new(4).unwrap(), Duration::from_millis(1));
+        let store =
+            PowCapabilityStore::new(NonZeroUsize::new(4).unwrap(), Duration::from_millis(1));
         store.record_sample(
             "example.com",
             TargetClass::Api,
@@ -366,9 +376,11 @@ mod tests {
             &PowCapabilitySample::solved(1_000, 0),
         );
         thread::sleep(Duration::from_millis(5));
-        assert!(store
-            .lookup("example.com", TargetClass::Api, VendorId::Cloudflare)
-            .is_none());
+        assert!(
+            store
+                .lookup("example.com", TargetClass::Api, VendorId::Cloudflare)
+                .is_none()
+        );
     }
 
     #[test]
@@ -407,12 +419,16 @@ mod tests {
             &PowCapabilitySample::solved(1_000, 0),
         );
         store.invalidate("a.example", TargetClass::Api, VendorId::Cloudflare);
-        assert!(store
-            .lookup("a.example", TargetClass::Api, VendorId::Cloudflare)
-            .is_none());
-        assert!(store
-            .lookup("b.example", TargetClass::Api, VendorId::Cloudflare)
-            .is_some());
+        assert!(
+            store
+                .lookup("a.example", TargetClass::Api, VendorId::Cloudflare)
+                .is_none()
+        );
+        assert!(
+            store
+                .lookup("b.example", TargetClass::Api, VendorId::Cloudflare)
+                .is_some()
+        );
     }
 
     #[test]

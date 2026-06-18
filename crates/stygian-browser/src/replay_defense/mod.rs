@@ -329,11 +329,7 @@ impl ReplayDefenseState {
 
     /// Build a state record at the current wall-clock.
     #[must_use]
-    pub fn capture_now(
-        domain: &str,
-        signature: Option<&str>,
-        nonce: Option<&str>,
-    ) -> Self {
+    pub fn capture_now(domain: &str, signature: Option<&str>, nonce: Option<&str>) -> Self {
         Self::new(domain, signature, nonce, unix_epoch_ms())
     }
 }
@@ -387,9 +383,7 @@ impl ReplayDefenseCheckInput {
             observed_signature: observed_signature
                 .filter(|s| !s.is_empty())
                 .map(str::to_string),
-            observed_nonce: observed_nonce
-                .filter(|s| !s.is_empty())
-                .map(str::to_string),
+            observed_nonce: observed_nonce.filter(|s| !s.is_empty()).map(str::to_string),
             observed_at_epoch_ms,
         }
     }
@@ -657,8 +651,7 @@ pub fn check(
     }
 
     // 2. Signature drift
-    if let (Some(expected), Some(observed)) =
-        (&state.signature, &input.observed_signature)
+    if let (Some(expected), Some(observed)) = (&state.signature, &input.observed_signature)
         && expected != observed
     {
         return ReplayDefenseDecision::SignatureDrift {
@@ -681,8 +674,7 @@ pub fn check(
     }
 
     // 3. Nonce rotation
-    if let (Some(contract_nonce), Some(observed_nonce)) =
-        (&state.nonce, &input.observed_nonce)
+    if let (Some(contract_nonce), Some(observed_nonce)) = (&state.nonce, &input.observed_nonce)
         && contract_nonce != observed_nonce
     {
         return ReplayDefenseDecision::NonceRotated {
@@ -987,12 +979,7 @@ mod tests {
             nonce_validity_window: Duration::from_secs(1),
             ..policy()
         };
-        let state = ReplayDefenseState::new(
-            "example.com",
-            None,
-            Some("nonce-001"),
-            CAPTURED_AT,
-        );
+        let state = ReplayDefenseState::new("example.com", None, Some("nonce-001"), CAPTURED_AT);
         // 5 seconds later — past the nonce validity window
         let input = ReplayDefenseCheckInput::new(
             "example.com",
@@ -1014,12 +1001,7 @@ mod tests {
     #[test]
     fn nonce_rotation_emits_nonce_rotated() {
         let policy = policy();
-        let state = ReplayDefenseState::new(
-            "example.com",
-            None,
-            Some("nonce-001"),
-            CAPTURED_AT,
-        );
+        let state = ReplayDefenseState::new("example.com", None, Some("nonce-001"), CAPTURED_AT);
         let input = ReplayDefenseCheckInput::new(
             "example.com",
             None,
@@ -1043,12 +1025,8 @@ mod tests {
             force_reset_on_drift: true,
             ..policy()
         };
-        let state = ReplayDefenseState::with_fingerprint(
-            "example.com",
-            "sha256:abc",
-            None,
-            CAPTURED_AT,
-        );
+        let state =
+            ReplayDefenseState::with_fingerprint("example.com", "sha256:abc", None, CAPTURED_AT);
         let input = ReplayDefenseCheckInput::new(
             "example.com",
             Some("sha256:xyz"),
@@ -1074,12 +1052,8 @@ mod tests {
             force_reset_on_drift: false,
             ..policy()
         };
-        let state = ReplayDefenseState::with_fingerprint(
-            "example.com",
-            "sha256:abc",
-            None,
-            CAPTURED_AT,
-        );
+        let state =
+            ReplayDefenseState::with_fingerprint("example.com", "sha256:abc", None, CAPTURED_AT);
         let input = ReplayDefenseCheckInput::new(
             "example.com",
             Some("sha256:xyz"),
@@ -1137,19 +1111,17 @@ mod tests {
             Some("nonce-001"),
             CAPTURED_AT + 30_000,
         );
-        assert_eq!(check(&policy, &state, &input), check(&policy, &state, &input));
+        assert_eq!(
+            check(&policy, &state, &input),
+            check(&policy, &state, &input)
+        );
     }
 
     #[test]
     fn empty_signature_and_nonce_stays_valid() {
         let policy = policy();
         let state = ReplayDefenseState::new("example.com", None, None, CAPTURED_AT);
-        let input = ReplayDefenseCheckInput::new(
-            "example.com",
-            None,
-            None,
-            CAPTURED_AT + 1_000,
-        );
+        let input = ReplayDefenseCheckInput::new("example.com", None, None, CAPTURED_AT + 1_000);
         assert!(check(&policy, &state, &input).is_valid());
     }
 

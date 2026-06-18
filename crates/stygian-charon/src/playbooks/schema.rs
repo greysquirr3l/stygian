@@ -322,7 +322,10 @@ impl EscalationStrategy {
     pub fn ceiling(&self) -> AcquisitionModeHint {
         match self {
             Self::Capped { ceiling } => *ceiling,
-            Self::Linear { steps } => steps.last().copied().unwrap_or(AcquisitionModeHint::Resilient),
+            Self::Linear { steps } => steps
+                .last()
+                .copied()
+                .unwrap_or(AcquisitionModeHint::Resilient),
         }
     }
 
@@ -331,7 +334,10 @@ impl EscalationStrategy {
     pub fn first(&self) -> AcquisitionModeHint {
         match self {
             Self::Capped { ceiling } => *ceiling,
-            Self::Linear { steps } => steps.first().copied().unwrap_or(AcquisitionModeHint::Resilient),
+            Self::Linear { steps } => steps
+                .first()
+                .copied()
+                .unwrap_or(AcquisitionModeHint::Resilient),
         }
     }
 
@@ -490,21 +496,21 @@ impl Playbook {
     ///
     /// # Example
     ///
-/// ```
-/// use stygian_charon::playbooks::{Playbook, AcquisitionDefaults};
-/// use stygian_charon::types::TargetClass;
-///
-/// let pb = Playbook {
-///     id: "tier1-static".to_string(),
-///     target_class: TargetClass::ContentSite,
-///     description: String::new(),
-///     acquisition: AcquisitionDefaults::default_for(TargetClass::ContentSite),
-///     proxy_preference: Default::default(),
-///     pacing: Default::default(),
-///     escalation: Default::default(),
-/// };
-/// let _hints = pb.to_runtime_policy_hints();
-/// ```
+    /// ```
+    /// use stygian_charon::playbooks::{Playbook, AcquisitionDefaults};
+    /// use stygian_charon::types::TargetClass;
+    ///
+    /// let pb = Playbook {
+    ///     id: "tier1-static".to_string(),
+    ///     target_class: TargetClass::ContentSite,
+    ///     description: String::new(),
+    ///     acquisition: AcquisitionDefaults::default_for(TargetClass::ContentSite),
+    ///     proxy_preference: Default::default(),
+    ///     pacing: Default::default(),
+    ///     escalation: Default::default(),
+    /// };
+    /// let _hints = pb.to_runtime_policy_hints();
+    /// ```
     #[must_use]
     pub const fn to_runtime_policy_hints(&self) -> crate::acquisition::RuntimePolicyHints {
         crate::acquisition::RuntimePolicyHints {
@@ -574,9 +580,7 @@ fn validate_proxy_preference(pb: &Playbook) -> Result<(), ValidationError> {
             pb.id.clone(),
             "proxy_preference.preferred_protocol",
             proto,
-            format!(
-                "preferred_protocol must be one of {SUPPORTED_PROXY_PROTOCOLS:?}"
-            ),
+            format!("preferred_protocol must be one of {SUPPORTED_PROXY_PROTOCOLS:?}"),
         ));
     }
     if let Some(max_latency) = proxy.max_latency_ms
@@ -748,15 +752,9 @@ mod tests {
         let hints = pb.to_runtime_policy_hints();
         assert_eq!(hints.execution_mode, Some(pb.acquisition.execution_mode));
         assert_eq!(hints.session_mode, Some(pb.acquisition.session_mode));
-        assert_eq!(
-            hints.telemetry_level,
-            Some(pb.acquisition.telemetry_level)
-        );
+        assert_eq!(hints.telemetry_level, Some(pb.acquisition.telemetry_level));
         assert_eq!(hints.max_retries, Some(pb.acquisition.retry_budget));
-        assert_eq!(
-            hints.backoff_base_ms,
-            Some(pb.acquisition.backoff_base_ms)
-        );
+        assert_eq!(hints.backoff_base_ms, Some(pb.acquisition.backoff_base_ms));
         assert_eq!(hints.enable_warmup, Some(pb.acquisition.enable_warmup));
     }
 

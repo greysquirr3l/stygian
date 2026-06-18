@@ -104,15 +104,13 @@ impl ScoreWeightedSelector {
     /// caller already owns the candidates and does not want to move them.
     #[must_use]
     pub fn pick_best_ref(candidates: &[ScoredCandidate]) -> Option<&ScoredCandidate> {
-        candidates
-            .iter()
-            .reduce(|best, current| {
-                if current.score.overall > best.score.overall {
-                    current
-                } else {
-                    best
-                }
-            })
+        candidates.iter().reduce(|best, current| {
+            if current.score.overall > best.score.overall {
+                current
+            } else {
+                best
+            }
+        })
     }
 }
 
@@ -135,7 +133,10 @@ mod tests {
 
     #[test]
     fn test_pick_best_single_candidate() {
-        let candidates = vec![ScoredCandidate::new("only", ReliabilityScore::from_overall(0.5))];
+        let candidates = vec![ScoredCandidate::new(
+            "only",
+            ReliabilityScore::from_overall(0.5),
+        )];
         let winner = ScoreWeightedSelector::pick_best(candidates).unwrap();
         assert_eq!(winner.name, "only");
     }

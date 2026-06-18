@@ -1457,16 +1457,16 @@ mod rustls_config {
         ///
         /// introducing native TLS dependencies.
         ///
-    /// # Errors
-    ///
-    /// Returns [`TlsConfigError::UnsupportedCipherSuite`] when a profile
-    /// cipher suite is not provided by the rustls backend and `control`
-    /// has `strict_cipher_suites` set, or
-    /// [`TlsConfigError::UnsupportedSupportedGroup`] when a profile
-    /// supported-group entry is not available and `control` has
-    /// `strict_supported_groups` set. May also surface
-    /// [`TlsConfigError::NoCipherSuites`], [`TlsConfigError::NoSupportedGroups`],
-    /// or [`TlsConfigError::Rustls`] for the remaining failure modes.
+        /// # Errors
+        ///
+        /// Returns [`TlsConfigError::UnsupportedCipherSuite`] when a profile
+        /// cipher suite is not provided by the rustls backend and `control`
+        /// has `strict_cipher_suites` set, or
+        /// [`TlsConfigError::UnsupportedSupportedGroup`] when a profile
+        /// supported-group entry is not available and `control` has
+        /// `strict_supported_groups` set. May also surface
+        /// [`TlsConfigError::NoCipherSuites`], [`TlsConfigError::NoSupportedGroups`],
+        /// or [`TlsConfigError::Rustls`] for the remaining failure modes.
         ///
         /// # Limitations
         ///

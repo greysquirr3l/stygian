@@ -160,7 +160,11 @@ impl ReliabilityScorer {
     /// assert_eq!(score.band, ReliabilityBand::Low);
     /// ```
     #[must_use]
-    pub fn score_extraction(&self, result: &ExtractionResult, retry_count: u32) -> ReliabilityScore {
+    pub fn score_extraction(
+        &self,
+        result: &ExtractionResult,
+        retry_count: u32,
+    ) -> ReliabilityScore {
         self.score_metadata(&result.metadata, retry_count)
     }
 
@@ -179,7 +183,11 @@ impl ReliabilityScorer {
         retry_count: u32,
     ) -> ReliabilityScore {
         let total = metadata.region_status.len();
-        let successful = metadata.region_status.values().filter(|s| s.success).count();
+        let successful = metadata
+            .region_status
+            .values()
+            .filter(|s| s.success)
+            .count();
 
         let schema_completeness = if total == 0 {
             1.0
@@ -265,7 +273,10 @@ fn build_reasons(
         ));
     }
     if retry_penalty > 0.0 {
-        reasons.push(format!("retry penalty applied ({:.0}%)", retry_penalty * 100.0));
+        reasons.push(format!(
+            "retry penalty applied ({:.0}%)",
+            retry_penalty * 100.0
+        ));
     }
     reasons
 }
@@ -484,7 +495,9 @@ mod tests {
 
     #[test]
     fn test_is_transformation_error_heuristic() {
-        assert!(is_transformation_error("Region 'price': transformation failed"));
+        assert!(is_transformation_error(
+            "Region 'price': transformation failed"
+        ));
         assert!(is_transformation_error("Invalid regex pattern"));
         assert!(is_transformation_error("Cannot coerce value"));
         assert!(is_transformation_error("Filter rejected the value"));

@@ -30,9 +30,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum VendorResolverError {
     /// A field on a resolution rule failed semantic validation.
-    #[error(
-        "resolution rule '{rule_id}': field '{field}' has invalid value '{value}': {reason}"
-    )]
+    #[error("resolution rule '{rule_id}': field '{field}' has invalid value '{value}': {reason}")]
     InvalidField {
         /// Rule id containing the offending field.
         rule_id: String,

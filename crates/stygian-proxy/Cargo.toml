@@ -46,7 +46,7 @@ rand = { workspace = true }
 stygian-browser = { path = "../stygian-browser", version = "0.13.5", optional = true }
 
 # DNS TXT proxy discovery (optional)
-hickory-resolver = { version = "0.24", features = ["tokio-runtime"], optional = true }
+hickory-resolver = { version = "0.26.1", features = ["tokio"], optional = true }
 
 [dev-dependencies]
 tokio       = { workspace = true }

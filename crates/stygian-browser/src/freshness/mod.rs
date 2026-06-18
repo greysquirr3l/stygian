@@ -237,10 +237,7 @@ impl FreshnessPolicy {
 
     /// Replace the full override map at once.
     #[must_use]
-    pub fn with_overrides(
-        mut self,
-        overrides: HashMap<String, DomainClass>,
-    ) -> Self {
+    pub fn with_overrides(mut self, overrides: HashMap<String, DomainClass>) -> Self {
         self.domain_class_overrides = overrides;
         self
     }
@@ -742,8 +739,7 @@ pub fn check(contract: &FreshnessContract, input: &FreshnessCheckInput) -> Fresh
     }
 
     // 3. Signature mismatch
-    if let (Some(expected), Some(observed)) =
-        (&contract.signature_hash, &input.observed_signature)
+    if let (Some(expected), Some(observed)) = (&contract.signature_hash, &input.observed_signature)
         && expected != observed
     {
         return FreshnessDecision::SignatureMismatch {
@@ -820,10 +816,7 @@ impl FreshnessReport {
 
     /// Build a report from a contract + input pair.
     #[must_use]
-    pub fn evaluate(
-        contract: &FreshnessContract,
-        input: &FreshnessCheckInput,
-    ) -> Self {
+    pub fn evaluate(contract: &FreshnessContract, input: &FreshnessCheckInput) -> Self {
         Self {
             decision: check(contract, input),
             domain_class: contract.domain_class,
@@ -1012,10 +1005,7 @@ mod tests {
         // Re-classify as sensitive to also test class plumbing
         let policy = policy.with_domain_override("example.com", Some(DomainClass::Sensitive));
         assert!(policy.signature_required);
-        assert_eq!(
-            policy.class_for("example.com"),
-            DomainClass::Sensitive
-        );
+        assert_eq!(policy.class_for("example.com"), DomainClass::Sensitive);
         // Build a contract without signature
         let c = FreshnessContract::without_signature(
             "example.com",

@@ -314,7 +314,8 @@ impl TokenValidator {
         }
 
         // 4. Nonce presence check.
-        let nonce_required = vendor_policy.require_nonce() || contract.challenge_class.requires_nonce();
+        let nonce_required =
+            vendor_policy.require_nonce() || contract.challenge_class.requires_nonce();
         if nonce_required && contract.nonce.is_empty() {
             return ValidationOutcome::Rejected(TokenLifecycleError::new(
                 InvalidationReason::NonceMismatch {
@@ -352,7 +353,7 @@ impl TokenValidator {
         }
 
         // 6. Session binding check.
-let binding_required = vendor_policy.require_session_binding()
+        let binding_required = vendor_policy.require_session_binding()
             || contract.challenge_class.requires_session_binding();
         if binding_required {
             let expected = contract.bound_session.as_deref();
@@ -444,24 +445,20 @@ const fn is_applicable(vendor: VendorId, challenge_class: ChallengeClass) -> boo
     use ChallengeClass as C;
     use VendorId as V;
     match vendor {
-        V::DataDome
-        | V::PerimeterX
-        | V::Akamai
-        | V::Imperva
-        | V::ShapeSecurity
-        | V::Kasada => matches!(
-            challenge_class,
-            C::Interstitial
-                | C::Captcha
-                | C::ProofOfWork
-                | C::IntegrityCheck
-                | C::CookieRefresh
-                | C::Unknown
-        ),
-        V::Hcaptcha | V::Recaptcha => matches!(
-            challenge_class,
-            C::Captcha | C::CookieRefresh | C::Unknown
-        ),
+        V::DataDome | V::PerimeterX | V::Akamai | V::Imperva | V::ShapeSecurity | V::Kasada => {
+            matches!(
+                challenge_class,
+                C::Interstitial
+                    | C::Captcha
+                    | C::ProofOfWork
+                    | C::IntegrityCheck
+                    | C::CookieRefresh
+                    | C::Unknown
+            )
+        }
+        V::Hcaptcha | V::Recaptcha => {
+            matches!(challenge_class, C::Captcha | C::CookieRefresh | C::Unknown)
+        }
         V::FingerprintCom => matches!(challenge_class, C::None | C::CookieRefresh | C::Unknown),
         V::Cloudflare => matches!(
             challenge_class,
@@ -616,10 +613,7 @@ mod tests {
             ValidationOutcome::Rejected(err) => {
                 assert_eq!(err.reason.kind(), InvalidationKind::NonceMismatch);
                 assert_eq!(err.reason.vendor_family(), VendorId::Cloudflare);
-                assert_eq!(
-                    err.reason.challenge_class(),
-                    ChallengeClass::Interstitial
-                );
+                assert_eq!(err.reason.challenge_class(), ChallengeClass::Interstitial);
             }
             ValidationOutcome::Ok { .. } => panic!("expected missing-nonce reject"),
         }
@@ -709,9 +703,7 @@ mod tests {
         );
         let outcome = v.validate(&c, None, 40 * 60);
         match outcome {
-            ValidationOutcome::Ok {
-                effective_ttl, ..
-            } => {
+            ValidationOutcome::Ok { effective_ttl, .. } => {
                 assert!(approx_eq(effective_ttl, Duration::from_mins(45)));
             }
             ValidationOutcome::Rejected(err) => panic!("unexpected reject: {err:?}"),
@@ -769,6 +761,9 @@ mod tests {
         ));
         assert!(!rejected.is_ok());
         assert!(rejected.is_rejected());
-        assert_eq!(rejected.invalidation_kind(), Some(InvalidationKind::ContractMissing));
+        assert_eq!(
+            rejected.invalidation_kind(),
+            Some(InvalidationKind::ContractMissing)
+        );
     }
 }

@@ -24,19 +24,19 @@
 //! which is wired through the same `build_runtime_policy_with_memory`
 //! helper the operator-facing path uses.
 
+use std::collections::BTreeMap;
+use std::num::NonZeroUsize;
+use std::time::Duration;
 use stygian_charon::challenge_feedback::{
-    ChallengeMemory, ChallengeOutcome, adjust_runtime_policy,
-    build_runtime_policy_with_memory, challenge_memory_key, memory_adjustment_for,
-    ChallengeFeedbackPolicy, MAX_RISK_DELTA,
+    ChallengeFeedbackPolicy, ChallengeMemory, ChallengeOutcome, MAX_RISK_DELTA,
+    adjust_runtime_policy, build_runtime_policy_with_memory, challenge_memory_key,
+    memory_adjustment_for,
 };
 use stygian_charon::types::{
     AdapterStrategy, AntiBotProvider, Detection, ExecutionMode, IntegrationRecommendation,
     InvestigationReport, RequirementsProfile, RuntimePolicy, SessionMode, TargetClass,
     TelemetryLevel,
 };
-use std::collections::BTreeMap;
-use std::num::NonZeroUsize;
-use std::time::Duration;
 
 fn approx_eq(a: f64, b: f64) -> bool {
     (a - b).abs() < 1e-9
@@ -96,7 +96,10 @@ fn empty_requirements() -> RequirementsProfile {
 
 #[test]
 fn fresh_memory_keeps_risk_score_unchanged() {
-    let memory = ChallengeMemory::new(NonZeroUsize::new(8).expect("non-zero"), Duration::from_mins(5));
+    let memory = ChallengeMemory::new(
+        NonZeroUsize::new(8).expect("non-zero"),
+        Duration::from_mins(5),
+    );
     let policy = base_policy();
     let adjusted = adjust_runtime_policy(&policy, &memory, "example.com", TargetClass::ContentSite);
     assert!(approx_eq(adjusted.risk_score, policy.risk_score));
@@ -129,11 +132,14 @@ fn recording_captcha_lifts_risk_score_for_next_policy() {
 #[test]
 fn recording_pass_lowers_risk_score_for_next_policy() {
     let memory = ChallengeMemory::with_defaults();
-    memory.record("example.com", TargetClass::ContentSite, ChallengeOutcome::Pass);
+    memory.record(
+        "example.com",
+        TargetClass::ContentSite,
+        ChallengeOutcome::Pass,
+    );
 
     let policy = base_policy();
-    let adjusted =
-        adjust_runtime_policy(&policy, &memory, "example.com", TargetClass::ContentSite);
+    let adjusted = adjust_runtime_policy(&policy, &memory, "example.com", TargetClass::ContentSite);
     assert!(adjusted.risk_score <= policy.risk_score);
 }
 
@@ -141,11 +147,19 @@ fn recording_pass_lowers_risk_score_for_next_policy() {
 fn pass_after_captcha_resets_to_pass_signal() {
     let memory = ChallengeMemory::with_defaults();
 
-    memory.record("example.com", TargetClass::ContentSite, ChallengeOutcome::Captcha);
+    memory.record(
+        "example.com",
+        TargetClass::ContentSite,
+        ChallengeOutcome::Captcha,
+    );
     let lift = memory_adjustment_for(&memory, "example.com", TargetClass::ContentSite);
     assert!(lift > 0.0, "Captcha should lift the risk delta");
 
-    memory.record("example.com", TargetClass::ContentSite, ChallengeOutcome::Pass);
+    memory.record(
+        "example.com",
+        TargetClass::ContentSite,
+        ChallengeOutcome::Pass,
+    );
     let after_pass = memory_adjustment_for(&memory, "example.com", TargetClass::ContentSite);
     assert!(after_pass < 0.0, "Pass should swing the delta negative");
     assert!(
@@ -157,8 +171,16 @@ fn pass_after_captcha_resets_to_pass_signal() {
 #[test]
 fn distinct_domains_keep_distinct_signals() {
     let memory = ChallengeMemory::with_defaults();
-    memory.record("a.example", TargetClass::ContentSite, ChallengeOutcome::Captcha);
-    memory.record("b.example", TargetClass::ContentSite, ChallengeOutcome::Pass);
+    memory.record(
+        "a.example",
+        TargetClass::ContentSite,
+        ChallengeOutcome::Captcha,
+    );
+    memory.record(
+        "b.example",
+        TargetClass::ContentSite,
+        ChallengeOutcome::Pass,
+    );
 
     let a = memory_adjustment_for(&memory, "a.example", TargetClass::ContentSite);
     let b = memory_adjustment_for(&memory, "b.example", TargetClass::ContentSite);
@@ -171,7 +193,11 @@ fn distinct_domains_keep_distinct_signals() {
 fn distinct_target_classes_keep_distinct_signals() {
     let memory = ChallengeMemory::with_defaults();
     memory.record("example.com", TargetClass::Api, ChallengeOutcome::Pass);
-    memory.record("example.com", TargetClass::HighSecurity, ChallengeOutcome::Captcha);
+    memory.record(
+        "example.com",
+        TargetClass::HighSecurity,
+        ChallengeOutcome::Captcha,
+    );
 
     let api = memory_adjustment_for(&memory, "example.com", TargetClass::Api);
     let high = memory_adjustment_for(&memory, "example.com", TargetClass::HighSecurity);
@@ -183,7 +209,11 @@ fn distinct_target_classes_keep_distinct_signals() {
 #[test]
 fn unknown_target_class_does_not_pull_from_other_class() {
     let memory = ChallengeMemory::with_defaults();
-    memory.record("example.com", TargetClass::ContentSite, ChallengeOutcome::Captcha);
+    memory.record(
+        "example.com",
+        TargetClass::ContentSite,
+        ChallengeOutcome::Captcha,
+    );
 
     let unknown = memory_adjustment_for(&memory, "example.com", TargetClass::Unknown);
     assert!(approx_eq(unknown, 0.0));
@@ -192,7 +222,11 @@ fn unknown_target_class_does_not_pull_from_other_class() {
 #[test]
 fn clamp_caps_extreme_outcomes_at_documented_max() {
     let memory = ChallengeMemory::with_defaults();
-    memory.record("example.com", TargetClass::ContentSite, ChallengeOutcome::Blocked);
+    memory.record(
+        "example.com",
+        TargetClass::ContentSite,
+        ChallengeOutcome::Blocked,
+    );
 
     let policy = RuntimePolicy {
         risk_score: 0.0,
@@ -214,9 +248,15 @@ fn memory_key_is_stable_and_normalised() {
 
 #[test]
 fn ttl_decay_clears_prior_outcome() {
-    let memory =
-        ChallengeMemory::new(NonZeroUsize::new(4).expect("non-zero"), Duration::from_millis(1));
-    memory.record("example.com", TargetClass::ContentSite, ChallengeOutcome::Captcha);
+    let memory = ChallengeMemory::new(
+        NonZeroUsize::new(4).expect("non-zero"),
+        Duration::from_millis(1),
+    );
+    memory.record(
+        "example.com",
+        TargetClass::ContentSite,
+        ChallengeOutcome::Captcha,
+    );
     std::thread::sleep(Duration::from_millis(5));
     assert!(approx_eq(
         memory_adjustment_for(&memory, "example.com", TargetClass::ContentSite),
@@ -233,9 +273,21 @@ fn feedback_policy_max_delta_is_capped_at_documented_max() {
 #[test]
 fn session_memory_survives_multiple_records_for_same_key() {
     let memory = ChallengeMemory::with_defaults();
-    memory.record("example.com", TargetClass::ContentSite, ChallengeOutcome::Pass);
-    memory.record("example.com", TargetClass::ContentSite, ChallengeOutcome::SoftChallenge);
-    memory.record("example.com", TargetClass::ContentSite, ChallengeOutcome::Captcha);
+    memory.record(
+        "example.com",
+        TargetClass::ContentSite,
+        ChallengeOutcome::Pass,
+    );
+    memory.record(
+        "example.com",
+        TargetClass::ContentSite,
+        ChallengeOutcome::SoftChallenge,
+    );
+    memory.record(
+        "example.com",
+        TargetClass::ContentSite,
+        ChallengeOutcome::Captcha,
+    );
 
     let entry = memory
         .lookup("example.com", TargetClass::ContentSite)
@@ -275,7 +327,11 @@ fn prior_outcomes_alter_next_policy_recommendation() {
     ));
 
     // Record a Captcha — the next recommendation must reflect it.
-    memory.record("example.com", TargetClass::ContentSite, ChallengeOutcome::Captcha);
+    memory.record(
+        "example.com",
+        TargetClass::ContentSite,
+        ChallengeOutcome::Captcha,
+    );
     let after_captcha = build_runtime_policy_with_memory(
         &report,
         &requirements,
@@ -286,7 +342,11 @@ fn prior_outcomes_alter_next_policy_recommendation() {
     assert!(after_captcha.risk_score > baseline.risk_score);
 
     // Now record a Pass — the next recommendation must come back down.
-    memory.record("example.com", TargetClass::ContentSite, ChallengeOutcome::Pass);
+    memory.record(
+        "example.com",
+        TargetClass::ContentSite,
+        ChallengeOutcome::Pass,
+    );
     let after_pass = build_runtime_policy_with_memory(
         &report,
         &requirements,

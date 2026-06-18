@@ -27,6 +27,7 @@
 //! the policy at the operator's defaults with only a
 //! config-hint added.
 
+use std::collections::BTreeMap;
 use stygian_charon::pow_profile::{
     PowCapabilitySample, PowCapabilityScorer, PowCapabilityStore, PowPolicyThresholds,
     adjust_runtime_policy_for_pow, score_from_profile,
@@ -35,7 +36,6 @@ use stygian_charon::types::{
     ExecutionMode, RuntimePolicy, SessionMode, TargetClass, TelemetryLevel,
 };
 use stygian_charon::vendor_classifier::VendorId;
-use std::collections::BTreeMap;
 
 fn approx_eq(a: f64, b: f64) -> bool {
     (a - b).abs() < 1e-9
@@ -89,7 +89,11 @@ fn record_weak_samples(store: &PowCapabilityStore) {
             "example.com",
             TargetClass::ContentSite,
             VendorId::Cloudflare,
-            &PowCapabilitySample::failed(5_000, 3, stygian_charon::pow_profile::PowFailureMode::Captcha),
+            &PowCapabilitySample::failed(
+                5_000,
+                3,
+                stygian_charon::pow_profile::PowFailureMode::Captcha,
+            ),
         );
     }
     for _ in 0..4 {
@@ -97,7 +101,11 @@ fn record_weak_samples(store: &PowCapabilityStore) {
             "example.com",
             TargetClass::ContentSite,
             VendorId::Cloudflare,
-            &PowCapabilitySample::failed(5_000, 3, stygian_charon::pow_profile::PowFailureMode::Blocked),
+            &PowCapabilitySample::failed(
+                5_000,
+                3,
+                stygian_charon::pow_profile::PowFailureMode::Blocked,
+            ),
         );
     }
 }
@@ -108,7 +116,11 @@ fn strong_profile_drives_no_escalation() {
     record_strong_samples(&store);
 
     let profile = store
-        .lookup("example.com", TargetClass::ContentSite, VendorId::Cloudflare)
+        .lookup(
+            "example.com",
+            TargetClass::ContentSite,
+            VendorId::Cloudflare,
+        )
         .expect("profile");
     let scorer = PowCapabilityScorer::new();
     let score = score_from_profile(&profile, &scorer);
@@ -136,7 +148,11 @@ fn weak_profile_drives_full_escalation() {
     record_weak_samples(&store);
 
     let profile = store
-        .lookup("example.com", TargetClass::ContentSite, VendorId::Cloudflare)
+        .lookup(
+            "example.com",
+            TargetClass::ContentSite,
+            VendorId::Cloudflare,
+        )
         .expect("profile");
     let scorer = PowCapabilityScorer::new();
     let score = score_from_profile(&profile, &scorer);
@@ -153,10 +169,12 @@ fn weak_profile_drives_full_escalation() {
     assert!(adjusted.max_retries > policy.max_retries);
     assert!(adjusted.backoff_base_ms >= 1_000);
     assert!(adjusted.sticky_session_ttl_secs.is_some());
-    assert!(adjusted
-        .required_stygian_features
-        .iter()
-        .any(|f| f == "stygian-proxy"));
+    assert!(
+        adjusted
+            .required_stygian_features
+            .iter()
+            .any(|f| f == "stygian-proxy")
+    );
     assert!(adjusted.risk_score >= policy.risk_score);
     assert_eq!(
         adjusted.config_hints.get("pow.escalation"),
@@ -183,7 +201,11 @@ fn sparse_profile_drives_no_op_with_unknown_hint() {
     );
 
     let profile = store
-        .lookup("example.com", TargetClass::ContentSite, VendorId::Cloudflare)
+        .lookup(
+            "example.com",
+            TargetClass::ContentSite,
+            VendorId::Cloudflare,
+        )
         .expect("profile");
     let scorer = PowCapabilityScorer::new();
     let score = score_from_profile(&profile, &scorer);
@@ -206,7 +228,11 @@ fn scorer_is_deterministic_for_same_recorded_sequence() {
         let store = PowCapabilityStore::with_defaults();
         record_strong_samples(&store);
         store
-            .lookup("example.com", TargetClass::ContentSite, VendorId::Cloudflare)
+            .lookup(
+                "example.com",
+                TargetClass::ContentSite,
+                VendorId::Cloudflare,
+            )
             .expect("profile")
     };
     let a = build();
@@ -240,7 +266,11 @@ fn distinct_vendors_keep_distinct_profiles() {
         );
     }
     let cloudflare = store
-        .lookup("example.com", TargetClass::ContentSite, VendorId::Cloudflare)
+        .lookup(
+            "example.com",
+            TargetClass::ContentSite,
+            VendorId::Cloudflare,
+        )
         .expect("cloudflare profile");
     let akamai = store
         .lookup("example.com", TargetClass::ContentSite, VendorId::Akamai)
@@ -263,7 +293,11 @@ fn profile_merge_aggregates_distinct_vendors_in_hand_rolled_summary() {
     let store = PowCapabilityStore::with_defaults();
     record_strong_samples(&store);
     let mut broad = store
-        .lookup("example.com", TargetClass::ContentSite, VendorId::Cloudflare)
+        .lookup(
+            "example.com",
+            TargetClass::ContentSite,
+            VendorId::Cloudflare,
+        )
         .expect("cloudflare profile");
     let akamai_store = PowCapabilityStore::with_defaults();
     for _ in 0..3 {
@@ -286,7 +320,10 @@ fn profile_merge_aggregates_distinct_vendors_in_hand_rolled_summary() {
     broad.merge_profile(&akamai);
     assert_eq!(broad.solved_count, combined_solved);
     assert_eq!(broad.failed_count, combined_failed);
-    assert_eq!(broad.solved_count + broad.failed_count, broad.total_attempts());
+    assert_eq!(
+        broad.solved_count + broad.failed_count,
+        broad.total_attempts()
+    );
 }
 
 /// End-to-end confirmation that a synthetic `PoW` profile
@@ -302,16 +339,22 @@ fn synthetic_pow_profile_drives_policy_mapping() {
     let store = PowCapabilityStore::with_defaults();
     record_weak_samples(&store);
     let profile = store
-        .lookup("example.com", TargetClass::ContentSite, VendorId::Cloudflare)
+        .lookup(
+            "example.com",
+            TargetClass::ContentSite,
+            VendorId::Cloudflare,
+        )
         .expect("profile");
     let scorer = PowCapabilityScorer::new();
     let score = score_from_profile(&profile, &scorer);
     assert!(score.value < 0.40);
-    assert_eq!(scorer.band(&profile), stygian_charon::pow_profile::PowCapabilityBand::Weak);
+    assert_eq!(
+        scorer.band(&profile),
+        stygian_charon::pow_profile::PowCapabilityBand::Weak
+    );
 
     let policy = base_policy();
-    let adjusted =
-        adjust_runtime_policy_for_pow(&policy, &score, &PowPolicyThresholds::default());
+    let adjusted = adjust_runtime_policy_for_pow(&policy, &score, &PowPolicyThresholds::default());
 
     // The synthetic weak profile must:
     // 1. Escalate to Browser + Sticky session.
@@ -325,10 +368,12 @@ fn synthetic_pow_profile_drives_policy_mapping() {
     assert!(adjusted.max_retries > policy.max_retries);
     assert!(adjusted.backoff_base_ms >= 1_000);
     assert!(adjusted.sticky_session_ttl_secs.is_some());
-    assert!(adjusted
-        .required_stygian_features
-        .iter()
-        .any(|f| f == "stygian-proxy"));
+    assert!(
+        adjusted
+            .required_stygian_features
+            .iter()
+            .any(|f| f == "stygian-proxy")
+    );
     let lift = adjusted.risk_score - policy.risk_score;
     assert!(lift > 0.0);
     assert!(lift <= stygian_charon::pow_profile::MAX_POW_RISK_DELTA + 1e-9);

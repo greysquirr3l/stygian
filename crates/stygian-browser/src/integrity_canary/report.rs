@@ -212,10 +212,7 @@ impl IntegrityRiskScore {
     /// recomputing it (e.g. after overriding policy thresholds at
     /// runtime).
     #[must_use]
-    pub fn classify_for(
-        value: f64,
-        policy: &IntegrityCanaryPolicy,
-    ) -> IntegrityRiskClassification {
+    pub fn classify_for(value: f64, policy: &IntegrityCanaryPolicy) -> IntegrityRiskClassification {
         policy.classify(value)
     }
 }
@@ -341,7 +338,10 @@ impl IntegrityCanaryPolicy {
         // `partial_cmp` is the documented escape hatch from
         // `clippy::neg_cmp_op_on_partial_ord` for floats — explicit
         // about the fact that two NaN values are not comparable.
-        match self.suspected_threshold.partial_cmp(&self.confirmed_threshold) {
+        match self
+            .suspected_threshold
+            .partial_cmp(&self.confirmed_threshold)
+        {
             Some(std::cmp::Ordering::Less) => Ok(()),
             _ => Err(IntegrityCanaryPolicyError::InvalidThresholds(format!(
                 "suspected_threshold ({}) must be strictly less than confirmed_threshold ({})",
@@ -460,10 +460,7 @@ impl IntegrityCanaryReport {
     /// Number of findings that produced a `Confirmed` outcome.
     #[must_use]
     pub fn confirmed_count(&self) -> usize {
-        self.findings
-            .iter()
-            .filter(|f| f.is_confirmed())
-            .count()
+        self.findings.iter().filter(|f| f.is_confirmed()).count()
     }
 }
 
@@ -497,15 +494,10 @@ pub struct MitigationHint {
 mod tests {
     use super::*;
     use crate::integrity_canary::probes::{
-        all_probes, IntegrityProbe, IntegrityProbeId, IntegrityProbeOutcome, ProbeFinding,
+        IntegrityProbe, IntegrityProbeId, IntegrityProbeOutcome, ProbeFinding, all_probes,
     };
 
-    fn finding(
-        id: &str,
-        weight: f64,
-        outcome: IntegrityProbeOutcome,
-        hint: &str,
-    ) -> ProbeFinding {
+    fn finding(id: &str, weight: f64, outcome: IntegrityProbeOutcome, hint: &str) -> ProbeFinding {
         ProbeFinding {
             id: id.to_string(),
             outcome,
@@ -556,7 +548,14 @@ mod tests {
     fn all_confirmed_findings_produces_full_score() {
         let findings = all_probes()
             .iter()
-            .map(|p| finding(p.id.label(), p.weight, IntegrityProbeOutcome::TrapConfirmed, ""))
+            .map(|p| {
+                finding(
+                    p.id.label(),
+                    p.weight,
+                    IntegrityProbeOutcome::TrapConfirmed,
+                    "",
+                )
+            })
             .collect();
         let report = IntegrityCanaryReport::from_findings(findings);
         assert!(
@@ -780,17 +779,29 @@ mod tests {
     #[test]
     fn policy_rejects_reversed_or_equal_thresholds() {
         let err = IntegrityCanaryPolicy::try_with_thresholds(0.50, 0.50).unwrap_err();
-        assert!(matches!(err, IntegrityCanaryPolicyError::InvalidThresholds(_)));
+        assert!(matches!(
+            err,
+            IntegrityCanaryPolicyError::InvalidThresholds(_)
+        ));
         let err = IntegrityCanaryPolicy::try_with_thresholds(0.70, 0.30).unwrap_err();
-        assert!(matches!(err, IntegrityCanaryPolicyError::InvalidThresholds(_)));
+        assert!(matches!(
+            err,
+            IntegrityCanaryPolicyError::InvalidThresholds(_)
+        ));
     }
 
     #[test]
     fn policy_rejects_nan_thresholds() {
         let err = IntegrityCanaryPolicy::try_with_thresholds(f64::NAN, 0.65).unwrap_err();
-        assert!(matches!(err, IntegrityCanaryPolicyError::InvalidThresholds(_)));
+        assert!(matches!(
+            err,
+            IntegrityCanaryPolicyError::InvalidThresholds(_)
+        ));
         let err = IntegrityCanaryPolicy::try_with_thresholds(0.30, f64::NAN).unwrap_err();
-        assert!(matches!(err, IntegrityCanaryPolicyError::InvalidThresholds(_)));
+        assert!(matches!(
+            err,
+            IntegrityCanaryPolicyError::InvalidThresholds(_)
+        ));
     }
 
     #[test]
@@ -804,7 +815,12 @@ mod tests {
                 evidence: "deviation detected".to_string(),
                 mitigation_hint: "Apply continuous jitter".to_string(),
             },
-            finding("error_to_string_native", 0.08, IntegrityProbeOutcome::Clean, ""),
+            finding(
+                "error_to_string_native",
+                0.08,
+                IntegrityProbeOutcome::Clean,
+                "",
+            ),
         ];
         let report = IntegrityCanaryReport::from_findings(findings);
         assert_eq!(report.trap_count(), 2);
@@ -834,10 +850,7 @@ mod tests {
     #[test]
     fn score_outside_unit_interval_is_clamped() {
         let policy = IntegrityCanaryPolicy::default();
-        assert_eq!(
-            policy.classify(1.5),
-            IntegrityRiskClassification::Confirmed
-        );
+        assert_eq!(policy.classify(1.5), IntegrityRiskClassification::Confirmed);
         assert_eq!(policy.classify(-0.5), IntegrityRiskClassification::Clean);
     }
 

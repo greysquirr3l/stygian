@@ -349,10 +349,7 @@ impl DiagnosticReport {
     /// supplied report would otherwise be `None` and the rest of the
     /// `DiagnosticReport` schema is unchanged.
     #[must_use]
-    pub fn with_transport_realism(
-        mut self,
-        transport_realism: TransportRealismReport,
-    ) -> Self {
+    pub fn with_transport_realism(mut self, transport_realism: TransportRealismReport) -> Self {
         self.transport_realism = Some(transport_realism);
         self
     }
@@ -363,10 +360,7 @@ impl DiagnosticReport {
     /// supplied report would otherwise be `None` and the rest of the
     /// `DiagnosticReport` schema is unchanged.
     #[must_use]
-    pub fn with_integrity_canary(
-        mut self,
-        integrity_canary: IntegrityCanaryReport,
-    ) -> Self {
+    pub fn with_integrity_canary(mut self, integrity_canary: IntegrityCanaryReport) -> Self {
         self.integrity_canary = Some(integrity_canary);
         self
     }
@@ -1158,8 +1152,9 @@ mod tests {
 
     #[test]
     fn diagnostic_report_includes_transport_realism_when_attached() {
-        use crate::transport_realism::{score as score_transport_realism, TransportObservation,
-            TransportProfile};
+        use crate::transport_realism::{
+            TransportObservation, TransportProfile, score as score_transport_realism,
+        };
 
         let results: Vec<CheckResult> = all_checks()
             .iter()
@@ -1220,8 +1215,7 @@ mod tests {
         // Round-trip via a generic Value to confirm backward compat:
         // every top-level field deserializes back to the same shape.
         let value: serde_json::Value = serde_json::from_str(&json).expect("parse");
-        let restored: TransportRealismReport =
-            serde_json::from_value(value).expect("deserialize");
+        let restored: TransportRealismReport = serde_json::from_value(value).expect("deserialize");
         assert_eq!(restored.profile_name, report.profile_name);
         let score_diff = (restored.compatibility.score - report.compatibility.score).abs();
         assert!(
@@ -1261,9 +1255,11 @@ mod tests {
             .map(|c| c.parse_output(r#"{"passed":true,"details":"ok"}"#))
             .collect();
         let report = DiagnosticReport::new(results);
-        let canary = IntegrityCanaryReport::from_findings(vec![
-            IntegrityProbe::confirmed_finding("webdriver_descriptor_native", 0.20, "x"),
-        ]);
+        let canary = IntegrityCanaryReport::from_findings(vec![IntegrityProbe::confirmed_finding(
+            "webdriver_descriptor_native",
+            0.20,
+            "x",
+        )]);
         let report = report.with_integrity_canary(canary.clone());
         let json = serde_json::to_string(&report).expect("serialize");
         assert!(

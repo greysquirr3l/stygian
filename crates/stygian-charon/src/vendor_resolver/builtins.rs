@@ -126,7 +126,11 @@ mod tests {
             .find(|r| r.id == "tier1-js-cloudflare")
             .expect("tier1-js-cloudflare rule");
         assert_eq!(rule.playbook_id, "tier1-js");
-        assert!(rule.vendors.iter().any(|v| v.vendor == VendorId::Cloudflare));
+        assert!(
+            rule.vendors
+                .iter()
+                .any(|v| v.vendor == VendorId::Cloudflare)
+        );
     }
 
     #[test]

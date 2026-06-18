@@ -489,15 +489,23 @@ impl ChangeDetector {
                 ChangeClassification::Noise => noise_targets.push(target.clone()),
                 ChangeClassification::Suspected => {
                     suspected_targets.push(target.clone());
-                    let event =
-                        build_event(target, &aggregate, self.thresholds, ChangeClassification::Suspected);
+                    let event = build_event(
+                        target,
+                        &aggregate,
+                        self.thresholds,
+                        ChangeClassification::Suspected,
+                    );
                     events.push(event.clone());
                     record_change_event(sink, &event);
                 }
                 ChangeClassification::Probable => {
                     probable_targets.push(target.clone());
-                    let event =
-                        build_event(target, &aggregate, self.thresholds, ChangeClassification::Probable);
+                    let event = build_event(
+                        target,
+                        &aggregate,
+                        self.thresholds,
+                        ChangeClassification::Probable,
+                    );
                     events.push(event.clone());
                     record_change_event(sink, &event);
                 }
@@ -663,7 +671,13 @@ fn build_event(
     ChangeEvent::new(
         target,
         classification,
-        DeltaSummary::new(&aggregate.headline, aggregate.score, sources, severities, aggregate.highest_severity),
+        DeltaSummary::new(
+            &aggregate.headline,
+            aggregate.score,
+            sources,
+            severities,
+            aggregate.highest_severity,
+        ),
         aggregate.vendor_hint,
         aggregate.target_class,
         MitigationPath::for_classification(classification, aggregate.vendor_hint),
@@ -715,10 +729,7 @@ mod tests {
     fn single_clean_canary_blip_is_classified_as_noise() {
         let detector = ChangeDetector::new();
         let sink = InMemoryChangeFeedSink::new();
-        let report = detector.detect(
-            &[canary("example.com", 0.05, DeltaSeverity::Clean)],
-            &sink,
-        );
+        let report = detector.detect(&[canary("example.com", 0.05, DeltaSeverity::Clean)], &sink);
         assert_eq!(report.aggregate_classification, ChangeClassification::Noise);
         assert_eq!(report.noise_targets, vec!["example.com".to_string()]);
         assert!(report.suspected_targets.is_empty());
@@ -806,11 +817,7 @@ mod tests {
         let deltas = vec![
             canary("quiet.example.com", 0.05, DeltaSeverity::Clean),
             canary("hot.example.com", 0.55, DeltaSeverity::Critical),
-            canary(
-                "watch.example.com",
-                0.30,
-                DeltaSeverity::Advisory,
-            ),
+            canary("watch.example.com", 0.30, DeltaSeverity::Advisory),
         ];
         let report = detector.detect(&deltas, &sink);
         assert_eq!(

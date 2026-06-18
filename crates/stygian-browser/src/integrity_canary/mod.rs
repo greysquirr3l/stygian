@@ -112,12 +112,11 @@ mod report;
 mod trend;
 
 pub use probes::{
-    IntegrityProbe, IntegrityProbeId, IntegrityProbeOutcome, ProbeFinding, all_probes,
-    probe_by_id,
+    IntegrityProbe, IntegrityProbeId, IntegrityProbeOutcome, ProbeFinding, all_probes, probe_by_id,
 };
 pub use report::{
-    IntegrityCanaryPolicy, IntegrityCanaryReport, IntegrityRiskClassification,
-    IntegrityRiskScore, RISK_CONFIRMED_THRESHOLD_DEFAULT, RISK_SUSPECTED_THRESHOLD_DEFAULT,
+    IntegrityCanaryPolicy, IntegrityCanaryReport, IntegrityRiskClassification, IntegrityRiskScore,
+    RISK_CONFIRMED_THRESHOLD_DEFAULT, RISK_SUSPECTED_THRESHOLD_DEFAULT,
 };
 pub use trend::{CanaryTrendObservation, TrendSeverity};
 

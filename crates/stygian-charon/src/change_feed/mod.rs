@@ -128,8 +128,8 @@ mod event;
 
 pub use classification::{
     ChangeClassification, ChangeDetector, ChangeEventSink, ChangeFeedThresholds,
-    DEFAULT_CANARY_WEIGHT, DEFAULT_EXTRACTION_WEIGHT, DEFAULT_NOISE_CEILING, DEFAULT_PROBABLE_FLOOR,
-    DEFAULT_PROXY_WEIGHT, InMemoryChangeFeedSink, record_change_event,
+    DEFAULT_CANARY_WEIGHT, DEFAULT_EXTRACTION_WEIGHT, DEFAULT_NOISE_CEILING,
+    DEFAULT_PROBABLE_FLOOR, DEFAULT_PROXY_WEIGHT, InMemoryChangeFeedSink, record_change_event,
 };
 pub use delta::{ChangeDeltaInput, DeltaSeverity, DeltaSource};
 pub use event::{ChangeEvent, ChangeFeedReport, DeltaSummary, MitigationPath};

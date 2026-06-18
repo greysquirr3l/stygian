@@ -511,16 +511,28 @@ mod tests {
     #[test]
     fn outcome_labels_are_stable() {
         assert_eq!(IntegrityProbeOutcome::Clean.label(), "clean");
-        assert_eq!(IntegrityProbeOutcome::TrapSuspected.label(), "trap_suspected");
-        assert_eq!(IntegrityProbeOutcome::TrapConfirmed.label(), "trap_confirmed");
+        assert_eq!(
+            IntegrityProbeOutcome::TrapSuspected.label(),
+            "trap_suspected"
+        );
+        assert_eq!(
+            IntegrityProbeOutcome::TrapConfirmed.label(),
+            "trap_confirmed"
+        );
         assert_eq!(IntegrityProbeOutcome::Skipped.label(), "skipped");
     }
 
     #[test]
     fn outcome_severity_matches_documented_formula() {
         assert!(approx_eq(IntegrityProbeOutcome::Clean.severity(), 0.0));
-        assert!(approx_eq(IntegrityProbeOutcome::TrapSuspected.severity(), 0.5));
-        assert!(approx_eq(IntegrityProbeOutcome::TrapConfirmed.severity(), 1.0));
+        assert!(approx_eq(
+            IntegrityProbeOutcome::TrapSuspected.severity(),
+            0.5
+        ));
+        assert!(approx_eq(
+            IntegrityProbeOutcome::TrapConfirmed.severity(),
+            1.0
+        ));
         assert!(approx_eq(IntegrityProbeOutcome::Skipped.severity(), 0.0));
     }
 
@@ -593,9 +605,8 @@ mod tests {
     #[test]
     fn parse_output_clean_passing_json() {
         let probe = &all_probes()[0]; // WebDriverDescriptorNative
-        let finding = probe.parse_output(
-            r#"{"outcome":"clean","evidence":"accessor present and configurable"}"#,
-        );
+        let finding = probe
+            .parse_output(r#"{"outcome":"clean","evidence":"accessor present and configurable"}"#);
         assert_eq!(finding.id, "webdriver_descriptor_native");
         assert_eq!(finding.outcome, IntegrityProbeOutcome::Clean);
         assert_eq!(finding.evidence, "accessor present and configurable");

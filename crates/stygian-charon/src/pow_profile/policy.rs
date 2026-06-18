@@ -385,9 +385,11 @@ mod tests {
         assert!(adjusted.backoff_base_ms >= thresholds.weak_backoff_floor_ms);
         assert!(adjusted.max_retries > policy.max_retries);
         assert!(adjusted.sticky_session_ttl_secs.is_some());
-        assert!(adjusted
-            .required_stygian_features
-            .contains(&"stygian-proxy".to_string()));
+        assert!(
+            adjusted
+                .required_stygian_features
+                .contains(&"stygian-proxy".to_string())
+        );
         assert!(approx_eq(
             adjusted.risk_score,
             (policy.risk_score + MAX_POW_RISK_DELTA).clamp(0.0, 1.0)

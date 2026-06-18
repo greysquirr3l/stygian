@@ -226,12 +226,9 @@ mod tests {
                     weight: 5,
                 },
             ],
-            source_summary: vec![
-                (EvidenceSource::Header, 2),
-                (EvidenceSource::Cookie, 1),
-            ]
-            .into_iter()
-            .collect(),
+            source_summary: vec![(EvidenceSource::Header, 2), (EvidenceSource::Cookie, 1)]
+                .into_iter()
+                .collect(),
         };
         let headers = bundle.for_source(EvidenceSource::Header).count();
         assert_eq!(headers, 2);

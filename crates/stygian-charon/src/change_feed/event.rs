@@ -302,11 +302,7 @@ impl ChangeEvent {
         evidence: BTreeMap<String, String>,
     ) -> Self {
         let target = affected_target.into();
-        let event_id = format!(
-            "cf-{}-{}",
-            unix_timestamp_secs(),
-            sanitize_segment(&target)
-        );
+        let event_id = format!("cf-{}-{}", unix_timestamp_secs(), sanitize_segment(&target));
         Self {
             event_id,
             detected_at_unix_secs: unix_timestamp_secs(),
@@ -336,11 +332,7 @@ impl ChangeEvent {
         evidence: BTreeMap<String, String>,
     ) -> Self {
         let target = affected_target.into();
-        let event_id = format!(
-            "cf-{}-{}",
-            detected_at_unix_secs,
-            sanitize_segment(&target)
-        );
+        let event_id = format!("cf-{}-{}", detected_at_unix_secs, sanitize_segment(&target));
         Self {
             event_id,
             detected_at_unix_secs,
@@ -511,7 +503,10 @@ mod tests {
             ],
             DeltaSeverity::Warning,
         );
-        assert_eq!(summary.sources, vec![DeltaSource::Canary, DeltaSource::Proxy]);
+        assert_eq!(
+            summary.sources,
+            vec![DeltaSource::Canary, DeltaSource::Proxy]
+        );
         assert_eq!(
             summary.severities,
             vec![DeltaSeverity::Advisory, DeltaSeverity::Warning]
@@ -571,8 +566,7 @@ mod tests {
             Some(VendorId::Cloudflare),
             Some(VendorId::Akamai),
         ] {
-            let path =
-                MitigationPath::for_classification(ChangeClassification::Suspected, vendor);
+            let path = MitigationPath::for_classification(ChangeClassification::Suspected, vendor);
             assert!(
                 path.path.starts_with("category-a"),
                 "suspected band should pick category-a regardless of vendor"

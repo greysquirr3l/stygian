@@ -59,7 +59,12 @@ fn parse_builtin(toml_text: &str) -> VendorDefinition {
 
 #[cfg(test)]
 fn compile_check_builtin_vendors() -> Result<(), crate::vendor_classifier::error::VendorError> {
-    for toml_text in [DATADOME_TOML, PERIMETER_X_TOML, AKAMAI_TOML, CLOUDFLARE_TOML] {
+    for toml_text in [
+        DATADOME_TOML,
+        PERIMETER_X_TOML,
+        AKAMAI_TOML,
+        CLOUDFLARE_TOML,
+    ] {
         parse_vendor_definition(toml_text)?;
     }
     Ok(())

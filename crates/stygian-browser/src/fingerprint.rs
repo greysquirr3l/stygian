@@ -1370,10 +1370,7 @@ mod tests {
             ..Fingerprint::default()
         };
         let c = changed.signature();
-        assert_ne!(
-            a, c,
-            "changing screen resolution must rotate the signature"
-        );
+        assert_ne!(a, c, "changing screen resolution must rotate the signature");
     }
 
     #[test]

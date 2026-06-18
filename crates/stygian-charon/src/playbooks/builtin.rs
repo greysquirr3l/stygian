@@ -19,9 +19,9 @@
 //! assert!(resolver.contains("unknown"));
 //! ```
 
-use crate::playbooks::schema::Playbook;
 #[cfg(test)]
 use crate::playbooks::error::ValidationError;
+use crate::playbooks::schema::Playbook;
 
 /// Embedded TOML for the `tier1-static` baseline playbook.
 ///

@@ -91,6 +91,6 @@ pub mod report;
 
 pub use probes::CoherenceProbe;
 pub use report::{
-    ContextKind, ContextObservation, ContextPair, CoherenceDriftReport, DriftDiagnostic,
+    CoherenceDriftReport, ContextKind, ContextObservation, ContextPair, DriftDiagnostic,
     DriftSeverity, IdentitySurface, build_report, diff_surfaces, field_severity, surface_signature,
 };

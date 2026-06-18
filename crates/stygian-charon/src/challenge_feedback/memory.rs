@@ -286,7 +286,11 @@ mod tests {
         let memory = ChallengeMemory::new(NonZeroUsize::new(8).unwrap(), Duration::from_mins(1));
 
         memory.record("example.com", TargetClass::Api, ChallengeOutcome::Pass);
-        memory.record("example.com", TargetClass::ContentSite, ChallengeOutcome::Captcha);
+        memory.record(
+            "example.com",
+            TargetClass::ContentSite,
+            ChallengeOutcome::Captcha,
+        );
 
         let api = memory.lookup("example.com", TargetClass::Api).unwrap();
         let content = memory
@@ -323,7 +327,11 @@ mod tests {
     #[test]
     fn risk_delta_uses_last_outcome() {
         let memory = ChallengeMemory::new(NonZeroUsize::new(4).unwrap(), Duration::from_mins(1));
-        memory.record("example.com", TargetClass::Api, ChallengeOutcome::HardChallenge);
+        memory.record(
+            "example.com",
+            TargetClass::Api,
+            ChallengeOutcome::HardChallenge,
+        );
         let entry = memory.lookup("example.com", TargetClass::Api).unwrap();
         assert!((entry.risk_delta() - ChallengeOutcome::HardChallenge.risk_delta()).abs() < 1e-9);
     }

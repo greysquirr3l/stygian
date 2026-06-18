@@ -116,10 +116,9 @@ mod router;
 
 pub use classifier::{InterstitialClassifier, PageSignature};
 pub use policy::{
-    DEFAULT_CHALLENGE_SOLVE_BUDGET_MS, DEFAULT_HARD_BLOCK_ESCALATION,
-    DEFAULT_MAX_TRANSIENT_HOPS, DEFAULT_QUEUE_INTERVAL_MS, DEFAULT_QUEUE_MAX_RETRIES,
-    DEFAULT_TRANSIENT_FOLLOW_REDIRECT, InterstitialKind, InterstitialPolicy, InterstitialRoute,
-    InterstitialSeverity,
+    DEFAULT_CHALLENGE_SOLVE_BUDGET_MS, DEFAULT_HARD_BLOCK_ESCALATION, DEFAULT_MAX_TRANSIENT_HOPS,
+    DEFAULT_QUEUE_INTERVAL_MS, DEFAULT_QUEUE_MAX_RETRIES, DEFAULT_TRANSIENT_FOLLOW_REDIRECT,
+    InterstitialKind, InterstitialPolicy, InterstitialRoute, InterstitialSeverity,
 };
 pub use report::{PageSignatureEvidence, RouterDecision, RouterDecisionLog};
 pub use router::{InterstitialRouter, classify_and_route, route};

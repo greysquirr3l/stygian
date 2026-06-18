@@ -191,14 +191,8 @@ mod tests {
 
     #[test]
     fn test_from_overall_clamps_to_unit_interval() {
-        assert!(approx_eq(
-            ReliabilityScore::from_overall(-0.5).overall,
-            0.0
-        ));
-        assert!(approx_eq(
-            ReliabilityScore::from_overall(1.5).overall,
-            1.0
-        ));
+        assert!(approx_eq(ReliabilityScore::from_overall(-0.5).overall, 0.0));
+        assert!(approx_eq(ReliabilityScore::from_overall(1.5).overall, 1.0));
         assert!(approx_eq(
             ReliabilityScore::from_overall(0.42).overall,
             0.42

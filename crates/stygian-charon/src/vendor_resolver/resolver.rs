@@ -85,9 +85,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::playbooks::{
-    Playbook, PlaybookOverrides, PlaybookResolver, ResolvedPlaybook,
-};
+use crate::playbooks::{Playbook, PlaybookOverrides, PlaybookResolver, ResolvedPlaybook};
 use crate::types::TargetClass;
 use crate::vendor_classifier::{EvidenceBundle, VendorClassification, VendorId, VendorScore};
 use crate::vendor_resolver::error::VendorResolverError;
@@ -368,10 +366,7 @@ impl VendorResolver {
     /// ```
     #[must_use]
     pub fn resolve(&self, classification: &VendorClassification) -> VendorResolution {
-        let top_score = classification
-            .ranked
-            .first()
-            .map_or(0, |s| s.score);
+        let top_score = classification.ranked.first().map_or(0, |s| s.score);
         let mut applied: Vec<AppliedRule> = Vec::new();
         let mut fired: Option<&ResolutionRule> = None;
 
@@ -452,8 +447,7 @@ impl VendorResolver {
             StrategyMarker::Resolved { target_class, .. } => *target_class,
             StrategyMarker::Manual => TargetClass::Unknown,
         };
-        let resolved =
-            playbook_resolver.resolve(target_class, playbook_id, overrides)?;
+        let resolved = playbook_resolver.resolve(target_class, playbook_id, overrides)?;
         Ok(Some(resolved))
     }
 }
@@ -495,7 +489,9 @@ fn rule_matches(
             .iter()
             .any(|s| s.vendor == *v && s.score > 0)
     };
-    rule.vendors.iter().any(|v| classification_has_vendor(&v.vendor))
+    rule.vendors
+        .iter()
+        .any(|v| classification_has_vendor(&v.vendor))
 }
 
 fn evaluate_rule_note(
@@ -509,7 +505,10 @@ fn evaluate_rule_note(
             classification.confidence, rule.min_confidence
         )
     } else if top_score < rule.min_score {
-        format!("skipped: top_score {top_score} < min_score {}", rule.min_score)
+        format!(
+            "skipped: top_score {top_score} < min_score {}",
+            rule.min_score
+        )
     } else if rule.require_unknown_vendor && classification.top_vendor != VendorId::Unknown {
         format!(
             "skipped: top_vendor {} is not Unknown",
@@ -578,8 +577,8 @@ fn pick_single_vendor<'a>(
 /// [`MergeStrategy::Manual`] so the resulting strategy is always
 /// [`StrategyMarker::Manual`] when no rule fired.
 fn manual_fallback_rule() -> &'static ResolutionRule {
-    static FALLBACK: std::sync::LazyLock<ResolutionRule> = std::sync::LazyLock::new(|| {
-        ResolutionRule {
+    static FALLBACK: std::sync::LazyLock<ResolutionRule> =
+        std::sync::LazyLock::new(|| ResolutionRule {
             id: String::new(),
             playbook_id: String::new(),
             target_class: TargetClass::Unknown,
@@ -590,8 +589,7 @@ fn manual_fallback_rule() -> &'static ResolutionRule {
             min_score: 0,
             require_unknown_vendor: false,
             vendors: Vec::new(),
-        }
-    });
+        });
     &FALLBACK
 }
 
@@ -620,7 +618,10 @@ fn build_summary(
         TargetClass::Unknown => "unknown",
     };
     match strategy {
-        StrategyMarker::Resolved { playbook_id, target_class } => format!(
+        StrategyMarker::Resolved {
+            playbook_id,
+            target_class,
+        } => format!(
             "rule '{}' fired for vendor {} (confidence {:.3}); resolved to playbook '{}' ({})",
             rule.id,
             vendor_label,
@@ -658,7 +659,10 @@ pub trait PlaybookResolverExt {
     /// Returns
     /// [`ValidationError::UnknownPlaybook`][crate::playbooks::ValidationError::UnknownPlaybook]
     /// when the id is not registered.
-    fn resolve_unsafe_playbook(&self, id: &str) -> Result<Playbook, crate::playbooks::ValidationError>;
+    fn resolve_unsafe_playbook(
+        &self,
+        id: &str,
+    ) -> Result<Playbook, crate::playbooks::ValidationError>;
 }
 
 impl PlaybookResolverExt for PlaybookResolver {
@@ -782,7 +786,10 @@ mod tests {
         c.evidence = evidence();
         let r = resolver.resolve(&c);
         match &r.strategy {
-            StrategyMarker::Resolved { playbook_id, target_class } => {
+            StrategyMarker::Resolved {
+                playbook_id,
+                target_class,
+            } => {
                 assert_eq!(playbook_id, "tier2-hostile");
                 assert_eq!(*target_class, TargetClass::HighSecurity);
             }
@@ -799,7 +806,10 @@ mod tests {
         let c = classification(VendorId::Cloudflare, 0.9, vec![cloudflare_score()]);
         let r = resolver.resolve(&c);
         match &r.strategy {
-            StrategyMarker::Resolved { playbook_id, target_class } => {
+            StrategyMarker::Resolved {
+                playbook_id,
+                target_class,
+            } => {
                 assert_eq!(playbook_id, "tier1-js");
                 assert_eq!(*target_class, TargetClass::ContentSite);
             }
@@ -853,7 +863,10 @@ mod tests {
         let c = classification(VendorId::Unknown, 0.0, Vec::new());
         let r = resolver.resolve(&c);
         match &r.strategy {
-            StrategyMarker::Resolved { playbook_id, target_class } => {
+            StrategyMarker::Resolved {
+                playbook_id,
+                target_class,
+            } => {
                 assert_eq!(playbook_id, "tier1-static");
                 assert_eq!(*target_class, TargetClass::ContentSite);
             }

@@ -75,9 +75,7 @@ const ZERO_FALLBACK_UNIX_SECS: u64 = 0;
 /// assert_eq!(PowFailureMode::Captcha.label(), "captcha");
 /// assert!(PowFailureMode::Captcha.severity_weight() > PowFailureMode::Timeout.severity_weight());
 /// ```
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PowFailureMode {
     /// The token was rejected as invalid by the vendor.
@@ -396,15 +394,16 @@ fn update_latency_percentiles(
     // observation and the p95 is the largest observation.
     // We approximate both with a running estimator that
     // blends the prior p50/p95 with the new observation.
-    let p50 = prev_p50.map_or(new_latency_ms, |prev| (prev / 2).saturating_add(new_latency_ms / 2));
+    let p50 = prev_p50.map_or(new_latency_ms, |prev| {
+        (prev / 2).saturating_add(new_latency_ms / 2)
+    });
     let p95 = match prev_p95 {
         Some(prev) => {
             // p95 is more sensitive to the largest observation:
             // shift the running estimate toward the new value
             // with a 5/95 mix (so the new tail observation
             // contributes ~5%).
-            (prev.saturating_mul(95) / 100)
-                .saturating_add(new_latency_ms.saturating_mul(5) / 100)
+            (prev.saturating_mul(95) / 100).saturating_add(new_latency_ms.saturating_mul(5) / 100)
         }
         None if new_solved_count >= 5 => new_latency_ms,
         None => new_latency_ms,
@@ -429,7 +428,11 @@ mod tests {
     use super::*;
 
     fn empty_profile() -> PowCapabilityProfile {
-        PowCapabilityProfile::new("example.com", TargetClass::ContentSite, VendorId::Cloudflare)
+        PowCapabilityProfile::new(
+            "example.com",
+            TargetClass::ContentSite,
+            VendorId::Cloudflare,
+        )
     }
 
     #[test]
@@ -449,11 +452,8 @@ mod tests {
 
     #[test]
     fn new_profile_normalises_domain_to_lower_case() {
-        let profile = PowCapabilityProfile::new(
-            "Example.COM",
-            TargetClass::Api,
-            VendorId::Cloudflare,
-        );
+        let profile =
+            PowCapabilityProfile::new("Example.COM", TargetClass::Api, VendorId::Cloudflare);
         assert_eq!(profile.domain, "example.com");
     }
 
@@ -472,13 +472,31 @@ mod tests {
     #[test]
     fn merge_increments_failed_count_and_failure_histogram() {
         let mut profile = empty_profile();
-        profile.merge(&PowCapabilitySample::failed(2_000, 1, PowFailureMode::Timeout));
-        profile.merge(&PowCapabilitySample::failed(2_500, 2, PowFailureMode::Timeout));
-        profile.merge(&PowCapabilitySample::failed(3_000, 1, PowFailureMode::Blocked));
+        profile.merge(&PowCapabilitySample::failed(
+            2_000,
+            1,
+            PowFailureMode::Timeout,
+        ));
+        profile.merge(&PowCapabilitySample::failed(
+            2_500,
+            2,
+            PowFailureMode::Timeout,
+        ));
+        profile.merge(&PowCapabilitySample::failed(
+            3_000,
+            1,
+            PowFailureMode::Blocked,
+        ));
         assert_eq!(profile.failed_count, 3);
         assert_eq!(profile.retry_count, 4);
-        assert_eq!(profile.failure_modes.get(&PowFailureMode::Timeout), Some(&2));
-        assert_eq!(profile.failure_modes.get(&PowFailureMode::Blocked), Some(&1));
+        assert_eq!(
+            profile.failure_modes.get(&PowFailureMode::Timeout),
+            Some(&2)
+        );
+        assert_eq!(
+            profile.failure_modes.get(&PowFailureMode::Blocked),
+            Some(&1)
+        );
     }
 
     #[test]
@@ -499,8 +517,16 @@ mod tests {
     #[test]
     fn failure_severity_averages_over_histogram() {
         let mut profile = empty_profile();
-        profile.merge(&PowCapabilitySample::failed(1_000, 0, PowFailureMode::Captcha));
-        profile.merge(&PowCapabilitySample::failed(1_000, 0, PowFailureMode::Timeout));
+        profile.merge(&PowCapabilitySample::failed(
+            1_000,
+            0,
+            PowFailureMode::Captcha,
+        ));
+        profile.merge(&PowCapabilitySample::failed(
+            1_000,
+            0,
+            PowFailureMode::Timeout,
+        ));
         let expected = f64::midpoint(
             PowFailureMode::Captcha.severity_weight(),
             PowFailureMode::Timeout.severity_weight(),
@@ -512,11 +538,19 @@ mod tests {
     fn merge_profile_preserves_key_and_combines_counts() {
         let mut a = empty_profile();
         a.merge(&PowCapabilitySample::solved(1_000, 0));
-        a.merge(&PowCapabilitySample::failed(2_000, 1, PowFailureMode::Timeout));
+        a.merge(&PowCapabilitySample::failed(
+            2_000,
+            1,
+            PowFailureMode::Timeout,
+        ));
 
         let mut b = empty_profile();
         b.merge(&PowCapabilitySample::solved(1_500, 1));
-        b.merge(&PowCapabilitySample::failed(2_500, 0, PowFailureMode::Blocked));
+        b.merge(&PowCapabilitySample::failed(
+            2_500,
+            0,
+            PowFailureMode::Blocked,
+        ));
 
         a.merge_profile(&b);
         assert_eq!(a.domain, "example.com");
@@ -568,7 +602,11 @@ mod tests {
     fn profile_round_trips_through_json() {
         let mut profile = empty_profile();
         profile.merge(&PowCapabilitySample::solved(1_000, 0));
-        profile.merge(&PowCapabilitySample::failed(2_000, 1, PowFailureMode::Timeout));
+        profile.merge(&PowCapabilitySample::failed(
+            2_000,
+            1,
+            PowFailureMode::Timeout,
+        ));
         let json = serde_json::to_string(&profile).expect("serialize");
         let back: PowCapabilityProfile = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back, profile);

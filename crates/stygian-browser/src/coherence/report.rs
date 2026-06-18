@@ -149,9 +149,12 @@ impl IdentitySurface {
             self.platform.clone().unwrap_or_else(|| "-".to_string()),
             self.languages.clone().unwrap_or_else(|| "-".to_string()),
             self.timezone.clone().unwrap_or_else(|| "-".to_string()),
-            self.screen_width.map_or_else(|| "-".to_string(), |v| v.to_string()),
-            self.screen_height.map_or_else(|| "-".to_string(), |v| v.to_string()),
-            self.color_depth.map_or_else(|| "-".to_string(), |v| v.to_string()),
+            self.screen_width
+                .map_or_else(|| "-".to_string(), |v| v.to_string()),
+            self.screen_height
+                .map_or_else(|| "-".to_string(), |v| v.to_string()),
+            self.color_depth
+                .map_or_else(|| "-".to_string(), |v| v.to_string()),
         ]
     }
 }
@@ -389,11 +392,7 @@ pub enum ContextPair {
 
 impl ContextPair {
     /// All three pairs in deterministic order.
-    pub const ALL: [Self; 3] = [
-        Self::TopIframe,
-        Self::TopWorker,
-        Self::IframeWorker,
-    ];
+    pub const ALL: [Self; 3] = [Self::TopIframe, Self::TopWorker, Self::IframeWorker];
 
     /// Resolve the [`ContextKind`] for side `a` / `b`.
     #[must_use]
@@ -447,11 +446,7 @@ pub fn diff_surfaces(
     let mut drifts = Vec::new();
 
     let pairs: [(&str, Option<String>, Option<String>); 10] = [
-        (
-            "user_agent",
-            a.user_agent.clone(),
-            b.user_agent.clone(),
-        ),
+        ("user_agent", a.user_agent.clone(), b.user_agent.clone()),
         ("platform", a.platform.clone(), b.platform.clone()),
         ("languages", a.languages.clone(), b.languages.clone()),
         (
@@ -617,7 +612,9 @@ pub fn signature_field_names() -> &'static BTreeSet<&'static str> {
 )]
 mod tests {
     use super::*;
-    use crate::freshness::{DomainClass, FreshnessCheckInput, FreshnessContract, FreshnessPolicyKind};
+    use crate::freshness::{
+        DomainClass, FreshnessCheckInput, FreshnessContract, FreshnessPolicyKind,
+    };
     use std::time::Duration;
 
     fn surface_a() -> IdentitySurface {

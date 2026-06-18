@@ -268,7 +268,8 @@ impl MetricsCollector {
                 "change_feed_events_total{{classification=\"probable\"}} {probable}"
             );
             output.push('\n');
-            output.push_str("# HELP change_feed_runs_total Change-feed detection cycles executed\n");
+            output
+                .push_str("# HELP change_feed_runs_total Change-feed detection cycles executed\n");
             output.push_str("# TYPE change_feed_runs_total counter\n");
             let _ = writeln!(output, "change_feed_runs_total {runs}");
         }

@@ -28,11 +28,11 @@
 //! `vendor_classification` field with the expected top vendor.
 
 use serde_json::json;
-use stygian_charon::bundle::{build_diagnostic_bundle, BundleRedactionPolicy};
-use stygian_charon::vendor_classifier::{
-    VendorClassifier, VendorId, DEFAULT_HIGH_CONFIDENCE_THRESHOLD, EvidenceSource,
-};
 use std::collections::BTreeMap;
+use stygian_charon::bundle::{BundleRedactionPolicy, build_diagnostic_bundle};
+use stygian_charon::vendor_classifier::{
+    DEFAULT_HIGH_CONFIDENCE_THRESHOLD, EvidenceSource, VendorClassifier, VendorId,
+};
 
 fn approx_eq(a: f64, b: f64) -> bool {
     (a - b).abs() < 1e-9
@@ -57,10 +57,7 @@ fn make_entry(
     // `set-cookie` header. The HAR parser only consumes
     // `response.headers` for the headers map, so the separate
     // `response.cookies` array is dropped.
-    let mut headers = response_headers
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+    let mut headers = response_headers.as_array().cloned().unwrap_or_default();
     for (name, value) in cookies {
         headers.push(json!({"name": "set-cookie", "value": format!("{name}={value}; Path=/")}));
     }
@@ -127,13 +124,30 @@ fn datadome_classification_from_cookies_and_headers() {
     let mut headers = BTreeMap::new();
     headers.insert("x-datadome".to_string(), "protected".to_string());
     headers.insert("x-datadome-cid".to_string(), "abc".to_string());
-    let c = classifier.classify(&cookies, &headers, Some("captcha-delivery.com iframe"), "https://www.example.com/");
+    let c = classifier.classify(
+        &cookies,
+        &headers,
+        Some("captcha-delivery.com iframe"),
+        "https://www.example.com/",
+    );
     assert_eq!(c.top_vendor, VendorId::DataDome);
     assert!(c.is_high_confidence);
     assert!(c.confidence > 0.5);
-    assert!(c.evidence.source_summary.contains_key(&EvidenceSource::Cookie));
-    assert!(c.evidence.source_summary.contains_key(&EvidenceSource::Header));
-    assert!(c.evidence.source_summary.contains_key(&EvidenceSource::BodyMarker));
+    assert!(
+        c.evidence
+            .source_summary
+            .contains_key(&EvidenceSource::Cookie)
+    );
+    assert!(
+        c.evidence
+            .source_summary
+            .contains_key(&EvidenceSource::Header)
+    );
+    assert!(
+        c.evidence
+            .source_summary
+            .contains_key(&EvidenceSource::BodyMarker)
+    );
 }
 
 #[test]
@@ -151,7 +165,11 @@ fn cloudflare_classification_from_challenge_url_and_ray_header() {
     );
     assert_eq!(c.top_vendor, VendorId::Cloudflare);
     assert!(c.is_high_confidence);
-    assert!(c.evidence.source_summary.contains_key(&EvidenceSource::ChallengeUrl));
+    assert!(
+        c.evidence
+            .source_summary
+            .contains_key(&EvidenceSource::ChallengeUrl)
+    );
 }
 
 #[test]
@@ -163,10 +181,19 @@ fn akamai_classification_from_abck_and_bm_sz() {
     ];
     let mut headers = BTreeMap::new();
     headers.insert("bm_sv".to_string(), "abc".to_string());
-    let c = classifier.classify(&cookies, &headers, Some("akamaibot detection"), "https://example.com/_bm/v3/abc");
+    let c = classifier.classify(
+        &cookies,
+        &headers,
+        Some("akamaibot detection"),
+        "https://example.com/_bm/v3/abc",
+    );
     assert_eq!(c.top_vendor, VendorId::Akamai);
     assert!(c.is_high_confidence);
-    assert!(c.evidence.source_summary.contains_key(&EvidenceSource::Cookie));
+    assert!(
+        c.evidence
+            .source_summary
+            .contains_key(&EvidenceSource::Cookie)
+    );
 }
 
 #[test]
@@ -175,10 +202,19 @@ fn perimeter_x_classification_from_px3_and_body() {
     let cookies = vec!["_px3=abc; Path=/".to_string()];
     let mut headers = BTreeMap::new();
     headers.insert("x-px".to_string(), "abc".to_string());
-    let c = classifier.classify(&cookies, &headers, Some("perimeterx / humansecurity challenge"), "https://example.com/1/captcha/abc");
+    let c = classifier.classify(
+        &cookies,
+        &headers,
+        Some("perimeterx / humansecurity challenge"),
+        "https://example.com/1/captcha/abc",
+    );
     assert_eq!(c.top_vendor, VendorId::PerimeterX);
     assert!(c.is_high_confidence);
-    assert!(c.evidence.source_summary.contains_key(&EvidenceSource::Cookie));
+    assert!(
+        c.evidence
+            .source_summary
+            .contains_key(&EvidenceSource::Cookie)
+    );
 }
 
 // =====================================================================
@@ -200,14 +236,27 @@ fn multi_vendor_classification_with_deterministic_tie_break() {
     assert!((c.confidence - 0.5).abs() < 1e-9);
     // The ranked list should still carry both vendors with the
     // correct scores so downstream observers can audit the result.
-    assert!(c.ranked.iter().any(|s| s.vendor == VendorId::DataDome && s.score == 5));
-    assert!(c.ranked.iter().any(|s| s.vendor == VendorId::Cloudflare && s.score == 5));
+    assert!(
+        c.ranked
+            .iter()
+            .any(|s| s.vendor == VendorId::DataDome && s.score == 5)
+    );
+    assert!(
+        c.ranked
+            .iter()
+            .any(|s| s.vendor == VendorId::Cloudflare && s.score == 5)
+    );
 }
 
 #[test]
 fn no_signals_yields_unknown_classification() {
     let classifier = VendorClassifier::with_builtin_defaults();
-    let c = classifier.classify(&[], &BTreeMap::new(), Some("benign html"), "https://example.com/");
+    let c = classifier.classify(
+        &[],
+        &BTreeMap::new(),
+        Some("benign html"),
+        "https://example.com/",
+    );
     assert!(c.is_unknown());
     assert!(!c.is_high_confidence);
     assert_eq!(c.top_vendor, VendorId::Unknown);
@@ -231,7 +280,10 @@ fn below_threshold_classification_is_not_high_confidence() {
 #[test]
 fn default_threshold_matches_documented_constant() {
     let classifier = VendorClassifier::with_builtin_defaults();
-    assert!(approx_eq(classifier.threshold(), DEFAULT_HIGH_CONFIDENCE_THRESHOLD));
+    assert!(approx_eq(
+        classifier.threshold(),
+        DEFAULT_HIGH_CONFIDENCE_THRESHOLD
+    ));
     assert!(approx_eq(classifier.threshold(), 0.60));
 }
 
@@ -241,8 +293,18 @@ fn classification_is_deterministic_for_same_input() {
     let cookies = vec!["datadome=abc; Path=/".to_string()];
     let mut headers = BTreeMap::new();
     headers.insert("x-datadome".to_string(), "1".to_string());
-    let c1 = classifier.classify(&cookies, &headers, Some("captcha-delivery.com"), "https://example.com/");
-    let c2 = classifier.classify(&cookies, &headers, Some("captcha-delivery.com"), "https://example.com/");
+    let c1 = classifier.classify(
+        &cookies,
+        &headers,
+        Some("captcha-delivery.com"),
+        "https://example.com/",
+    );
+    let c2 = classifier.classify(
+        &cookies,
+        &headers,
+        Some("captcha-delivery.com"),
+        "https://example.com/",
+    );
     assert_eq!(c1.top_vendor, c2.top_vendor);
     assert!(approx_eq(c1.confidence, c2.confidence));
     assert_eq!(c1.ranked.len(), c2.ranked.len());
@@ -262,8 +324,7 @@ fn diagnostic_bundle_carries_vendor_classification_for_datadome_input() {
         "Please enable JS and complete the captcha-delivery.com iframe.",
     );
     let har = build_har(&[entry]);
-    let bundle = build_diagnostic_bundle(&har, BundleRedactionPolicy::None)
-        .expect("bundle");
+    let bundle = build_diagnostic_bundle(&har, BundleRedactionPolicy::None).expect("bundle");
     let classification = bundle
         .vendor_classification
         .as_ref()
@@ -287,8 +348,7 @@ fn diagnostic_bundle_omits_vendor_classification_for_clean_har() {
         "harmless content",
     );
     let har = build_har(&[entry]);
-    let bundle = build_diagnostic_bundle(&har, BundleRedactionPolicy::None)
-        .expect("bundle");
+    let bundle = build_diagnostic_bundle(&har, BundleRedactionPolicy::None).expect("bundle");
     // The classifier reports `Unknown` with no evidence for a
     // benign HAR. The bundle builder drops the field rather
     // than emit `"vendor_classification": null`.
@@ -385,8 +445,7 @@ fn vendor_classification_appears_in_diagnostic_payload() {
         "Attention required! | cloudflare",
     );
     let har = build_har(&[entry]);
-    let bundle = build_diagnostic_bundle(&har, BundleRedactionPolicy::None)
-        .expect("bundle");
+    let bundle = build_diagnostic_bundle(&har, BundleRedactionPolicy::None).expect("bundle");
     assert!(
         bundle.vendor_classification.is_some(),
         "vendor classification must be populated for a Cloudflare-flavoured HAR"
@@ -405,8 +464,7 @@ fn vendor_classification_appears_in_diagnostic_payload() {
     // `skip_serializing_if = "Option::is_none"` for this assertion
     // — the contract is "the field is present in the payload",
     // not "the field is sometimes present".
-    let json: serde_json::Value =
-        serde_json::to_value(&bundle).expect("serialize bundle");
+    let json: serde_json::Value = serde_json::to_value(&bundle).expect("serialize bundle");
     assert!(
         json.get("vendor_classification").is_some(),
         "diagnostic payload JSON must contain a `vendor_classification` field, got: {json}"
@@ -425,11 +483,15 @@ fn vendor_classification_appears_in_diagnostic_payload() {
         "is_high_confidence must be true for a Cloudflare challenge"
     );
     assert!(
-        vendor_json["ranked"].as_array().is_some_and(|a| !a.is_empty()),
+        vendor_json["ranked"]
+            .as_array()
+            .is_some_and(|a| !a.is_empty()),
         "ranked scoreboard must not be empty"
     );
     assert!(
-        vendor_json["evidence"]["items"].as_array().is_some_and(|a| !a.is_empty()),
+        vendor_json["evidence"]["items"]
+            .as_array()
+            .is_some_and(|a| !a.is_empty()),
         "evidence.items must contain at least one match"
     );
     assert!(

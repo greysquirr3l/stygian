@@ -328,14 +328,7 @@ impl VendorClassifier {
         let mut scores: BTreeMap<VendorId, VendorScore> = BTreeMap::new();
 
         for def in &self.definitions {
-            let score = score_definition(
-                def,
-                cookies,
-                headers,
-                body,
-                url,
-                &mut evidence_items,
-            );
+            let score = score_definition(def, cookies, headers, body, url, &mut evidence_items);
             scores.insert(
                 def.id,
                 VendorScore {
@@ -373,11 +366,7 @@ impl VendorClassifier {
 
         // Rank: descending score, then ascending VendorId (the
         // deterministic tie-break rule).
-        ranked.sort_by(|a, b| {
-            b.score
-                .cmp(&a.score)
-                .then_with(|| a.vendor.cmp(&b.vendor))
-        });
+        ranked.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.vendor.cmp(&b.vendor)));
 
         let (top, second) = match ranked.as_slice() {
             [] => (None, None),
@@ -436,7 +425,12 @@ impl VendorClassifier {
     #[must_use]
     pub fn classify_view(&self, tx: &TransactionView) -> VendorClassification {
         let cookies = extract_cookies(&tx.response_headers);
-        self.classify(&cookies, &tx.response_headers, tx.response_body_snippet.as_deref(), &tx.url)
+        self.classify(
+            &cookies,
+            &tx.response_headers,
+            tx.response_body_snippet.as_deref(),
+            &tx.url,
+        )
     }
 
     /// Classify every transaction in a HAR payload and return the
@@ -660,8 +654,8 @@ mod tests {
 
     #[test]
     fn empty_classifier_reports_unknown() {
-        let classification = empty_classifier()
-            .classify(&[], &BTreeMap::new(), None, "https://example.com/");
+        let classification =
+            empty_classifier().classify(&[], &BTreeMap::new(), None, "https://example.com/");
         assert_eq!(classification.top_vendor, VendorId::Unknown);
         assert!(classification.is_unknown());
         assert!(!classification.is_high_confidence);
@@ -671,8 +665,7 @@ mod tests {
 
     #[test]
     fn single_vendor_match_with_one_signal_above_threshold() {
-        let classifier =
-            VendorClassifier::new(vec![datadome_definition()]).with_threshold(0.60);
+        let classifier = VendorClassifier::new(vec![datadome_definition()]).with_threshold(0.60);
         let mut headers = BTreeMap::new();
         headers.insert("x-datadome".to_string(), "protected".to_string());
         let classification = classifier.classify(&[], &headers, None, "https://example.com/");
@@ -680,15 +673,16 @@ mod tests {
         assert!((classification.confidence - 1.0).abs() < 1e-9);
         assert!(classification.is_high_confidence);
         assert_eq!(classification.evidence.items.len(), 1);
-        assert_eq!(classification.evidence.items[0].source, EvidenceSource::Header);
+        assert_eq!(
+            classification.evidence.items[0].source,
+            EvidenceSource::Header
+        );
     }
 
     #[test]
     fn multi_vendor_match_ranks_by_score_with_deterministic_tie_break() {
-        let classifier = VendorClassifier::new(vec![
-            datadome_definition(),
-            cloudflare_definition(),
-        ]);
+        let classifier =
+            VendorClassifier::new(vec![datadome_definition(), cloudflare_definition()]);
         let mut headers = BTreeMap::new();
         // Both vendors score 5 from their respective signals.
         headers.insert("x-datadome".to_string(), "1".to_string());
@@ -706,8 +700,7 @@ mod tests {
 
     #[test]
     fn below_threshold_classification_is_not_high_confidence() {
-        let classifier =
-            VendorClassifier::new(vec![datadome_definition()]).with_threshold(0.99);
+        let classifier = VendorClassifier::new(vec![datadome_definition()]).with_threshold(0.99);
         let mut headers = BTreeMap::new();
         headers.insert("x-datadome".to_string(), "1".to_string());
         let classification = classifier.classify(&[], &headers, None, "https://example.com/");
@@ -746,7 +739,10 @@ mod tests {
             classifier.classify(&cookies, &BTreeMap::new(), None, "https://example.com/");
         assert_eq!(classification.top_vendor, VendorId::DataDome);
         assert_eq!(classification.evidence.items.len(), 1);
-        assert_eq!(classification.evidence.items[0].source, EvidenceSource::Cookie);
+        assert_eq!(
+            classification.evidence.items[0].source,
+            EvidenceSource::Cookie
+        );
     }
 
     #[test]
@@ -772,43 +768,47 @@ mod tests {
         };
         let classification = classifier.classify_view(&tx);
         assert_eq!(classification.top_vendor, VendorId::DataDome);
-        assert_eq!(classification.evidence.items[0].source, EvidenceSource::Cookie);
+        assert_eq!(
+            classification.evidence.items[0].source,
+            EvidenceSource::Cookie
+        );
     }
 
     #[test]
     fn body_markers_match_case_insensitively() {
-        let classifier =
-            VendorClassifier::new(vec![VendorDefinition {
-                id: VendorId::Cloudflare,
-                display_name: "x".to_string(),
-                description: String::new(),
-                tier: 1,
-                signals: vec![VendorSignal {
-                    pattern: "attention required! | cloudflare".to_string(),
-                    source: EvidenceSource::BodyMarker,
-                    weight: 4,
-                }],
-            }]);
+        let classifier = VendorClassifier::new(vec![VendorDefinition {
+            id: VendorId::Cloudflare,
+            display_name: "x".to_string(),
+            description: String::new(),
+            tier: 1,
+            signals: vec![VendorSignal {
+                pattern: "attention required! | cloudflare".to_string(),
+                source: EvidenceSource::BodyMarker,
+                weight: 4,
+            }],
+        }]);
         let body = "<h1>Attention Required! | Cloudflare</h1>";
         let classification = classifier.classify(&[], &BTreeMap::new(), Some(body), "https://x/");
         assert_eq!(classification.top_vendor, VendorId::Cloudflare);
-        assert_eq!(classification.evidence.items[0].source, EvidenceSource::BodyMarker);
+        assert_eq!(
+            classification.evidence.items[0].source,
+            EvidenceSource::BodyMarker
+        );
     }
 
     #[test]
     fn challenge_url_signal_matches_path_segments() {
-        let classifier =
-            VendorClassifier::new(vec![VendorDefinition {
-                id: VendorId::Cloudflare,
-                display_name: "x".to_string(),
-                description: String::new(),
-                tier: 1,
-                signals: vec![VendorSignal {
-                    pattern: "cdn-cgi/challenge-platform".to_string(),
-                    source: EvidenceSource::ChallengeUrl,
-                    weight: 4,
-                }],
-            }]);
+        let classifier = VendorClassifier::new(vec![VendorDefinition {
+            id: VendorId::Cloudflare,
+            display_name: "x".to_string(),
+            description: String::new(),
+            tier: 1,
+            signals: vec![VendorSignal {
+                pattern: "cdn-cgi/challenge-platform".to_string(),
+                source: EvidenceSource::ChallengeUrl,
+                weight: 4,
+            }],
+        }]);
         let url = "https://example.com/cdn-cgi/challenge-platform/orchestrate/jschl/abc";
         let classification = classifier.classify(&[], &BTreeMap::new(), None, url);
         assert_eq!(classification.top_vendor, VendorId::Cloudflare);
@@ -836,9 +836,7 @@ mod tests {
     #[test]
     fn threshold_validation_falls_back_to_default() {
         let classifier = VendorClassifier::new(Vec::new()).with_threshold(f64::NAN);
-        assert!(
-            (classifier.threshold() - DEFAULT_HIGH_CONFIDENCE_THRESHOLD).abs() < 1e-9
-        );
+        assert!((classifier.threshold() - DEFAULT_HIGH_CONFIDENCE_THRESHOLD).abs() < 1e-9);
         let negative = VendorClassifier::new(Vec::new()).with_threshold(-1.0);
         assert!((negative.threshold() - DEFAULT_HIGH_CONFIDENCE_THRESHOLD).abs() < 1e-9);
         let above = VendorClassifier::new(Vec::new()).with_threshold(1.5);
@@ -903,9 +901,25 @@ mod tests {
         assert!(c.is_high_confidence);
         assert!(c.confidence > 0.0);
         // Per-source summary should record at least one of each source.
-        assert!(c.evidence.source_summary.contains_key(&EvidenceSource::Header));
-        assert!(c.evidence.source_summary.contains_key(&EvidenceSource::Cookie));
-        assert!(c.evidence.source_summary.contains_key(&EvidenceSource::BodyMarker));
-        assert!(c.evidence.source_summary.contains_key(&EvidenceSource::ChallengeUrl));
+        assert!(
+            c.evidence
+                .source_summary
+                .contains_key(&EvidenceSource::Header)
+        );
+        assert!(
+            c.evidence
+                .source_summary
+                .contains_key(&EvidenceSource::Cookie)
+        );
+        assert!(
+            c.evidence
+                .source_summary
+                .contains_key(&EvidenceSource::BodyMarker)
+        );
+        assert!(
+            c.evidence
+                .source_summary
+                .contains_key(&EvidenceSource::ChallengeUrl)
+        );
     }
 }

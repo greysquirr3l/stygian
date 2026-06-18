@@ -77,13 +77,13 @@ mod report;
 mod scoring;
 
 pub use observations::{
-    compare_header_order, compare_pseudo_header_order, HeaderOrderMatch,
-    Http2SettingsObservation, TransportObservation, HEADER_ORDER_CHROME_136,
-    HEADER_ORDER_FIREFOX_130, PSEUDO_HEADER_ORDER_CHROME_136,
+    HEADER_ORDER_CHROME_136, HEADER_ORDER_FIREFOX_130, HeaderOrderMatch, Http2SettingsObservation,
+    PSEUDO_HEADER_ORDER_CHROME_136, TransportObservation, compare_header_order,
+    compare_pseudo_header_order,
 };
 pub use profile::{Http2Expectations, TransportProfile};
 pub use report::{TransportCompatibility, TransportRealismReport};
-pub use scoring::{score, Http2CheckKind, Http2CheckResult, HTTP2_CHECK_KIND_COUNT};
+pub use scoring::{HTTP2_CHECK_KIND_COUNT, Http2CheckKind, Http2CheckResult, score};
 
 use std::fmt;
 

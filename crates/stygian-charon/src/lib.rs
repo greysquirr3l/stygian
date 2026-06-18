@@ -20,6 +20,9 @@ pub mod bundle;
 /// Investigation report cache backends and cache key helpers.
 #[cfg(feature = "caching")]
 pub mod cache;
+/// Challenge-aware policy feedback loop (T83).
+#[cfg(feature = "caching")]
+pub mod challenge_feedback;
 /// Anti-bot change-detection feed (T88).
 ///
 /// Detects canary, proxy, and extraction deltas and
@@ -27,35 +30,25 @@ pub mod cache;
 /// surface and the diagnostics payload.
 #[cfg(feature = "caching")]
 pub mod change_feed;
-/// Challenge-aware policy feedback loop (T83).
-#[cfg(feature = "caching")]
-pub mod challenge_feedback;
 /// Provider signature classification logic.
 pub mod classifier;
-/// Challenge-token lifecycle contracts (T91). Strict per-vendor
-/// TTL / nonce / single-use / session-binding invariants enforced
-/// before submission.
-#[cfg(feature = "caching")]
-pub mod token_lifecycle;
-/// Vendor fingerprinting confidence classifier (T89).
-pub mod vendor_classifier;
-/// Vendor-to-playbook auto-resolution (T90).
-///
-/// Bridges the vendor classifier and the playbook resolver,
-/// with multi-vendor precedence, merge rules, and a `Manual`
-/// fallback that keeps existing manual mode selection working
-/// unchanged.
-pub mod vendor_resolver;
 /// Mode differential regression runner across snapshot capture modes.
 pub mod differential;
 /// HAR parsing and extraction utilities.
 pub mod har;
 /// Investigation reports and baseline/candidate diffing.
 pub mod investigation;
+/// Telemetry and metrics collection (feature-gated).
+#[cfg(feature = "metrics")]
+pub mod metrics;
+/// External observatory runner and comparison reports.
+pub mod observatory;
 /// Target-class playbooks as code (T85). Resolves per-target
 /// acquisition / proxy / pacing / escalation knobs with
 /// deterministic precedence.
 pub mod playbooks;
+/// Runtime policy planning based on investigation output.
+pub mod policy;
 /// Proof-of-work capability profile (T93).
 ///
 /// Quantifies solve latency, success rate, retry count, and
@@ -69,21 +62,28 @@ pub mod playbooks;
 /// `charon:pow:...`).
 #[cfg(feature = "caching")]
 pub mod pow_profile;
-/// Telemetry and metrics collection (feature-gated).
-#[cfg(feature = "metrics")]
-pub mod metrics;
-/// External observatory runner and comparison reports.
-pub mod observatory;
-/// Runtime policy planning based on investigation output.
-pub mod policy;
 /// Challenge-style probe pack for adversarial and regression testing.
 pub mod probe;
 /// Release risk scoring and release-candidate trend reporting.
 pub mod release_risk;
 /// Normalized fingerprint snapshot schema types and compatibility checks.
 pub mod snapshot;
+/// Challenge-token lifecycle contracts (T91). Strict per-vendor
+/// TTL / nonce / single-use / session-binding invariants enforced
+/// before submission.
+#[cfg(feature = "caching")]
+pub mod token_lifecycle;
 /// Public types for transaction and report models.
 pub mod types;
+/// Vendor fingerprinting confidence classifier (T89).
+pub mod vendor_classifier;
+/// Vendor-to-playbook auto-resolution (T90).
+///
+/// Bridges the vendor classifier and the playbook resolver,
+/// with multi-vendor precedence, merge rules, and a `Manual`
+/// fallback that keeps existing manual mode selection working
+/// unchanged.
+pub mod vendor_resolver;
 
 pub use acquisition::{
     AcquisitionModeHint, AcquisitionPolicy, AcquisitionStartHint, RuntimePolicyHints,
@@ -105,16 +105,16 @@ pub use cache::RedisInvestigationCache;
 #[cfg(feature = "caching")]
 pub use cache::{InvestigationReportCache, MemoryInvestigationCache, investigation_cache_key};
 #[cfg(feature = "caching")]
+pub use challenge_feedback::{
+    ChallengeFeedbackPolicy, ChallengeMemory, ChallengeMemoryEntry, ChallengeOutcome,
+    MAX_RISK_DELTA, adjust_runtime_policy, build_runtime_policy_with_memory, challenge_memory_key,
+    memory_adjustment_for,
+};
+#[cfg(feature = "caching")]
 pub use change_feed::{
     ChangeClassification, ChangeDeltaInput, ChangeDetector, ChangeEvent, ChangeEventSink,
     ChangeFeedReport, ChangeFeedThresholds, DeltaSeverity, DeltaSource, DeltaSummary,
     InMemoryChangeFeedSink, MitigationPath, record_change_event,
-};
-#[cfg(feature = "caching")]
-pub use challenge_feedback::{
-    ChallengeFeedbackPolicy, ChallengeMemory, ChallengeMemoryEntry, ChallengeOutcome,
-    MAX_RISK_DELTA, adjust_runtime_policy, build_runtime_policy_with_memory,
-    challenge_memory_key, memory_adjustment_for,
 };
 pub use classifier::{
     classify_har, classify_har_with_profile, classify_transaction,
@@ -137,6 +137,15 @@ pub use observatory::{
     ObservatoryReport, ObservatorySample, run_external_observatory_from_hars,
 };
 pub use policy::{analyze_and_plan, build_runtime_policy, plan_from_report};
+#[cfg(feature = "caching")]
+pub use pow_profile::{
+    DEFAULT_LATENCY_BUDGET_MS, DEFAULT_POW_CAPACITY, DEFAULT_POW_TTL, DEFAULT_RETRY_BUDGET,
+    DEFAULT_SAMPLE_WINDOW_SECS, MAX_POW_RISK_DELTA, MIN_OBSERVATIONS_FOR_SCORING,
+    PowCapabilityBand, PowCapabilityProfile, PowCapabilitySample, PowCapabilityScore,
+    PowCapabilityScorer, PowCapabilityStore, PowFailureMode, PowPolicyThresholds, ProfileWeights,
+    SPARSE_FALLBACK_SCORE, adjust_runtime_policy_for_pow, band_for_score, pow_profile_key,
+    score_from_profile,
+};
 pub use probe::{
     ChallengeProbe, ProbeCategory, ProbeExpectation, ProbePackReport, ProbeRunResult,
     challenge_probe_pack, run_probe_pack,
@@ -156,6 +165,13 @@ pub use snapshot::{
     evaluate_snapshot_coherence, normalize_snapshot_for_determinism,
     validate_snapshot_compatibility,
 };
+#[cfg(feature = "caching")]
+pub use token_lifecycle::{
+    ChallengeClass, DEFAULT_NONCE_BOOK_CAPACITY, DEFAULT_NONCE_TTL, InvalidationKind,
+    InvalidationReason, NonceBook, NonceObservation, TokenContract, TokenLifecycleError,
+    TokenPolicy, TokenPolicyTable, TokenValidator, ValidationOutcome, builtin_token_policies,
+    nonce_book_key,
+};
 pub use types::{
     AdapterStrategy, AntiBotProvider, AntiBotRequirement, BlockedRatioSlo, Detection,
     ExecutionMode, HarClassificationReport, HarRequestSummary, HostSummary,
@@ -164,28 +180,12 @@ pub use types::{
     TargetClass, TelemetryLevel, TransactionView,
 };
 pub use vendor_classifier::{
-    DEFAULT_HIGH_CONFIDENCE_THRESHOLD, Evidence, EvidenceBundle, EvidenceSource, VendorClassification,
-    VendorClassifier, VendorDefinition, VendorError, VendorId, VendorScore, VendorSignal,
-    parse_vendor_definition,
+    DEFAULT_HIGH_CONFIDENCE_THRESHOLD, Evidence, EvidenceBundle, EvidenceSource,
+    VendorClassification, VendorClassifier, VendorDefinition, VendorError, VendorId, VendorScore,
+    VendorSignal, parse_vendor_definition,
 };
 pub use vendor_resolver::{
     AppliedRule, MergeStrategy, PlaybookResolverExt, ResolutionRationale, ResolutionRule,
     StrategyMarker, VendorResolution, VendorResolver, VendorResolverError, VendorRuleMatch,
     parse_resolution_rule,
-};
-#[cfg(feature = "caching")]
-pub use token_lifecycle::{
-    ChallengeClass, InvalidationKind, InvalidationReason, NonceBook, NonceObservation,
-    TokenContract, TokenLifecycleError, TokenPolicy, TokenPolicyTable, TokenValidator,
-    ValidationOutcome, builtin_token_policies, DEFAULT_NONCE_BOOK_CAPACITY, DEFAULT_NONCE_TTL,
-    nonce_book_key,
-};
-#[cfg(feature = "caching")]
-pub use pow_profile::{
-    DEFAULT_LATENCY_BUDGET_MS, DEFAULT_POW_CAPACITY, DEFAULT_POW_TTL, DEFAULT_RETRY_BUDGET,
-    DEFAULT_SAMPLE_WINDOW_SECS, MAX_POW_RISK_DELTA, MIN_OBSERVATIONS_FOR_SCORING,
-    PowCapabilityBand, PowCapabilityProfile, PowCapabilitySample, PowCapabilityScore,
-    PowCapabilityScorer, PowCapabilityStore, PowFailureMode, PowPolicyThresholds,
-    ProfileWeights, SPARSE_FALLBACK_SCORE, adjust_runtime_policy_for_pow, band_for_score,
-    pow_profile_key, score_from_profile,
 };

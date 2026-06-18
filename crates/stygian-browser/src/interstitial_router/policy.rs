@@ -56,8 +56,7 @@ pub const DEFAULT_CHALLENGE_SOLVE_BUDGET_MS: u64 = 30_000;
 /// default escalation is conservative — the caller is
 /// expected to use the `Escalate` route as a last-resort
 /// signal rather than a routine retry path.
-pub const DEFAULT_HARD_BLOCK_ESCALATION: StrategyUsed =
-    StrategyUsed::StickyProxyBrowserSession;
+pub const DEFAULT_HARD_BLOCK_ESCALATION: StrategyUsed = StrategyUsed::StickyProxyBrowserSession;
 
 /// Default follow-redirect flag for transient pages.
 pub const DEFAULT_TRANSIENT_FOLLOW_REDIRECT: bool = true;

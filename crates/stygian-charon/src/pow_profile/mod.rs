@@ -152,20 +152,16 @@ mod scorer;
 mod store;
 
 pub use policy::{
-    MAX_POW_RISK_DELTA, PowCapabilityScore, PowPolicyThresholds,
-    adjust_runtime_policy_for_pow,
+    MAX_POW_RISK_DELTA, PowCapabilityScore, PowPolicyThresholds, adjust_runtime_policy_for_pow,
 };
 pub use profile::{
     DEFAULT_SAMPLE_WINDOW_SECS, PowCapabilityProfile, PowCapabilitySample, PowFailureMode,
 };
 pub use scorer::{
     DEFAULT_LATENCY_BUDGET_MS, DEFAULT_RETRY_BUDGET, MIN_OBSERVATIONS_FOR_SCORING,
-    ProfileWeights, PowCapabilityBand, PowCapabilityScorer, SPARSE_FALLBACK_SCORE,
-    band_for_score,
+    PowCapabilityBand, PowCapabilityScorer, ProfileWeights, SPARSE_FALLBACK_SCORE, band_for_score,
 };
-pub use store::{
-    DEFAULT_POW_CAPACITY, DEFAULT_POW_TTL, PowCapabilityStore, pow_profile_key,
-};
+pub use store::{DEFAULT_POW_CAPACITY, DEFAULT_POW_TTL, PowCapabilityStore, pow_profile_key};
 
 /// Convenience helper: score a profile and wrap the result
 /// in a [`PowCapabilityScore`].

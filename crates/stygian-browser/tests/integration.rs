@@ -1093,17 +1093,16 @@ mod similarity_tests {
 #[tokio::test]
 #[ignore = "requires real Chrome binary and external network access"]
 async fn freshness_runner_rejects_stale_session() -> Result<(), Box<dyn std::error::Error>> {
+    use std::time::Duration;
     use stygian_browser::freshness::{FreshnessContract, FreshnessPolicyKind};
     use stygian_browser::{AcquisitionMode, AcquisitionRequest, AcquisitionRunner};
-    use std::time::Duration;
 
     let pool = BrowserPool::new(test_config()).await?;
     let runner = AcquisitionRunner::new(pool);
 
     // Build a contract that has clearly expired (1 ms TTL, captured an
     // hour ago). The runner must reject before touching the browser.
-    let captured_ms = stygian_browser::freshness::unix_epoch_ms()
-        .saturating_sub(60 * 60 * 1_000);
+    let captured_ms = stygian_browser::freshness::unix_epoch_ms().saturating_sub(60 * 60 * 1_000);
     let stale = FreshnessContract::with_signature(
         "example.com",
         "sha256:test-signature",
@@ -1234,9 +1233,7 @@ async fn coherence_probe_emits_per_context_report() -> Result<(), Box<dyn std::e
         .collect();
     let top_iframe_hard: Vec<&&stygian_browser::coherence::DriftDiagnostic> = top_iframe_drifts
         .iter()
-        .filter(|d| {
-            d.severity == stygian_browser::coherence::DriftSeverity::Hard
-        })
+        .filter(|d| d.severity == stygian_browser::coherence::DriftSeverity::Hard)
         .collect();
     assert!(
         top_iframe_hard.is_empty(),
@@ -1273,11 +1270,11 @@ async fn coherence_probe_emits_per_context_report() -> Result<(), Box<dyn std::e
 /// ```
 #[tokio::test]
 #[ignore = "requires real Chrome binary and external network access"]
-async fn replay_defense_forces_refresh_on_signature_drift()
--> Result<(), Box<dyn std::error::Error>> {
+async fn replay_defense_forces_refresh_on_signature_drift() -> Result<(), Box<dyn std::error::Error>>
+{
+    use std::time::Duration;
     use stygian_browser::replay_defense::{ReplayDefensePolicy, ReplayDefenseState};
     use stygian_browser::{AcquisitionMode, AcquisitionRequest, AcquisitionRunner};
-    use std::time::Duration;
 
     let pool = BrowserPool::new(test_config()).await?;
     let runner = AcquisitionRunner::new(pool);
@@ -1286,8 +1283,8 @@ async fn replay_defense_forces_refresh_on_signature_drift()
     // rotation interval so the policy's `RotationDue` check fires
     // immediately. The state carries a `sha256:` signature that the
     // runner observes, so signature drift is also detected.
-    let captured_ms = stygian_browser::replay_defense::unix_epoch_ms()
-        .saturating_sub(60 * 60 * 1_000);
+    let captured_ms =
+        stygian_browser::replay_defense::unix_epoch_ms().saturating_sub(60 * 60 * 1_000);
     let state = ReplayDefenseState::with_fingerprint(
         "example.com",
         "sha256:test-signature",
@@ -1364,14 +1361,12 @@ async fn replay_defense_forces_refresh_on_signature_drift()
 #[ignore = "requires real Chrome binary and external network access"]
 async fn transport_realism_section_appears_in_diagnostic_payload()
 -> Result<(), Box<dyn std::error::Error>> {
+    use std::time::Duration;
     use stygian_browser::diagnostic::DiagnosticReport;
-    use stygian_browser::transport_realism::{
-        TransportObservation, TransportProfile,
-    };
+    use stygian_browser::transport_realism::{TransportObservation, TransportProfile};
     use stygian_browser::{
         AcquisitionMode, AcquisitionRequest, AcquisitionRunner, TransportRealismContext,
     };
-    use std::time::Duration;
 
     let pool = BrowserPool::new(test_config()).await?;
     let runner = AcquisitionRunner::new(pool);
@@ -1414,8 +1409,8 @@ async fn transport_realism_section_appears_in_diagnostic_payload()
     // in. The JSON must contain the new `transport_realism` key but
     // must NOT rename any pre-existing field — this is the
     // backward-compatible contract.
-    let diagnostic = DiagnosticReport::new(Vec::new())
-        .with_transport_realism(realism_report.clone());
+    let diagnostic =
+        DiagnosticReport::new(Vec::new()).with_transport_realism(realism_report.clone());
     let json = serde_json::to_string(&diagnostic)?;
     assert!(
         json.contains("\"transport_realism\""),
@@ -1442,7 +1437,9 @@ async fn transport_realism_section_appears_in_diagnostic_payload()
         restored_realism.compatibility.score,
         realism_report.compatibility.score,
     );
-    assert!((restored_realism.compatibility.score - realism_report.compatibility.score).abs() < 1e-9);
+    assert!(
+        (restored_realism.compatibility.score - realism_report.compatibility.score).abs() < 1e-9
+    );
 
     Ok(())
 }
@@ -1471,12 +1468,11 @@ async fn transport_realism_section_appears_in_diagnostic_payload()
 #[tokio::test]
 #[ignore = "requires real Chrome binary and external network access"]
 #[allow(clippy::too_many_lines)]
-async fn integrity_canary_emits_trap_findings_and_hints()
--> Result<(), Box<dyn std::error::Error>> {
+async fn integrity_canary_emits_trap_findings_and_hints() -> Result<(), Box<dyn std::error::Error>>
+{
     use stygian_browser::diagnostic::DiagnosticReport;
     use stygian_browser::integrity_canary::{
-        all_probes, IntegrityCanaryReport, IntegrityProbeOutcome,
-        IntegrityRiskClassification,
+        IntegrityCanaryReport, IntegrityProbeOutcome, IntegrityRiskClassification, all_probes,
     };
 
     let pool = BrowserPool::new(test_config()).await?;
@@ -1563,8 +1559,7 @@ async fn integrity_canary_emits_trap_findings_and_hints()
             assert!(
                 matches!(
                     hint.outcome,
-                    IntegrityProbeOutcome::TrapSuspected
-                        | IntegrityProbeOutcome::TrapConfirmed
+                    IntegrityProbeOutcome::TrapSuspected | IntegrityProbeOutcome::TrapConfirmed
                 ),
                 "mitigation hint must reference a fired trap"
             );
@@ -1573,8 +1568,7 @@ async fn integrity_canary_emits_trap_findings_and_hints()
 
     // DiagnosticReport integration: the canary report attaches
     // additively without breaking the legacy schema.
-    let diagnostic =
-        DiagnosticReport::new(Vec::new()).with_integrity_canary(report.clone());
+    let diagnostic = DiagnosticReport::new(Vec::new()).with_integrity_canary(report.clone());
     let json = serde_json::to_string(&diagnostic)?;
     assert!(
         json.contains("\"integrity_canary\""),
@@ -1634,14 +1628,13 @@ async fn integrity_canary_emits_trap_findings_and_hints()
 /// ```
 #[tokio::test]
 #[ignore = "requires real Chrome binary and external network access"]
-async fn interstitial_routing_short_circuits_runner()
--> Result<(), Box<dyn std::error::Error>> {
+async fn interstitial_routing_short_circuits_runner() -> Result<(), Box<dyn std::error::Error>> {
+    use std::time::Duration;
+    use stygian_browser::InterstitialContext;
     use stygian_browser::interstitial_router::PageSignature;
-    use stygian_browser::{InterstitialContext};
     use stygian_browser::{
         AcquisitionMode, AcquisitionRequest, AcquisitionRunner, StageFailureKind,
     };
-    use std::time::Duration;
 
     // Sub-test 1: hard-block classification must short-circuit.
     {

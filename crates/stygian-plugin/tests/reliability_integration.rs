@@ -223,10 +223,8 @@ async fn fallback_chooses_higher_reliability_path()
 
     // Execute both candidates through a real ExtractionEngine.
     let engine = ExtractionEngine;
-    let primary_request =
-        ExtractionRequest::new(primary_template, "https://test.example", html);
-    let fallback_request =
-        ExtractionRequest::new(fallback_template, "https://test.example", html);
+    let primary_request = ExtractionRequest::new(primary_template, "https://test.example", html);
+    let fallback_request = ExtractionRequest::new(fallback_template, "https://test.example", html);
 
     let primary_result = engine.execute(&primary_request).await?;
     let fallback_result = engine.execute(&fallback_request).await?;

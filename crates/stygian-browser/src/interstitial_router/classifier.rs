@@ -279,17 +279,26 @@ fn is_hard_block(signature: &PageSignature) -> bool {
         {
             return true;
         }
-        if HARD_BLOCK_BODY_MARKERS.iter().any(|m| signature.body_contains(m)) {
+        if HARD_BLOCK_BODY_MARKERS
+            .iter()
+            .any(|m| signature.body_contains(m))
+        {
             return true;
         }
-        if signature.vendor_hint.as_deref().is_some_and(is_hard_block_vendor) {
+        if signature
+            .vendor_hint
+            .as_deref()
+            .is_some_and(is_hard_block_vendor)
+        {
             return true;
         }
     }
 
     // 429 with a block body is also a hard block.
     if matches!(signature.status_code, Some(429))
-        && HARD_BLOCK_BODY_MARKERS.iter().any(|m| signature.body_contains(m))
+        && HARD_BLOCK_BODY_MARKERS
+            .iter()
+            .any(|m| signature.body_contains(m))
     {
         return true;
     }
@@ -307,7 +316,10 @@ fn is_hard_block(signature: &PageSignature) -> bool {
 }
 
 fn is_challenge(signature: &PageSignature) -> bool {
-    if CHALLENGE_BODY_MARKERS.iter().any(|m| signature.body_contains(m)) {
+    if CHALLENGE_BODY_MARKERS
+        .iter()
+        .any(|m| signature.body_contains(m))
+    {
         return true;
     }
     if CHALLENGE_URL_PATTERNS
@@ -329,13 +341,13 @@ fn is_queue(signature: &PageSignature) -> bool {
     if signature.queue_position_hint.is_some() {
         return true;
     }
-    if QUEUE_BODY_MARKERS.iter().any(|m| signature.body_contains(m)) {
+    if QUEUE_BODY_MARKERS
+        .iter()
+        .any(|m| signature.body_contains(m))
+    {
         return true;
     }
-    if QUEUE_URL_PATTERNS
-        .iter()
-        .any(|p| signature.url_contains(p))
-    {
+    if QUEUE_URL_PATTERNS.iter().any(|p| signature.url_contains(p)) {
         return true;
     }
     if matches!(signature.status_code, Some(202)) {
@@ -474,7 +486,8 @@ pub(super) const QUEUE_BODY_MARKERS_PUBLIC: &[&str] = &[
 
 const QUEUE_BODY_MARKERS: &[&str] = QUEUE_BODY_MARKERS_PUBLIC;
 
-pub(super) const QUEUE_URL_PATTERNS_PUBLIC: &[&str] = &["/queue", "/waiting", "/wait-room", "/waitroom"];
+pub(super) const QUEUE_URL_PATTERNS_PUBLIC: &[&str] =
+    &["/queue", "/waiting", "/wait-room", "/waitroom"];
 
 const QUEUE_URL_PATTERNS: &[&str] = QUEUE_URL_PATTERNS_PUBLIC;
 

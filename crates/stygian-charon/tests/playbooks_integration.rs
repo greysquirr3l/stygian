@@ -24,6 +24,7 @@
 //! downstream [`AcquisitionRunner`] config needs (by mapping into
 //! [`AcquisitionPolicy`] via [`map_policy_hints`]).
 
+use std::collections::BTreeMap;
 use stygian_charon::acquisition::{AcquisitionModeHint, map_policy_hints};
 use stygian_charon::playbooks::{
     AcquisitionDefaults, AcquisitionOverrides, EscalationStrategy, PacingProfile, Playbook,
@@ -32,7 +33,6 @@ use stygian_charon::playbooks::{
 use stygian_charon::types::{
     ExecutionMode, RuntimePolicy, SessionMode, TargetClass, TelemetryLevel,
 };
-use std::collections::BTreeMap;
 
 fn approx_eq(a: f64, b: f64) -> bool {
     (a - b).abs() < 1e-9
@@ -278,8 +278,8 @@ fn validation_error_message_includes_field_path_and_bad_value() {
             max_latency_ms: None,
         },
         pacing: PacingProfile {
-            rate_limit_rps: -0.5, // invalid
-            jitter_pct: 1.5,      // invalid
+            rate_limit_rps: -0.5,       // invalid
+            jitter_pct: 1.5,            // invalid
             min_request_interval_ms: 0, // invalid
         },
         escalation: EscalationStrategy::Linear { steps: Vec::new() }, // invalid
@@ -507,5 +507,8 @@ fn resolved_playbook_drives_acquisition_runner_config() {
     // ordered escalation list.
     let stages = resolved.escalation.stages();
     assert!(!stages.is_empty());
-    assert_eq!(*stages.last().expect("ceiling"), AcquisitionModeHint::Hostile);
+    assert_eq!(
+        *stages.last().expect("ceiling"),
+        AcquisitionModeHint::Hostile
+    );
 }

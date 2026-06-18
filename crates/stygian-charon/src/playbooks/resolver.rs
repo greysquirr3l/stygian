@@ -303,16 +303,14 @@ impl PlaybookResolver {
             by_id.insert(pb.id.clone(), pb);
         }
 
-        let global_default = global_default.unwrap_or_else(|| {
-            Playbook {
-                id: "unknown".to_string(),
-                target_class: TargetClass::Unknown,
-                description: "Fallback when no playbook matches".to_string(),
-                acquisition: AcquisitionDefaults::default_for(TargetClass::Unknown),
-                proxy_preference: ProxyPreference::default_for(TargetClass::Unknown),
-                pacing: PacingProfile::default_for(TargetClass::Unknown),
-                escalation: EscalationStrategy::default(),
-            }
+        let global_default = global_default.unwrap_or_else(|| Playbook {
+            id: "unknown".to_string(),
+            target_class: TargetClass::Unknown,
+            description: "Fallback when no playbook matches".to_string(),
+            acquisition: AcquisitionDefaults::default_for(TargetClass::Unknown),
+            proxy_preference: ProxyPreference::default_for(TargetClass::Unknown),
+            pacing: PacingProfile::default_for(TargetClass::Unknown),
+            escalation: EscalationStrategy::default(),
         });
 
         Ok(Self {
@@ -424,9 +422,11 @@ impl PlaybookResolver {
     }
 
     fn lookup_by_id(&self, id: &str) -> Result<&Playbook, ValidationError> {
-        self.playbooks.get(id).ok_or_else(|| ValidationError::UnknownPlaybook {
-            playbook_id: id.to_string(),
-        })
+        self.playbooks
+            .get(id)
+            .ok_or_else(|| ValidationError::UnknownPlaybook {
+                playbook_id: id.to_string(),
+            })
     }
 
     fn lookup_by_target_class(&self, target_class: TargetClass) -> &Playbook {
@@ -453,10 +453,7 @@ impl PlaybookResolver {
         let playbook_acq = &playbook.acquisition;
         let is_global_default = playbook.id == self.global_default.id;
 
-        let pick_mode = overrides
-            .acquisition
-            .mode
-            .unwrap_or(playbook_acq.mode);
+        let pick_mode = overrides.acquisition.mode.unwrap_or(playbook_acq.mode);
         let pick_execution = overrides
             .acquisition
             .execution_mode
@@ -485,21 +482,47 @@ impl PlaybookResolver {
 
         let acquisition = ResolvedAcquisition {
             mode: pick_mode,
-            mode_source: source_for_mode(overrides, playbook_acq, default_acq.mode, is_global_default),
+            mode_source: source_for_mode(
+                overrides,
+                playbook_acq,
+                default_acq.mode,
+                is_global_default,
+            ),
             execution_mode: pick_execution,
-            execution_mode_source: source_for_scalar(overrides.acquisition.execution_mode.is_some(), is_global_default),
+            execution_mode_source: source_for_scalar(
+                overrides.acquisition.execution_mode.is_some(),
+                is_global_default,
+            ),
             session_mode: pick_session,
-            session_mode_source: source_for_scalar(overrides.acquisition.session_mode.is_some(), is_global_default),
+            session_mode_source: source_for_scalar(
+                overrides.acquisition.session_mode.is_some(),
+                is_global_default,
+            ),
             telemetry_level: pick_telemetry,
-            telemetry_level_source: source_for_scalar(overrides.acquisition.telemetry_level.is_some(), is_global_default),
+            telemetry_level_source: source_for_scalar(
+                overrides.acquisition.telemetry_level.is_some(),
+                is_global_default,
+            ),
             sticky_session_ttl_secs: pick_sticky,
-            sticky_session_ttl_source: source_for_scalar(false, is_global_default || playbook_acq.sticky_session_ttl_secs.is_none()),
+            sticky_session_ttl_source: source_for_scalar(
+                false,
+                is_global_default || playbook_acq.sticky_session_ttl_secs.is_none(),
+            ),
             enable_warmup: pick_warmup,
-            enable_warmup_source: source_for_scalar(overrides.acquisition.enable_warmup.is_some(), is_global_default),
+            enable_warmup_source: source_for_scalar(
+                overrides.acquisition.enable_warmup.is_some(),
+                is_global_default,
+            ),
             retry_budget: pick_retry,
-            retry_budget_source: source_for_scalar(overrides.acquisition.retry_budget.is_some(), is_global_default),
+            retry_budget_source: source_for_scalar(
+                overrides.acquisition.retry_budget.is_some(),
+                is_global_default,
+            ),
             backoff_base_ms: pick_backoff,
-            backoff_base_source: source_for_scalar(overrides.acquisition.backoff_base_ms.is_some(), is_global_default),
+            backoff_base_source: source_for_scalar(
+                overrides.acquisition.backoff_base_ms.is_some(),
+                is_global_default,
+            ),
         };
 
         ResolvedPlaybook {
@@ -659,10 +682,7 @@ mod tests {
                 escalation: EscalationStrategy::default(),
             },
         ]);
-        assert!(matches!(
-            result,
-            Err(ValidationError::DuplicateId { .. })
-        ));
+        assert!(matches!(result, Err(ValidationError::DuplicateId { .. })));
     }
 
     #[test]

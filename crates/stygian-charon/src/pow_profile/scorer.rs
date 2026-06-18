@@ -277,18 +277,21 @@ impl PowCapabilityScorer {
         let retry_score = self.retry_score(profile);
         let failure_score = 1.0 - profile.failure_severity();
 
-        let weight_sum = self.weights.success
-            + self.weights.latency
-            + self.weights.retry
-            + self.weights.failure;
+        let weight_sum =
+            self.weights.success + self.weights.latency + self.weights.retry + self.weights.failure;
         if weight_sum <= 0.0 {
             return SPARSE_FALLBACK_SCORE;
         }
 
-        let raw = self
-            .weights
-            .failure
-            .mul_add(failure_score, self.weights.retry.mul_add(retry_score, self.weights.latency.mul_add(latency_score, self.weights.success * success_rate)));
+        let raw = self.weights.failure.mul_add(
+            failure_score,
+            self.weights.retry.mul_add(
+                retry_score,
+                self.weights
+                    .latency
+                    .mul_add(latency_score, self.weights.success * success_rate),
+            ),
+        );
         let normalised = raw / weight_sum;
         clamp_unit(normalised)
     }
@@ -372,7 +375,11 @@ mod tests {
     }
 
     fn empty_profile() -> PowCapabilityProfile {
-        PowCapabilityProfile::new("example.com", TargetClass::ContentSite, VendorId::Cloudflare)
+        PowCapabilityProfile::new(
+            "example.com",
+            TargetClass::ContentSite,
+            VendorId::Cloudflare,
+        )
     }
 
     #[test]
@@ -414,7 +421,10 @@ mod tests {
 
         let scorer = PowCapabilityScorer::new();
         let score = scorer.score(&profile);
-        assert!(score > 0.75, "good telemetry should score Strong, got {score}");
+        assert!(
+            score > 0.75,
+            "good telemetry should score Strong, got {score}"
+        );
         assert_eq!(scorer.band(&profile), PowCapabilityBand::Strong);
     }
 
@@ -443,7 +453,10 @@ mod tests {
 
         let scorer = PowCapabilityScorer::new();
         let score = scorer.score(&profile);
-        assert!(score < 0.40, "poor telemetry should score Weak, got {score}");
+        assert!(
+            score < 0.40,
+            "poor telemetry should score Weak, got {score}"
+        );
         assert_eq!(scorer.band(&profile), PowCapabilityBand::Weak);
     }
 

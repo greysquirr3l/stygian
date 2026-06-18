@@ -137,22 +137,14 @@ impl InterstitialRouter {
     /// assert_eq!(decision.severity(), InterstitialSeverity::Retryable);
     /// ```
     #[must_use]
-    pub fn route(
-        &self,
-        signature: &PageSignature,
-        kind: InterstitialKind,
-    ) -> RouterDecision {
+    pub fn route(&self, signature: &PageSignature, kind: InterstitialKind) -> RouterDecision {
         let evidence = build_evidence(signature, kind);
         let route = self.build_route(signature, kind);
         let reason = build_reason(signature, kind);
         RouterDecision::new(kind, route, reason, evidence)
     }
 
-    fn build_route(
-        &self,
-        signature: &PageSignature,
-        kind: InterstitialKind,
-    ) -> InterstitialRoute {
+    fn build_route(&self, signature: &PageSignature, kind: InterstitialKind) -> InterstitialRoute {
         match kind {
             InterstitialKind::Queue => InterstitialRoute::WaitAndRetry {
                 interval: self.policy.queue_interval,
@@ -222,10 +214,7 @@ fn allowed_strategies_for_challenge() -> Vec<StrategyUsed> {
     ]
 }
 
-fn build_evidence(
-    signature: &PageSignature,
-    kind: InterstitialKind,
-) -> PageSignatureEvidence {
+fn build_evidence(signature: &PageSignature, kind: InterstitialKind) -> PageSignatureEvidence {
     let host = signature.host();
     let matched_url_patterns = match kind {
         InterstitialKind::HardBlock => {
@@ -431,11 +420,10 @@ mod tests {
         assert!(router.should_short_circuit(InterstitialKind::HardBlock));
         assert!(!router.should_short_circuit(InterstitialKind::Transient));
 
-        let lenient = InterstitialRouter::with_defaults()
-            .with_policy(InterstitialPolicy {
-                short_circuit_on_classified: false,
-                ..InterstitialPolicy::default()
-            });
+        let lenient = InterstitialRouter::with_defaults().with_policy(InterstitialPolicy {
+            short_circuit_on_classified: false,
+            ..InterstitialPolicy::default()
+        });
         assert!(!lenient.should_short_circuit(InterstitialKind::HardBlock));
     }
 
@@ -469,7 +457,10 @@ mod tests {
         let hard_block_decision = router.classify_and_route(&hard_block_sig);
         // The dedicated severity field must distinguish them.
         assert_eq!(queue_decision.severity(), InterstitialSeverity::Retryable);
-        assert_eq!(hard_block_decision.severity(), InterstitialSeverity::Terminal);
+        assert_eq!(
+            hard_block_decision.severity(),
+            InterstitialSeverity::Terminal
+        );
         assert!(queue_decision.is_retryable());
         assert!(hard_block_decision.is_terminal());
         assert!(!queue_decision.is_terminal());

@@ -116,7 +116,8 @@ mod tests {
 
     #[test]
     fn invalid_field_message_includes_field_and_value() {
-        let err = VendorError::invalid_field("datadome", "signals[0].weight", "-1", "weight must be > 0");
+        let err =
+            VendorError::invalid_field("datadome", "signals[0].weight", "-1", "weight must be > 0");
         let msg = err.to_string();
         assert!(msg.contains("datadome"));
         assert!(msg.contains("signals[0].weight"));

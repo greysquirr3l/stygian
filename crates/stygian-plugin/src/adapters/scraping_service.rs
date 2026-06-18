@@ -73,8 +73,8 @@ impl ScrapingService for PluginExtractionAdapter {
         }
 
         let html = extract_html_from_input(&input)?;
-        let request =
-            ExtractionRequest::new(template, input.url.clone(), html).with_idempotency_key(idempotency_key);
+        let request = ExtractionRequest::new(template, input.url.clone(), html)
+            .with_idempotency_key(idempotency_key);
 
         let mut result = self.extraction_port.execute(&request).await.map_err(|e| {
             StygianError::Service(ServiceError::Unavailable(format!("extraction failed: {e}")))

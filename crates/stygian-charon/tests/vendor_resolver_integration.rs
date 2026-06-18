@@ -48,6 +48,7 @@
 //! `classify → resolve → resolve_with_playbooks` pipeline.
 
 use serde_json::json;
+use std::collections::BTreeMap;
 use stygian_charon::playbooks::{
     AcquisitionOverrides, PlaybookOverrides, PlaybookResolver, ResolvedPlaybook,
 };
@@ -59,7 +60,6 @@ use stygian_charon::vendor_resolver::{
     MergeStrategy, ResolutionRule, StrategyMarker, VendorResolver, VendorResolverError,
     VendorRuleMatch,
 };
-use std::collections::BTreeMap;
 
 fn approx_eq(a: f64, b: f64) -> bool {
     (a - b).abs() < 1e-9
@@ -111,14 +111,20 @@ fn datadome_signal_resolves_to_tier2_hostile() {
     assert_eq!(classification.top_vendor, VendorId::DataDome);
     let resolution = resolver.resolve(&classification);
     match &resolution.strategy {
-        StrategyMarker::Resolved { playbook_id, target_class } => {
+        StrategyMarker::Resolved {
+            playbook_id,
+            target_class,
+        } => {
             assert_eq!(playbook_id, "tier2-hostile");
             assert_eq!(*target_class, TargetClass::HighSecurity);
         }
         StrategyMarker::Manual => panic!("DataDome should resolve, not defer"),
     }
     assert!(resolution.is_resolved());
-    assert_eq!(resolution.rationale.merge_strategy, MergeStrategy::StrongestVendor);
+    assert_eq!(
+        resolution.rationale.merge_strategy,
+        MergeStrategy::StrongestVendor
+    );
     assert!(resolution.rationale.summary.contains("datadome"));
     assert!(resolution.rationale.summary.contains("tier2-hostile"));
 }
@@ -135,7 +141,10 @@ fn perimeter_x_signal_resolves_to_tier2_hostile() {
     assert_eq!(classification.top_vendor, VendorId::PerimeterX);
     let resolution = resolver.resolve(&classification);
     match &resolution.strategy {
-        StrategyMarker::Resolved { playbook_id, target_class } => {
+        StrategyMarker::Resolved {
+            playbook_id,
+            target_class,
+        } => {
             assert_eq!(playbook_id, "tier2-hostile");
             assert_eq!(*target_class, TargetClass::HighSecurity);
         }
@@ -178,7 +187,10 @@ fn cloudflare_signal_resolves_to_tier1_js() {
     assert_eq!(classification.top_vendor, VendorId::Cloudflare);
     let resolution = resolver.resolve(&classification);
     match &resolution.strategy {
-        StrategyMarker::Resolved { playbook_id, target_class } => {
+        StrategyMarker::Resolved {
+            playbook_id,
+            target_class,
+        } => {
             assert_eq!(playbook_id, "tier1-js");
             assert_eq!(*target_class, TargetClass::ContentSite);
         }
@@ -278,13 +290,21 @@ fn low_confidence_datadome_returns_manual_marker() {
 #[test]
 fn clean_unknown_classification_picks_tier1_static() {
     let resolver = make_vendor_resolver();
-    let classification = classify(&[], &[("content-type", "text/html")], Some("harmless html"), "https://example.com/");
+    let classification = classify(
+        &[],
+        &[("content-type", "text/html")],
+        Some("harmless html"),
+        "https://example.com/",
+    );
     assert!(classification.is_unknown());
     let resolution = resolver.resolve(&classification);
     // The tier1-static rule has require_unknown_vendor = true so
     // it picks up the clean unknown classification.
     match &resolution.strategy {
-        StrategyMarker::Resolved { playbook_id, target_class } => {
+        StrategyMarker::Resolved {
+            playbook_id,
+            target_class,
+        } => {
             assert_eq!(playbook_id, "tier1-static");
             assert_eq!(*target_class, TargetClass::ContentSite);
         }
@@ -307,7 +327,11 @@ fn resolved_playbook_drives_acquisition_runner_config_for_datadome() {
         "https://example.com/",
     );
     let resolved = resolver
-        .resolve_with_playbooks(&classification, &playbook_resolver, &PlaybookOverrides::default())
+        .resolve_with_playbooks(
+            &classification,
+            &playbook_resolver,
+            &PlaybookOverrides::default(),
+        )
         .expect("resolve")
         .expect("resolved (not Manual)");
     assert_eq!(resolved.playbook_id, "tier2-hostile");
@@ -331,7 +355,11 @@ fn resolved_playbook_for_cloudflare_uses_tier1_js_browser_execution() {
         "https://example.com/cdn-cgi/challenge-platform",
     );
     let resolved = resolver
-        .resolve_with_playbooks(&classification, &playbook_resolver, &PlaybookOverrides::default())
+        .resolve_with_playbooks(
+            &classification,
+            &playbook_resolver,
+            &PlaybookOverrides::default(),
+        )
         .expect("resolve")
         .expect("resolved (not Manual)");
     assert_eq!(resolved.playbook_id, "tier1-js");
@@ -357,9 +385,16 @@ fn manual_strategy_marker_returns_none_from_resolve_with_playbooks() {
         threshold: 0.60,
     };
     let resolved: Option<ResolvedPlaybook> = resolver
-        .resolve_with_playbooks(&classification, &playbook_resolver, &PlaybookOverrides::default())
+        .resolve_with_playbooks(
+            &classification,
+            &playbook_resolver,
+            &PlaybookOverrides::default(),
+        )
         .expect("resolve");
-    assert!(resolved.is_none(), "Manual marker should not produce a ResolvedPlaybook");
+    assert!(
+        resolved.is_none(),
+        "Manual marker should not produce a ResolvedPlaybook"
+    );
 }
 
 #[test]
@@ -403,7 +438,10 @@ fn resolution_is_deterministic_for_same_input() {
     let r2 = resolver.resolve(&classification);
     assert_eq!(r1.strategy, r2.strategy);
     assert_eq!(r1.rationale.summary, r2.rationale.summary);
-    assert_eq!(r1.rationale.applied_rules.len(), r2.rationale.applied_rules.len());
+    assert_eq!(
+        r1.rationale.applied_rules.len(),
+        r2.rationale.applied_rules.len()
+    );
 }
 
 #[test]
@@ -620,7 +658,11 @@ fn synthetic_vendor_signatures_map_to_expected_playbooks() {
         let classification = classifier.classify_view(&parsed.requests[0].clone().into());
         let resolution = vendor_resolver.resolve(&classification);
         let resolved = vendor_resolver
-            .resolve_with_playbooks(&classification, &playbook_resolver, &PlaybookOverrides::default())
+            .resolve_with_playbooks(
+                &classification,
+                &playbook_resolver,
+                &PlaybookOverrides::default(),
+            )
             .expect("resolve_with_playbooks")
             .unwrap_or_else(|| panic!("{label}: expected resolved playbook, got Manual"));
         assert_eq!(

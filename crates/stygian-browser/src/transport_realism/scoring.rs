@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::tls_validation::compare_http2_settings;
 
-use super::observations::{compare_header_order, TransportObservation};
+use super::observations::{TransportObservation, compare_header_order};
 use super::profile::TransportProfile;
 
 /// Number of HTTP/2 checks the [`TransportProfile`][super::TransportProfile] supports.
@@ -192,7 +192,10 @@ impl TransportRealismReport {
 /// assert!(report.compatibility.score > 0.95);
 /// ```
 #[must_use]
-pub fn score(profile: &TransportProfile, observation: &TransportObservation) -> TransportRealismReport {
+pub fn score(
+    profile: &TransportProfile,
+    observation: &TransportObservation,
+) -> TransportRealismReport {
     let total_checks = profile.expected_http2_check_count();
 
     // Fast path: no HTTP/2 expectations enabled → report a perfect
@@ -251,7 +254,10 @@ fn score_with_observations(
     {
         score_pseudo_header_check(profile, observation, &mut state);
     }
-    if profile.expectations.contains(TransportProfile::HEADER_ORDER) {
+    if profile
+        .expectations
+        .contains(TransportProfile::HEADER_ORDER)
+    {
         score_header_order_check(profile, observation, &mut state);
     }
 
@@ -488,8 +494,7 @@ fn score_http2_settings(
     let Some(observed) = observation.http2_settings.as_deref() else {
         return (false, 0.0, None, 0.0);
     };
-    let (matched, issues) =
-        compare_http2_settings(&profile.expected_http2_settings, observed);
+    let (matched, issues) = compare_http2_settings(&profile.expected_http2_settings, observed);
     let position_ratio = if profile.expected_http2_settings.is_empty() {
         1.0
     } else {
@@ -512,7 +517,12 @@ fn score_http2_settings(
         let discount = (issues.len() as f64) * 0.1;
         (1.0 - discount).max(0.0)
     };
-    (matched, round4(score), Some(observed.len()), round4(position_ratio))
+    (
+        matched,
+        round4(score),
+        Some(observed.len()),
+        round4(position_ratio),
+    )
 }
 
 /// Round to 4 decimal places to keep JSON serialisation deterministic

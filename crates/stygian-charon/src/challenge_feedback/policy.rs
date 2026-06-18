@@ -117,11 +117,9 @@ pub fn memory_adjustment_for(
     domain: &str,
     target_class: TargetClass,
 ) -> f64 {
-    memory
-        .lookup(domain, target_class)
-        .map_or(0.0, |entry| {
-            clamp_to_policy(&ChallengeFeedbackPolicy::default(), entry.risk_delta())
-        })
+    memory.lookup(domain, target_class).map_or(0.0, |entry| {
+        clamp_to_policy(&ChallengeFeedbackPolicy::default(), entry.risk_delta())
+    })
 }
 
 /// Build a [`RuntimePolicy`] from an investigation report and
@@ -345,12 +343,8 @@ mod tests {
     fn policy_with_no_memory_returns_base() {
         let memory = ChallengeMemory::with_defaults();
         let policy = base_policy();
-        let adjusted = adjust_runtime_policy(
-            &policy,
-            &memory,
-            "example.com",
-            TargetClass::ContentSite,
-        );
+        let adjusted =
+            adjust_runtime_policy(&policy, &memory, "example.com", TargetClass::ContentSite);
         assert!(approx_eq(adjusted.risk_score, policy.risk_score));
     }
 
@@ -364,12 +358,8 @@ mod tests {
         );
 
         let policy = base_policy();
-        let adjusted = adjust_runtime_policy(
-            &policy,
-            &memory,
-            "example.com",
-            TargetClass::ContentSite,
-        );
+        let adjusted =
+            adjust_runtime_policy(&policy, &memory, "example.com", TargetClass::ContentSite);
 
         let expected_delta = ChallengeOutcome::HardChallenge.risk_delta();
         assert!(adjusted.risk_score >= policy.risk_score);
@@ -390,12 +380,8 @@ mod tests {
         );
 
         let policy = base_policy();
-        let adjusted = adjust_runtime_policy(
-            &policy,
-            &memory,
-            "example.com",
-            TargetClass::ContentSite,
-        );
+        let adjusted =
+            adjust_runtime_policy(&policy, &memory, "example.com", TargetClass::ContentSite);
 
         assert!(adjusted.risk_score <= policy.risk_score);
         assert!(adjusted.risk_score >= (policy.risk_score - MAX_RISK_DELTA).max(0.0));
@@ -414,12 +400,8 @@ mod tests {
             risk_score: 0.95,
             ..base_policy()
         };
-        let adjusted = adjust_runtime_policy(
-            &high,
-            &memory,
-            "example.com",
-            TargetClass::ContentSite,
-        );
+        let adjusted =
+            adjust_runtime_policy(&high, &memory, "example.com", TargetClass::ContentSite);
         assert!(adjusted.risk_score <= 1.0);
         // Single Captcha adds 0.20, so 0.95 + 0.20 = 1.15 clamps to 1.0
         assert!(approx_eq(adjusted.risk_score, 1.0));
@@ -450,12 +432,8 @@ mod tests {
             risk_score: 0.0,
             ..base_policy()
         };
-        let adjusted = adjust_runtime_policy(
-            &policy,
-            &memory,
-            "example.com",
-            TargetClass::ContentSite,
-        );
+        let adjusted =
+            adjust_runtime_policy(&policy, &memory, "example.com", TargetClass::ContentSite);
 
         let lift = adjusted.risk_score - policy.risk_score;
         assert!(lift >= 0.0);

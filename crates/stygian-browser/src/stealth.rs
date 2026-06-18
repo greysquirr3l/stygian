@@ -918,10 +918,7 @@ mod tests {
         let b = NavigatorProfile::windows_chrome().signature();
         assert_eq!(a, b, "identical profiles must produce equal signatures");
         let c = NavigatorProfile::mac_chrome().signature();
-        assert_ne!(
-            a, c,
-            "different profiles must produce different signatures"
-        );
+        assert_ne!(a, c, "different profiles must produce different signatures");
         assert!(a.starts_with("fnv64:"));
     }
 

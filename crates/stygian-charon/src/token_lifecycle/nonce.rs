@@ -267,10 +267,7 @@ mod tests {
         book.record(VendorId::Cloudflare, ChallengeClass::Interstitial, "n");
         book.record(VendorId::Cloudflare, ChallengeClass::Interstitial, "n");
         book.record(VendorId::Cloudflare, ChallengeClass::Interstitial, "n");
-        assert_eq!(
-            book.observation_count(VendorId::Cloudflare, "n"),
-            Some(3)
-        );
+        assert_eq!(book.observation_count(VendorId::Cloudflare, "n"), Some(3));
     }
 
     #[test]
@@ -278,14 +275,8 @@ mod tests {
         let book = NonceBook::new(NonZeroUsize::new(8).unwrap(), Duration::from_mins(1));
         book.record(VendorId::Cloudflare, ChallengeClass::Interstitial, "n");
         book.record(VendorId::Akamai, ChallengeClass::ProofOfWork, "n");
-        assert_eq!(
-            book.observation_count(VendorId::Cloudflare, "n"),
-            Some(1)
-        );
-        assert_eq!(
-            book.observation_count(VendorId::Akamai, "n"),
-            Some(1)
-        );
+        assert_eq!(book.observation_count(VendorId::Cloudflare, "n"), Some(1));
+        assert_eq!(book.observation_count(VendorId::Akamai, "n"), Some(1));
     }
 
     #[test]
@@ -313,10 +304,7 @@ mod tests {
         book.record(VendorId::DataDome, ChallengeClass::Captcha, "b");
         book.invalidate(VendorId::Cloudflare, "a");
         assert!(book.observation_count(VendorId::Cloudflare, "a").is_none());
-        assert_eq!(
-            book.observation_count(VendorId::DataDome, "b"),
-            Some(1)
-        );
+        assert_eq!(book.observation_count(VendorId::DataDome, "b"), Some(1));
     }
 
     #[test]
