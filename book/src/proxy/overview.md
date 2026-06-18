@@ -24,6 +24,7 @@ latency metrics, and integrates directly with both `stygian-graph` HTTP adapters
 | **browser integration** | Per-context proxy binding for `stygian-browser` (feature `browser`); TLS-profile-aware via `bind_proxy_with_tls_profile` |
 | **SOCKS support** | `Socks4` and `Socks5` proxy types (feature `socks`) |
 | **DNS TXT discovery** | `DnsTxtFetcher` resolves proxy lists from DNS TXT records (feature `dns-fetcher`) |
+| **Adaptive intelligence** | Per-domain proxy scoring with exponential decay (default-on); explainable `ScoreReport` for observability |
 
 ---
 
@@ -136,3 +137,46 @@ with `acquire_proxy()` → `ProxyHandle` → `mark_success()`.
 | `health_check_timeout` | 5 s | Per-probe HTTP timeout |
 | `circuit_open_threshold` | 5 | Consecutive failures before circuit opens |
 | `circuit_half_open_after` | 30 s | Cooldown before attempting recovery |
+| `intelligence_enabled` | `true` | Enable per-domain adaptive scoring |
+| `intelligence_half_life` | 1 hour | Exponential decay applied to historical scores |
+| `intelligence_weights` | success=0.6, challenge=0.3, latency=0.1 | Composite score weights |
+
+---
+
+## Adaptive intelligence (T86)
+
+Per-domain proxy scoring layers on top of the rotation strategy. When the
+manager has observed enough outcomes for a domain, candidates are ranked
+by a composite score; otherwise the configured rotation strategy wins.
+
+```rust,no_run
+use std::sync::Arc;
+use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
+use stygian_proxy::types::ScoreWeights;
+
+let storage = Arc::new(MemoryProxyStore::default());
+let cfg = ProxyConfig {
+    intelligence_weights: ScoreWeights {
+        success: 0.7,
+        challenge_penalty: 0.2,
+        latency: 0.1,
+    },
+    ..ProxyConfig::default()
+};
+let mgr = ProxyManager::with_round_robin(storage, cfg)?;
+
+// Record outcomes against the manager.
+mgr.record_outcome("example.com", proxy_id, true, false, 120).await;
+
+// Score-aware acquisition — falls back to rotation when no data exists.
+let handle = mgr.acquire_for_domain_with_intelligence("example.com").await?;
+handle.mark_success();
+
+// Observability: explainable report of the chosen proxy + its score.
+if let Some(report) = mgr.last_intelligence_report("example.com").await {
+    tracing::info!(?report, "intelligence-scored selection");
+}
+```
+
+See [`stygian-proxy::proxy_intelligence`](https://docs.rs/stygian-proxy/latest/stygian_proxy/proxy_intelligence/) for the `ProxyScore` /
+`ScoreReport` / `SelectionBasis` types.
