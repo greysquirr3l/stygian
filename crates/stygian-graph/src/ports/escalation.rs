@@ -83,6 +83,7 @@ impl EscalationTier {
     /// );
     /// assert_eq!(EscalationTier::BrowserAdvanced.next(), None);
     /// ```
+    #[must_use]
     pub const fn next(self) -> Option<Self> {
         match self {
             Self::HttpPlain => Some(Self::HttpTlsProfiled),

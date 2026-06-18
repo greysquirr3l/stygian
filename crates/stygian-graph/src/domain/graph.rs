@@ -288,6 +288,7 @@ impl DagExecutor {
     ///
     /// let executor = DagExecutor::new();
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         Self {
             graph: DiGraph::new(),

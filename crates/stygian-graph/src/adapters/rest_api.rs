@@ -187,6 +187,7 @@ impl RestApiAdapter {
     /// use stygian_graph::adapters::rest_api::RestApiAdapter;
     /// let adapter = RestApiAdapter::new();
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         Self::with_config(RestApiConfig::default())
     }
@@ -208,6 +209,7 @@ impl RestApiAdapter {
     ///     ..Default::default()
     /// });
     /// ```
+    #[must_use]
     pub fn with_config(config: RestApiConfig) -> Self {
         let mut builder = Client::builder()
             .timeout(config.timeout)
@@ -246,6 +248,7 @@ impl RestApiAdapter {
     /// );
     /// assert!(RestApiAdapter::extract_path(&v, "meta.gone").is_none());
     /// ```
+    #[must_use]
     pub fn extract_path<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
         let mut current = value;
         for segment in path.split('.') {
@@ -267,6 +270,7 @@ impl RestApiAdapter {
     ///     Some("https://api.example.com/items?page=2".to_owned())
     /// );
     /// ```
+    #[must_use]
     pub fn parse_link_next(link_header: &str) -> Option<String> {
         for part in link_header.split(',') {
             let part = part.trim();

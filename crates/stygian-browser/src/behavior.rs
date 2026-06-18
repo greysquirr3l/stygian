@@ -122,6 +122,7 @@ impl MouseSimulator {
     /// let mouse = MouseSimulator::new();
     /// assert_eq!(mouse.position(), (0.0, 0.0));
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         let seed = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -146,6 +147,7 @@ impl MouseSimulator {
     /// let mouse = MouseSimulator::with_seed_and_position(42, 100.0, 200.0);
     /// assert_eq!(mouse.position(), (100.0, 200.0));
     /// ```
+    #[must_use]
     pub const fn with_seed_and_position(seed: u64, x: f64, y: f64) -> Self {
         Self {
             current_x: x,
@@ -164,6 +166,7 @@ impl MouseSimulator {
     /// let (x, y) = mouse.position();
     /// assert_eq!((x, y), (0.0, 0.0));
     /// ```
+    #[must_use]
     pub const fn position(&self) -> (f64, f64) {
         (self.current_x, self.current_y)
     }
@@ -414,6 +417,7 @@ impl TypingSimulator {
     /// use stygian_browser::behavior::TypingSimulator;
     /// let typer = TypingSimulator::new();
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         let seed = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -434,6 +438,7 @@ impl TypingSimulator {
     /// use stygian_browser::behavior::TypingSimulator;
     /// let typer = TypingSimulator::with_seed(42);
     /// ```
+    #[must_use]
     pub const fn with_seed(seed: u64) -> Self {
         Self {
             rng: seed,
@@ -636,6 +641,7 @@ impl InteractionSimulator {
     /// use stygian_browser::behavior::{InteractionSimulator, InteractionLevel};
     /// let sim = InteractionSimulator::new(InteractionLevel::Low);
     /// ```
+    #[must_use]
     pub fn new(level: InteractionLevel) -> Self {
         let seed = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -657,6 +663,7 @@ impl InteractionSimulator {
     /// use stygian_browser::behavior::{InteractionSimulator, InteractionLevel};
     /// let sim = InteractionSimulator::with_seed(42, InteractionLevel::High);
     /// ```
+    #[must_use]
     pub const fn with_seed(seed: u64, level: InteractionLevel) -> Self {
         Self {
             rng: seed,
@@ -886,6 +893,7 @@ impl RequestPacer {
     /// use stygian_browser::behavior::RequestPacer;
     /// let _pacer = RequestPacer::new();
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         let seed = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -913,6 +921,7 @@ impl RequestPacer {
     /// // Aggressive: ~500 ms mean, σ = 150 ms, clamped 200–1 500 ms.
     /// let _pacer = RequestPacer::with_timing(500, 150, 200, 1_500);
     /// ```
+    #[must_use]
     pub fn with_timing(mean_ms: u64, std_ms: u64, min_ms: u64, max_ms: u64) -> Self {
         let (min_ms, max_ms) = if min_ms <= max_ms {
             (min_ms, max_ms)
@@ -947,6 +956,7 @@ impl RequestPacer {
     /// use stygian_browser::behavior::RequestPacer;
     /// let _pacer = RequestPacer::with_rate(0.5); // ~1 request every 2 s
     /// ```
+    #[must_use]
     pub fn with_rate(requests_per_second: f64) -> Self {
         let mean_ms = (1_000.0 / requests_per_second.max(0.01)).max(1.0) as u64;
         let std_ms = mean_ms / 4;

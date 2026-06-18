@@ -697,6 +697,7 @@ impl McpBrowserServer {
     /// Create a new server backed by the given `pool`.
     ///
     /// Call [`run`](Self::run) to start the stdin/stdout event loop.
+    #[must_use]
     pub fn new(pool: Arc<BrowserPool>) -> Self {
         Self {
             pool,
@@ -2789,6 +2790,7 @@ impl McpBrowserServer {
         let strategy_used = serde_json::to_value(result.strategy_used).unwrap_or(Value::Null);
         let attempted = serde_json::to_value(&result.attempted).unwrap_or(Value::Array(Vec::new()));
         let failures = serde_json::to_value(&result.failures).unwrap_or(Value::Array(Vec::new()));
+        let freshness = serde_json::to_value(&result.freshness).unwrap_or(Value::Null);
 
         json!({
             "success": result.success,
@@ -2797,6 +2799,7 @@ impl McpBrowserServer {
             "status_code": result.status_code,
             "extracted": result.extracted,
             "html_excerpt": result.html_excerpt,
+            "freshness": freshness,
             "diagnostics": {
                 "attempted": attempted,
                 "timed_out": result.timed_out,
@@ -2873,6 +2876,7 @@ fn mcp_enabled_from(value: &str) -> bool {
 /// environment variable.
 ///
 /// Set `STYGIAN_MCP_ENABLED=true` to enable the server.
+#[must_use]
 pub fn is_mcp_enabled() -> bool {
     mcp_enabled_from(&std::env::var("STYGIAN_MCP_ENABLED").unwrap_or_default())
 }
@@ -3102,6 +3106,10 @@ mod tests {
                 message: "blocked status".to_string(),
             }],
             timed_out: false,
+            freshness: None,
+            replay_defense: None,
+            transport_realism: None,
+            interstitial: None,
         };
 
         let payload = McpBrowserServer::acquisition_result_to_tool_output(&result);

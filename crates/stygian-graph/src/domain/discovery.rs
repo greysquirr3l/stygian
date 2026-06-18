@@ -149,6 +149,7 @@ impl JsonType {
 /// assert!(style.is_paginated());
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[allow(clippy::struct_excessive_bools)] // 6 page-shape feature flags read more clearly as named bools than a u8 bitmask
 pub struct PaginationStyle {
     /// Response wraps data in a `data` key
     pub has_data_wrapper: bool,

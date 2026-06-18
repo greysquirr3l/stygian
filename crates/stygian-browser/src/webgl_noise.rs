@@ -61,6 +61,7 @@ impl Default for ShaderPrecisionProfile {
 
 /// WebGL context attributes returned by `getContextAttributes()`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)] // mirrors the browser's WebGL `getContextAttributes` shape — the booleans are part of the public surface contract
 pub struct ContextAttributes {
     /// Alpha channel enabled.
     pub alpha: bool,
@@ -267,6 +268,13 @@ impl WebGlProfile {
     /// let p = WebGlProfile::nvidia_rtx_3060();
     /// p.assert_consistent();
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if the profile's `max_texture_size` exceeds either axis of
+    /// `max_viewport_dims`, or if `max_viewport_dims.0` exceeds
+    /// `max_viewport_dims.1` — both indicate an internally inconsistent
+    /// profile and should be caught in tests.
     pub fn assert_consistent(&self) {
         assert!(
             self.max_texture_size <= self.max_viewport_dims.0,

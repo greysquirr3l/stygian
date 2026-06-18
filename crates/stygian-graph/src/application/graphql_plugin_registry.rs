@@ -38,6 +38,7 @@ pub struct GraphQlPluginRegistry {
 
 impl GraphQlPluginRegistry {
     /// Create an empty registry.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             plugins: HashMap::new(),

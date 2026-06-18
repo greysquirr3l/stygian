@@ -56,6 +56,16 @@ pub struct MetricsCollector {
     // Distributions (use Arc<Mutex> for interior mutability)
     target_class_counts: Arc<std::sync::Mutex<HashMap<String, u64>>>,
     escalation_level_counts: Arc<std::sync::Mutex<HashMap<String, u64>>>,
+
+    // Change-feed counters (T88). Surfaced in the
+    // Prometheus text export under the
+    // `change_feed_*` prefix so existing SLO
+    // dashboards can pick the change-feed series
+    // up without a separate scrape job.
+    change_feed_noise_total: Arc<AtomicU64>,
+    change_feed_suspected_total: Arc<AtomicU64>,
+    change_feed_probable_total: Arc<AtomicU64>,
+    change_feed_runs_total: Arc<AtomicU64>,
 }
 
 impl MetricsCollector {
@@ -72,6 +82,10 @@ impl MetricsCollector {
             blocked_ratio_count: Arc::new(AtomicU64::new(0)),
             target_class_counts: Arc::new(std::sync::Mutex::new(HashMap::new())),
             escalation_level_counts: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            change_feed_noise_total: Arc::new(AtomicU64::new(0)),
+            change_feed_suspected_total: Arc::new(AtomicU64::new(0)),
+            change_feed_probable_total: Arc::new(AtomicU64::new(0)),
+            change_feed_runs_total: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -228,6 +242,38 @@ impl MetricsCollector {
             }
         }
 
+        // Change-feed counters (T88). Only emit the
+        // block when at least one counter is non-zero
+        // so the existing Prometheus output stays
+        // compact for users that have not wired the
+        // change feed in yet.
+        let noise = self.change_feed_noise_total.load(Ordering::Relaxed);
+        let suspected = self.change_feed_suspected_total.load(Ordering::Relaxed);
+        let probable = self.change_feed_probable_total.load(Ordering::Relaxed);
+        let runs = self.change_feed_runs_total.load(Ordering::Relaxed);
+        if noise > 0 || suspected > 0 || probable > 0 || runs > 0 {
+            output.push('\n');
+            output.push_str("# HELP change_feed_events_total Change-feed events emitted per classification band\n");
+            output.push_str("# TYPE change_feed_events_total counter\n");
+            let _ = writeln!(
+                output,
+                "change_feed_events_total{{classification=\"noise\"}} {noise}"
+            );
+            let _ = writeln!(
+                output,
+                "change_feed_events_total{{classification=\"suspected\"}} {suspected}"
+            );
+            let _ = writeln!(
+                output,
+                "change_feed_events_total{{classification=\"probable\"}} {probable}"
+            );
+            output.push('\n');
+            output
+                .push_str("# HELP change_feed_runs_total Change-feed detection cycles executed\n");
+            output.push_str("# TYPE change_feed_runs_total counter\n");
+            let _ = writeln!(output, "change_feed_runs_total {runs}");
+        }
+
         output
     }
 
@@ -249,6 +295,49 @@ impl MetricsCollector {
         if let Ok(mut counts) = self.escalation_level_counts.lock() {
             counts.clear();
         }
+
+        self.change_feed_noise_total.store(0, Ordering::Relaxed);
+        self.change_feed_suspected_total.store(0, Ordering::Relaxed);
+        self.change_feed_probable_total.store(0, Ordering::Relaxed);
+        self.change_feed_runs_total.store(0, Ordering::Relaxed);
+    }
+
+    /// Record a single [`ChangeEvent`][crate::change_feed::ChangeEvent]
+    /// against the change-feed Prometheus counters.
+    /// Increments the `change_feed_events_total`
+    /// counter under the event's classification
+    /// label.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use stygian_charon::change_feed::ChangeEventSink;
+    /// use stygian_charon::metrics::MetricsCollector;
+    ///
+    /// let collector = MetricsCollector::new();
+    /// // Sink recording through the detector
+    /// // path:
+    /// // let detector = ChangeDetector::new();
+    /// // let report = detector.detect(&deltas, &collector);
+    /// ```
+    pub fn record_change_event(&self, event: &crate::change_feed::ChangeEvent) {
+        use crate::change_feed::ChangeClassification;
+        let counter = match event.classification {
+            ChangeClassification::Noise => &self.change_feed_noise_total,
+            ChangeClassification::Suspected => &self.change_feed_suspected_total,
+            ChangeClassification::Probable => &self.change_feed_probable_total,
+        };
+        counter.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record a single change-feed detection
+    /// cycle. Increments the `change_feed_runs_total`
+    /// counter. Callers typically invoke this once
+    /// per [`ChangeDetector::detect`][crate::change_feed::ChangeDetector::detect]
+    /// call regardless of how many events were
+    /// emitted.
+    pub fn record_change_feed_run(&self) {
+        self.change_feed_runs_total.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -264,6 +353,12 @@ const fn to_f64(value: u64) -> f64 {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
 

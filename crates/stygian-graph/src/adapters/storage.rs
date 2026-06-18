@@ -97,6 +97,7 @@ impl FileStorage {
     ///
     /// let s = FileStorage::new(PathBuf::from("/tmp/data"));
     /// ```
+    #[must_use]
     pub const fn new(dir: PathBuf) -> Self {
         Self { dir }
     }
@@ -302,6 +303,7 @@ mod postgres {
         /// let s = PostgresStorage::new(pool);
         /// # });
         /// ```
+        #[must_use]
         pub const fn new(pool: PgPool) -> Self {
             Self { pool }
         }

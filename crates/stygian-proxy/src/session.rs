@@ -61,11 +61,13 @@ pub enum StickyPolicy {
 
 impl StickyPolicy {
     /// Create a domain-scoped policy with the given TTL.
+    #[must_use]
     pub const fn domain(ttl: Duration) -> Self {
         Self::Domain { ttl }
     }
 
     /// Create a domain-scoped policy with the default TTL (5 minutes).
+    #[must_use]
     pub const fn domain_default() -> Self {
         Self::Domain {
             ttl: Duration::from_secs(DEFAULT_TTL_SECS),
@@ -73,6 +75,7 @@ impl StickyPolicy {
     }
 
     /// Returns `true` when session stickiness is turned off.
+    #[must_use]
     pub const fn is_disabled(&self) -> bool {
         matches!(self, Self::Disabled)
     }
@@ -129,6 +132,7 @@ impl Default for SessionMap {
 
 impl SessionMap {
     /// Create an empty session map.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             inner: Arc::new(RwLock::new(HashMap::new())),
@@ -140,6 +144,7 @@ impl SessionMap {
     ///
     /// Expired entries are lazily removed on the next [`bind`](Self::bind)
     /// or [`purge_expired`](Self::purge_expired) call.
+    #[must_use]
     pub fn lookup(&self, key: &str) -> Option<Uuid> {
         // try_read avoids blocking if a write is in progress.
         let guard = self.inner.try_read().ok()?;
@@ -163,6 +168,7 @@ impl SessionMap {
     }
 
     /// Remove all expired sessions, returning the number removed.
+    #[must_use]
     pub fn purge_expired(&self) -> usize {
         let Ok(mut guard) = self.inner.try_write() else {
             return 0;
@@ -180,6 +186,7 @@ impl SessionMap {
     }
 
     /// Returns the number of active (non-expired) sessions.
+    #[must_use]
     pub fn active_count(&self) -> usize {
         let Ok(guard) = self.inner.try_read() else {
             return 0;

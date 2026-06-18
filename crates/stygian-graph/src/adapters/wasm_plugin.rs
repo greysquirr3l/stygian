@@ -60,6 +60,7 @@ impl MockWasmPlugin {
     /// use stygian_graph::adapters::wasm_plugin::MockWasmPlugin;
     /// let loader = MockWasmPlugin::new();
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         Self {
             plugin_dir: PathBuf::from("plugins"),
@@ -202,6 +203,7 @@ mod real {
         ///
         /// let loader = WasmPluginLoader::new(PathBuf::from("plugins"));
         /// ```
+        #[must_use]
         pub fn new(plugin_dir: PathBuf) -> Self {
             Self {
                 plugin_dir,

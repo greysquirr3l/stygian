@@ -568,6 +568,7 @@ impl SessionRecorder {
 // ─── Convenience helpers ──────────────────────────────────────────────────────
 
 /// Returns `true` if session recording is enabled via `STYGIAN_RECORD_SESSION`.
+#[must_use]
 pub fn is_recording_enabled() -> bool {
     matches!(
         std::env::var("STYGIAN_RECORD_SESSION")

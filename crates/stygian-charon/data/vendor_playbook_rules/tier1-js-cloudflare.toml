@@ -1,0 +1,35 @@
+# T90 baseline resolution rule — tier1-js-cloudflare
+#
+# Maps `Cloudflare` (and the Tier 2 captcha vendors that act as a
+# pure-captcha layer without active bot management) to the
+# `tier1-js` playbook. Cloudflare Bot Management with `cf-ray` /
+# `__cf_bm` evidence is the strongest single Tier 1 challenge but
+# usually sits behind a JS interstitial rather than a full PoW or
+# VM-trap stack — Tier 1 / `content_site` is the appropriate target
+# class.
+#
+# Precedence: priority 10 (after `tier2-hostile`).
+id = "tier1-js-cloudflare"
+playbook_id = "tier1-js"
+target_class = "content_site"
+priority = 10
+merge_strategy = "strongest_vendor"
+description = "Cloudflare + captcha-only vendors → tier1-js playbook"
+min_confidence = 0.60
+min_score = 4
+
+[[vendors]]
+vendor = "cloudflare"
+weight = 7
+
+[[vendors]]
+vendor = "hcaptcha"
+weight = 5
+
+[[vendors]]
+vendor = "recaptcha"
+weight = 5
+
+[[vendors]]
+vendor = "fingerprint_com"
+weight = 4

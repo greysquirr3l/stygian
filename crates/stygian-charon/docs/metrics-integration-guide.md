@@ -278,3 +278,50 @@ Potential additions to the metrics framework:
 - **Export to OpenTelemetry**: Integration with OTEL collectors
 - **Statistical aggregations**: Percentile (p50, p95, p99) calculations
 - **Time-series storage**: Long-term metric retention
+
+---
+
+## Change-Feed Counters (T88)
+
+When the `metrics` feature is enabled, the `MetricsCollector` also
+implements `ChangeEventSink` from the `change_feed` module. Two new
+counter families appear in the Prometheus export under the
+`change_feed_*` prefix:
+
+```
+# HELP change_feed_events_total Change-feed events emitted per classification band
+# TYPE change_feed_events_total counter
+change_feed_events_total{classification="noise"} 0
+change_feed_events_total{classification="suspected"} 2
+change_feed_events_total{classification="probable"} 1
+
+# HELP change_feed_runs_total Change-feed detection cycles executed
+# TYPE change_feed_runs_total counter
+change_feed_runs_total 14
+```
+
+The change-feed block is **only** emitted when at least one counter
+is non-zero, so existing dashboards that have not wired the feed in
+keep their layout unchanged. See
+[`change-feed-consumption-guide.md`](./change-feed-consumption-guide.md)
+for the full detection flow, classification bands, and runbook
+routing.
+
+### Recording change-feed events
+
+```rust
+use stygian_charon::metrics::MetricsCollector;
+use stygian_charon::change_feed::{ChangeDetector, ChangeEventSink};
+
+let collector = MetricsCollector::new();
+let detector = ChangeDetector::new();
+
+// Run a detection cycle. The collector records one
+// change_feed_events_total increment per emitted
+// event under the matching classification label.
+let deltas: Vec<_> = vec![/* ChangeDeltaInput list */];
+let report = detector.detect(&deltas, &collector);
+
+// Optional: bump the runs counter once per cycle.
+collector.record_change_feed_run();
+```

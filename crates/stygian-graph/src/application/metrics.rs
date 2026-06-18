@@ -152,6 +152,7 @@ impl MetricsRegistry {
     /// let r = MetricsRegistry::new();
     /// assert_eq!(r.snapshot().requests_total, 0);
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         Self {
             requests_total: AtomicU64::new(0),
@@ -496,6 +497,7 @@ impl MetricsSnapshot {
     /// assert!((snap.cache_hit_rate() - 0.5).abs() < f64::EPSILON);
     /// ```
     #[allow(clippy::cast_precision_loss)]
+    #[must_use]
     pub fn cache_hit_rate(&self) -> f64 {
         let total = self.cache_hits_total + self.cache_misses_total;
         if total == 0 {
@@ -519,6 +521,7 @@ impl MetricsSnapshot {
     /// assert!((snap.error_rate() - 1.0).abs() < f64::EPSILON);
     /// ```
     #[allow(clippy::cast_precision_loss)]
+    #[must_use]
     pub fn error_rate(&self) -> f64 {
         if self.requests_total == 0 {
             0.0
@@ -542,6 +545,7 @@ impl MetricsSnapshot {
 ///
 /// global_metrics().record(MetricEvent::CacheAccess { hit: true });
 /// ```
+#[must_use]
 pub fn global_metrics() -> &'static MetricsRegistry {
     static INSTANCE: LazyLock<MetricsRegistry> = LazyLock::new(MetricsRegistry::new);
     &INSTANCE

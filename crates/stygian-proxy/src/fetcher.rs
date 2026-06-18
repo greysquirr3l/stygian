@@ -199,6 +199,7 @@ impl FreeListFetcher {
     /// use stygian_proxy::fetcher::{FreeListFetcher, FreeListSource};
     /// let _f = FreeListFetcher::new(vec![FreeListSource::TheSpeedXHttp]);
     /// ```
+    #[must_use]
     pub fn new(sources: Vec<FreeListSource>) -> Self {
         let client = Client::builder()
             .timeout(Duration::from_secs(10))
@@ -1020,8 +1021,7 @@ impl DnsTxtFetcher {
 #[async_trait]
 impl ProxyFetcher for DnsTxtFetcher {
     async fn fetch(&self) -> ProxyResult<Vec<Proxy>> {
-        use hickory_resolver::TokioAsyncResolver;
-        use hickory_resolver::config::{ResolverConfig, ResolverOpts};
+        use hickory_resolver::TokioResolver;
         use tokio::time::timeout;
 
         let zone = Self::normalize_zone(&self.zone);
@@ -1047,8 +1047,10 @@ impl ProxyFetcher for DnsTxtFetcher {
             });
         }
 
-        let resolver =
-            TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
+        let resolver = TokioResolver::builder_tokio()
+            .map_err(|e| ProxyError::ConfigError(format!("DNS resolver init failed: {e}")))?
+            .build()
+            .map_err(|e| ProxyError::ConfigError(format!("DNS resolver build failed: {e}")))?;
 
         let lookup = timeout(self.lookup_timeout, resolver.txt_lookup(zone.as_str()))
             .await
@@ -1065,12 +1067,15 @@ impl ProxyFetcher for DnsTxtFetcher {
             })?;
 
         let mut proxies: Vec<Proxy> = Vec::new();
-        for txt in lookup.iter() {
+        for record in lookup.answers() {
             // Each TXT record may contain multiple character-strings; join them,
             // but cap the total size to avoid pathological oversized inputs.
+            let hickory_resolver::proto::rr::RData::TXT(txt) = &record.data else {
+                continue;
+            };
             let mut record_str = String::new();
             let mut skipped_for_size = false;
-            for bytes in txt.txt_data() {
+            for bytes in &txt.txt_data {
                 if let Ok(fragment) = std::str::from_utf8(bytes) {
                     if record_str.len().saturating_add(fragment.len())
                         > Self::MAX_JOINED_TXT_RECORD_LEN

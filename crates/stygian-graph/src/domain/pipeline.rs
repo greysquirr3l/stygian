@@ -73,6 +73,7 @@ impl PipelineUnvalidated {
     ///     "edges": []
     /// }));
     /// ```
+    #[must_use]
     pub const fn new(config: serde_json::Value) -> Self {
         Self { config }
     }
@@ -80,6 +81,12 @@ impl PipelineUnvalidated {
     /// Validate the pipeline configuration
     ///
     /// Transitions from `Unvalidated` to `Validated` state.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the validated DAG contains an edge whose source node is missing
+    /// from the adjacency map. This is guarded by the cycle check above and is
+    /// unreachable in well-formed input.
     ///
     /// # Errors
     ///
@@ -368,6 +375,7 @@ impl PipelineValidated {
     /// # Ok(())
     /// # }
     /// ```
+    #[must_use]
     pub fn execute(self) -> PipelineExecuting {
         PipelineExecuting {
             context: self.config,
@@ -390,11 +398,12 @@ impl PipelineExecuting {
     /// let pipeline = PipelineUnvalidated::new(json!({"nodes": []}))
     ///     .validate()?
     ///     .execute();
-    ///     
+    ///
     /// let complete = pipeline.complete(json!({"status": "success"}));
     /// # Ok(())
     /// # }
     /// ```
+    #[must_use]
     pub fn complete(self, results: serde_json::Value) -> PipelineComplete {
         PipelineComplete { results }
     }
@@ -413,11 +422,12 @@ impl PipelineExecuting {
     /// let pipeline = PipelineUnvalidated::new(json!({"nodes": []}))
     ///     .validate()?
     ///     .execute();
-    ///     
+    ///
     /// let complete = pipeline.abort("Network timeout");
     /// # Ok(())
     /// # }
     /// ```
+    #[must_use]
     pub fn abort(self, error: &str) -> PipelineComplete {
         PipelineComplete {
             results: serde_json::json!({
@@ -442,11 +452,12 @@ impl PipelineComplete {
     ///     .validate()?
     ///     .execute()
     ///     .complete(json!({"status": "success"}));
-    ///     
+    ///
     /// assert!(pipeline.is_success());
     /// # Ok(())
     /// # }
     /// ```
+    #[must_use]
     pub fn is_success(&self) -> bool {
         self.results
             .get("status")
@@ -455,6 +466,7 @@ impl PipelineComplete {
     }
 
     /// Get the execution results
+    #[must_use]
     pub const fn results(&self) -> &serde_json::Value {
         &self.results
     }

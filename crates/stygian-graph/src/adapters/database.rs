@@ -71,6 +71,11 @@ impl DatabaseSource {
     /// let db = DatabaseSource::new("postgres://localhost/mydb").await.unwrap();
     /// # }
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StygianError`] wrapping `ServiceError::Unavailable` when the
+    /// supplied connection URL is malformed or the database is unreachable.
     pub async fn new(database_url: &str) -> Result<Self> {
         let pool = PgPoolOptions::new()
             .max_connections(5)

@@ -97,6 +97,13 @@ pub enum VizFormat {
 ///     run_cli().await
 /// }
 /// ```
+///
+/// # Errors
+///
+/// Returns `anyhow::Error` when the CLI encounters an invalid subcommand, a
+/// config file cannot be read or parsed, or the underlying pipeline execution
+/// fails. The `anyhow` wrapper is used here because CLI entry points are the
+/// only place in the workspace that may use `anyhow`.
 pub async fn run_cli() -> anyhow::Result<()> {
     // Initialise tracing with RUST_LOG defaulting to "info"
     let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
@@ -286,6 +293,7 @@ fn cmd_list_services() {
 // ─── list-providers ───────────────────────────────────────────────────────────
 
 /// Static descriptor for a known AI provider
+#[allow(clippy::struct_excessive_bools)] // 1 char flags are clearer than bitmasks for a 4-feature descriptor
 struct ProviderInfo {
     name: &'static str,
     models: &'static str,

@@ -47,6 +47,16 @@ pub struct ExtractionDebugInfo {
 
 impl ExtractionEngine {
     /// Execute an extraction request
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::PluginError::TemplateValidationError`] when
+    /// the embedded template fails validation. Returns
+    /// [`crate::error::PluginError::ExtractionError`] when the request URL
+    /// or HTML payload is empty, or a region selector matches no elements.
+    /// Per-region extraction errors are captured as `RegionStatus::error`
+    /// entries on the returned [`ExtractionResult`] rather than returned
+    /// directly — only the first hard failure short-circuits the result.
     pub fn execute(request: &ExtractionRequest) -> Result<ExtractionResult> {
         request.validate()?;
         request.template.validate()?;
@@ -126,6 +136,7 @@ impl ExtractionEngine {
         Ok(result)
     }
 
+    #[must_use]
     pub fn diagnose(request: &ExtractionRequest, evaluation_scope: &str) -> ExtractionDebugInfo {
         let document = Html::parse_document(&request.html);
         let mut regions = HashMap::new();

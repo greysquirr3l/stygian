@@ -35,6 +35,9 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::integrity_canary::IntegrityCanaryReport;
+use crate::transport_realism::TransportRealismReport;
+
 // ── CheckId ───────────────────────────────────────────────────────────────────
 
 /// Stable identifier for a built-in stealth detection check.
@@ -291,10 +294,27 @@ pub struct DiagnosticReport {
     /// Optional transport-layer diagnostics (JA3/JA4/HTTP3 perk).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transport: Option<TransportDiagnostic>,
+    /// Optional transport-realism score (T82). Backward-compatible
+    /// additive field: omitted from JSON when `None`, present (as
+    /// an object) when transport-realism scoring ran. See
+    /// [`crate::transport_realism::TransportRealismReport`] for
+    /// the schema.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transport_realism: Option<TransportRealismReport>,
+    /// Optional integrity canary report (T92). Backward-compatible
+    /// additive field: omitted from JSON when `None`, present (as
+    /// an object) when integrity canary scoring ran. Carries the
+    /// aggregate risk score, Suspected/Confirmed classification,
+    /// per-probe findings, and aggregated mitigation hints. See
+    /// [`crate::integrity_canary::IntegrityCanaryReport`] for the
+    /// schema.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub integrity_canary: Option<IntegrityCanaryReport>,
 }
 
 impl DiagnosticReport {
     /// Build a report from an ordered list of check results.
+    #[must_use]
     pub fn new(checks: Vec<CheckResult>) -> Self {
         let passed_count = checks.iter().filter(|r| r.passed).count();
         let failed_count = checks.len() - passed_count;
@@ -304,6 +324,8 @@ impl DiagnosticReport {
             failed_count,
             known_limitations: Vec::new(),
             transport: None,
+            transport_realism: None,
+            integrity_canary: None,
         }
     }
 
@@ -321,6 +343,28 @@ impl DiagnosticReport {
         self
     }
 
+    /// Attach transport-realism diagnostics (T82) to this report.
+    ///
+    /// Backward-compatible: the field is omitted from JSON when the
+    /// supplied report would otherwise be `None` and the rest of the
+    /// `DiagnosticReport` schema is unchanged.
+    #[must_use]
+    pub fn with_transport_realism(mut self, transport_realism: TransportRealismReport) -> Self {
+        self.transport_realism = Some(transport_realism);
+        self
+    }
+
+    /// Attach integrity canary diagnostics (T92) to this report.
+    ///
+    /// Backward-compatible: the field is omitted from JSON when the
+    /// supplied report would otherwise be `None` and the rest of the
+    /// `DiagnosticReport` schema is unchanged.
+    #[must_use]
+    pub fn with_integrity_canary(mut self, integrity_canary: IntegrityCanaryReport) -> Self {
+        self.integrity_canary = Some(integrity_canary);
+        self
+    }
+
     /// Returns `true` when every check passed.
     #[must_use]
     pub const fn is_clean(&self) -> bool {
@@ -329,6 +373,7 @@ impl DiagnosticReport {
 
     /// Percentage of checks that passed (0.0–100.0).
     #[allow(clippy::cast_precision_loss)]
+    #[must_use]
     pub fn coverage_pct(&self) -> f64 {
         if self.checks.is_empty() {
             return 0.0;
@@ -376,6 +421,7 @@ impl DetectionCheck {
     /// If the JSON is invalid (e.g. the script threw an exception), returns a
     /// failing [`CheckResult`] with the raw output in `details` (conservative
     /// fallback — avoids silently hiding problems).
+    #[must_use]
     pub fn parse_output(&self, json: &str) -> CheckResult {
         #[derive(Deserialize)]
         struct Output {
@@ -411,6 +457,7 @@ impl LimitationProbe {
     }
 
     /// Parse the JSON string returned by the CDP evaluation of [`script`](Self::script).
+    #[must_use]
     pub fn parse_output(&self, json: &str) -> Option<KnownLimitation> {
         #[derive(Deserialize)]
         struct Output {
@@ -665,11 +712,13 @@ const SCRIPT_PERFORMANCE_MEMORY_LIMITATION: &str = concat!(
 ///
 /// Iterate the slice, send each `check.script` to the browser via CDP, then
 /// call [`DetectionCheck::parse_output`] with the returned JSON string.
+#[must_use]
 pub fn all_checks() -> &'static [DetectionCheck] {
     CHECKS
 }
 
 /// Return all known browser-surface limitation probes.
+#[must_use]
 pub fn all_limitation_probes() -> &'static [LimitationProbe] {
     LIMITATION_PROBES
 }
@@ -818,7 +867,12 @@ static LIMITATION_PROBES: &[LimitationProbe] = &[
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     use super::*;
     use std::collections::HashSet;
@@ -1074,5 +1128,170 @@ mod tests {
                 .iter()
                 .any(|m| m.contains("no expected JA3 could be derived"))
         );
+    }
+
+    // ── T82 transport-realism diagnostic schema (backward-compatible) ────────
+
+    #[test]
+    fn diagnostic_report_omits_transport_realism_field_when_unset() {
+        let results: Vec<CheckResult> = all_checks()
+            .iter()
+            .map(|c| c.parse_output(r#"{"passed":true,"details":"ok"}"#))
+            .collect();
+        let report = DiagnosticReport::new(results);
+        let json = serde_json::to_string(&report).expect("serialize");
+        // The new field is additive — it must NOT appear when no
+        // transport-realism score has been attached. This is the
+        // backward-compatible contract for downstream automation
+        // that parses diagnostic payloads.
+        assert!(
+            !json.contains("transport_realism"),
+            "transport_realism must be omitted when None, got: {json}"
+        );
+    }
+
+    #[test]
+    fn diagnostic_report_includes_transport_realism_when_attached() {
+        use crate::transport_realism::{
+            TransportObservation, TransportProfile, score as score_transport_realism,
+        };
+
+        let results: Vec<CheckResult> = all_checks()
+            .iter()
+            .map(|c| c.parse_output(r#"{"passed":true,"details":"ok"}"#))
+            .collect();
+        let report = DiagnosticReport::new(results);
+        let realism_report = score_transport_realism(
+            &TransportProfile::default(),
+            &TransportObservation::chrome_136_reference(),
+        );
+        let report = report.with_transport_realism(realism_report.clone());
+        let json = serde_json::to_string(&report).expect("serialize");
+        assert!(
+            json.contains("\"transport_realism\""),
+            "transport_realism must appear in JSON when set, got: {json}"
+        );
+        let restored: DiagnosticReport = serde_json::from_str(&json).expect("deserialize");
+        let restored_realism = restored
+            .transport_realism
+            .as_ref()
+            .expect("transport_realism attached");
+        assert_eq!(restored_realism.profile_name, realism_report.profile_name);
+    }
+
+    #[test]
+    fn diagnostic_report_transport_realism_backward_compat_omission() {
+        // Simulates a payload produced by an older stygian-browser
+        // version (before T82 landed) — must still deserialize into
+        // a DiagnosticReport with transport_realism == None.
+        let legacy_payload = serde_json::json!({
+            "checks": [],
+            "passed_count": 0,
+            "failed_count": 0,
+        });
+        let report: DiagnosticReport =
+            serde_json::from_value(legacy_payload).expect("legacy payload deserializes");
+        assert!(report.transport_realism.is_none());
+        assert!(report.transport.is_none());
+    }
+
+    #[test]
+    fn transport_realism_report_serializes_with_snake_case_keys() {
+        // Sanity-check the JSON wire format so downstream automation
+        // can rely on the documented schema.
+        let report = crate::transport_realism::score(
+            &crate::transport_realism::TransportProfile::default(),
+            &crate::transport_realism::TransportObservation::chrome_136_reference(),
+        );
+        let json = serde_json::to_string(&report).expect("serialize");
+        assert!(json.contains("\"profile_name\""), "got: {json}");
+        assert!(json.contains("\"compatibility\""), "got: {json}");
+        assert!(json.contains("\"score\""), "got: {json}");
+        assert!(json.contains("\"confidence\""), "got: {json}");
+        assert!(json.contains("\"coverage\""), "got: {json}");
+        assert!(json.contains("\"matched_count\""), "got: {json}");
+        assert!(json.contains("\"total_checks\""), "got: {json}");
+
+        // Round-trip via a generic Value to confirm backward compat:
+        // every top-level field deserializes back to the same shape.
+        let value: serde_json::Value = serde_json::from_str(&json).expect("parse");
+        let restored: TransportRealismReport = serde_json::from_value(value).expect("deserialize");
+        assert_eq!(restored.profile_name, report.profile_name);
+        let score_diff = (restored.compatibility.score - report.compatibility.score).abs();
+        assert!(
+            score_diff < 1e-9,
+            "score round-trip must preserve value, got {restored_score} vs {original_score}",
+            restored_score = restored.compatibility.score,
+            original_score = report.compatibility.score,
+        );
+    }
+
+    // ── T92 integrity canary diagnostic schema (backward-compatible) ──────────
+
+    #[test]
+    fn diagnostic_report_omits_integrity_canary_field_when_unset() {
+        let results: Vec<CheckResult> = all_checks()
+            .iter()
+            .map(|c| c.parse_output(r#"{"passed":true,"details":"ok"}"#))
+            .collect();
+        let report = DiagnosticReport::new(results);
+        let json = serde_json::to_string(&report).expect("serialize");
+        // The new field is additive — it must NOT appear when no
+        // integrity canary report has been attached. This is the
+        // backward-compatible contract for downstream automation
+        // that parses diagnostic payloads.
+        assert!(
+            !json.contains("integrity_canary"),
+            "integrity_canary must be omitted when None, got: {json}"
+        );
+    }
+
+    #[test]
+    fn diagnostic_report_includes_integrity_canary_when_attached() {
+        use crate::integrity_canary::{IntegrityCanaryReport, IntegrityProbe};
+
+        let results: Vec<CheckResult> = all_checks()
+            .iter()
+            .map(|c| c.parse_output(r#"{"passed":true,"details":"ok"}"#))
+            .collect();
+        let report = DiagnosticReport::new(results);
+        let canary = IntegrityCanaryReport::from_findings(vec![IntegrityProbe::confirmed_finding(
+            "webdriver_descriptor_native",
+            0.20,
+            "x",
+        )]);
+        let report = report.with_integrity_canary(canary.clone());
+        let json = serde_json::to_string(&report).expect("serialize");
+        assert!(
+            json.contains("\"integrity_canary\""),
+            "integrity_canary must appear in JSON when set, got: {json}"
+        );
+        let restored: DiagnosticReport = serde_json::from_str(&json).expect("deserialize");
+        let restored_canary = restored
+            .integrity_canary
+            .as_ref()
+            .expect("integrity_canary attached");
+        assert_eq!(
+            restored_canary.score.classification,
+            canary.score.classification
+        );
+        assert_eq!(restored_canary.findings.len(), 1);
+    }
+
+    #[test]
+    fn diagnostic_report_integrity_canary_backward_compat_omission() {
+        // Simulates a payload produced by an older stygian-browser
+        // version (before T92 landed) — must still deserialize into
+        // a DiagnosticReport with integrity_canary == None.
+        let legacy_payload = serde_json::json!({
+            "checks": [],
+            "passed_count": 0,
+            "failed_count": 0,
+        });
+        let report: DiagnosticReport =
+            serde_json::from_value(legacy_payload).expect("legacy payload deserializes");
+        assert!(report.integrity_canary.is_none());
+        assert!(report.transport_realism.is_none());
+        assert!(report.transport.is_none());
     }
 }

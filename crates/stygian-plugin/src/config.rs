@@ -44,11 +44,13 @@ pub struct Config {
 
 impl Config {
     /// Parse configuration from command-line arguments and environment variables.
+    #[must_use]
     pub fn from_args() -> Self {
         Self::parse()
     }
 
     /// Create a test configuration with sensible defaults.
+    #[must_use]
     pub fn testing() -> Self {
         Self {
             templates_dir: PathBuf::from("./test-templates"),
@@ -60,6 +62,7 @@ impl Config {
     }
 
     /// Create a test configuration pointing to an HTTP transport on a given port.
+    #[must_use]
     pub fn testing_http(port: u16) -> Self {
         Self {
             templates_dir: PathBuf::from("./test-templates"),

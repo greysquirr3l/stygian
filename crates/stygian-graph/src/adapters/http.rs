@@ -91,6 +91,7 @@ impl HttpAdapter {
     /// use stygian_graph::adapters::http::HttpAdapter;
     /// let adapter = HttpAdapter::new();
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         Self::with_config(HttpConfig::default())
     }
@@ -100,6 +101,7 @@ impl HttpAdapter {
     /// # Panics
     ///
     /// Panics only if TLS configuration is unavailable (extremely rare).
+    #[must_use]
     pub fn with_config(config: HttpConfig) -> Self {
         let mut builder = Client::builder()
             .timeout(config.timeout)

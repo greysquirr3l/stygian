@@ -116,6 +116,11 @@ impl ScrapeExchangeConfig {
     /// - `SCRAPE_EXCHANGE_KEY_ID`
     /// - `SCRAPE_EXCHANGE_KEY_SECRET`
     /// - `SCRAPE_EXCHANGE_BASE_URL` (optional; defaults to `https://scrape.exchange/api/`)
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScrapeExchangeError::InvalidConfig`] when `SCRAPE_EXCHANGE_KEY_ID`
+    /// or `SCRAPE_EXCHANGE_KEY_SECRET` are missing from the environment.
     pub fn from_env() -> std::result::Result<Self, ScrapeExchangeError> {
         let api_key_id = std::env::var("SCRAPE_EXCHANGE_KEY_ID").map_err(|_| {
             ScrapeExchangeError::InvalidConfig("SCRAPE_EXCHANGE_KEY_ID not set".to_string())
@@ -202,6 +207,12 @@ pub struct ScrapeExchangeClient {
 
 impl ScrapeExchangeClient {
     /// Create a new client and authenticate.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScrapeExchangeError::InvalidConfig`] when the supplied
+    /// `api_key_id` or `api_key_secret` is empty, or when the initial JWT
+    /// exchange with the API fails.
     pub async fn new(
         config: ScrapeExchangeConfig,
     ) -> std::result::Result<Self, ScrapeExchangeError> {
@@ -297,6 +308,11 @@ impl ScrapeExchangeClient {
     }
 
     /// POST data to upload endpoint with exponential backoff retry.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScrapeExchangeError`] variants when the token exchange fails,
+    /// the HTTP request errors out, or the API returns a non-2xx status.
     pub async fn upload(&self, data: Value) -> std::result::Result<Value, ScrapeExchangeError> {
         let token = self.get_token().await?;
         let url = format!("{}data/v1/", self.config.base_url);
@@ -365,6 +381,11 @@ impl ScrapeExchangeClient {
     }
 
     /// GET query endpoint with optional filters.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScrapeExchangeError`] variants when the token exchange fails,
+    /// the HTTP request errors out, or the API returns a non-2xx status.
     pub async fn query(
         &self,
         uploader: &str,
@@ -412,6 +433,11 @@ impl ScrapeExchangeClient {
     }
 
     /// GET item lookup endpoint.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScrapeExchangeError`] variants when the token exchange fails,
+    /// the HTTP request errors out, or the API returns a non-2xx status.
     pub async fn item_lookup(
         &self,
         item_id: &str,
@@ -454,6 +480,11 @@ impl ScrapeExchangeClient {
     }
 
     /// GET health check endpoint.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ScrapeExchangeError`] variants when the token exchange fails,
+    /// the HTTP request errors out, or the API returns a non-2xx status.
     pub async fn health_check(&self) -> std::result::Result<(), ScrapeExchangeError> {
         let url = format!("{}status", self.config.base_url);
         debug!("Health check: {}", url);
@@ -542,6 +573,7 @@ impl ScrapeExchangeAdapter {
     /// let items = adapter.client().query("me", "web", "pages").await;
     /// # });
     /// ```
+    #[must_use]
     pub fn client(&self) -> &ScrapeExchangeClient {
         &self.client
     }

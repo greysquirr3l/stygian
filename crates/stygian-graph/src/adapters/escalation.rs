@@ -116,6 +116,7 @@ pub struct DefaultEscalationPolicy {
 
 impl DefaultEscalationPolicy {
     /// Create a new policy with the given configuration.
+    #[must_use]
     pub fn new(config: EscalationConfig) -> Self {
         Self {
             config,
@@ -128,6 +129,7 @@ impl DefaultEscalationPolicy {
     /// Inspects the body for Cloudflare, `DataDome`, `PerimeterX`, and CAPTCHA
     /// markers.  All anti-bot challenge types map to `has_cloudflare_challenge`
     /// (the field name reflects its original purpose but covers all vendors).
+    #[must_use]
     pub fn context_from_body(status: u16, body: &str) -> ResponseContext {
         ResponseContext {
             status,
@@ -289,6 +291,7 @@ impl EscalatingScrapingService {
     /// Create an escalating service with no tier services registered.
     ///
     /// Use [`with_tier`](Self::with_tier) to register a service for each tier.
+    #[must_use]
     pub fn new(policy: DefaultEscalationPolicy) -> Self {
         Self {
             tier_services: HashMap::new(),

@@ -57,6 +57,7 @@ pub struct ClaudeConfig {
 
 impl ClaudeConfig {
     /// Create config with API key and defaults
+    #[must_use]
     pub fn new(api_key: String) -> Self {
         Self {
             api_key,
@@ -100,12 +101,19 @@ impl ClaudeProvider {
     ///
     /// let provider = ClaudeProvider::new("sk-ant-api03-...".to_string());
     /// ```
+    #[must_use]
     pub fn new(api_key: String) -> Self {
         let config = ClaudeConfig::new(api_key);
         Self::with_config(config)
     }
 
     /// Create a new Claude provider with custom configuration
+    ///
+    /// # Panics
+    ///
+    /// Panics if the underlying HTTP client fails to build. With `rustls` as the
+    /// TLS backend this is unreachable in practice (build only fails when no TLS
+    /// backend is configured).
     ///
     /// # Example
     ///
@@ -116,6 +124,7 @@ impl ClaudeProvider {
     ///     .with_model("claude-3-5-sonnet-20241022");
     /// let provider = ClaudeProvider::with_config(config);
     /// ```
+    #[must_use]
     pub fn with_config(config: ClaudeConfig) -> Self {
         // SAFETY: TLS backend (rustls) is always available; build() only fails if no TLS backend.
         #[allow(clippy::expect_used)]

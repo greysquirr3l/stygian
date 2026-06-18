@@ -1,0 +1,58 @@
+# T89 baseline vendor definition — DataDome.
+#
+# Pattern sources for the DataDome anti-bot stack. Each pattern
+# is matched case-insensitively against the signal text contributed
+# by the source (cookie, response header, challenge URL, or body
+# marker). Patterns are weighted; the classifier sums weights per
+# vendor and ranks the result deterministically.
+#
+# References (vendor product name, no proprietary payloads):
+#   - DataDome challenge cookies (`datadome=...`)
+#   - DataDome response headers (`x-datadome`, `x-datadome-cid`,
+#     `x-dd-b`)
+#   - DataDome captcha delivery domain (`captcha-delivery.com`)
+#   - DataDome interstitial script tag
+id = "datadome"
+display_name = "DataDome"
+description = "DataDome bot mitigation stack (cookies, headers, captcha-delivery)."
+tier = 1
+
+[[signals]]
+pattern = "datadome="
+source = "cookie"
+weight = 5
+
+[[signals]]
+pattern = "x-datadome"
+source = "header"
+weight = 5
+
+[[signals]]
+pattern = "x-datadome-cid"
+source = "header"
+weight = 5
+
+[[signals]]
+pattern = "x-dd-b"
+source = "header"
+weight = 4
+
+[[signals]]
+pattern = "captcha-delivery.com"
+source = "body_marker"
+weight = 4
+
+[[signals]]
+pattern = "captcha-delivery"
+source = "challenge_url"
+weight = 4
+
+[[signals]]
+pattern = "dd_"
+source = "cookie"
+weight = 3
+
+[[signals]]
+pattern = "datadome"
+source = "body_marker"
+weight = 3

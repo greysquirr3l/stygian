@@ -71,6 +71,7 @@ pub struct LocalWorkQueue {
 
 impl LocalWorkQueue {
     /// Create a new `LocalWorkQueue` with default settings (`max_retries = 3`).
+    #[must_use]
     pub fn new() -> Self {
         Self {
             pending: Arc::new(Mutex::new(VecDeque::new())),
@@ -88,6 +89,7 @@ impl LocalWorkQueue {
     ///
     /// let queue = LocalWorkQueue::with_max_retries(5);
     /// ```
+    #[must_use]
     pub fn with_max_retries(max_retries: u32) -> Self {
         Self {
             pending: Arc::new(Mutex::new(VecDeque::new())),
@@ -263,6 +265,16 @@ impl<Q: WorkQueuePort + 'static> DistributedDagExecutor<Q> {
     /// Execute a single wave of tasks, distributing them across workers.
     ///
     /// Returns `(node_name, output)` pairs for all tasks in the wave.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an internal `Mutex` is poisoned (i.e. another thread panicked
+    /// while holding the lock). Treat this as unrecoverable.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StygianError`] when a service reports a failure, the executor
+    /// is shut down, or a worker task cannot be enqueued.
     pub async fn execute_wave(
         &self,
         pipeline_id: &str,

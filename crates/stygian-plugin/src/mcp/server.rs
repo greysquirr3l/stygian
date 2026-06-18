@@ -27,6 +27,7 @@ pub struct McpPluginServer {
 
 impl McpPluginServer {
     /// Create a new plugin MCP server with file-based storage (development)
+    #[must_use]
     pub fn new_with_file_storage(templates_dir: std::path::PathBuf) -> Self {
         Self {
             template_store: Arc::new(FileTemplateStore::new(templates_dir)),
@@ -166,6 +167,7 @@ impl McpPluginServer {
     }
 
     /// Get the tool list for MCP protocol
+    #[must_use]
     pub fn tools_list(&self) -> Vec<Value> {
         let mut tools = Vec::with_capacity(8);
         tools.extend(Self::tools_template_management());

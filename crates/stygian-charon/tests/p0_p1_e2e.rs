@@ -1,4 +1,11 @@
-#![allow(clippy::cast_precision_loss)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::cast_precision_loss,
+    clippy::missing_const_for_fn
+)]
 
 use std::time::{Duration, Instant};
 

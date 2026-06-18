@@ -129,6 +129,7 @@ impl OpenApiAdapter {
     /// use stygian_graph::adapters::openapi::OpenApiAdapter;
     /// let adapter = OpenApiAdapter::new();
     /// ```
+    #[must_use]
     pub fn new() -> Self {
         Self::with_config(OpenApiConfig::default())
     }
@@ -153,6 +154,7 @@ impl OpenApiAdapter {
     ///     },
     /// });
     /// ```
+    #[must_use]
     pub fn with_config(config: OpenApiConfig) -> Self {
         // SAFETY: TLS via rustls is always available.
         #[allow(clippy::expect_used)]

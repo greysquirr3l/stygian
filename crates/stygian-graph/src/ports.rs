@@ -152,6 +152,7 @@ pub trait ScrapingService: Send + Sync {
 /// assert!(caps.streaming, "Provider supports streaming");
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[allow(clippy::struct_excessive_bools)] // 4 capability flags are clearer as named bools than a u8 bitmask
 pub struct ProviderCapabilities {
     /// Supports streaming responses
     pub streaming: bool,

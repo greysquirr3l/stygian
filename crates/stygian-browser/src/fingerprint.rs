@@ -16,7 +16,10 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
+use std::fmt::Write as _;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::freshness::signature_hash;
 
 // ── curated value pools ──────────────────────────────────────────────────────
 
@@ -299,6 +302,7 @@ impl Fingerprint {
     /// assert!(fp.hardware_concurrency > 0);
     /// assert!(fp.device_memory > 0);
     /// ```
+    #[must_use]
     pub fn random() -> Self {
         let seed = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -357,6 +361,7 @@ impl Fingerprint {
     /// let fp = Fingerprint::from_profile(&profile);
     /// assert!(!fp.user_agent.is_empty());
     /// ```
+    #[must_use]
     pub fn from_profile(profile: &FingerprintProfile) -> Self {
         profile.fingerprint.clone()
     }
@@ -375,6 +380,7 @@ impl Fingerprint {
     /// assert_eq!(fp.platform, "MacIntel");
     /// assert!(!fp.fonts.is_empty());
     /// ```
+    #[must_use]
     pub fn from_device_profile(device: DeviceProfile, seed: u64) -> Self {
         match device {
             DeviceProfile::DesktopWindows => Self::for_windows(seed),
@@ -398,6 +404,7 @@ impl Fingerprint {
     /// let fp = Fingerprint::default();
     /// assert!(fp.validate_consistency().is_empty());
     /// ```
+    #[must_use]
     pub fn validate_consistency(&self) -> Vec<String> {
         let mut issues = Vec::new();
 
@@ -674,6 +681,7 @@ impl Fingerprint {
     /// assert!(script.contains("1920"));
     /// assert!(script.contains("screen"));
     /// ```
+    #[must_use]
     pub fn injection_script(&self) -> String {
         let mut parts = vec![
             screen_script(self.screen_resolution),
@@ -699,6 +707,76 @@ impl Fingerprint {
 
         format!("(function() {{\n{}\n}})();", parts.join("\n\n"))
     }
+
+    /// Produce a stable signature hash for this fingerprint.
+    ///
+    /// Used by the freshness contract layer to detect identity
+    /// rotation: equal fingerprints produce equal hashes, and any
+    /// field change — UA, screen, locale, GPU, fonts — rotates the
+    /// signature. The hash is deterministic and I/O-free.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_browser::fingerprint::Fingerprint;
+    ///
+    /// let fp = Fingerprint::default();
+    /// let sig = fp.signature();
+    /// assert!(sig.starts_with("fnv64:"));
+    /// assert_eq!(sig, Fingerprint::default().signature());
+    /// ```
+    #[must_use]
+    pub fn signature(&self) -> String {
+        fingerprint_signature(self)
+    }
+}
+
+/// Free-function signature helper used by [`Fingerprint::signature`].
+///
+/// Useful for callers that already have a borrowed [`Fingerprint`]
+/// reference and want to compute the hash without invoking the
+/// method (e.g. inside a closure where the borrow is shared).
+///
+/// # Example
+///
+/// ```
+/// use stygian_browser::fingerprint::{fingerprint_signature, Fingerprint};
+///
+/// let fp = Fingerprint::default();
+/// assert_eq!(fp.signature(), fingerprint_signature(&fp));
+/// ```
+#[must_use]
+pub fn fingerprint_signature(fp: &Fingerprint) -> String {
+    let mut buf = String::with_capacity(256);
+    let _ = write!(&mut buf, "ua={}", fp.user_agent);
+    let _ = write!(
+        &mut buf,
+        "\nscreen={}x{}",
+        fp.screen_resolution.0, fp.screen_resolution.1
+    );
+    let _ = write!(&mut buf, "\ntz={}", fp.timezone);
+    let _ = write!(&mut buf, "\nlang={}", fp.language);
+    let _ = write!(&mut buf, "\nplatform={}", fp.platform);
+    let _ = write!(
+        &mut buf,
+        "\nhw={} dm={}",
+        fp.hardware_concurrency, fp.device_memory
+    );
+    let _ = write!(
+        &mut buf,
+        "\nwebgl_vendor={}",
+        fp.webgl_vendor.as_deref().unwrap_or_default()
+    );
+    let _ = write!(
+        &mut buf,
+        "\nwebgl_renderer={}",
+        fp.webgl_renderer.as_deref().unwrap_or_default()
+    );
+    let _ = write!(&mut buf, "\ncanvas_noise={}", fp.canvas_noise);
+    let mut sorted_fonts: Vec<&str> = fp.fonts.iter().map(String::as_str).collect();
+    sorted_fonts.sort_unstable();
+    let _ = write!(&mut buf, "\nfonts={}", sorted_fonts.join(","));
+    signature_hash(&[buf.as_str()])
 }
 
 /// A named, reusable fingerprint identity.
@@ -731,6 +809,7 @@ impl FingerprintProfile {
     /// let p = FingerprintProfile::new("bot-1".to_string());
     /// assert!(!p.fingerprint.user_agent.is_empty());
     /// ```
+    #[must_use]
     pub fn new(name: String) -> Self {
         Self {
             name,
@@ -754,6 +833,7 @@ impl FingerprintProfile {
     /// assert!(!profile.fingerprint.fonts.is_empty());
     /// assert!(profile.fingerprint.validate_consistency().is_empty());
     /// ```
+    #[must_use]
     pub fn random_weighted(name: String) -> Self {
         let seed = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -787,6 +867,7 @@ impl FingerprintProfile {
 /// let script = inject_fingerprint(&fp);
 /// assert!(script.starts_with("(function()"));
 /// ```
+#[must_use]
 pub fn inject_fingerprint(fingerprint: &Fingerprint) -> String {
     fingerprint.injection_script()
 }
@@ -835,6 +916,7 @@ impl DeviceProfile {
     /// let profile = DeviceProfile::random_weighted(0);
     /// assert_eq!(profile, DeviceProfile::DesktopWindows);
     /// ```
+    #[must_use]
     pub const fn random_weighted(seed: u64) -> Self {
         let v = rng(seed, 97) % 100;
         match v {
@@ -854,6 +936,7 @@ impl DeviceProfile {
     /// assert!(DeviceProfile::MobileAndroid.is_mobile());
     /// assert!(!DeviceProfile::DesktopWindows.is_mobile());
     /// ```
+    #[must_use]
     pub const fn is_mobile(self) -> bool {
         matches!(self, Self::MobileAndroid | Self::MobileIOS)
     }
@@ -901,6 +984,7 @@ impl BrowserKind {
     /// let kind = BrowserKind::for_device(DeviceProfile::MobileIOS, 0);
     /// assert_eq!(kind, BrowserKind::Safari);
     /// ```
+    #[must_use]
     pub const fn for_device(device: DeviceProfile, seed: u64) -> Self {
         match device {
             DeviceProfile::MobileIOS => Self::Safari,
@@ -1271,6 +1355,22 @@ mod tests {
         // Both are well-formed whether or not they happen to be equal.
         assert!(!fp1.user_agent.is_empty());
         assert!(!fp2.user_agent.is_empty());
+    }
+
+    #[test]
+    fn signature_is_stable_and_field_sensitive() {
+        let a = Fingerprint::default().signature();
+        let b = Fingerprint::default().signature();
+        assert_eq!(a, b, "identical fingerprints must produce equal signatures");
+        assert!(a.starts_with("fnv64:"));
+
+        // Field mutation rotates the signature.
+        let changed = Fingerprint {
+            screen_resolution: (1024, 768),
+            ..Fingerprint::default()
+        };
+        let c = changed.signature();
+        assert_ne!(a, c, "changing screen resolution must rotate the signature");
     }
 
     #[test]

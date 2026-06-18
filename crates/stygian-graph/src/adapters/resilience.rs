@@ -52,6 +52,7 @@ impl CircuitBreakerImpl {
     ///
     /// * `failure_threshold` - Number of failures before opening circuit
     /// * `timeout` - Duration to wait before attempting reset
+    #[must_use]
     pub fn new(failure_threshold: u32, timeout: Duration) -> Self {
         Self {
             state: Arc::new(RwLock::new(CircuitBreakerState {
@@ -191,6 +192,7 @@ struct TokenBucket {
 
 impl TokenBucketRateLimiter {
     /// Create a new token bucket rate limiter
+    #[must_use]
     pub fn new(config: RateLimitConfig) -> Self {
         Self {
             config,
@@ -369,6 +371,7 @@ impl RetryPolicy {
     /// let p = RetryPolicy::new(5, Duration::from_millis(200), Duration::from_secs(30));
     /// assert_eq!(p.max_attempts, 5);
     /// ```
+    #[must_use]
     pub const fn new(max_attempts: u32, base_delay: Duration, max_delay: Duration) -> Self {
         Self {
             max_attempts,
@@ -410,6 +413,7 @@ impl RetryPolicy {
     /// assert_eq!(p.delay_for(0), Duration::from_millis(100));
     /// assert_eq!(p.delay_for(1), Duration::from_millis(200));
     /// ```
+    #[must_use]
     pub fn delay_for(&self, attempt: u32) -> Duration {
         let factor = 1u64.checked_shl(attempt).unwrap_or(u64::MAX);
         #[allow(clippy::cast_possible_truncation)]
@@ -473,6 +477,12 @@ impl Default for RetryPolicy {
 /// assert_eq!(attempts.load(Ordering::SeqCst), 3);
 /// # });
 /// ```
+///
+/// # Errors
+///
+/// Returns whatever the supplied `f` future returns on the final attempt. The
+/// caller-supplied error type `E` is opaque to the helper; only `f` decides
+/// when a result is "final".
 pub async fn retry<F, Fut, T, E>(policy: &RetryPolicy, mut f: F) -> std::result::Result<T, E>
 where
     F: FnMut() -> Fut,

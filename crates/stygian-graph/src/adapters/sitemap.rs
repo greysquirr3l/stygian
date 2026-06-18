@@ -96,6 +96,7 @@ impl SitemapAdapter {
     ///
     /// let adapter = SitemapAdapter::new(reqwest::Client::new(), 5);
     /// ```
+    #[must_use]
     pub const fn new(client: reqwest::Client, max_depth: usize) -> Self {
         Self { client, max_depth }
     }

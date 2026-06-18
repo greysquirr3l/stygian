@@ -178,6 +178,7 @@ impl SchemaDiscoveryService {
     ///
     /// let service = SchemaDiscoveryService::new(SchemaDiscoveryConfig::default(), None);
     /// ```
+    #[must_use]
     pub fn new(config: SchemaDiscoveryConfig, ai_provider: Option<Arc<dyn AIProvider>>) -> Self {
         Self {
             config,
@@ -225,6 +226,7 @@ impl SchemaDiscoveryService {
     /// assert_eq!(schema["properties"]["name"]["type"].as_str().unwrap(), "string");
     /// assert_eq!(schema["properties"]["score"]["type"].as_str().unwrap(), "number");
     /// ```
+    #[must_use]
     pub fn infer_from_example(&self, example: &Value) -> Value {
         Self::infer_schema_for_value(example)
     }
@@ -284,6 +286,17 @@ impl SchemaDiscoveryService {
     /// assert!(result.is_err());
     /// # });
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal `RwLock` is poisoned (i.e. another thread panicked
+    /// while holding the lock). Treat this as unrecoverable.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StygianError`] when no `AIProvider` is configured, the AI
+    /// provider fails, the supplied HTML cannot be parsed, or the cache lookup
+    /// fails.
     pub async fn infer_from_html(
         &self,
         html: &str,
@@ -756,6 +769,7 @@ impl SchemaDiscoveryService {
     /// assert!(SchemaDiscoveryService::is_valid_schema(&json!({"type": "object"})));
     /// assert!(!SchemaDiscoveryService::is_valid_schema(&json!("not a schema")));
     /// ```
+    #[must_use]
     pub fn is_valid_schema(schema: &Value) -> bool {
         if !schema.is_object() {
             return false;

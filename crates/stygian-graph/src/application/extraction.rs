@@ -96,6 +96,7 @@ impl LlmExtractionService {
     /// ];
     /// let service = LlmExtractionService::new(providers, ExtractionConfig::default());
     /// ```
+    #[must_use]
     pub fn new(providers: Vec<Arc<dyn AIProvider>>, config: ExtractionConfig) -> Self {
         Self { providers, config }
     }

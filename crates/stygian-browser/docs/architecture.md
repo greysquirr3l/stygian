@@ -47,6 +47,10 @@ injection, and behavioral mimicry layers.
 | `webrtc.rs` | Produces Chrome command-line flags and a JS injection that enforces the chosen `WebRtcPolicy`. |
 | `cdp_protection.rs` | Three modes for hiding CDP protocol artifacts (`AddBinding`, `IsolatedWorld`, `EnableDisable`). |
 | `error.rs` | All error variants via `thiserror`.  Every variant carries structured fields (no string blobs). |
+| `freshness/` | `FreshnessContract` + `FreshnessPolicy` — TTL and signature gating for sticky identity reuse. |
+| `coherence/` | Cross-context (`Top` / `Iframe` / `Worker`) identity-surface drift probes. |
+| `replay_defense/` | Adaptive session-rotation policy (T81) — signature drift, nonce age, and rotation interval gates; serialisable. |
+| `transport_realism/` | HTTP/2 + HTTP/3 transport-realism scoring (T82) — per-target `TransportCompatibility` score with confidence/coverage markers; integrates with `tls_validation` rather than duplicating it. |
 
 ---
 
@@ -169,6 +173,34 @@ Micro-tremor (±0.3 px) is added per step.
 **Typing** — `TypingSimulator` models per-key delays drawn from a configurable WPM
 distribution (70–130 WPM base).  With a non-zero `error_rate`, typos are inserted and
 immediately corrected with Backspace, as humans do.
+
+### Layer 5 — Replay Defense (`replay_defense/`)
+
+Anti-bot vendors that record a session (TLS handshake + a sequence of navigations +
+identity-surface values) and replay the same artifacts later to detect automation
+are countered at the session-lifecycle layer. `ReplayDefensePolicy` carries three
+orthogonal levers that the [`AcquisitionRunner`][crate::acquisition::AcquisitionRunner]
+applies to every reuse:
+
+| Lever | Effect |
+| ------ | -------- |
+| `rotation_interval` | Maximum session age before a forced rotation. Default `30 min`. |
+| `nonce_validity_window` | Maximum age of the session nonce. Default `5 min`. |
+| `force_reset_on_drift` | When `true` (default), signature drift triggers an immediate sticky-context reset. |
+
+The runner evaluates the policy against a `ReplayDefenseState` (the captured per-session
+record) and a `ReplayDefenseCheckInput` (the freshly observed context). When the decision
+mandates a forced refresh — rotation due, nonce expired / rotated, or signature drift with
+`force_reset_on_drift = true` — the runner:
+
+1. Calls `BrowserPool::release_context(host)` to invalidate sticky pool slots for the
+   target host.
+2. Short-circuits with a structured `StageFailureKind::ReplayDefenseTriggered` failure.
+3. Attaches the full `ReplayDefenseReport` to `AcquisitionResult::replay_defense` so
+   downstream automation can attribute the rejection.
+
+The policy is fully serialisable (`serde`) and is the default-on (no feature gate)
+integration layer for T81.
 
 ---
 

@@ -27,6 +27,7 @@ pub struct MemoryIdempotencyStore {
 
 impl MemoryIdempotencyStore {
     /// Create a new memory-based idempotency store
+    #[must_use]
     pub fn new() -> Self {
         Self {
             results: Arc::new(RwLock::new(HashMap::new())),

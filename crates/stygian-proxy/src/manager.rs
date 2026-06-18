@@ -90,6 +90,7 @@ impl ProxyHandle {
     ///
     /// The handle targets an empty URL and uses a noop circuit breaker that
     /// can never trip; its Drop records a success so there are no false failures.
+    #[must_use]
     pub fn direct() -> Self {
         let noop_cb = Arc::new(CircuitBreaker::new(u32::MAX, u64::MAX));
         Self {
@@ -179,11 +180,17 @@ pub struct ProxyManager {
 
 impl ProxyManager {
     /// Start a [`ProxyManagerBuilder`].
+    #[must_use]
     pub fn builder() -> ProxyManagerBuilder {
         ProxyManagerBuilder::default()
     }
 
     /// Convenience: round-robin rotation (default).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProxyError::ConfigError`] when no storage is supplied to
+    /// the underlying builder.
     pub fn with_round_robin(
         storage: Arc<dyn ProxyStoragePort>,
         config: ProxyConfig,
@@ -196,6 +203,11 @@ impl ProxyManager {
     }
 
     /// Convenience: random rotation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProxyError::ConfigError`] when no storage is supplied to
+    /// the underlying builder.
     pub fn with_random(
         storage: Arc<dyn ProxyStoragePort>,
         config: ProxyConfig,
@@ -208,6 +220,11 @@ impl ProxyManager {
     }
 
     /// Convenience: weighted rotation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProxyError::ConfigError`] when no storage is supplied to
+    /// the underlying builder.
     pub fn with_weighted(
         storage: Arc<dyn ProxyStoragePort>,
         config: ProxyConfig,
@@ -220,6 +237,11 @@ impl ProxyManager {
     }
 
     /// Convenience: least-used rotation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProxyError::ConfigError`] when no storage is supplied to
+    /// the underlying builder.
     pub fn with_least_used(
         storage: Arc<dyn ProxyStoragePort>,
         config: ProxyConfig,
@@ -241,6 +263,11 @@ impl ProxyManager {
     /// proceed past that point until both the storage record *and* its CB entry
     /// exist.  Without this ordering a concurrent `acquire_proxy` could select
     /// the new proxy before its CB was registered, breaking failure accounting.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProxyError::StorageError`] when the underlying storage backend
+    /// rejects the new proxy record.
     #[allow(clippy::significant_drop_tightening)]
     pub async fn add_proxy(&self, proxy: Proxy) -> ProxyResult<Uuid> {
         let mut cb_map = self.circuit_breakers.write().await;
@@ -256,6 +283,11 @@ impl ProxyManager {
     }
 
     /// Remove a proxy from the pool and drop its circuit breaker.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProxyError::StorageError`] when the underlying storage backend
+    /// reports the proxy as missing or the remove call fails.
     pub async fn remove_proxy(&self, id: Uuid) -> ProxyResult<()> {
         self.storage.remove(id).await?;
         self.circuit_breakers.write().await.remove(&id);
@@ -268,6 +300,7 @@ impl ProxyManager {
     ///
     /// Returns a `(CancellationToken, JoinHandle)` pair.  Cancel the token to
     /// trigger a graceful shutdown; await the handle to ensure it finishes.
+    #[must_use]
     pub fn start(&self) -> (CancellationToken, JoinHandle<()>) {
         let token = CancellationToken::new();
         let health_handle = self.health_checker.clone().spawn(token.clone());
@@ -278,7 +311,7 @@ impl ProxyManager {
             let mut interval = tokio::time::interval(std::time::Duration::from_mins(1));
             loop {
                 tokio::select! {
-                    _ = interval.tick() => { sessions.purge_expired(); }
+                    _ = interval.tick() => { let _ = sessions.purge_expired(); }
                     () = purge_token.cancelled() => break,
                 }
             }
@@ -353,6 +386,12 @@ impl ProxyManager {
     /// Builds [`ProxyCandidate`] entries from current storage, consulting the
     /// health map and each proxy's circuit breaker to set the `healthy` flag.
     /// Delegates selection to the configured [`crate::strategy::RotationStrategy`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProxyError::StorageError`] when the storage backend cannot list
+    /// proxies, or [`ProxyError::NoCompatibleProxy`] when no healthy proxy
+    /// is available.
     pub async fn acquire_proxy(&self) -> ProxyResult<ProxyHandle> {
         let (url, cb, _id) = self.select_proxy_inner().await?;
         Ok(ProxyHandle::new(url, cb))
@@ -377,6 +416,12 @@ impl ProxyManager {
     ///     println!("url: {}", handle.proxy_url);
     /// }
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProxyError::StorageError`] when the storage backend cannot list
+    /// proxies, or [`ProxyError::NoCompatibleProxy`] when no healthy proxy
+    /// satisfies the supplied [`CapabilityRequirement`].
     pub async fn acquire_with_capabilities(
         &self,
         req: &CapabilityRequirement,
@@ -450,6 +495,13 @@ impl ProxyManager {
     ///
     /// The returned [`ProxyHandle`] automatically invalidates the session on
     /// drop if not marked as successful.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProxyError::StorageError`] when the storage backend fails, or
+    /// [`ProxyError::NoCompatibleProxy`] when no healthy proxy is available
+    /// (including when a sticky-bound proxy is unhealthy and the fallback
+    /// also exhausts the pool).
     pub async fn acquire_for_domain(&self, domain: &str) -> ProxyResult<ProxyHandle> {
         let ttl = match &self.config.sticky_policy {
             StickyPolicy::Disabled => return self.acquire_proxy().await,
@@ -494,6 +546,11 @@ impl ProxyManager {
     // ── Stats ─────────────────────────────────────────────────────────────────
 
     /// Return a health snapshot of the pool.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProxyError::StorageError`] when the storage backend cannot list
+    /// proxies, or when the internal lock is poisoned.
     pub async fn pool_stats(&self) -> ProxyResult<PoolStats> {
         let records = self.storage.list().await?;
         let total = records.len();
@@ -557,6 +614,11 @@ impl ProxyManagerBuilder {
     /// Defaults: strategy = `RoundRobinStrategy`, config = `ProxyConfig::default()`.
     ///
     /// Returns an error if no storage was set.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProxyError::ConfigError`] when no `storage` was supplied to
+    /// the builder.
     pub fn build(self) -> ProxyResult<ProxyManager> {
         let storage = self.storage.ok_or_else(|| {
             ProxyError::ConfigError("ProxyManagerBuilder: storage is required".into())
@@ -946,7 +1008,7 @@ mod tests {
 
         // Expire and purge.
         tokio::time::sleep(Duration::from_millis(5)).await;
-        mgr.sessions.purge_expired();
+        let _ = mgr.sessions.purge_expired();
 
         assert_eq!(mgr.sessions.active_count(), 0);
     }

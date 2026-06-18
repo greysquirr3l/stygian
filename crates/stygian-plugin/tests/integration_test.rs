@@ -1,4 +1,11 @@
 #![cfg(feature = "graph-integration")]
+#![allow(
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::missing_const_for_fn
+)]
 //! Integration test for plugin extraction
 
 #[cfg(test)]

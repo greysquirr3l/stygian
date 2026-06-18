@@ -128,6 +128,7 @@ impl TlsVersion {
     ///
     /// assert_eq!(TlsVersion::Tls12.iana_value(), 0x0303);
     /// ```
+    #[must_use]
     pub const fn iana_value(self) -> u16 {
         match self {
             Self::Tls12 => 0x0303,
@@ -243,6 +244,7 @@ impl SupportedGroup {
     ///
     /// assert_eq!(SupportedGroup::SecP256r1.iana_value(), 0x0017);
     /// ```
+    #[must_use]
     pub const fn iana_value(self) -> u16 {
         match self {
             Self::X25519 => 0x001d,
@@ -331,6 +333,7 @@ impl AlpnProtocol {
     /// use stygian_browser::tls::AlpnProtocol;
     /// assert_eq!(AlpnProtocol::Http11.as_str(), "http/1.1");
     /// ```
+    #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::H2 => "h2",
@@ -734,6 +737,7 @@ impl TlsProfile {
     /// assert!(ja3.raw.starts_with("772,"));
     /// assert_eq!(ja3.hash.len(), 32);
     /// ```
+    #[must_use]
     pub fn ja3(&self) -> Ja3Hash {
         // TLS version — use highest advertised.
         let tls_ver = self
@@ -797,6 +801,7 @@ impl TlsProfile {
     /// let ja4 = CHROME_131.ja4();
     /// assert!(ja4.fingerprint.starts_with("t13"));
     /// ```
+    #[must_use]
     pub fn ja4(&self) -> Ja4 {
         let proto = 't';
 
@@ -914,6 +919,7 @@ impl TlsProfile {
     /// let profile = TlsProfile::random_weighted(42);
     /// assert!(!profile.name.is_empty());
     /// ```
+    #[must_use]
     pub fn random_weighted(seed: u64) -> &'static Self {
         // Step 1: pick OS (Windows 70%, Mac 20%, Linux 10%).
         let os_roll = rng(seed, 97) % 100;
@@ -1241,6 +1247,7 @@ pub static EDGE_131: LazyLock<TlsProfile> = LazyLock::new(|| TlsProfile {
 /// | JavaScript leaks | CDP stealth scripts (see [`stealth`](super::stealth)) |
 /// | CDP signals | [`CdpFixMode`](super::cdp_protection::CdpFixMode) |
 /// | TLS fingerprint | **Flags (this fn)** — version only; full control needs rustls or patched Chrome |
+#[must_use]
 pub fn chrome_tls_args(profile: &TlsProfile) -> Vec<String> {
     let has_12 = profile.tls_versions.contains(&TlsVersion::Tls12);
     let has_13 = profile.tls_versions.contains(&TlsVersion::Tls13);
@@ -1288,6 +1295,7 @@ mod rustls_config {
     /// assert!(strict.strict_cipher_suites);
     /// ```
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[allow(clippy::struct_excessive_bools)] // 4 orthogonal compat flags is clearer than a bitmask for callers
     pub struct TlsControl {
         /// Fail if any profile cipher suite is unsupported by rustls.
         pub strict_cipher_suites: bool,
@@ -1406,10 +1414,12 @@ mod rustls_config {
 
     impl TlsClientConfig {
         /// Borrow the inner `ClientConfig`.
+        #[must_use]
         pub fn inner(&self) -> &rustls::ClientConfig {
             &self.0
         }
 
+        #[must_use]
         pub fn into_inner(self) -> Arc<rustls::ClientConfig> {
             self.0
         }
@@ -1446,6 +1456,17 @@ mod rustls_config {
         /// Build a rustls `ClientConfig` using explicit control settings.
         ///
         /// introducing native TLS dependencies.
+        ///
+        /// # Errors
+        ///
+        /// Returns [`TlsConfigError::UnsupportedCipherSuite`] when a profile
+        /// cipher suite is not provided by the rustls backend and `control`
+        /// has `strict_cipher_suites` set, or
+        /// [`TlsConfigError::UnsupportedSupportedGroup`] when a profile
+        /// supported-group entry is not available and `control` has
+        /// `strict_supported_groups` set. May also surface
+        /// [`TlsConfigError::NoCipherSuites`], [`TlsConfigError::NoSupportedGroups`],
+        /// or [`TlsConfigError::Rustls`] for the remaining failure modes.
         ///
         /// # Limitations
         ///
@@ -1619,6 +1640,7 @@ mod reqwest_client {
     /// | `"Safari"` | Safari 18 on macOS 14.7 |
     /// | `"Edge"` | Edge 131 on Windows 10 |
     /// | *(other)* | Chrome 131 on Windows 10 (safe fallback) |
+    #[must_use]
     pub fn default_user_agent(profile: &TlsProfile) -> &'static str {
         let name = profile.name.to_ascii_lowercase();
         if name.contains("firefox") {
@@ -1640,6 +1662,7 @@ mod reqwest_client {
     /// |---|---|
     /// | `MobileAndroid` | [`CHROME_131`] |
     /// | `MobileIOS` | [`SAFARI_18`] |
+    #[must_use]
     pub fn profile_for_device(device: &crate::fingerprint::DeviceProfile) -> &'static TlsProfile {
         use crate::fingerprint::DeviceProfile;
         match device {
@@ -1763,6 +1786,14 @@ mod reqwest_client {
     ///
     /// without manually selecting [`TlsControl`] fields.
     ///
+    /// # Errors
+    ///
+    /// Returns [`TlsClientError::TlsConfig`] when the underlying
+    /// [`TlsProfile::to_rustls_config_with_control`] call fails (unsupported
+    /// cipher suites / groups under the strict profile preset), and
+    /// [`TlsClientError::Reqwest`] for the wrapped `reqwest::Client::builder`
+    /// failures (including proxy URL parsing).
+    ///
     /// # Example
     ///
     /// ```no_run
@@ -1781,6 +1812,14 @@ mod reqwest_client {
     /// Build a [`reqwest::Client`] with explicit TLS profile control settings.
     ///
     /// introducing native build dependencies.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TlsClientError::TlsConfig`] when
+    /// `profile.to_rustls_config_with_control(control)` reports unsupported
+    /// cipher suites or groups, and [`TlsClientError::Reqwest`] when
+    /// `proxy_url` cannot be parsed or the underlying
+    /// `reqwest::ClientBuilder::build` call fails.
     ///
     /// # Example
     ///
@@ -1832,6 +1871,14 @@ mod reqwest_client {
     /// let client = build_profiled_client_strict(&CHROME_131, None).unwrap();
     /// let _ = client;
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TlsClientError::TlsConfig`] when the underlying
+    /// [`TlsProfile::to_rustls_config_with_control`] call fails because
+    /// `TlsControl::strict()` rejects an unsupported cipher suite or
+    /// supported group, plus [`TlsClientError::Reqwest`] for the wrapped
+    /// `reqwest::ClientBuilder` failures (including proxy URL parsing).
     pub fn build_profiled_client_strict(
         profile: &TlsProfile,
         proxy_url: Option<&str>,

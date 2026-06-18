@@ -113,6 +113,7 @@ pub struct SimilarMatch {
 /// let b = a.clone();
 /// assert!((jaccard_weighted(&a, &b) - 1.0).abs() < 1e-6);
 /// ```
+#[must_use]
 pub fn jaccard_weighted(reference: &ElementFingerprint, candidate: &ElementFingerprint) -> f32 {
     let tag_score = if reference.tag == candidate.tag {
         1.0_f32

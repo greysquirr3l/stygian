@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Pre-commit hook for stygian
+# Runs formatting and optional security checks.
+
+set -euo pipefail
+
+echo "Running pre-commit checks..."
+
+echo "-> Running cargo fmt..."
+cargo fmt --all
+
+# Stage formatting changes for tracked Rust files.
+git ls-files -m '*.rs' | while read -r file; do
+  if [[ -f "$file" ]]; then
+    git add "$file"
+  fi
+done
+
+if [[ -x "$(dirname "$0")/pre-commit-gitleaks" ]]; then
+  "$(dirname "$0")/pre-commit-gitleaks"
+else
+  echo "-> Running gitleaks (if installed)..."
+  if ! command -v gitleaks >/dev/null 2>&1; then
+    echo "   gitleaks not installed, skipping"
+  else
+    gitleaks protect --staged --verbose
+  fi
+fi
+
+echo "-> Running cargo audit (if installed)..."
+if ! command -v cargo-audit >/dev/null 2>&1; then
+  echo "   cargo-audit not installed, skipping"
+else
+  cargo audit
+fi
+
+echo "Pre-commit checks passed"

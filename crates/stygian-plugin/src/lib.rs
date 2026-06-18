@@ -122,6 +122,14 @@ pub mod http;
 /// Runtime configuration for the standalone MCP server
 pub mod config;
 
+/// Extraction reliability scoring
+///
+/// Computes a 0.0–1.0 reliability score for [`domain::ExtractionResult`]
+/// outputs so fallback chains can optimize for *data quality*, not only
+/// fetch success. See the module-level docs for the score interpretation
+/// table and the selection policy.
+pub mod reliability;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Public API Re-exports
 // ═══════════════════════════════════════════════════════════════════════════
@@ -133,3 +141,7 @@ pub use domain::{
 pub use error::{PluginError, Result};
 pub use mcp::{McpPluginServer, McpRequestHandler};
 pub use ports::{IdempotencyKeyStore, PluginExtractionPort, PluginTemplateStore};
+pub use reliability::{
+    ReliabilityBand, ReliabilityScore, ReliabilityScorer, ScoreWeightedSelector, ScoredCandidate,
+    ScoringWeights,
+};

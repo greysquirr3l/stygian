@@ -1,3 +1,11 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::missing_const_for_fn,
+    clippy::missing_panics_doc
+)]
 //! Live browser integration tests against <https://crawllab.dev>.
 //!
 //! crawllab.dev provides JS-rendered endpoints that deliver a minimal HTML
@@ -13,13 +21,6 @@
 //! ```
 //!
 //! Set `STYGIAN_CHROME_PATH` to override the browser binary path.
-
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::missing_panics_doc
-)]
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};

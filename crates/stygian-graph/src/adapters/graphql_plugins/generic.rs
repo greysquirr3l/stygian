@@ -330,6 +330,11 @@ impl GenericGraphQlPluginBuilder {
     ///
     /// assert_eq!(plugin.name(), "github");
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BuildError::MissingName`] or [`BuildError::MissingEndpoint`]
+    /// when the required builder fields are not supplied.
     pub fn build(self) -> Result<GenericGraphQlPlugin, BuildError> {
         Ok(GenericGraphQlPlugin {
             name: self.name.ok_or(BuildError::MissingName)?,

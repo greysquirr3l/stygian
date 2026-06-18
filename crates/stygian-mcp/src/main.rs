@@ -48,8 +48,10 @@ async fn main() -> anyhow::Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("failed to start stygian-mcp aggregator: {e}"))?;
 
-    aggregator
-        .run()
+    // Box the run() future: aggregator.run() carries a ~16 KB future that clippy
+    // lints under `clippy::large_futures`. The box moves the bulk to the heap
+    // and keeps the call site readable.
+    Box::pin(aggregator.run())
         .await
         .map_err(|e| anyhow::anyhow!("stygian-mcp aggregator exited with error: {e}"))
 }

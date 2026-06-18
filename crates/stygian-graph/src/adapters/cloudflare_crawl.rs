@@ -138,6 +138,11 @@ impl CloudflareCrawlAdapter {
     /// use stygian_graph::adapters::cloudflare_crawl::CloudflareCrawlAdapter;
     /// let adapter = CloudflareCrawlAdapter::new().unwrap();
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StygianError`] when the underlying HTTP client cannot be
+    /// built. With `rustls` as the TLS backend this is unreachable in practice.
     pub fn new() -> Result<Self> {
         Self::with_config(CloudflareCrawlConfig::default())
     }
@@ -157,6 +162,12 @@ impl CloudflareCrawlAdapter {
     ///     job_timeout:   Duration::from_secs(600),
     /// }).unwrap();
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StygianError`] wrapping `ServiceError::Unavailable` when the
+    /// underlying HTTP client cannot be built. With `rustls` as the TLS
+    /// backend this is unreachable in practice.
     pub fn with_config(config: CloudflareCrawlConfig) -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_mins(1))
@@ -403,6 +414,7 @@ impl ScrapingService for CloudflareCrawlAdapter {
 /// let body = json!({ "errors": [{ "code": 1000, "message": "Invalid token" }] });
 /// assert_eq!(extract_cf_error(&body), "1000: Invalid token");
 /// ```
+#[must_use]
 pub fn extract_cf_error(body: &Value) -> String {
     if let Some(errors) = body["errors"].as_array()
         && let Some(first) = errors.first()

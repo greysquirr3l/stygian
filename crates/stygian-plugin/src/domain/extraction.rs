@@ -3,6 +3,7 @@
 use crate::domain::idempotency::IdempotencyKey;
 use crate::domain::selector::Selector;
 use crate::domain::transformation::Transformation;
+use crate::reliability::ReliabilityScore;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -60,6 +61,13 @@ impl Region {
     }
 
     /// Validate region configuration
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::PluginError::TemplateValidationError`] when
+    /// the region name is empty or the JSON schema is not an object. Returns
+    /// [`crate::error::PluginError::SelectorError`] when the region's
+    /// selector fails its own `validate()` call.
     pub fn validate(&self) -> crate::Result<()> {
         if self.name.is_empty() {
             return Err(crate::error::PluginError::TemplateValidationError(
@@ -185,6 +193,13 @@ impl ExtractionTemplate {
     }
 
     /// Validate the entire template
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::PluginError::TemplateValidationError`] when
+    /// the template name is empty. Propagates any error returned by the
+    /// per-region `validate()` call (empty name, non-object schema, or
+    /// invalid selector).
     pub fn validate(&self) -> crate::Result<()> {
         if self.name.is_empty() {
             return Err(crate::error::PluginError::TemplateValidationError(
@@ -266,6 +281,13 @@ impl ExtractionRequest {
     }
 
     /// Validate the request
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::PluginError::TemplateValidationError`] when
+    /// the embedded template is invalid. Returns
+    /// [`crate::error::PluginError::ExtractionError`] when the request URL
+    /// or HTML payload is empty.
     pub fn validate(&self) -> crate::Result<()> {
         self.template.validate()?;
         if self.url.is_empty() {
@@ -312,6 +334,15 @@ pub struct ExtractionMetadata {
 
     /// Optional error details
     pub errors: Vec<String>,
+
+    /// Optional reliability score for the extraction output (T87).
+    ///
+    /// This field is **additive** — older consumers that don't know about
+    /// reliability scoring see `None` (or the field omitted entirely when
+    /// serialized with `skip_serializing_if = "Option::is_none"`).
+    /// Default-on per the T87 spec; no feature gate is required.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reliability: Option<ReliabilityScore>,
 }
 
 /// Status of extraction for a single region
@@ -329,6 +360,7 @@ pub struct RegionStatus {
 
 impl ExtractionResult {
     /// Create a new extraction result
+    #[must_use]
     pub fn new(idempotency_key: IdempotencyKey) -> Self {
         Self {
             data: HashMap::new(),
@@ -339,6 +371,7 @@ impl ExtractionResult {
                 selector_success_rate: 0.0,
                 region_status: HashMap::new(),
                 errors: vec![],
+                reliability: None,
             },
         }
     }
@@ -385,6 +418,7 @@ impl ExtractionResult {
     }
 
     /// Check if extraction was fully successful
+    #[must_use]
     pub fn is_fully_successful(&self) -> bool {
         self.metadata.selector_success_rate >= 100.0 && self.metadata.errors.is_empty()
     }

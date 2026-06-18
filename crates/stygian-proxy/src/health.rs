@@ -40,6 +40,7 @@ pub struct HealthChecker {
 
 impl HealthChecker {
     /// Access the shared health map (read it to filter candidates).
+    #[must_use]
     pub const fn health_map(&self) -> &HealthMap {
         &self.health_map
     }
@@ -123,6 +124,7 @@ impl HealthChecker {
     ///
     /// Each cycle sleeps for `jitter_duration(interval, jitter_pct)` before
     /// running a probe pass.  Cancel `token` to stop the task gracefully.
+    #[must_use]
     pub fn spawn(self, token: CancellationToken) -> JoinHandle<()> {
         tokio::spawn(async move {
             loop {

@@ -296,6 +296,7 @@ impl ProfiledRequester {
     }
 
     /// Borrow the underlying [`reqwest::Client`].
+    #[must_use]
     pub const fn client(&self) -> &reqwest::Client {
         &self.client
     }
@@ -307,11 +308,13 @@ impl ProfiledRequester {
     }
 
     /// Return the static [`TlsProfile`] this requester was built from.
+    #[must_use]
     pub const fn profile(&self) -> &'static TlsProfile {
         self.profile
     }
 
     /// The human-readable name of the TLS profile in use.
+    #[must_use]
     pub fn profile_name(&self) -> &str {
         &self.profile.name
     }
@@ -320,6 +323,7 @@ impl ProfiledRequester {
     ///
     /// This is always `true` for the built-in Chrome, Firefox, Edge, and
     /// Safari profiles.
+    #[must_use]
     pub fn supports_h2(&self) -> bool {
         // We can't query reqwest's ALPN config after construction, so we
         // derive it from the profile name as a best-effort hint. All four

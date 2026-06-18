@@ -28,6 +28,7 @@ pub struct FileTemplateStore {
 
 impl FileTemplateStore {
     /// Create a new file-based template store
+    #[must_use]
     pub const fn new(templates_dir: PathBuf) -> Self {
         Self { templates_dir }
     }

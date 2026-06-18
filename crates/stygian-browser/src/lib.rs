@@ -71,11 +71,16 @@ pub mod acquisition;
 pub mod behavior_adapter;
 pub mod browser;
 pub mod cdp_protection;
+pub mod coherence;
 pub mod config;
 pub mod error;
+pub mod freshness;
+pub mod integrity_canary;
+pub mod interstitial_router;
 pub mod page;
 pub mod pool;
 pub mod proxy;
+pub mod replay_defense;
 
 #[cfg(feature = "extract")]
 pub mod extract;
@@ -133,6 +138,8 @@ pub mod tls_validation;
 #[cfg(feature = "stealth")]
 pub mod profile;
 
+pub mod transport_realism;
+
 #[cfg(feature = "stealth")]
 pub mod navigator_coherence;
 
@@ -152,9 +159,10 @@ pub mod session;
 
 pub mod recorder;
 
+pub use acquisition::InterstitialContext;
 pub use acquisition::{
-    AcquisitionMode, AcquisitionRequest, AcquisitionResult, AcquisitionRunner, StageFailure,
-    StageFailureKind, StrategyUsed,
+    AcquisitionMode, AcquisitionRequest, AcquisitionResult, AcquisitionRunner,
+    ReplayDefenseContext, StageFailure, StageFailureKind, StrategyUsed, TransportRealismContext,
 };
 pub use behavior_adapter::{
     AdapterKind, AppliedBehaviorPlan, BehaviorInteractionLevel, BrowserBehaviorAdapter,
@@ -163,9 +171,35 @@ pub use behavior_adapter::{
 pub use browser::BrowserInstance;
 pub use config::{BrowserConfig, HeadlessMode, StealthLevel};
 pub use error::{BrowserError, Result};
+pub use freshness::{
+    DomainClass, FreshnessCheckInput, FreshnessContract, FreshnessDecision, FreshnessError,
+    FreshnessPolicy, FreshnessPolicyKind, FreshnessReport, InvalidationKind, InvalidationReason,
+    check, signature_hash, unix_epoch_ms,
+};
+pub use integrity_canary::{
+    IntegrityCanaryPolicy, IntegrityCanaryReport, IntegrityProbe, IntegrityProbeId,
+    IntegrityProbeOutcome, IntegrityRiskClassification, IntegrityRiskScore, ProbeFinding,
+    RISK_CONFIRMED_THRESHOLD_DEFAULT, RISK_SUSPECTED_THRESHOLD_DEFAULT,
+    all_probes as all_integrity_probes, probe_by_id as integrity_probe_by_id,
+};
+pub use interstitial_router::{
+    InterstitialClassifier, InterstitialKind, InterstitialPolicy, InterstitialRoute,
+    InterstitialRouter, InterstitialSeverity, PageSignature, RouterDecision, classify_and_route,
+    route,
+};
 pub use page::{NodeHandle, PageHandle, ResourceFilter, WaitUntil};
 pub use pool::{BrowserHandle, BrowserPool, PoolStats};
 pub use proxy::{DirectLease, ProxyLease, ProxySource};
+pub use replay_defense::{
+    ReplayDefenseCheckInput, ReplayDefenseDecision, ReplayDefenseError,
+    ReplayDefenseInvalidationKind, ReplayDefensePolicy, ReplayDefenseReason, ReplayDefenseReport,
+    ReplayDefenseState,
+};
+pub use transport_realism::{
+    HEADER_ORDER_CHROME_136, HEADER_ORDER_FIREFOX_130, Http2CheckKind, Http2CheckResult,
+    PSEUDO_HEADER_ORDER_CHROME_136, TransportCompatibility, TransportObservation, TransportProfile,
+    TransportRealismReport, score as score_transport_realism,
+};
 
 #[cfg(feature = "stealth")]
 pub use stealth::{NavigatorProfile, StealthConfig, StealthProfile};

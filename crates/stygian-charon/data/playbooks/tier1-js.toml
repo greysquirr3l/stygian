@@ -1,0 +1,34 @@
+# T85 baseline playbook — tier1-js
+#
+# JavaScript-rendered content sites that need a browser path but
+# have not yet deployed active anti-bot challenges. Resilient
+# mode with a short sticky-session TTL covers typical SPA
+# rendering without forcing residential proxies.
+id = "tier1-js"
+target_class = "content_site"
+description = "JS-rendered content sites without active anti-bot (Tier 1, JS)."
+
+[acquisition]
+mode = "resilient"
+execution_mode = "browser"
+session_mode = "sticky"
+telemetry_level = "standard"
+sticky_session_ttl_secs = 600
+enable_warmup = true
+retry_budget = 5
+backoff_base_ms = 500
+
+[proxy_preference]
+preferred_protocol = "https"
+require_sticky = true
+require_residential = false
+max_latency_ms = 1200
+
+[pacing]
+rate_limit_rps = 1.5
+jitter_pct = 0.15
+min_request_interval_ms = 500
+
+[escalation]
+kind = "capped"
+ceiling = "hostile"

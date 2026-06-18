@@ -1,0 +1,34 @@
+# T85 baseline playbook — tier2-hostile
+#
+# High-security sites with active anti-bot posture (DataDome,
+# Cloudflare Bot Management, Akamai Bot Manager, PerimeterX, etc.).
+# Hostile mode with sticky residential proxies, deep telemetry,
+# and a low pacing rate.
+id = "tier2-hostile"
+target_class = "high_security"
+description = "High-security sites with active anti-bot posture (Tier 2, hostile)."
+
+[acquisition]
+mode = "hostile"
+execution_mode = "browser"
+session_mode = "sticky"
+telemetry_level = "deep"
+sticky_session_ttl_secs = 1800
+enable_warmup = true
+retry_budget = 8
+backoff_base_ms = 750
+
+[proxy_preference]
+preferred_protocol = "https"
+require_sticky = true
+require_residential = true
+max_latency_ms = 800
+
+[pacing]
+rate_limit_rps = 0.5
+jitter_pct = 0.25
+min_request_interval_ms = 2000
+
+[escalation]
+kind = "linear"
+steps = ["fast", "resilient", "hostile"]

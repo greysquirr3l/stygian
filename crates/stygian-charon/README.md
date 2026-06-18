@@ -19,6 +19,7 @@ Core capabilities:
 - infer requirement profiles by target class (`Api`, `ContentSite`, `HighSecurity`)
 - build runtime policy recommendations from observed blocking behavior
 - map runtime policies into acquisition hints for higher-level runners
+- codify anti-bot strategy per target class via **target-class playbooks** (`tier1-static`, `tier1-js`, `tier2-hostile`, ...) with deterministic precedence
 - optionally cache repeated investigations
 - optionally expose metrics for assessment and escalation flows
 - optionally tune SLOs from historical observations
@@ -155,6 +156,7 @@ fn main() {
 - SLO and requirement inference: `infer_requirements`, `infer_requirements_with_target_class`
 - policy planning: `build_runtime_policy`, `analyze_and_plan`, `plan_from_report`
 - acquisition mapping: `map_runtime_policy`, `map_policy_hints`, `map_adapter_strategy`
+- target-class playbooks: `Playbook`, `PlaybookResolver`, `PlaybookOverrides`, `ValidationError`
 - adaptive thresholds: `AdaptiveSloPolicy`, `RegressionHistoryPolicy`
 - snapshot compatibility and drift analysis: snapshot normalization, validation, and drift helpers
 
@@ -181,6 +183,7 @@ Additional user-facing guides shipped with the crate:
 - `docs/metrics-integration-guide.md`
 - `docs/output-structure.md`
 - `docs/signal-coverage-matrix.md`
+- `docs/playbooks-integration-guide.md`
 
 ---
 

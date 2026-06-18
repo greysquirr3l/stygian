@@ -190,6 +190,7 @@ impl HttpSigningAdapter {
     ///
     /// let signer = HttpSigningAdapter::new(HttpSigningConfig::default());
     /// ```
+    #[must_use]
     pub fn new(config: HttpSigningConfig) -> Self {
         let client = Client::builder()
             .timeout(config.timeout)

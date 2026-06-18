@@ -60,6 +60,7 @@ impl WorkerPool {
     /// let pool = WorkerPool::new(4, 32);
     /// ```
     #[allow(clippy::significant_drop_tightening)]
+    #[must_use]
     pub fn new(concurrency: usize, queue_depth: usize) -> Self {
         let (tx, rx) = mpsc::channel::<WorkItem>(queue_depth);
         let rx = Arc::new(Mutex::new(rx));
@@ -161,6 +162,7 @@ impl WorkerPool {
     }
 
     /// Available capacity in the queue.
+    #[must_use]
     pub fn available_capacity(&self) -> usize {
         self.tx.capacity()
     }

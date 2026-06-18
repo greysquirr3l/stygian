@@ -170,9 +170,22 @@ proxies.internal.example.com. 60 IN TXT "http://10.0.1.5:8080"
 proxies.internal.example.com. 60 IN TXT "socks5://10.0.1.6:1080"
 ```
 
-`DnsTxtFetcher` uses `hickory-resolver` under the hood. The system resolver is
-used by default; call `DnsTxtFetcher::with_resolver_config()` to supply a custom
-one.
+`DnsTxtFetcher` uses `hickory-resolver` under the hood and currently uses the
+system resolver configuration by default.
+
+For hardened deployments, prefer constraining the lookup zone and timeout:
+
+```rust,no_run
+use std::time::Duration;
+use stygian_proxy::DnsTxtFetcher;
+
+let fetcher = DnsTxtFetcher::new("proxies.internal.example.com")
+    .with_allowed_zone_suffixes(vec!["internal.example.com".to_string()])
+    .with_lookup_timeout(Duration::from_secs(3));
+```
+
+This helps reduce risk from misconfigured DNS sources by limiting discovery to
+trusted suffixes and bounding lookup latency.
 
 ---
 

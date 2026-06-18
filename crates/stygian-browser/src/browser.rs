@@ -151,6 +151,7 @@ impl BrowserInstance {
     /// Returns `true` if the browser is currently considered healthy.
     ///
     /// This is a cached value updated by [`BrowserInstance::health_check`].
+    #[must_use]
     pub const fn is_healthy_cached(&self) -> bool {
         self.healthy
     }
@@ -184,6 +185,13 @@ impl BrowserInstance {
     /// Run a health check and return a structured [`Result`].
     ///
     /// Pings the browser with the CDP `Browser.getVersion` RPC.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::Timeout`] when the `Browser.getVersion` RPC
+    /// does not complete within `config.cdp_timeout`, and
+    /// [`BrowserError::CdpError`] for any underlying chromiumoxide error
+    /// returned by the CDP call.
     pub async fn health_check(&mut self) -> Result<()> {
         let op_timeout = self.config.cdp_timeout;
 
@@ -211,6 +219,7 @@ impl BrowserInstance {
     // ─── Accessors ────────────────────────────────────────────────────────────
 
     /// Access the underlying `chromiumoxide` [`Browser`].
+    #[must_use]
     pub const fn browser(&self) -> &Browser {
         &self.browser
     }
@@ -221,16 +230,19 @@ impl BrowserInstance {
     }
 
     /// Instance ID (ULID) for log correlation.
+    #[must_use]
     pub fn id(&self) -> &str {
         &self.id
     }
 
     /// How long has this instance been alive.
+    #[must_use]
     pub fn uptime(&self) -> Duration {
         self.launched_at.elapsed()
     }
 
     /// The config snapshot used at launch.
+    #[must_use]
     pub const fn config(&self) -> &BrowserConfig {
         &self.config
     }
@@ -253,6 +265,14 @@ impl BrowserInstance {
     /// # Ok(())
     /// # }
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::Timeout`] if the `Browser.close` call does
+    /// not complete within `config.cdp_timeout`, and
+    /// [`BrowserError::CdpError`] for any underlying chromiumoxide error
+    /// returned while issuing the close command. Internal teardown steps
+    /// are logged and never propagate a failure upward.
     pub async fn shutdown(mut self) -> Result<()> {
         info!(browser_id = %self.id, "Shutting down browser");
 

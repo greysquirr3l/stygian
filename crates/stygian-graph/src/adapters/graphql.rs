@@ -123,6 +123,7 @@ impl GraphQlService {
     /// let service = GraphQlService::new(GraphQlConfig::default(), None);
     /// assert_eq!(service.name(), "graphql");
     /// ```
+    #[must_use]
     pub fn new(config: GraphQlConfig, plugins: Option<Arc<GraphQlPluginRegistry>>) -> Self {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(config.timeout_secs))

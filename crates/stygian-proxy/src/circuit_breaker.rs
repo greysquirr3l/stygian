@@ -35,6 +35,7 @@ pub struct CircuitBreaker {
 
 impl CircuitBreaker {
     /// Create a new breaker from config parameters.
+    #[must_use]
     pub const fn new(threshold: u32, half_open_after_ms: u64) -> Self {
         Self {
             state: AtomicU8::new(STATE_CLOSED),
