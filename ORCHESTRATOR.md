@@ -113,45 +113,67 @@ architecture, high-concurrency I/O, and trait-based plugin systems.
     never force-push, amend a pushed commit, or skip hooks.
 12. Stop. Do not start the next task — the orchestrator will do that.
 
-### Preflight (per-crate, baseline-tolerant)
+### Preflight (strict workspace, pedantic + nursery + perf)
 
-The workspace currently has **~104 pre-existing `clippy::must_use_candidate`
-and related baseline errors concentrated in `stygian-browser`** (session.rs,
-recorder.rs, page.rs, mcp.rs, etc.) and other crates. These are NOT
-introduced by Phase 13 tasks. A separate baseline-cleanup subagent task is
-tracked in PROGRESS.md and will be dispatched at a natural break point.
-
-Until that runs, the preflight is **per-crate and baseline-tolerant**:
+The workspace clippy baseline is at **zero errors**. T95 closed the
+remaining ~255 pre-existing baseline errors and the strict clippy
+sweep closed an additional ~293 pedantic/nursery/perf lints. Preflight
+is now **strict workspace** — no per-crate carve-out, no baseline
+tolerance. Every subagent must clear all three gates:
 
 ```bash
-# 1. Workspace build + tests must always pass
+# 1. Workspace build + tests must always pass with all features.
 cargo build --workspace --all-features && \
   cargo test --workspace --all-features
 
-# 2. Per-crate clippy: count errors before and after. The task is gated
-#    on "no new errors introduced" — not on zero total errors.
-CARGO_TERM_COLOR=never cargo clippy -p TASK_CRATE \
-  --all-features --all-targets -- -D warnings 2>&1 | tee /tmp/clippy.txt
+# 2. Strict workspace clippy with the full pedantic + nursery + perf
+#    profile. `--all-features` is REQUIRED — feature-gated code paths
+#    (e.g. `#[cfg(feature = "metrics")]` impls) can carry lints that
+#    only fire when the feature is enabled. The canonical command is
+#    also exposed as `cargo l` in `.cargo/config.toml`.
+CARGO_TERM_COLOR=never cargo clippy --workspace --all-features \
+  --all-targets -- \
+  -W clippy::all -W clippy::pedantic -W clippy::nursery \
+  -W clippy::cargo -W clippy::perf \
+  -A clippy::module_name_repetitions \
+  -A clippy::must_use_candidate \
+  -A clippy::missing_errors_doc \
+  -A clippy::missing_panics_doc \
+  -A clippy::struct_excessive_bools \
+  -A clippy::multiple_crate_versions \
+  -D clippy::unwrap_used \
+  -D clippy::expect_used \
+  -D clippy::panic \
+  -D clippy::indexing_slicing \
+  -D clippy::cast_ptr_alignment \
+  -D clippy::suspicious \
+  -D warnings 2>&1 | tee /tmp/clippy.txt
 ERRORS=$(grep -c "^error" /tmp/clippy.txt || true)
-# Subagent must report ERRORS in its final report. The orchestrator
-# compares against the tracked baseline for the touched crate.
+# ERRORS must be 0. If higher, fix and rerun.
 ```
 
-**Baseline error counts (tracked, 2026-06-17):**
-- `stygian-browser`: ~104 (pre-Phase 13)
-- `stygian-charon`: 0
-- `stygian-proxy`: 0
-- `stygian-plugin`: 0
-- `stygian-graph`: 0
+**Subagent policy:**
 
-If a task introduces *new* errors beyond its crate's baseline, the
-subagent must fix them. Total errors should be ≤ baseline. Touched-code
-clippy-clean status (no new errors in newly added files/modules) is the
-strict gate.
+- The touched crate is identified from the task file's `## Feature
+  flag` section and interpolated as `TASK_CRATE` in the subagent
+  prompt. The subagent uses the strict workspace clippy command
+  above (NOT a per-crate relaxed variant).
+- If the subagent reports a clippy baseline error that is clearly
+  unrelated to its work, it must still fix it as part of its task —
+  the strict-workspace policy does not allow deferring baseline work.
+- All test groups must pass (live `#[ignore]`-gated tests are exempt).
+- The `cargo l` alias in `.cargo/config.toml` is the canonical
+  shorthand for the strict clippy command above. Use it locally; the
+  full command is required in CI for clarity.
 
-When the baseline-cleanup subagent lands and the workspace clippy is
-green, the orchestrator will revert to the original strict
-`--workspace -D warnings` preflight.
+**Why `--all-features` matters:**
+A feature-gated `impl` block (e.g. `#[cfg(feature = "metrics")] impl
+MetricsCollector { fn foo(&self) { Self::bar(self); } }`) will only
+be compiled when the feature is enabled. Without `--all-features`,
+clippy never sees that code, so `clippy::use_self` and similar lints
+can hide in the gated path until CI runs the feature build. The
+canonical `cargo l` alias always passes `--all-features`; do not
+remove it.
 
 ### Rules (from AGENTS.md)
 

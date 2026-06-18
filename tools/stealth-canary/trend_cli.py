@@ -99,7 +99,8 @@ def _load_canary_config(path: pathlib.Path) -> dict[str, dict[str, Any]]:
     raw_entries = doc.get("canary")
     if not isinstance(raw_entries, list) or not raw_entries:
         raise SystemExit(
-            f"canary config {path} must contain a non-empty [[canary]] table list"
+            f"canary config {path} must contain a non-empty "
+            "[[canary]] table list"
         )
     out: dict[str, dict[str, Any]] = {}
     for entry in raw_entries:
@@ -164,7 +165,9 @@ def _resolve_baselines(
         if value is not None:
             return value, env_name
     raw_baseline = entry.get("baseline")
-    if isinstance(raw_baseline, (int, float)) and 0.0 <= float(raw_baseline) <= 1.0:
+    if isinstance(raw_baseline, (int, float)) and (
+        0.0 <= float(raw_baseline) <= 1.0
+    ):
         return float(raw_baseline), "required-targets.toml:baseline"
     return None, None
 
@@ -207,7 +210,8 @@ def _verdict_table(verdicts: list[trend.TrendVerdict]) -> str:
     """Render the per-target verdict table."""
 
     lines = [
-        "| label | status | current | rolling_mean | delta | consecutive_drops | baseline | observation |",
+        "| label | status | current | rolling_mean | delta | "
+        "consecutive_drops | baseline | observation |",
         "|---|---|---:|---:|---:|---:|---|---|",
     ]
     for v in verdicts:
@@ -223,7 +227,8 @@ def _verdict_table(verdicts: list[trend.TrendVerdict]) -> str:
         observation = v.observation_severity or "—"
         lines.append(
             f"| `{v.label}` | {v.status.value} | {v.current_score:.4f} | "
-            f"{rolling} | {delta} | {v.consecutive_drops} | {baseline} | {observation} |"
+            f"{rolling} | {delta} | {v.consecutive_drops} | "
+            f"{baseline} | {observation} |"
         )
     return "\n".join(lines)
 
@@ -248,7 +253,8 @@ def _ownership_table(
             runbook = entry.get("runbook", "—")
             artifacts = ", ".join(f"`{a}`" for a in entry.get("artifacts", []))
             lines.append(
-                f"| `{label}` | {owner} | {secondary} | {runbook} | {artifacts} |"
+                f"| `{label}` | {owner} | {secondary} | {runbook} | "
+                f"{artifacts} |"
             )
             continue
         owner = entry.get("owner", "—")
@@ -258,7 +264,8 @@ def _ownership_table(
         if verdict.is_hard_fail:
             owner = f"🛑 {owner}"
         lines.append(
-            f"| `{label}` | {owner} | {secondary} | {runbook} | {artifacts} |"
+            f"| `{label}` | {owner} | {secondary} | {runbook} | "
+            f"{artifacts} |"
         )
     return "\n".join(lines)
 
@@ -276,9 +283,15 @@ def _build_markdown(
     hard_fails = [v for v in verdicts.values() if v.is_hard_fail]
     headline = "## Stealth Canary — Trend Report"
     if hard_fails:
-        headline += " 🛑\n\n**At least one required canary target is hard-fail.**"
+        headline += (
+            " 🛑\n\n"
+            "**At least one required canary target is hard-fail.**"
+        )
     else:
-        headline += "\n\nAll required canary targets are stable (or trend-insufficient)."
+        headline += (
+            "\n\nAll required canary targets are stable "
+            "(or trend-insufficient)."
+        )
 
     detector = (
         f"**Detector config:** window={config.window}, "
@@ -303,6 +316,42 @@ def _build_markdown(
         f"{_ownership_table(required, verdicts)}\n\n"
         "### Uploaded artifacts\n\n"
         f"{artifact_lines}\n"
+    )
+
+
+# Public wrappers used by tests to avoid private-member access diagnostics.
+def env_baseline(env_name: str) -> float | None:
+    """Public wrapper around baseline env parsing."""
+
+    return _env_baseline(env_name)
+
+
+def resolve_baselines(
+    label: str,
+    entry: dict[str, Any],
+) -> tuple[float | None, str | None]:
+    """Public wrapper around baseline resolution precedence logic."""
+
+    return _resolve_baselines(label, entry)
+
+
+def build_markdown(
+    verdicts: dict[str, trend.TrendVerdict],
+    required: dict[str, dict[str, Any]],
+    config: trend.TrendConfig,
+    run_id: str,
+    run_url: str | None,
+    artifacts: list[str],
+) -> str:
+    """Public wrapper around markdown rendering for summary tests."""
+
+    return _build_markdown(
+        verdicts,
+        required,
+        config,
+        run_id,
+        run_url,
+        artifacts,
     )
 
 
@@ -371,7 +420,7 @@ def main(argv: list[str] | None = None) -> int:
 
     config = trend.TrendConfig.from_env()
     history = trend.read_history(str(args.history))
-    canary_config = _load_canary_config(args.canary_config)
+    _load_canary_config(args.canary_config)
     required = _load_required_targets(args.required_targets)
     probe_report = _load_probe_report(args.probe_report)
 
@@ -409,7 +458,11 @@ def main(argv: list[str] | None = None) -> int:
             trend.HistoryEntry(
                 label=label,
                 score=float(score),
-                threshold=float(threshold) if isinstance(threshold, (int, float)) else 0.0,
+                threshold=(
+                    float(threshold)
+                    if isinstance(threshold, (int, float))
+                    else 0.0
+                ),
                 ok=bool(ok) if isinstance(ok, bool) else False,
                 run_id=args.run_id,
                 captured_at_epoch_ms=now_ms,
@@ -437,10 +490,15 @@ def main(argv: list[str] | None = None) -> int:
         label: current_by_label.get(label, 0.0) for label in eval_labels
     }
     eval_history: dict[str, list[float]] = {
-        label: trend.history_to_score_map(history, label) for label in eval_labels
+        label: trend.history_to_score_map(history, label)
+        for label in eval_labels
     }
     eval_severity: dict[str, str] = {
-        label: trend_obs_by_label.get(label) or trend.severity_for_label(history, label)
+        label: (
+            trend_obs_by_label.get(label)
+            or trend.severity_for_label(history, label)
+            or "clean"
+        )
         for label in eval_labels
     }
     verdicts = trend.evaluate_per_target(
@@ -462,9 +520,12 @@ def main(argv: list[str] | None = None) -> int:
                 label=verdict.label,
                 current_score=verdict.current_score,
                 status=verdict.status,
-                reason=verdict.reason + f" (baseline from {baseline_sources[label]})"
-                if verdict.baseline_breach
-                else verdict.reason,
+                reason=(
+                    verdict.reason
+                    + f" (baseline from {baseline_sources[label]})"
+                    if verdict.baseline_breach
+                    else verdict.reason
+                ),
                 run_count=verdict.run_count,
                 rolling_mean=verdict.rolling_mean,
                 delta=verdict.delta,

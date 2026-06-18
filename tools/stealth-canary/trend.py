@@ -43,11 +43,15 @@ from trend import TrendConfig, evaluate_trend, TrendStatus
 
 config = TrendConfig()  # window=10, delta_threshold=0.05, monotonic_runs=3
 history = [0.96, 0.95, 0.96, 0.95, 0.94, 0.95, 0.94, 0.93, 0.94, 0.93]
-verdict = evaluate_trend("synthetic-injection", history, current=0.93, config=config)
+verdict = evaluate_trend(
+    "synthetic-injection", history, current=0.93, config=config
+)
 assert verdict.status == TrendStatus.STABLE
 
 # Monotonic regression: last 3 strictly decreasing
-verdict = evaluate_trend("synthetic-injection", history, current=0.90, config=config)
+verdict = evaluate_trend(
+    "synthetic-injection", history, current=0.90, config=config
+)
 assert verdict.status == TrendStatus.MONOTONIC_REGRESSION
 ```
 """
@@ -57,7 +61,6 @@ from __future__ import annotations
 import json
 import math
 import os
-import sys
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Iterable, Sequence
@@ -126,7 +129,9 @@ class TrendConfig:
             delta_threshold=_float(
                 "STYGIAN_TREND_DELTA_THRESHOLD", cls.delta_threshold
             ),
-            monotonic_runs=_int("STYGIAN_TREND_MONOTONIC_RUNS", cls.monotonic_runs),
+            monotonic_runs=_int(
+                "STYGIAN_TREND_MONOTONIC_RUNS", cls.monotonic_runs
+            ),
             min_history=_int("STYGIAN_TREND_MIN_HISTORY", cls.min_history),
         )
 
@@ -188,7 +193,7 @@ class TrendVerdict:
         }
 
 
-# ── Pure trend math ───────────────────────────────────────────────────────────
+# ── Pure trend math ──────────────────────────────────────────────────────────
 
 
 def _rolling_mean(history: Sequence[float], window: int) -> float:
@@ -298,7 +303,7 @@ def evaluate_trend(
 
     # Rule 1: monotonic regression (last N strictly decreasing).
     # Window is chronological: oldest of the last N first, current last.
-    monotonic_window = [*history_list[-(config.monotonic_runs - 1) :], current]
+    monotonic_window = [*history_list[-(config.monotonic_runs - 1):], current]
     if len(monotonic_window) >= 2 and _consecutive_drops(monotonic_window) >= (
         config.monotonic_runs - 1
     ):
@@ -498,7 +503,9 @@ def history_to_score_map(
     return [e.score for e in entries if e.label == label]
 
 
-def severity_for_label(entries: Sequence[HistoryEntry], label: str) -> str | None:
+def severity_for_label(
+    entries: Sequence[HistoryEntry], label: str
+) -> str | None:
     """Return the most-recent T92 ``CanaryTrendObservation`` severity
     attached to the most recent history entry for ``label``.
 
@@ -518,7 +525,7 @@ def severity_for_label(entries: Sequence[HistoryEntry], label: str) -> str | Non
     return None
 
 
-# ── Aggregation across the canary run ─────────────────────────────────────────
+# ── Aggregation across the canary run ────────────────────────────────────────
 
 
 def aggregate_verdict(verdicts: dict[str, TrendVerdict]) -> dict:

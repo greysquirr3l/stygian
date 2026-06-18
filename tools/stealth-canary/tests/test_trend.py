@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 """Unit tests for the stealth canary trend detector (T84).
 
 Run with:
@@ -23,7 +24,6 @@ The tests cover:
 
 from __future__ import annotations
 
-import io
 import json
 import os
 import pathlib
@@ -63,7 +63,8 @@ class TestEvaluateTrend(unittest.TestCase):
         # 0.05 (threshold) is the gap that flips the verdict to
         # regression_detected; current=0.95 vs rolling=0.95 should not
         # trip it.
-        self.assertGreaterEqual(verdict.delta, -0.05)
+        self.assertIsNotNone(verdict.delta)
+        self.assertGreaterEqual(verdict.delta or 0.0, -0.05)
 
     def test_monotonic_regression_fails(self) -> None:
         # Last 3 scores strictly decreasing → monotonic regression.
@@ -74,7 +75,10 @@ class TestEvaluateTrend(unittest.TestCase):
             current=0.86,
             config=trend.TrendConfig(),
         )
-        self.assertEqual(verdict.status, trend.TrendStatus.MONOTONIC_REGRESSION)
+        self.assertEqual(
+            verdict.status,
+            trend.TrendStatus.MONOTONIC_REGRESSION,
+        )
         self.assertTrue(verdict.is_hard_fail)
         self.assertGreaterEqual(verdict.consecutive_drops, 2)
 
@@ -91,7 +95,7 @@ class TestEvaluateTrend(unittest.TestCase):
         self.assertEqual(verdict.status, trend.TrendStatus.REGRESSION_DETECTED)
         self.assertTrue(verdict.is_hard_fail)
         self.assertIsNotNone(verdict.delta)
-        self.assertLess(verdict.delta, -0.05)
+        self.assertLess(verdict.delta or 0.0, -0.05)
 
     def test_insufficient_data_does_not_fail(self) -> None:
         # History shorter than min_history (3) → insufficient_data.
@@ -149,7 +153,10 @@ class TestEvaluateTrend(unittest.TestCase):
         # The last 3 (0.95, 0.95, 0.94) are not strictly decreasing
         # (0.95 → 0.95 is a tie). The verdict should be stable (or
         # regression_detected) but NOT monotonic_regression.
-        self.assertNotEqual(verdict.status, trend.TrendStatus.MONOTONIC_REGRESSION)
+        self.assertNotEqual(
+            verdict.status,
+            trend.TrendStatus.MONOTONIC_REGRESSION,
+        )
 
     def test_observation_severity_is_propagated(self) -> None:
         history = [0.95] * 10
@@ -190,9 +197,19 @@ class TestEvaluatePerTarget(unittest.TestCase):
             "creepjs": 0.80,  # regression_detected
             "synthetic-injection": 0.95,  # stable
         }
-        verdicts = trend.evaluate_per_target(history, current, trend.TrendConfig())
-        self.assertEqual(verdicts["creepjs"].status, trend.TrendStatus.REGRESSION_DETECTED)
-        self.assertEqual(verdicts["synthetic-injection"].status, trend.TrendStatus.STABLE)
+        verdicts = trend.evaluate_per_target(
+            history,
+            current,
+            trend.TrendConfig(),
+        )
+        self.assertEqual(
+            verdicts["creepjs"].status,
+            trend.TrendStatus.REGRESSION_DETECTED,
+        )
+        self.assertEqual(
+            verdicts["synthetic-injection"].status,
+            trend.TrendStatus.STABLE,
+        )
         self.assertTrue(verdicts["creepjs"].is_hard_fail)
         self.assertFalse(verdicts["synthetic-injection"].is_hard_fail)
 
@@ -206,7 +223,10 @@ class TestEvaluatePerTarget(unittest.TestCase):
             config=trend.TrendConfig(),
         )
         self.assertIn("new-target", verdicts)
-        self.assertEqual(verdicts["new-target"].status, trend.TrendStatus.INSUFFICIENT_DATA)
+        self.assertEqual(
+            verdicts["new-target"].status,
+            trend.TrendStatus.INSUFFICIENT_DATA,
+        )
 
     def test_aggregate_verdict_hard_fail_labels(self) -> None:
         verdicts = trend.evaluate_per_target(
@@ -345,7 +365,10 @@ class TestCanaryTrendObservationSeam(unittest.TestCase):
             ),
         ]
         # Most recent entry's severity wins.
-        self.assertEqual(trend.severity_for_label(entries, "creepjs"), "confirmed")
+        self.assertEqual(
+            trend.severity_for_label(entries, "creepjs"),
+            "confirmed",
+        )
 
     def test_severity_for_label_returns_none_when_missing(self) -> None:
         self.assertIsNone(trend.severity_for_label([], "creepjs"))
@@ -362,25 +385,27 @@ class TestCanaryTrendObservationSeam(unittest.TestCase):
         self.assertIsNone(trend.severity_for_label(entries, "creepjs"))
 
 
-# ── T58 ``STYGIAN_*_BASELINE_*`` env-var pattern ──────────────────────────────
+# ── T58 ``STYGIAN_*_BASELINE_*`` env-var pattern ─────────────────────────────
 
 
 class TestBaselineEnvVars(unittest.TestCase):
     def test_env_baseline_unset(self) -> None:
-        env = {"NOT_SET": "0.5"}
-        self.assertIsNone(trend_cli._env_baseline("STYGIAN_FOO_BASELINE_BAR"))
+        self.assertIsNone(trend_cli.env_baseline("STYGIAN_FOO_BASELINE_BAR"))
 
     def test_env_baseline_parses_float(self) -> None:
         with mock.patch.dict(os.environ, {"STYGIAN_FOO_BASELINE": "0.85"}):
-            self.assertEqual(trend_cli._env_baseline("STYGIAN_FOO_BASELINE"), 0.85)
+            self.assertEqual(
+                trend_cli.env_baseline("STYGIAN_FOO_BASELINE"),
+                0.85,
+            )
 
     def test_env_baseline_rejects_out_of_range(self) -> None:
         with mock.patch.dict(os.environ, {"STYGIAN_FOO_BASELINE": "1.5"}):
-            self.assertIsNone(trend_cli._env_baseline("STYGIAN_FOO_BASELINE"))
+            self.assertIsNone(trend_cli.env_baseline("STYGIAN_FOO_BASELINE"))
 
     def test_env_baseline_rejects_garbage(self) -> None:
         with mock.patch.dict(os.environ, {"STYGIAN_FOO_BASELINE": "nope"}):
-            self.assertIsNone(trend_cli._env_baseline("STYGIAN_FOO_BASELINE"))
+            self.assertIsNone(trend_cli.env_baseline("STYGIAN_FOO_BASELINE"))
 
     def test_resolve_baselines_precedence(self) -> None:
         env = {
@@ -388,20 +413,26 @@ class TestBaselineEnvVars(unittest.TestCase):
             "STYGIAN_TIER1_BASELINE_BROWSERSCAN": "0.92",
         }
         with mock.patch.dict(os.environ, env, clear=True):
-            creepjs_value, creepjs_source = trend_cli._resolve_baselines(
+            creepjs_value, creepjs_source = trend_cli.resolve_baselines(
                 "creepjs", {"baseline": 0.50}
             )
-            browserscan_value, browserscan_source = trend_cli._resolve_baselines(
+            (
+                browserscan_value,
+                browserscan_source,
+            ) = trend_cli.resolve_baselines(
                 "browserscan", {"baseline": 0.85}
             )
         self.assertEqual(creepjs_value, 0.90)
         self.assertEqual(creepjs_source, "STYGIAN_TREND_BASELINE_CREEPJS")
         self.assertEqual(browserscan_value, 0.92)
-        self.assertEqual(browserscan_source, "STYGIAN_TIER1_BASELINE_BROWSERSCAN")
+        self.assertEqual(
+            browserscan_source,
+            "STYGIAN_TIER1_BASELINE_BROWSERSCAN",
+        )
 
     def test_resolve_baselines_falls_back_to_data_file(self) -> None:
         with mock.patch.dict(os.environ, {}, clear=True):
-            value, source = trend_cli._resolve_baselines(
+            value, source = trend_cli.resolve_baselines(
                 "creepjs", {"baseline": 0.50}
             )
         self.assertEqual(value, 0.50)
@@ -444,10 +475,13 @@ class TestMarkdownSummary(unittest.TestCase):
                 "owner": "@greysquirr3l",
                 "secondary": "@stygian-charon-on-call",
                 "runbook": "docs/stealth-canary-governance.md#browserscan",
-                "artifacts": ["probe-report.json", "history/canary-history.jsonl"],
+                "artifacts": [
+                    "probe-report.json",
+                    "history/canary-history.jsonl",
+                ],
             },
         }
-        md = trend_cli._build_markdown(
+        md = trend_cli.build_markdown(
             verdicts,
             required,
             trend.TrendConfig(),
@@ -497,7 +531,7 @@ class TestMarkdownSummary(unittest.TestCase):
                 "artifacts": ["probe-report.json"],
             },
         }
-        md = trend_cli._build_markdown(
+        md = trend_cli.build_markdown(
             verdicts,
             required,
             trend.TrendConfig(),
@@ -600,7 +634,12 @@ artifacts = ["probe-report.json"]
         )
         return path
 
-    def _seed_history(self, path: pathlib.Path, label: str, scores: list[float]) -> None:
+    def _seed_history(
+        self,
+        path: pathlib.Path,
+        label: str,
+        scores: list[float],
+    ) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", encoding="utf-8") as handle:
             for idx, score in enumerate(scores):
@@ -612,7 +651,9 @@ artifacts = ["probe-report.json"]
                             "threshold": 0.50,
                             "ok": True,
                             "run_id": f"seed-{idx}",
-                            "captured_at_epoch_ms": 1_700_000_000_000 + idx * 1000,
+                            "captured_at_epoch_ms": (
+                                1_700_000_000_000 + idx * 1000
+                            ),
                         }
                     )
                     + "\n"
@@ -664,7 +705,11 @@ artifacts = ["probe-report.json"]
         self.assertIn("https://example.com/runs/123", md)
         # History was appended
         with history.open("r", encoding="utf-8") as handle:
-            lines = [line for line in handle.read().splitlines() if line.strip()]
+            lines = [
+                line
+                for line in handle.read().splitlines()
+                if line.strip()
+            ]
         # 10 seed + 2 current = 12
         self.assertEqual(len(lines), 12)
 

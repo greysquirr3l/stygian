@@ -23,7 +23,7 @@ from __future__ import annotations
 import pathlib
 import sys
 import tomllib
-from typing import Any
+from typing import Any, NoReturn
 
 
 REQUIRED_TARGETS_PATH = pathlib.Path(
@@ -32,7 +32,7 @@ REQUIRED_TARGETS_PATH = pathlib.Path(
 CANARY_CONFIG_PATH = pathlib.Path(".github/stealth-canary.toml")
 
 
-def fail(message: str) -> None:
+def fail(message: str) -> NoReturn:
     """Print a user-facing validation error and exit non-zero."""
     print(f"stealth-canary config error: {message}", file=sys.stderr)
     raise SystemExit(1)
@@ -68,7 +68,10 @@ def _validate_canary_config(path: pathlib.Path) -> list[str]:
 
         label = entry.get("label")
         if not isinstance(label, str) or not label.strip():
-            fail(f"{path} entry #{idx} requires non-empty string field 'label'")
+            fail(
+                f"{path} entry #{idx} requires "
+                "non-empty string field 'label'"
+            )
         labels.append(label)
 
         threshold = entry.get("threshold", 0.90)
@@ -76,11 +79,17 @@ def _validate_canary_config(path: pathlib.Path) -> list[str]:
             fail(f"{path} entry #{idx} field 'threshold' must be numeric")
         threshold = float(threshold)
         if threshold < 0.0 or threshold > 1.0:
-            fail(f"{path} entry #{idx} field 'threshold' must be within [0.0, 1.0]")
+            fail(
+                f"{path} entry #{idx} field 'threshold' "
+                "must be within [0.0, 1.0]"
+            )
 
         advisory = entry.get("advisory", False)
         if not isinstance(advisory, bool):
-            fail(f"{path} entry #{idx} field 'advisory' must be boolean when present")
+            fail(
+                f"{path} entry #{idx} field 'advisory' "
+                "must be boolean when present"
+            )
 
         if not advisory:
             has_non_advisory = True
@@ -105,7 +114,10 @@ def _validate_required_targets(path: pathlib.Path) -> list[str]:
 
         label = entry.get("label")
         if not isinstance(label, str) or not label.strip():
-            fail(f"{path} entry #{idx} requires non-empty string field 'label'")
+            fail(
+                f"{path} entry #{idx} requires "
+                "non-empty string field 'label'"
+            )
         labels.append(label)
 
         url = entry.get("url")
@@ -118,54 +130,67 @@ def _validate_required_targets(path: pathlib.Path) -> list[str]:
         threshold = float(threshold)
         if threshold < 0.0 or threshold > 1.0:
             fail(
-                f"{path} entry #{idx} field 'threshold' must be within [0.0, 1.0]"
+                f"{path} entry #{idx} field 'threshold' "
+                "must be within [0.0, 1.0]"
             )
 
         description = entry.get("description")
         if not isinstance(description, str) or not description.strip():
             fail(
-                f"{path} entry #{idx} requires non-empty string field 'description'"
+                f"{path} entry #{idx} requires non-empty "
+                "string field 'description'"
             )
 
         owner = entry.get("owner")
         if not isinstance(owner, str) or not owner.strip():
-            fail(f"{path} entry #{idx} requires non-empty string field 'owner'")
+            fail(
+                f"{path} entry #{idx} requires "
+                "non-empty string field 'owner'"
+            )
 
         runbook = entry.get("runbook")
         if not isinstance(runbook, str) or not runbook.strip():
-            fail(f"{path} entry #{idx} requires non-empty string field 'runbook'")
+            fail(
+                f"{path} entry #{idx} requires "
+                "non-empty string field 'runbook'"
+            )
 
         artifacts = entry.get("artifacts")
         if not isinstance(artifacts, list) or not artifacts:
             fail(
-                f"{path} entry #{idx} field 'artifacts' must be a non-empty list of strings"
+                f"{path} entry #{idx} field 'artifacts' "
+                "must be a non-empty list of strings"
             )
         for art_idx, artifact in enumerate(artifacts):
             if not isinstance(artifact, str) or not artifact.strip():
                 fail(
-                    f"{path} entry #{idx} artifacts[{art_idx}] must be a non-empty string"
+                    f"{path} entry #{idx} artifacts[{art_idx}] "
+                    "must be a non-empty string"
                 )
 
-        # `secondary` is optional but, when present, must be a non-empty string.
+        # `secondary` is optional; when present it must be non-empty.
         secondary = entry.get("secondary")
         if secondary is not None and (
             not isinstance(secondary, str) or not secondary.strip()
         ):
             fail(
-                f"{path} entry #{idx} field 'secondary' must be a non-empty string when present"
+                f"{path} entry #{idx} field 'secondary' "
+                "must be a non-empty string when present"
             )
 
-        # `baseline` is optional but, when present, must be a float in [0.0, 1.0].
+        # `baseline` is optional; when present it must be in [0.0, 1.0].
         baseline = entry.get("baseline")
         if baseline is not None:
             if not isinstance(baseline, (int, float)):
                 fail(
-                    f"{path} entry #{idx} field 'baseline' must be numeric when present"
+                    f"{path} entry #{idx} field 'baseline' "
+                    "must be numeric when present"
                 )
             baseline = float(baseline)
             if baseline < 0.0 or baseline > 1.0:
                 fail(
-                    f"{path} entry #{idx} field 'baseline' must be within [0.0, 1.0]"
+                    f"{path} entry #{idx} field 'baseline' "
+                    "must be within [0.0, 1.0]"
                 )
 
     return labels
@@ -180,7 +205,8 @@ def _validate_label_overlap(
     if missing:
         fail(
             "required-targets entries reference labels not declared in "
-            f".github/stealth-canary.toml: {missing}. Add a matching [[canary]] "
+            f".github/stealth-canary.toml: {missing}. "
+            "Add a matching [[canary]] "
             "entry or remove the [[required]] entry."
         )
 
@@ -193,7 +219,9 @@ def main() -> None:
     print(
         f"validated {len(canary_labels)} canary entries and "
         f"{len(required_labels)} required-targets entries "
-        f"(label overlap: {len(set(canary_labels) & set(required_labels))}/{len(required_labels)})"
+        "(label overlap: "
+        f"{len(set(canary_labels) & set(required_labels))}/"
+        f"{len(required_labels)})"
     )
 
 
