@@ -143,6 +143,6 @@ pub use event::{ChangeEvent, ChangeFeedReport, DeltaSummary, MitigationPath};
 #[cfg(feature = "metrics")]
 impl ChangeEventSink for crate::metrics::MetricsCollector {
     fn record_change_event(&self, event: &ChangeEvent) {
-        crate::metrics::MetricsCollector::record_change_event(self, event);
+        Self::record_change_event(self, event);
     }
 }
