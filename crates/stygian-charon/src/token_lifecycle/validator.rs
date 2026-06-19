@@ -511,6 +511,7 @@ mod tests {
     #[test]
     fn accepts_fresh_cloudflare_interstitial() {
         let v = validator();
+        // codeql[rust/hard-coded-cryptographic-value] false-positive: deterministic test label
         let c = contract(
             VendorId::Cloudflare,
             ChallengeClass::Interstitial,
@@ -530,6 +531,7 @@ mod tests {
     #[test]
     fn rejects_expired_cloudflare_interstitial() {
         let v = validator();
+        // codeql[rust/hard-coded-cryptographic-value] false-positive: deterministic test label
         let c = contract(
             VendorId::Cloudflare,
             ChallengeClass::Interstitial,
@@ -558,6 +560,7 @@ mod tests {
     #[test]
     fn rejects_single_use_replay() {
         let v = validator();
+        // codeql[rust/hard-coded-cryptographic-value] false-positive: deterministic test label
         let c = contract(
             VendorId::DataDome,
             ChallengeClass::Captcha,
@@ -598,6 +601,7 @@ mod tests {
         // has changed). However, we *do* reject a missing nonce
         // when the policy requires one.
         let v = validator();
+        // codeql[rust/hard-coded-cryptographic-value] false-positive: deterministic test label
         let mut c = contract(
             VendorId::Cloudflare,
             ChallengeClass::Interstitial,
@@ -623,6 +627,7 @@ mod tests {
     fn rejects_session_binding_miss_when_required() {
         // Akamai requires session binding.
         let v = validator();
+        // codeql[rust/hard-coded-cryptographic-value] false-positive: deterministic test label
         let c = contract(
             VendorId::Akamai,
             ChallengeClass::ProofOfWork,
@@ -650,6 +655,7 @@ mod tests {
     fn rejects_not_applicable_combination() {
         let v = validator();
         // Cloudflare does not issue ProofOfWork tokens.
+        // codeql[rust/hard-coded-cryptographic-value] false-positive: deterministic test label
         let c = contract(
             VendorId::Cloudflare,
             ChallengeClass::ProofOfWork,
@@ -671,6 +677,7 @@ mod tests {
     #[test]
     fn vendor_policy_lookup_returns_tier2_defaults() {
         let v = validator();
+        // codeql[rust/hard-coded-cryptographic-value] false-positive: deterministic test label
         let c = contract(
             VendorId::DataDome,
             ChallengeClass::Captcha,
@@ -692,6 +699,7 @@ mod tests {
         let v = validator();
         // Cloudflare's max ttl is 45 minutes. Submit a contract
         // claiming a 60-minute TTL.
+        // codeql[rust/hard-coded-cryptographic-value] false-positive: deterministic test label
         let c = contract(
             VendorId::Cloudflare,
             ChallengeClass::Interstitial,
@@ -715,6 +723,7 @@ mod tests {
         let v = validator();
         // FingerprintCom default policy: single_use = false.
         // Re-submitting the same nonce must not trip replay.
+        // codeql[rust/hard-coded-cryptographic-value] false-positive: deterministic test label
         let c = contract(
             VendorId::FingerprintCom,
             ChallengeClass::None,
@@ -736,6 +745,7 @@ mod tests {
     #[test]
     fn validation_outcome_helpers() {
         let ok = ValidationOutcome::Ok {
+            // codeql[rust/hard-coded-cryptographic-value] false-positive: deterministic test label
             contract: contract(
                 VendorId::Unknown,
                 ChallengeClass::None,

@@ -1,4 +1,26 @@
 //! Proxy rotation strategy trait and built-in implementations.
+//!
+//! ## Why Thompson Sampling
+//!
+//! Round-robin assumes proxy health is stationary; in practice a proxy that
+//! worked a minute ago may now be banned, and a dead one may recover.
+//! Round-robin therefore wastes a fixed fraction of every batch on dead
+//! proxies. Thompson sampling — see
+//! `docs/dev/project/scraping-guide-2026-llm-context.md`
+//! §"Stop Round-Robining Dead Proxies: Bayesian Selection" (L3018-3021)
+//! — models each proxy's success probability as a `Beta(α, β)` posterior
+//! and draws one sample per candidate on each acquisition. The 2026
+//! `ProxyOps` benchmark cited in the guide reports **76 % success with
+//! Thompson sampling vs 36 % with round-robin** on identical proxies and
+//! targets (549 114 requests in 7 days) — more than double the success
+//! rate.
+//!
+//! [`ThompsonStrategy`] is the Stygian implementation; it lives behind the
+//! `bayesian-rotation` cargo feature (off by default to preserve
+//! deterministic round-robin in existing deployments). The hot path is
+//! two atomic loads + one xorshift64 draw per candidate, which stays well
+//! under the 1 µs acquisition budget documented in
+//! `crates/stygian-proxy/AGENTS.md`.
 
 use std::sync::Arc;
 
@@ -11,11 +33,15 @@ use crate::types::{CapabilityRequirement, ProxyCapabilities, ProxyMetrics};
 mod least_used;
 mod random;
 mod round_robin;
+#[cfg(feature = "bayesian-rotation")]
+pub mod thompson;
 mod weighted;
 
 pub use least_used::LeastUsedStrategy;
 pub use random::RandomStrategy;
 pub use round_robin::RoundRobinStrategy;
+#[cfg(feature = "bayesian-rotation")]
+pub use thompson::ThompsonStrategy;
 pub use weighted::WeightedStrategy;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -73,6 +99,42 @@ pub trait RotationStrategy: Send + Sync + 'static {
 
 /// Shared-ownership type alias for a [`RotationStrategy`] implementation.
 pub type BoxedRotationStrategy = Arc<dyn RotationStrategy>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BayesianObserver
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Callback that receives outcome observations for a specific proxy.
+///
+/// `ProxyManager` calls `observe(success = true)` on
+/// [`ProxyHandle::mark_success`](crate::manager::ProxyHandle::mark_success)
+/// and `observe(success = false)` on drop without `mark_success`. The
+/// default implementation is [`NoopBayesianObserver`], which discards
+/// observations; the `bayesian-rotation` feature wires
+/// [`ThompsonStrategy`](crate::strategy::ThompsonStrategy) in via
+/// [`ProxyManagerBuilder::with_thompson_sampling`](crate::manager::ProxyManagerBuilder::with_thompson_sampling).
+pub trait BayesianObserver: Send + Sync + 'static {
+    /// Record one outcome for `proxy_id`. Implementations must be safe to
+    /// call from any thread and must never block on locks the hot path
+    /// already holds.
+    fn observe(&self, proxy_id: Uuid, success: bool);
+}
+
+/// Discarding [`BayesianObserver`] used when no strategy is configured.
+///
+/// The default for `ProxyManager` so the observer field has a
+/// zero-overhead `None`-equivalent without changing the manager's type
+/// signature.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NoopBayesianObserver;
+
+impl BayesianObserver for NoopBayesianObserver {
+    #[inline]
+    fn observe(&self, _proxy_id: Uuid, _success: bool) {}
+}
+
+/// Shared-ownership type alias for a [`BayesianObserver`] implementation.
+pub type BoxedBayesianObserver = Arc<dyn BayesianObserver>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared helper

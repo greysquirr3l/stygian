@@ -631,6 +631,8 @@ impl McpProxyServer {
             weight,
             tags,
             capabilities: crate::types::ProxyCapabilities::default(),
+            ip_class: crate::types::IpClass::Unknown,
+            target_compatibility: crate::types::TargetVendorCompatibility::default(),
         };
 
         match self.manager.add_proxy(proxy).await {
@@ -787,9 +789,19 @@ impl McpProxyServer {
     ///
     /// Accepts the same JSON structure as [`CapabilityRequirement`] —
     /// `require_https_connect`, `require_socks5_udp`, `require_http3_tunnel`,
-    /// `require_geo_country`.  All fields are optional; an empty call is
-    /// equivalent to plain `proxy_acquire`.
+    /// `require_geo_country`, `require_ip_class`, `target_vendor`.  All
+    /// fields are optional; an empty call is equivalent to plain
+    /// `proxy_acquire`.
     async fn tool_proxy_acquire_with_capabilities(&self, id: &Value, args: &Value) -> Value {
+        let require_ip_class = args
+            .get("require_ip_class")
+            .and_then(Value::as_str)
+            .and_then(crate::types::IpClass::from_label)
+            .map(|minimum| crate::types::IpClassRequirement { minimum });
+        let target_vendor = args
+            .get("target_vendor")
+            .and_then(Value::as_str)
+            .and_then(crate::types::VendorId::from_label);
         let req = CapabilityRequirement {
             require_https_connect: args
                 .get("require_https_connect")
@@ -813,6 +825,20 @@ impl McpProxyServer {
                 .unwrap_or(false),
             require_tls_profile: args
                 .get("require_tls_profile")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            require_ip_class,
+            target_vendor,
+            require_asn: args
+                .get("require_asn")
+                .and_then(Value::as_u64)
+                .and_then(|v| u32::try_from(v).ok()),
+            require_city: args
+                .get("require_city")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            require_postal_code: args
+                .get("require_postal_code")
                 .and_then(Value::as_str)
                 .map(str::to_string),
         };

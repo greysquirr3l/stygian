@@ -1,4 +1,15 @@
 //! Storage port and in-memory adapter for proxy records.
+//!
+//! ## Ingest validation
+//!
+//! The [`MemoryProxyStore::add`] path runs
+//! [`crate::vendor_quirks::check`] on every URL before inserting the
+//! record. Hard-error quirks (e.g. `Crawlera` 8011 + `https://`) reject
+//! the URL outright; warning-severity quirks (e.g. `Bright Data` session
+//! format) are logged via `tracing::warn!` and the URL is accepted.
+//! See [`crate::vendor_quirks`] for the full quirk table and
+//! [`ProxyUrl`](crate::vendor_quirks::ProxyUrl) for the canonical URL
+//! parser.
 
 use async_trait::async_trait;
 use uuid::Uuid;
@@ -14,7 +25,7 @@ use crate::types::{Proxy, ProxyRecord};
 /// # Example
 /// ```rust,no_run
 /// use stygian_proxy::storage::ProxyStoragePort;
-/// use stygian_proxy::types::{Proxy, ProxyCapabilities, ProxyType};
+/// use stygian_proxy::types::{IpClass, Proxy, ProxyCapabilities, ProxyType, TargetVendorCompatibility};
 /// use uuid::Uuid;
 ///
 /// async fn demo(store: &dyn ProxyStoragePort) {
@@ -26,6 +37,8 @@ use crate::types::{Proxy, ProxyRecord};
 ///         weight: 1,
 ///         tags: vec![],
 ///         capabilities: ProxyCapabilities::default(),
+///         ip_class: IpClass::Unknown,
+///         target_compatibility: TargetVendorCompatibility::default(),
 ///     };
 ///     let record = store.add(proxy).await.unwrap();
 ///     let _ = store.get(record.id).await.unwrap();
@@ -68,65 +81,123 @@ pub type BoxedProxyStorage = Box<dyn ProxyStoragePort>;
 
 /// Validate a proxy URL: scheme must be recognised, host must be non-empty,
 /// and the explicit port (if present) must be in [1, 65535].
+///
+/// Hard-error vendor quirks (e.g. `Crawlera` 8011 + `https://`) reject
+/// the URL outright. Warning-severity quirks (e.g. `Bright Data`
+/// session-id format) are surfaced via `tracing::warn!` and the URL
+/// is accepted. See [`crate::vendor_quirks`] for the full quirk
+/// table.
 fn validate_proxy_url(url: &str) -> ProxyResult<()> {
     use crate::error::ProxyError;
+    use crate::vendor_quirks::{self, ParseError, QuirkSeverity};
 
-    let (scheme, rest) = url
-        .split_once("://")
-        .ok_or_else(|| ProxyError::InvalidProxyUrl {
+    // ── T100: structural validation via the canonical `ProxyUrl` parser ───
+    //
+    // The `ProxyUrl::parse` function is the single source of truth for
+    // scheme/host/port/user-info structure. We re-emit the same error
+    // surface as before (ProxyError::InvalidProxyUrl) so the public
+    // behaviour and the existing `invalid_url_rejected` /
+    // `invalid_url_empty_host` tests remain stable.
+    let parsed = vendor_quirks::ProxyUrl::parse(url).map_err(|e| match e {
+        ParseError::MissingSchemeSeparator(_) => ProxyError::InvalidProxyUrl {
             url: url.to_owned(),
             reason: "missing scheme separator '://'".into(),
-        })?;
-
-    match scheme {
-        "http" | "https" => {}
-        #[cfg(feature = "socks")]
-        "socks4" | "socks5" => {}
-        other => {
-            return Err(ProxyError::InvalidProxyUrl {
-                url: url.to_owned(),
-                reason: format!("unsupported scheme '{other}'"),
-            });
-        }
-    }
-
-    // Strip any path/query, then strip user:pass@ if present.
-    let authority = rest.split('/').next().unwrap_or("");
-    let host_and_port = authority.split('@').next_back().unwrap_or("");
-
-    // Split host from port, handling IPv6 brackets.
-    let (host, port_str) = if host_and_port.starts_with('[') {
-        let close = host_and_port.find(']').unwrap_or(host_and_port.len());
-        let after = &host_and_port[close + 1..];
-        let port = after.strip_prefix(':').unwrap_or("");
-        (&host_and_port[..=close], port)
-    } else {
-        match host_and_port.rsplit_once(':') {
-            Some((h, p)) => (h, p),
-            None => (host_and_port, ""),
-        }
-    };
-
-    if host.is_empty() || host == "[]" {
-        return Err(ProxyError::InvalidProxyUrl {
+        },
+        ParseError::UnsupportedScheme(ref s, _) => ProxyError::InvalidProxyUrl {
+            url: url.to_owned(),
+            reason: format!("unsupported scheme '{s}'"),
+        },
+        ParseError::EmptyHost(_) => ProxyError::InvalidProxyUrl {
             url: url.to_owned(),
             reason: "empty host".into(),
-        });
-    }
-
-    if !port_str.is_empty() {
-        let port: u32 = port_str.parse().map_err(|_| ProxyError::InvalidProxyUrl {
+        },
+        ParseError::NonNumericPort(ref p, _) => ProxyError::InvalidProxyUrl {
             url: url.to_owned(),
-            reason: format!("non-numeric port '{port_str}'"),
-        })?;
-        if port == 0 || port > 65535 {
-            return Err(ProxyError::InvalidProxyUrl {
-                url: url.to_owned(),
-                reason: format!("port {port} is out of range [1, 65535]"),
-            });
+            reason: format!("non-numeric port '{p}'"),
+        },
+        ParseError::PortOutOfRange { ref port, .. } => ProxyError::InvalidProxyUrl {
+            url: url.to_owned(),
+            reason: format!("port {port} is out of range [1, 65535]"),
+        },
+        ParseError::UnclosedIpv6Bracket(_) => ProxyError::InvalidProxyUrl {
+            url: url.to_owned(),
+            reason: "unclosed IPv6 bracket in host".into(),
+        },
+    })?;
+
+    // ── T100: vendor quirk check ───────────────────────────────────────────
+    //
+    // `vendor_quirks::check` is the canonical entry point for
+    // provider-specific rules. We:
+    //
+    // 1. Reject URLs that match an `Error`-severity quirk (e.g. the
+    //    Crawlera 8011 + `https://` WRONG_VERSION_NUMBER trap).
+    // 2. Log Warning-severity quirks via `tracing::warn!` — the URL is
+    //    accepted, but operators see the message in the ingest log.
+    // 3. Record Info-severity quirks via `tracing::info!` (no reject).
+    //
+    // The match is on `host:port` only; the password component of the
+    // URL is never inspected, logged, or echoed.
+    let quirks = vendor_quirks::check(&parsed);
+    for m in &quirks {
+        match m.severity {
+            QuirkSeverity::Error => {
+                return Err(ProxyError::InvalidProxyUrl {
+                    url: url.to_owned(),
+                    reason: m.description.to_owned(),
+                });
+            }
+            QuirkSeverity::Warning => {
+                tracing::warn!(
+                    proxy_url_host = %parsed.host,
+                    proxy_url_port = ?parsed.port,
+                    quirk_host_suffix = m.host_suffix,
+                    observed_scheme = m.observed_scheme.as_str(),
+                    required_scheme = m.required_scheme.as_str(),
+                    quirk_description = m.description,
+                    "proxy URL matches a vendor quirk warning (URL accepted)"
+                );
+            }
+            QuirkSeverity::Info => {
+                tracing::info!(
+                    proxy_url_host = %parsed.host,
+                    proxy_url_port = ?parsed.port,
+                    quirk_host_suffix = m.host_suffix,
+                    quirk_description = m.description,
+                    "proxy URL matches a vendor quirk info record"
+                );
+            }
         }
     }
 
+    Ok(())
+}
+
+/// Validate the optional geo-metadata fields on
+/// [`crate::types::ProxyCapabilities`].
+///
+/// Runs [`validate_asn`](crate::types::validate_asn),
+/// [`validate_city`](crate::types::validate_city), and
+/// [`validate_postal_code`](crate::types::validate_postal_code) on the
+/// populated fields and returns the first failure encountered, or
+/// `Ok(())` when every populated field passes. `None` fields are
+/// always accepted (the existing "no enrichment" default).
+///
+/// Called from the storage adapter's `add` path so free-list fetchers
+/// and operator-supplied `add_proxy_with_metadata` calls reject
+/// malformed values before the record reaches the pool.
+fn validate_geo_metadata(caps: &crate::types::ProxyCapabilities) -> ProxyResult<()> {
+    use crate::types::{validate_asn, validate_city, validate_postal_code};
+
+    if let Some(asn) = caps.asn {
+        validate_asn(asn)?;
+    }
+    if let Some(ref city) = caps.city {
+        validate_city(city)?;
+    }
+    if let Some(ref postal) = caps.postal_code {
+        validate_postal_code(postal)?;
+    }
     Ok(())
 }
 
@@ -153,12 +224,14 @@ type StoreMap = HashMap<Uuid, (ProxyRecord, Arc<ProxyMetrics>)>;
 /// ```
 /// # tokio_test::block_on(async {
 /// use stygian_proxy::storage::{MemoryProxyStore, ProxyStoragePort};
-/// use stygian_proxy::types::{Proxy, ProxyCapabilities, ProxyType};
+/// use stygian_proxy::types::{IpClass, Proxy, ProxyCapabilities, ProxyType, TargetVendorCompatibility};
 ///
 /// let store = MemoryProxyStore::default();
 /// let proxy = Proxy { url: "http://proxy.example.com:8080".into(), proxy_type: ProxyType::Http,
 ///                     username: None, password: None, weight: 1, tags: vec![],
-///                     capabilities: ProxyCapabilities::default() };
+///                     capabilities: ProxyCapabilities::default(),
+///                     ip_class: IpClass::Unknown,
+///                     target_compatibility: TargetVendorCompatibility::default() };
 /// let record = store.add(proxy).await.unwrap();
 /// assert_eq!(store.list().await.unwrap().len(), 1);
 /// store.remove(record.id).await.unwrap();
@@ -193,6 +266,7 @@ impl MemoryProxyStore {
 impl ProxyStoragePort for MemoryProxyStore {
     async fn add(&self, proxy: Proxy) -> ProxyResult<ProxyRecord> {
         validate_proxy_url(&proxy.url)?;
+        validate_geo_metadata(&proxy.capabilities)?;
         let record = ProxyRecord::new(proxy);
         let metrics = Arc::new(ProxyMetrics::default());
         self.inner
@@ -272,6 +346,12 @@ impl ProxyStoragePort for MemoryProxyStore {
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)] // serde + storage round-trips and unwraps in test fixtures are deterministic
 mod tests {
     use super::*;
     use crate::types::ProxyType;
@@ -286,6 +366,8 @@ mod tests {
             weight: 1,
             tags: vec![],
             capabilities: crate::types::ProxyCapabilities::default(),
+            ip_class: crate::types::IpClass::Unknown,
+            target_compatibility: crate::types::TargetVendorCompatibility::default(),
         }
     }
 
@@ -335,6 +417,100 @@ mod tests {
         Ok(())
     }
 
+    // ── T98: geo-metadata ingest validation ────────────────────────────────
+
+    /// `asn = 0` must be rejected at ingest time.
+    #[tokio::test]
+    async fn invalid_geo_metadata_asn_zero_rejected()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let store = MemoryProxyStore::default();
+        let mut p = make_proxy("http://cf.test:8080");
+        p.capabilities.asn = Some(0);
+        let err = store
+            .add(p)
+            .await
+            .err()
+            .ok_or_else(|| std::io::Error::other("asn=0 should be rejected"))?;
+        assert!(matches!(
+            err,
+            crate::error::ProxyError::InvalidGeoMetadata { ref field, .. } if field == "asn"
+        ));
+        Ok(())
+    }
+
+    /// `asn = u32::MAX` must be rejected at ingest time.
+    #[tokio::test]
+    async fn invalid_geo_metadata_asn_max_rejected()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let store = MemoryProxyStore::default();
+        let mut p = make_proxy("http://cf.test:8080");
+        p.capabilities.asn = Some(u32::MAX);
+        let err = store
+            .add(p)
+            .await
+            .err()
+            .ok_or_else(|| std::io::Error::other("asn=u32::MAX should be rejected"))?;
+        assert!(matches!(
+            err,
+            crate::error::ProxyError::InvalidGeoMetadata { ref field, .. } if field == "asn"
+        ));
+        Ok(())
+    }
+
+    /// `city = ""` must be rejected at ingest time.
+    #[tokio::test]
+    async fn invalid_geo_metadata_empty_city_rejected()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let store = MemoryProxyStore::default();
+        let mut p = make_proxy("http://cf.test:8080");
+        p.capabilities.city = Some(String::new());
+        let err = store
+            .add(p)
+            .await
+            .err()
+            .ok_or_else(|| std::io::Error::other("empty city should be rejected"))?;
+        assert!(matches!(
+            err,
+            crate::error::ProxyError::InvalidGeoMetadata { ref field, .. } if field == "city"
+        ));
+        Ok(())
+    }
+
+    /// `postal_code = ""` must be rejected at ingest time.
+    #[tokio::test]
+    async fn invalid_geo_metadata_empty_postal_code_rejected()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let store = MemoryProxyStore::default();
+        let mut p = make_proxy("http://cf.test:8080");
+        p.capabilities.postal_code = Some(String::new());
+        let err = store
+            .add(p)
+            .await
+            .err()
+            .ok_or_else(|| std::io::Error::other("empty postal_code should be rejected"))?;
+        assert!(matches!(
+            err,
+            crate::error::ProxyError::InvalidGeoMetadata { ref field, .. } if field == "postal_code"
+        ));
+        Ok(())
+    }
+
+    /// Valid geo metadata is accepted.
+    #[tokio::test]
+    async fn valid_geo_metadata_accepted() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let store = MemoryProxyStore::default();
+        let mut p = make_proxy("http://cf.test:8080");
+        p.capabilities.asn = Some(13_335);
+        p.capabilities.city = Some("San Francisco".into());
+        p.capabilities.postal_code = Some("94110".into());
+        let record = store
+            .add(p)
+            .await
+            .map_err(|e| std::io::Error::other(format!("expected accept, got {e}")))?;
+        assert_eq!(record.proxy.capabilities.asn, Some(13_335));
+        Ok(())
+    }
+
     #[tokio::test]
     async fn concurrent_metrics_updates() -> std::result::Result<(), Box<dyn std::error::Error>> {
         use tokio::task::JoinSet;
@@ -369,6 +545,183 @@ mod tests {
         let failures = metrics.failures.load(Ordering::Relaxed);
         assert_eq!(total, 50);
         assert_eq!(successes + failures, 50);
+        Ok(())
+    }
+
+    // ── T100: vendor-quirk ingest validation ────────────────────────────────
+
+    /// The headline `Crawlera` 8011 + `https://` trap must be rejected
+    /// at ingest time. The error reason is the static quirk description
+    /// (no credentials).
+    #[tokio::test]
+    async fn validate_crawlera_https_8011_rejected()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let store = MemoryProxyStore::default();
+        let err = store
+            .add(make_proxy("https://user:secret@proxy.crawlera.com:8011"))
+            .await
+            .err()
+            .ok_or_else(|| std::io::Error::other("Crawlera 8011 + https:// must be rejected"))?;
+        match err {
+            crate::error::ProxyError::InvalidProxyUrl { url, reason } => {
+                assert_eq!(url, "https://user:secret@proxy.crawlera.com:8011");
+                // The reason must not echo the password.
+                assert!(
+                    !reason.contains("secret"),
+                    "reason leaked password: {reason}"
+                );
+                assert!(
+                    !reason.contains("user:secret"),
+                    "reason leaked credentials: {reason}"
+                );
+                // The reason must be the quirk description (snippet check).
+                assert!(
+                    reason.contains("WRONG_VERSION_NUMBER") || reason.contains("plain HTTP"),
+                    "reason should reference the quirk, got: {reason}"
+                );
+            }
+            other => panic!("expected InvalidProxyUrl, got {other:?}"),
+        }
+        Ok(())
+    }
+
+    /// The `Crawlera` 8011 + `http://` URL is the compliant form and
+    /// must be accepted.
+    #[tokio::test]
+    async fn validate_crawlera_http_8011_accepted()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let store = MemoryProxyStore::default();
+        let record = store
+            .add(make_proxy("http://apikey:@proxy.crawlera.com:8011"))
+            .await
+            .map_err(|e| {
+                std::io::Error::other(format!("Crawlera 8011 + http:// must be accepted: {e}"))
+            })?;
+        assert_eq!(record.proxy.url, "http://apikey:@proxy.crawlera.com:8011");
+        Ok(())
+    }
+
+    /// The `Zyte` 8011 + `https://` trap must be rejected (same
+    /// `WRONG_VERSION_NUMBER` failure mode as `Crawlera`).
+    #[tokio::test]
+    async fn validate_zyte_https_8011_rejected()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let store = MemoryProxyStore::default();
+        let err = store
+            .add(make_proxy("https://apikey:@proxy.zyte.com:8011"))
+            .await
+            .err()
+            .ok_or_else(|| std::io::Error::other("Zyte 8011 + https:// must be rejected"))?;
+        assert!(matches!(
+            err,
+            crate::error::ProxyError::InvalidProxyUrl { ref reason, .. }
+                if reason.contains("WRONG_VERSION_NUMBER") || reason.contains("plain HTTP")
+        ));
+        Ok(())
+    }
+
+    /// `Bright Data` quirk is a Warning — the URL is accepted and the
+    /// store adds the record.
+    #[tokio::test]
+    async fn validate_bright_data_warning_accepted()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let store = MemoryProxyStore::default();
+        let record = store
+            .add(make_proxy(
+                "http://brd-customer-1-session-abc123@brd.superproxy.io:22225",
+            ))
+            .await
+            .map_err(|e| {
+                std::io::Error::other(format!("Bright Data Warning URL must be accepted: {e}"))
+            })?;
+        assert!(record.proxy.url.contains("brd.superproxy.io"));
+        Ok(())
+    }
+
+    /// `IPRoyal` quirk is a Warning — the URL is accepted.
+    #[tokio::test]
+    async fn validate_iproyal_warning_accepted()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let store = MemoryProxyStore::default();
+        let record = store
+            .add(make_proxy(
+                "http://user-country-US:pass@residential.iproyal.com:12321",
+            ))
+            .await
+            .map_err(|e| {
+                std::io::Error::other(format!("IPRoyal Warning URL must be accepted: {e}"))
+            })?;
+        assert!(record.proxy.url.contains("iproyal.com"));
+        Ok(())
+    }
+
+    /// Unknown hosts produce zero false positives — the URL is
+    /// accepted without any quirk warnings.
+    #[tokio::test]
+    async fn validate_unknown_host_no_quirks_accepted()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let store = MemoryProxyStore::default();
+        let record = store
+            .add(make_proxy(
+                "http://user:pass@some-unrelated-host.example:8080",
+            ))
+            .await
+            .map_err(|e| std::io::Error::other(format!("unrelated host must be accepted: {e}")))?;
+        assert!(record.proxy.url.contains("some-unrelated-host.example"));
+        Ok(())
+    }
+
+    /// The pre-existing structural URL validation must still reject
+    /// malformed URLs (e.g. missing scheme separator).
+    #[tokio::test]
+    async fn validate_preserves_structural_rejection()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let store = MemoryProxyStore::default();
+        let err = store
+            .add(make_proxy("not-a-url"))
+            .await
+            .err()
+            .ok_or_else(|| std::io::Error::other("not-a-url must be rejected"))?;
+        assert!(matches!(
+            err,
+            crate::error::ProxyError::InvalidProxyUrl { ref reason, .. }
+                if reason.contains("missing scheme separator")
+        ));
+        Ok(())
+    }
+
+    /// The pre-existing empty-host rejection must still fire
+    /// (regression guard for the T100 refactor).
+    #[tokio::test]
+    async fn validate_preserves_empty_host_rejection()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let store = MemoryProxyStore::default();
+        let err = store
+            .add(make_proxy("http://:8080"))
+            .await
+            .err()
+            .ok_or_else(|| std::io::Error::other("empty host must be rejected"))?;
+        assert!(matches!(
+            err,
+            crate::error::ProxyError::InvalidProxyUrl { ref reason, .. }
+                if reason.contains("empty host")
+        ));
+        Ok(())
+    }
+
+    /// `Crawlera` on a non-8011 port does NOT trigger the quirk (port
+    /// filter is applied before the scheme check).
+    #[tokio::test]
+    async fn validate_crawlera_non_8011_https_accepted()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let store = MemoryProxyStore::default();
+        let record = store
+            .add(make_proxy("https://user:pass@proxy.crawlera.com:9000"))
+            .await
+            .map_err(|e| {
+                std::io::Error::other(format!("Crawlera 9000 + https:// must be accepted: {e}"))
+            })?;
+        assert!(record.proxy.url.contains("crawlera.com:9000"));
         Ok(())
     }
 }

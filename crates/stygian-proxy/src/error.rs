@@ -68,6 +68,41 @@ pub enum ProxyError {
     /// No proxy in the pool satisfies the requested capability set.
     #[error("no proxy satisfies the requested capabilities")]
     NoCompatibleProxy,
+
+    /// Coherence validator emitted a hard mismatch on a field registered
+    /// for hard-fail behaviour in [`crate::ports::coherence::CoherencePolicy`].
+    ///
+    /// Only emitted by
+    /// [`crate::manager::ProxyManager::acquire_proxy_with_coherence`] when
+    /// the `coherence-validation` cargo feature is enabled and the
+    /// configured policy lists the offending field as a hard-fail
+    /// vector.
+    #[error("coherence mismatch on `{field}` ({severity})")]
+    CoherenceMismatch {
+        /// Which vector disagreed (proxy geo vs DNS, WebRTC /16, …).
+        field: crate::ports::coherence::MismatchField,
+        /// Severity classification from the validator.
+        severity: crate::ports::coherence::MismatchSeverity,
+    },
+
+    /// A supplied geo-metadata field on
+    /// [`crate::types::ProxyCapabilities`] failed ingest-time
+    /// validation.
+    ///
+    /// Emitted by the storage adapter's `add` path (and by
+    /// [`crate::manager::ProxyManager::add_proxy_with_metadata`]) when
+    /// `asn`, `city`, or `postal_code` is malformed. Examples:
+    /// `asn = 0`, `asn = u32::MAX` (both reserved), `city = ""`,
+    /// `postal_code = ""`, or any field exceeding the documented
+    /// length ceiling.
+    #[error("invalid geo metadata on `{field}`: {reason}")]
+    InvalidGeoMetadata {
+        /// Which geo field was rejected (`"asn"`, `"city"`, or
+        /// `"postal_code"`).
+        field: String,
+        /// Human-readable explanation of the validation failure.
+        reason: String,
+    },
 }
 
 /// Convenience result alias for all stygian-proxy operations.
