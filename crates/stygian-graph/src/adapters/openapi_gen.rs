@@ -220,7 +220,7 @@ impl OpenApiGenerator {
             },
             JsonType::Bool => Schema {
                 schema_data: SchemaData::default(),
-                schema_kind: SchemaKind::Type(OaType::Boolean {}),
+                schema_kind: SchemaKind::Type(OaType::Boolean(openapiv3::BooleanType::default())),
             },
             JsonType::Integer => Schema {
                 schema_data: SchemaData::default(),
