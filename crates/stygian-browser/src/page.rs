@@ -143,6 +143,129 @@ pub enum WaitUntil {
     Selector(String),
 }
 
+// ─── OuterHtmlStrategy / OuterHtmlResult ──────────────────────────────────────
+
+/// Selector for [`NodeHandle::outer_html_with_strategy`].
+///
+/// The default [`OuterHtmlStrategy::Current`] preserves the historical call
+/// path used by [`NodeHandle::outer_html`]: a Chromium element-level
+/// `outer_html()` call (which evaluates `this.outerHTML` via JS) followed
+/// by a direct `XMLSerializer` fallback when the primary call returns an
+/// empty payload.
+///
+/// [`OuterHtmlStrategy::Recursive`] uses the dedicated Chromium `DevTools`
+/// Protocol command `DOM.getOuterHTML` (a single round-trip, browser-side
+/// serialisation that already includes shadow-DOM roots) with a Rust-side
+/// fallback that calls `DOM.describeNode` with `depth = -1` and walks the
+/// resulting CDP `Node` tree to produce HTML locally.
+///
+/// Both strategies are **generic** — neither relies on Wix, SPA, or vendor
+/// attributes, classes, or heuristics. `Recursive` simply selects a different
+/// CDP backend that already handles deeply nested subtrees, large SPAs, and
+/// shadow-DOM trees correctly in a single browser-side pass.
+///
+/// # Example
+///
+/// ```
+/// use stygian_browser::page::OuterHtmlStrategy;
+/// assert_eq!(OuterHtmlStrategy::default(), OuterHtmlStrategy::Current);
+/// assert_eq!(OuterHtmlStrategy::Current.as_str(), "Current");
+/// assert_eq!(OuterHtmlStrategy::Recursive.as_str(), "Recursive");
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub enum OuterHtmlStrategy {
+    /// Legacy behaviour: element-level JS eval + `XMLSerializer` fallback.
+    #[default]
+    Current,
+    /// CDP `DOM.getOuterHTML` (single round-trip) + Rust-side
+    /// `DOM.describeNode` walk fallback.
+    Recursive,
+}
+
+impl OuterHtmlStrategy {
+    /// Stable identifier suitable for logs, metrics, and serialization.
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Current => "Current",
+            Self::Recursive => "Recursive",
+        }
+    }
+
+    /// All known variants in declaration order. Useful for exhaustive
+    /// iteration in tests and diagnostics.
+    #[must_use]
+    pub const fn all() -> [Self; 2] {
+        [Self::Current, Self::Recursive]
+    }
+}
+
+impl std::fmt::Display for OuterHtmlStrategy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Outcome of [`NodeHandle::outer_html_with_strategy`].
+///
+/// The default `String`-returning [`NodeHandle::outer_html`] flattens this
+/// into a `Result<String>` where `Empty` and `Failed` both surface as the
+/// empty string — preserving the historical contract.
+///
+/// Derives [`Serialize`] so callers can include the outcome in structured
+/// logs, metrics, or per-request reports. `Deserialize` is intentionally not
+/// derived because the `Failed::backends` field holds `&'static str`
+/// backend names — a deserialised value would need owned `String`s and
+/// would lose the typed backend taxonomy this enum encodes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum OuterHtmlResult {
+    /// The chosen strategy's backends all returned an empty payload. This
+    /// typically means the page is still rendering or the node has been
+    /// detached since the handle was created.
+    Empty,
+    /// Successfully serialised outer markup for the target node.
+    Content(String),
+    /// Every backend the strategy tried returned an error. The list names
+    /// the backends in the order they were attempted so callers can build
+    /// retry strategies or surface diagnostics.
+    Failed {
+        /// Names of the backends that returned an error.
+        backends: Vec<&'static str>,
+    },
+}
+
+impl OuterHtmlResult {
+    /// Return the serialized markup, or `None` if the result is `Empty` or
+    /// `Failed`.
+    #[must_use]
+    pub const fn content(&self) -> Option<&str> {
+        match self {
+            Self::Content(s) => Some(s.as_str()),
+            Self::Empty | Self::Failed { .. } => None,
+        }
+    }
+
+    /// `true` when the result carries no usable markup — either `Empty` or
+    /// `Failed`.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        match self {
+            Self::Content(s) => s.is_empty(),
+            Self::Empty | Self::Failed { .. } => true,
+        }
+    }
+}
+
+impl std::fmt::Display for OuterHtmlResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Empty => f.write_str("Empty"),
+            Self::Content(s) => write!(f, "Content({} bytes)", s.len()),
+            Self::Failed { backends } => write!(f, "Failed({})", backends.join(", ")),
+        }
+    }
+}
+
 // ─── NodeHandle ───────────────────────────────────────────────────────────────
 
 ///
@@ -281,36 +404,237 @@ impl NodeHandle {
 
     /// Return the element's `outerHTML`.
     ///
-    /// The primary path uses Chromium's element `outer_html()` command. Some
-    /// highly dynamic pages can intermittently return an empty payload even
-    /// when the node is still present, so this method falls back to a direct
-    /// JS evaluation (`this.outerHTML`) before returning an empty string.
+    /// Backwards-compatible thin wrapper around
+    /// [`outer_html_with_strategy`][Self::outer_html_with_strategy] using the
+    /// default [`OuterHtmlStrategy::Current`] strategy. Preserves the
+    /// historical return contract: `Ok(String)` where the string may be
+    /// empty when both the primary and fallback backends return empty
+    /// payloads.
     ///
+    /// Callers that need to distinguish an empty payload from a hard failure
+    /// — or that want the deeper `DOM.getOuterHTML` + Rust-side walk path —
+    /// should call [`outer_html_with_strategy`][Self::outer_html_with_strategy]
+    /// directly.
     ///
     /// # Errors
     ///
-    /// invalidated.
+    /// Returns an error when any CDP call the chosen strategy actually
+    /// invokes fails — that includes both the primary call and any fallback
+    /// call (the `XMLSerializer` JS fallback for [`OuterHtmlStrategy::Current`],
+    /// the `DOM.describeNode` walk for [`OuterHtmlStrategy::Recursive`]).
+    /// Errors surface as [`BrowserError::Timeout`] (CDP call exceeded
+    /// `cdp_timeout`), [`BrowserError::StaleNode`] (the handle was
+    /// invalidated mid-call), or [`BrowserError::CdpError`] (transport-level
+    /// failure).
+    ///
+    /// Empty or partially-empty payloads from any individual backend do
+    /// **not** error — they are flattened to an empty `String` so the
+    /// historical `Ok(String)` contract is preserved. Callers that need to
+    /// distinguish an empty payload from a hard failure should call
+    /// [`outer_html_with_strategy`][Self::outer_html_with_strategy]
+    /// directly and inspect the [`OuterHtmlResult`] variant.
     pub async fn outer_html(&self) -> Result<String> {
+        match self
+            .outer_html_with_strategy(OuterHtmlStrategy::Current)
+            .await?
+        {
+            OuterHtmlResult::Content(s) => Ok(s),
+            OuterHtmlResult::Empty | OuterHtmlResult::Failed { .. } => Ok(String::new()),
+        }
+    }
+
+    /// Return the element's `outerHTML` using an explicit resolution strategy.
+    ///
+    /// The [`OuterHtmlStrategy::Current`] strategy matches the historical
+    /// [`outer_html`][Self::outer_html] path: a Chromium element-level JS
+    /// evaluation of `this.outerHTML`, followed by a JS
+    /// `new XMLSerializer().serializeToString(this)` fallback when the
+    /// primary call returns an empty payload.
+    ///
+    /// The [`OuterHtmlStrategy::Recursive`] strategy resolves [#66] for
+    /// sites where the JS-side `outerHTML` accessor intermittently returns
+    /// a truncated or empty payload — most notably Wix Studio / Editor X
+    /// pages and large SPAs with deeply nested shadow-DOM subtrees. It
+    /// prefers the dedicated Chromium `DevTools` Protocol command
+    /// `DOM.getOuterHTML` (a single round-trip that performs the
+    /// serialisation inside the browser, with shadow-DOM roots included by
+    /// default) and falls back to a Rust-side walk that calls
+    /// `DOM.describeNode` with `depth = -1` and serialises the resulting
+    /// `Node` tree to HTML locally. Neither path relies on Wix-specific
+    /// selectors, attributes, or heuristics — the resolution is entirely
+    /// driven by CDP commands Chromium already exposes.
+    ///
+    /// Both strategies return [`OuterHtmlResult::Empty`] (rather than
+    /// `Failed`) when every backend returns an empty payload — this is
+    /// indistinguishable from "node legitimately empty" at the CDP layer.
+    ///
+    /// [#66]: https://github.com/greysquirr3l/stygian/issues/66
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrowserError::Timeout`] if the primary CDP call exceeds
+    /// `cdp_timeout`, [`BrowserError::StaleNode`] if the handle was
+    /// invalidated, or [`BrowserError::CdpError`] on transport-level
+    /// failure.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use stygian_browser::page::OuterHtmlStrategy;
+    /// # use stygian_browser::error::Result;
+    /// # async fn run(handle: stygian_browser::NodeHandle) -> Result<()> {
+    /// // Use the deep-resolution path for SPA / Wix Studio / shadow-DOM pages.
+    /// let html = handle
+    ///     .outer_html_with_strategy(OuterHtmlStrategy::Recursive)
+    ///     .await?;
+    /// # let _ = html;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn outer_html_with_strategy(
+        &self,
+        strategy: OuterHtmlStrategy,
+    ) -> Result<OuterHtmlResult> {
+        match strategy {
+            OuterHtmlStrategy::Current => self.outer_html_current().await,
+            OuterHtmlStrategy::Recursive => self.outer_html_recursive().await,
+        }
+    }
+
+    /// Strategy body for [`OuterHtmlStrategy::Current`].
+    async fn outer_html_current(&self) -> Result<OuterHtmlResult> {
         let primary = timeout(self.cdp_timeout, self.element.outer_html())
             .await
             .map_err(|_| BrowserError::Timeout {
-                operation: "NodeHandle::outer_html".to_string(),
+                operation: "NodeHandle::outer_html_with_strategy(Current)".to_string(),
                 duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
             })?
-            .map_err(|e| self.cdp_err_or_stale(&e, "outer_html"))?;
+            .map_err(|e| self.cdp_err_or_stale(&e, "outer_html_current"))?;
 
         if let Some(html) = primary
             && !html.trim().is_empty()
         {
-            return Ok(html);
+            return Ok(OuterHtmlResult::Content(html));
         }
 
         let fallback_html = self.outer_html_via_js().await?;
         if !fallback_html.trim().is_empty() {
-            return Ok(fallback_html);
+            return Ok(OuterHtmlResult::Content(fallback_html));
         }
 
-        Ok(String::new())
+        Ok(OuterHtmlResult::Empty)
+    }
+
+    /// Strategy body for [`OuterHtmlStrategy::Recursive`].
+    ///
+    /// Primary: `DOM.getOuterHTML` (single round-trip, browser-side
+    /// serialisation). Fallback: `DOM.describeNode(nodeId, depth=-1)` +
+    /// Rust-side `Node` → HTML serializer.
+    async fn outer_html_recursive(&self) -> Result<OuterHtmlResult> {
+        use chromiumoxide::cdp::browser_protocol::dom::{GetOuterHtmlParams, GetOuterHtmlReturns};
+        use chromiumoxide::types::CommandResponse;
+
+        let mut failed_backends: Vec<&'static str> = Vec::new();
+
+        let primary = timeout(
+            self.cdp_timeout,
+            self.page.execute(
+                GetOuterHtmlParams::builder()
+                    .node_id(self.element.node_id)
+                    .build(),
+            ),
+        )
+        .await
+        .map_err(|_| BrowserError::Timeout {
+            operation: "NodeHandle::outer_html_with_strategy(Recursive)".to_string(),
+            duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
+        })?
+        .map_err(|e| self.cdp_err_or_stale(&e, "outer_html_recursive::DOM.getOuterHTML"));
+
+        match primary {
+            Ok(CommandResponse {
+                result: GetOuterHtmlReturns { outer_html },
+                ..
+            }) if !outer_html.trim().is_empty() => {
+                return Ok(OuterHtmlResult::Content(outer_html));
+            }
+            Ok(CommandResponse {
+                result: GetOuterHtmlReturns { outer_html },
+                ..
+            }) => {
+                debug!(
+                    selector = %self.selector,
+                    bytes = outer_html.len(),
+                    "DOM.getOuterHTML returned empty payload; falling back to DOM.describeNode walk"
+                );
+            }
+            Err(e) => {
+                failed_backends.push("DOM.getOuterHTML");
+                debug!(
+                    selector = %self.selector,
+                    error = %e,
+                    "DOM.getOuterHTML failed; falling back to DOM.describeNode walk"
+                );
+            }
+        }
+
+        match self.outer_html_via_rust_walk().await {
+            Ok(html) if !html.trim().is_empty() => Ok(OuterHtmlResult::Content(html)),
+            Ok(_) => {
+                if failed_backends.is_empty() {
+                    // Every backend returned an empty payload (no errors
+                    // raised). Surface this as `Empty` rather than `Failed`.
+                    Ok(OuterHtmlResult::Empty)
+                } else {
+                    // At least one backend errored and the other returned
+                    // empty — surface as `Failed` so callers can
+                    // distinguish "nothing to serialize" from "backends
+                    // broke".
+                    Ok(OuterHtmlResult::Failed {
+                        backends: failed_backends,
+                    })
+                }
+            }
+            Err(e) => {
+                failed_backends.push("DOM.describeNode-walk");
+                debug!(
+                    selector = %self.selector,
+                    error = %e,
+                    "Rust-side DOM.describeNode walk failed"
+                );
+                Ok(OuterHtmlResult::Failed {
+                    backends: failed_backends,
+                })
+            }
+        }
+    }
+
+    /// Rust-side fallback: `DOM.describeNode` with `depth = -1` returns the
+    /// entire subtree rooted at the target node; we walk it locally and emit
+    /// HTML using [`serialize_node_tree`].
+    async fn outer_html_via_rust_walk(&self) -> Result<String> {
+        use chromiumoxide::cdp::browser_protocol::dom::DescribeNodeParams;
+        use chromiumoxide::types::CommandResponse;
+
+        let described: CommandResponse<
+            chromiumoxide::cdp::browser_protocol::dom::DescribeNodeReturns,
+        > = timeout(
+            self.cdp_timeout,
+            self.page.execute(
+                DescribeNodeParams::builder()
+                    .node_id(self.element.node_id)
+                    .depth(-1)
+                    .build(),
+            ),
+        )
+        .await
+        .map_err(|_| BrowserError::Timeout {
+            operation: "NodeHandle::outer_html_via_rust_walk".to_string(),
+            duration_ms: u64::try_from(self.cdp_timeout.as_millis()).unwrap_or(u64::MAX),
+        })?
+        .map_err(|e| self.cdp_err_or_stale(&e, "outer_html_via_rust_walk"))?;
+
+        Ok(serialize_node_tree(&described.node))
     }
 
     async fn outer_html_via_js(&self) -> Result<String> {
@@ -2084,6 +2408,202 @@ impl PageHandle {
     }
 }
 
+// ─── Rust-side CDP Node → HTML serializer (Recursive fallback) ───────────────
+
+/// CDP `DOM.Node.nodeType` constants (matches the WHATWG DOM spec).
+mod node_type {
+    /// `Element` node.
+    pub const ELEMENT: i64 = 1;
+    /// Text node (`Text`).
+    pub const TEXT: i64 = 3;
+    /// `CDATASection` node.
+    pub const CDATA_SECTION: i64 = 4;
+    /// `ProcessingInstruction` node.
+    pub const PROCESSING_INSTRUCTION: i64 = 7;
+    /// `Comment` node.
+    pub const COMMENT: i64 = 8;
+    /// `Document` node.
+    pub const DOCUMENT: i64 = 9;
+    /// `DocumentType` node.
+    pub const DOCUMENT_TYPE: i64 = 10;
+    /// `DocumentFragment` node.
+    pub const DOCUMENT_FRAGMENT: i64 = 11;
+}
+
+/// HTML elements that have no closing tag (per the WHATWG spec).
+const VOID_ELEMENTS: &[&str] = &[
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "keygen", "link", "meta", "param",
+    "source", "track", "wbr",
+];
+
+/// Serialise a CDP `Node` subtree (rooted at `node`) to an HTML string.
+///
+/// Used by [`NodeHandle::outer_html_via_rust_walk`] as the
+/// [`OuterHtmlStrategy::Recursive`] fallback when `DOM.getOuterHTML`
+/// returns an empty payload or errors out. The implementation is a
+/// straightforward depth-first walk that mirrors what Chromium's own
+/// `Element.outerHTML` accessor produces for the same tree:
+/// - element nodes emit `<tag attrs>children</tag>`. [`VOID_ELEMENTS`]
+///   emit `<tag attrs>` with no closing slash and no children, matching
+///   Chromium's `outerHTML` byte-for-byte (which uses HTML5 syntax, not
+///   XHTML self-closing).
+/// - text nodes are HTML-escaped
+/// - comment nodes emit `<!--value-->`
+/// - `<!DOCTYPE …>` declarations are emitted for `DocumentType` roots
+/// - `Document` / `DocumentFragment` roots emit only their children
+///   (no outer wrapper), matching how `XMLSerializer` treats them
+/// - `template` content (`template_content`) is inlined as additional
+///   children of the `<template>` element, mirroring browser behaviour
+/// - shadow roots are inlined as additional children of their host
+///   (no `<shadowroot>` wrapper, since shadow content is what
+///   `outerHTML` is expected to surface)
+///
+/// This serializer is not intended to be a perfect drop-in for
+/// `Element.outerHTML` on every edge case (`CDATA`, `ProcessingInstruction`,
+/// and namespace prefixes are simplified) — it is the second-line fallback
+/// for the `Recursive` strategy and only fires when `DOM.getOuterHTML`
+/// itself fails.
+fn serialize_node_tree(node: &chromiumoxide::cdp::browser_protocol::dom::Node) -> String {
+    let mut out = String::new();
+    serialize_node_into(&mut out, node);
+    out
+}
+
+fn serialize_node_into(out: &mut String, node: &chromiumoxide::cdp::browser_protocol::dom::Node) {
+    match node.node_type {
+        node_type::ELEMENT => {
+            let tag = node.local_name.as_str();
+            out.push('<');
+            out.push_str(tag);
+            if let Some(attrs) = &node.attributes {
+                for pair in attrs.chunks_exact(2) {
+                    if let [name, value] = pair {
+                        out.push(' ');
+                        escape_attr_name(out, name);
+                        out.push_str("=\"");
+                        escape_attr_value(out, value);
+                        out.push('"');
+                    }
+                }
+            }
+            if VOID_ELEMENTS.contains(&tag) {
+                out.push('>');
+                return;
+            }
+            out.push('>');
+            serialize_inline_children(out, node);
+            out.push_str("</");
+            out.push_str(tag);
+            out.push('>');
+        }
+        node_type::TEXT => {
+            escape_text(out, &node.node_value);
+        }
+        node_type::COMMENT => {
+            out.push_str("<!--");
+            out.push_str(&node.node_value);
+            out.push_str("-->");
+        }
+        node_type::DOCUMENT | node_type::DOCUMENT_FRAGMENT => {
+            serialize_inline_children(out, node);
+        }
+        node_type::DOCUMENT_TYPE => {
+            out.push_str("<!DOCTYPE ");
+            out.push_str(&node.node_name);
+            if let Some(public_id) = &node.public_id {
+                out.push(' ');
+                out.push_str(public_id);
+            }
+            if let Some(system_id) = &node.system_id {
+                out.push(' ');
+                out.push_str(system_id);
+            }
+            out.push('>');
+        }
+        node_type::CDATA_SECTION => {
+            out.push_str("<![CDATA[");
+            out.push_str(&node.node_value);
+            out.push_str("]]>");
+        }
+        node_type::PROCESSING_INSTRUCTION => {
+            out.push_str("<?");
+            out.push_str(&node.node_name);
+            if !node.node_value.is_empty() {
+                out.push(' ');
+                out.push_str(&node.node_value);
+            }
+            out.push_str("?>");
+        }
+        _ => {
+            if !node.node_value.is_empty() {
+                escape_text(out, &node.node_value);
+            }
+        }
+    }
+}
+
+/// Emit the inline children of a node (regular `children`, plus
+/// `template_content`, `shadow_roots`, and `content_document`) in the order
+/// Chromium's own `Element.outerHTML` accessor surfaces them.
+fn serialize_inline_children(
+    out: &mut String,
+    node: &chromiumoxide::cdp::browser_protocol::dom::Node,
+) {
+    if let Some(children) = &node.children {
+        for child in children {
+            serialize_node_into(out, child);
+        }
+    }
+    if let Some(template_content) = &node.template_content {
+        serialize_node_into(out, template_content);
+    }
+    if let Some(shadow_roots) = &node.shadow_roots {
+        for shadow in shadow_roots {
+            serialize_node_into(out, shadow);
+        }
+    }
+    if let Some(content_document) = &node.content_document {
+        serialize_node_into(out, content_document);
+    }
+}
+
+/// Escape a text node payload for safe inclusion in HTML element content.
+fn escape_text(out: &mut String, value: &str) {
+    for ch in value.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            _ => out.push(ch),
+        }
+    }
+}
+
+/// Escape an attribute name (same rules as text — `&` and `<` cannot appear
+/// in well-formed attribute names but are escaped defensively).
+fn escape_attr_name(out: &mut String, value: &str) {
+    for ch in value.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '"' => out.push_str("&quot;"),
+            _ => out.push(ch),
+        }
+    }
+}
+
+/// Escape an attribute value for inclusion inside `"…"` quoted form.
+fn escape_attr_value(out: &mut String, value: &str) {
+    for ch in value.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '"' => out.push_str("&quot;"),
+            _ => out.push(ch),
+        }
+    }
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -2304,6 +2824,499 @@ mod tests {
             selector: "td.label::prev".to_string(),
         };
         assert!(e.to_string().contains("td.label::prev"));
+    }
+
+    // ── OuterHtmlStrategy / OuterHtmlResult type tests (T101) ─────────────────
+
+    #[test]
+    fn outer_html_strategy_default_is_current() {
+        assert_eq!(OuterHtmlStrategy::default(), OuterHtmlStrategy::Current);
+    }
+
+    #[test]
+    fn outer_html_strategy_as_str_matches_variant() {
+        assert_eq!(OuterHtmlStrategy::Current.as_str(), "Current");
+        assert_eq!(OuterHtmlStrategy::Recursive.as_str(), "Recursive");
+    }
+
+    #[test]
+    fn outer_html_strategy_display_matches_as_str() {
+        assert_eq!(
+            format!("{}", OuterHtmlStrategy::Current),
+            OuterHtmlStrategy::Current.as_str()
+        );
+        assert_eq!(
+            format!("{}", OuterHtmlStrategy::Recursive),
+            OuterHtmlStrategy::Recursive.as_str()
+        );
+    }
+
+    #[test]
+    fn outer_html_strategy_is_copy_and_eq() {
+        let s = OuterHtmlStrategy::Recursive;
+        let copy = s;
+        assert_eq!(s, copy);
+        assert_eq!(s, OuterHtmlStrategy::Recursive);
+        assert_ne!(s, OuterHtmlStrategy::Current);
+    }
+
+    #[test]
+    fn outer_html_strategy_all_iterates_both_variants() {
+        let all = OuterHtmlStrategy::all();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0], OuterHtmlStrategy::Current);
+        assert_eq!(all[1], OuterHtmlStrategy::Recursive);
+    }
+
+    #[test]
+    fn outer_html_strategy_serialize_round_trip()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        for variant in OuterHtmlStrategy::all() {
+            let json = serde_json::to_string(&variant)?;
+            let restored: OuterHtmlStrategy = serde_json::from_str(&json)?;
+            assert_eq!(restored, variant);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn outer_html_result_content_returns_some_for_content() {
+        let r = OuterHtmlResult::Content("<div/>".to_string());
+        assert_eq!(r.content(), Some("<div/>"));
+    }
+
+    #[test]
+    fn outer_html_result_content_returns_none_for_empty() {
+        assert_eq!(OuterHtmlResult::Empty.content(), None);
+    }
+
+    #[test]
+    fn outer_html_result_content_returns_none_for_failed() {
+        let r = OuterHtmlResult::Failed {
+            backends: vec!["DOM.getOuterHTML"],
+        };
+        assert_eq!(r.content(), None);
+    }
+
+    #[test]
+    fn outer_html_result_is_empty_variants() {
+        assert!(OuterHtmlResult::Empty.is_empty());
+        assert!(
+            OuterHtmlResult::Failed {
+                backends: vec!["a"]
+            }
+            .is_empty()
+        );
+        assert!(!OuterHtmlResult::Content("<x/>".to_string()).is_empty());
+        assert!(OuterHtmlResult::Content(String::new()).is_empty());
+    }
+
+    #[test]
+    fn outer_html_result_display_includes_state() {
+        assert_eq!(format!("{}", OuterHtmlResult::Empty), "Empty");
+        assert_eq!(
+            format!("{}", OuterHtmlResult::Content("<div/>".to_string())),
+            "Content(6 bytes)"
+        );
+        let failed = OuterHtmlResult::Failed {
+            backends: vec!["DOM.getOuterHTML", "DOM.describeNode-walk"],
+        };
+        let s = format!("{failed}");
+        assert!(s.contains("DOM.getOuterHTML"));
+        assert!(s.contains("DOM.describeNode-walk"));
+    }
+
+    #[test]
+    fn outer_html_result_serializes_each_variant()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let empty_json = serde_json::to_string(&OuterHtmlResult::Empty)?;
+        assert_eq!(empty_json, "\"Empty\"");
+
+        let content_json =
+            serde_json::to_string(&OuterHtmlResult::Content("<p>x</p>".to_string()))?;
+        assert_eq!(content_json, r#"{"Content":"<p>x</p>"}"#);
+
+        let failed_json = serde_json::to_string(&OuterHtmlResult::Failed {
+            backends: vec!["DOM.getOuterHTML", "DOM.describeNode-walk"],
+        })?;
+        assert_eq!(
+            failed_json,
+            r#"{"Failed":{"backends":["DOM.getOuterHTML","DOM.describeNode-walk"]}}"#
+        );
+        Ok(())
+    }
+
+    // ── Rust-side CDP Node → HTML serializer tests (T101) ─────────────────────
+
+    use chromiumoxide::cdp::browser_protocol::dom::{BackendNodeId, Node, NodeId};
+
+    fn mk_node(
+        node_type: i64,
+        local_name: &str,
+        node_name: &str,
+        node_value: &str,
+        attributes: Option<Vec<String>>,
+        children: Option<Vec<Node>>,
+    ) -> Node {
+        Node {
+            node_id: NodeId::default(),
+            parent_id: None,
+            backend_node_id: BackendNodeId::default(),
+            node_type,
+            node_name: node_name.to_string(),
+            local_name: local_name.to_string(),
+            node_value: node_value.to_string(),
+            child_node_count: None,
+            children,
+            attributes,
+            document_url: None,
+            base_url: None,
+            public_id: None,
+            system_id: None,
+            internal_subset: None,
+            xml_version: None,
+            name: None,
+            value: None,
+            pseudo_type: None,
+            pseudo_identifier: None,
+            shadow_root_type: None,
+            frame_id: None,
+            content_document: None,
+            shadow_roots: None,
+            template_content: None,
+            pseudo_elements: None,
+            distributed_nodes: None,
+            is_svg: None,
+            compatibility_mode: None,
+            assigned_slot: None,
+            is_scrollable: None,
+            affected_by_starting_styles: None,
+            adopted_style_sheets: None,
+        }
+    }
+
+    #[test]
+    fn serialize_element_with_text_child() {
+        let text = mk_node(node_type::TEXT, "", "", "hello", None, None);
+        let div = mk_node(node_type::ELEMENT, "div", "DIV", "", None, Some(vec![text]));
+        assert_eq!(serialize_node_tree(&div), "<div>hello</div>");
+    }
+
+    #[test]
+    fn serialize_element_with_attributes() {
+        let div = mk_node(
+            node_type::ELEMENT,
+            "div",
+            "DIV",
+            "",
+            Some(vec![
+                "id".into(),
+                "main".into(),
+                "class".into(),
+                "container wide".into(),
+            ]),
+            None,
+        );
+        assert_eq!(
+            serialize_node_tree(&div),
+            r#"<div id="main" class="container wide"></div>"#
+        );
+    }
+
+    #[test]
+    fn serialize_void_element_emits_self_closing() {
+        let img = mk_node(
+            node_type::ELEMENT,
+            "img",
+            "IMG",
+            "",
+            Some(vec!["src".into(), "/a.png".into()]),
+            None,
+        );
+        assert_eq!(serialize_node_tree(&img), r#"<img src="/a.png">"#);
+        let br = mk_node(node_type::ELEMENT, "br", "BR", "", None, None);
+        assert_eq!(serialize_node_tree(&br), "<br>");
+    }
+
+    #[test]
+    fn serialize_nested_elements() {
+        let p = mk_node(
+            node_type::ELEMENT,
+            "p",
+            "P",
+            "",
+            None,
+            Some(vec![mk_node(
+                node_type::TEXT,
+                "",
+                "",
+                "Mesh content here",
+                None,
+                None,
+            )]),
+        );
+        let section = mk_node(
+            node_type::ELEMENT,
+            "section",
+            "SECTION",
+            "",
+            None,
+            Some(vec![p]),
+        );
+        let html = serialize_node_tree(&section);
+        assert_eq!(html, "<section><p>Mesh content here</p></section>");
+    }
+
+    #[test]
+    fn serialize_text_escapes_special_chars() {
+        let n = mk_node(node_type::TEXT, "", "", "a < b && c > d", None, None);
+        assert_eq!(serialize_node_tree(&n), "a &lt; b &amp;&amp; c &gt; d");
+    }
+
+    #[test]
+    fn serialize_attribute_value_escapes_quotes_and_amp() {
+        let div = mk_node(
+            node_type::ELEMENT,
+            "div",
+            "DIV",
+            "",
+            Some(vec!["title".into(), "a & b \"c\"".into()]),
+            None,
+        );
+        assert_eq!(
+            serialize_node_tree(&div),
+            r#"<div title="a &amp; b &quot;c&quot;"></div>"#
+        );
+    }
+
+    #[test]
+    fn serialize_attribute_name_escapes_special_chars() {
+        let div = mk_node(
+            node_type::ELEMENT,
+            "div",
+            "DIV",
+            "",
+            Some(vec!["weird<\"&".into(), "v".into()]),
+            None,
+        );
+        assert_eq!(
+            serialize_node_tree(&div),
+            r#"<div weird&lt;&quot;&amp;="v"></div>"#
+        );
+    }
+
+    #[test]
+    fn serialize_comment_node() {
+        let n = mk_node(node_type::COMMENT, "", "", " a comment ", None, None);
+        assert_eq!(serialize_node_tree(&n), "<!-- a comment -->");
+    }
+
+    #[test]
+    fn serialize_document_root_flattens_children() {
+        let html = mk_node(
+            node_type::ELEMENT,
+            "html",
+            "HTML",
+            "",
+            None,
+            Some(vec![mk_node(
+                node_type::ELEMENT,
+                "body",
+                "BODY",
+                "",
+                None,
+                None,
+            )]),
+        );
+        let doc = mk_node(
+            node_type::DOCUMENT,
+            "",
+            "#document",
+            "",
+            None,
+            Some(vec![html]),
+        );
+        assert_eq!(serialize_node_tree(&doc), "<html><body></body></html>");
+    }
+
+    #[test]
+    fn serialize_document_fragment_root_flattens_children() {
+        let span = mk_node(
+            node_type::ELEMENT,
+            "span",
+            "SPAN",
+            "",
+            None,
+            Some(vec![mk_node(node_type::TEXT, "", "", "x", None, None)]),
+        );
+        let frag = mk_node(
+            node_type::DOCUMENT_FRAGMENT,
+            "",
+            "#document-fragment",
+            "",
+            None,
+            Some(vec![span]),
+        );
+        assert_eq!(serialize_node_tree(&frag), "<span>x</span>");
+    }
+
+    #[test]
+    fn serialize_doctype_node() {
+        let dt = Node {
+            public_id: Some("-//W3C//DTD HTML 4.01//EN".to_string()),
+            system_id: Some("http://www.w3.org/TR/html4/strict.dtd".to_string()),
+            ..mk_node(node_type::DOCUMENT_TYPE, "", "html", "", None, None)
+        };
+        assert_eq!(
+            serialize_node_tree(&dt),
+            "<!DOCTYPE html -//W3C//DTD HTML 4.01//EN http://www.w3.org/TR/html4/strict.dtd>"
+        );
+    }
+
+    #[test]
+    fn serialize_doctype_node_no_ids() {
+        let dt = mk_node(node_type::DOCUMENT_TYPE, "", "html", "", None, None);
+        assert_eq!(serialize_node_tree(&dt), "<!DOCTYPE html>");
+    }
+
+    #[test]
+    fn serialize_cdata_section() {
+        let n = mk_node(node_type::CDATA_SECTION, "", "", "raw & <data>", None, None);
+        assert_eq!(serialize_node_tree(&n), "<![CDATA[raw & <data>]]>");
+    }
+
+    #[test]
+    fn serialize_processing_instruction() {
+        let n = mk_node(
+            node_type::PROCESSING_INSTRUCTION,
+            "",
+            "xml-stylesheet",
+            "href=\"style.css\"",
+            None,
+            None,
+        );
+        assert_eq!(
+            serialize_node_tree(&n),
+            "<?xml-stylesheet href=\"style.css\"?>"
+        );
+    }
+
+    #[test]
+    fn serialize_template_inlines_template_content() {
+        let inner = mk_node(
+            node_type::ELEMENT,
+            "span",
+            "SPAN",
+            "",
+            None,
+            Some(vec![mk_node(node_type::TEXT, "", "", "tmpl", None, None)]),
+        );
+        let mut tmpl = mk_node(node_type::ELEMENT, "template", "TEMPLATE", "", None, None);
+        tmpl.template_content = Some(Box::new(inner));
+        assert_eq!(
+            serialize_node_tree(&tmpl),
+            "<template><span>tmpl</span></template>"
+        );
+    }
+
+    #[test]
+    fn serialize_shadow_roots_inlined_into_host() {
+        let shadow_text = mk_node(node_type::TEXT, "", "", "shadow-text", None, None);
+        let shadow = Node {
+            shadow_root_type: Some(chromiumoxide::cdp::browser_protocol::dom::ShadowRootType::Open),
+            ..mk_node(
+                node_type::DOCUMENT_FRAGMENT,
+                "",
+                "#document-fragment",
+                "",
+                None,
+                Some(vec![mk_node(
+                    node_type::ELEMENT,
+                    "span",
+                    "SPAN",
+                    "",
+                    None,
+                    Some(vec![shadow_text]),
+                )]),
+            )
+        };
+        let mut host = mk_node(
+            node_type::ELEMENT,
+            "div",
+            "DIV",
+            "",
+            None,
+            Some(vec![mk_node(node_type::TEXT, "", "", "light", None, None)]),
+        );
+        host.shadow_roots = Some(vec![shadow]);
+        assert_eq!(
+            serialize_node_tree(&host),
+            "<div>light<span>shadow-text</span></div>"
+        );
+    }
+
+    #[test]
+    fn serialize_deeply_nested_subtree() {
+        // Build a 5-level deep subtree: <a><b><c><d><e>deep</e></d></c></b></a>
+        let tag_e = mk_node(
+            node_type::ELEMENT,
+            "e",
+            "E",
+            "",
+            None,
+            Some(vec![mk_node(node_type::TEXT, "", "", "deep", None, None)]),
+        );
+        let tag_d = mk_node(node_type::ELEMENT, "d", "D", "", None, Some(vec![tag_e]));
+        let tag_c = mk_node(node_type::ELEMENT, "c", "C", "", None, Some(vec![tag_d]));
+        let tag_b = mk_node(node_type::ELEMENT, "b", "B", "", None, Some(vec![tag_c]));
+        let tag_a = mk_node(node_type::ELEMENT, "a", "A", "", None, Some(vec![tag_b]));
+        assert_eq!(
+            serialize_node_tree(&tag_a),
+            "<a><b><c><d><e>deep</e></d></c></b></a>"
+        );
+    }
+
+    #[test]
+    fn serialize_element_with_text_and_element_children() {
+        let span = mk_node(
+            node_type::ELEMENT,
+            "span",
+            "SPAN",
+            "",
+            None,
+            Some(vec![mk_node(node_type::TEXT, "", "", "inline", None, None)]),
+        );
+        let div = mk_node(
+            node_type::ELEMENT,
+            "div",
+            "DIV",
+            "",
+            None,
+            Some(vec![
+                mk_node(node_type::TEXT, "", "", "before", None, None),
+                span,
+                mk_node(node_type::TEXT, "", "", "after", None, None),
+            ]),
+        );
+        assert_eq!(
+            serialize_node_tree(&div),
+            "<div>before<span>inline</span>after</div>"
+        );
+    }
+
+    #[test]
+    fn serialize_attribute_pairs_drop_orphans() {
+        // An odd-length attribute list (one name with no value) must not crash.
+        let div = mk_node(
+            node_type::ELEMENT,
+            "div",
+            "DIV",
+            "",
+            Some(vec!["orphan".into()]),
+            None,
+        );
+        // The orphan name has no value so it is silently skipped (pairs of 2).
+        assert_eq!(serialize_node_tree(&div), "<div></div>");
     }
 
     // ── Warmup / Refresh type tests ───────────────────────────────────────────

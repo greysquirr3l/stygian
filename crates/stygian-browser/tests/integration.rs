@@ -735,6 +735,172 @@ async fn outer_html_includes_deep_mesh_descendants() -> Result<(), Box<dyn std::
     Ok(())
 }
 
+/// `outer_html_with_strategy(Current)` returns the same content as the
+/// historical `outer_html()` wrapper for a simple page.
+#[tokio::test]
+#[ignore = "requires Chrome"]
+async fn outer_html_strategy_current_matches_default() -> Result<(), Box<dyn std::error::Error>> {
+    use stygian_browser::page::OuterHtmlStrategy;
+
+    let instance = BrowserInstance::launch(test_config()).await?;
+    let mut page = instance.new_page().await?;
+
+    let html = r#"<html><body><article id="x"><p>hello</p></article></body></html>"#;
+    page.navigate(
+        &data_url(html),
+        WaitUntil::Selector("#x".to_string()),
+        Duration::from_secs(15),
+    )
+    .await?;
+
+    let nodes = page.query_selector_all("#x").await?;
+    let node = nodes
+        .first()
+        .ok_or_else(|| std::io::Error::other("expected #x node"))?;
+
+    let legacy = node.outer_html().await?;
+    let result = node
+        .outer_html_with_strategy(OuterHtmlStrategy::Current)
+        .await?;
+    let content = result
+        .content()
+        .ok_or_else(|| std::io::Error::other("Current strategy should yield Content"))?;
+
+    assert_eq!(
+        legacy, content,
+        "outer_html() and outer_html_with_strategy(Current) must agree on Content"
+    );
+    assert!(
+        content.contains("<article"),
+        "Current strategy must include opening tag; got: {content}"
+    );
+    assert!(
+        content.contains("hello"),
+        "Current strategy must include inner text; got: {content}"
+    );
+
+    page.close().await?;
+    instance.shutdown().await?;
+    Ok(())
+}
+
+/// `outer_html_with_strategy(Recursive)` uses CDP `DOM.getOuterHTML` and
+/// returns the full outer markup including deeply nested descendants on the
+/// same Wix-style mesh page that the legacy call already covers.
+#[tokio::test]
+#[ignore = "requires Chrome"]
+async fn outer_html_strategy_recursive_includes_deep_mesh() -> Result<(), Box<dyn std::error::Error>>
+{
+    use stygian_browser::page::OuterHtmlStrategy;
+
+    let instance = BrowserInstance::launch(test_config()).await?;
+    let mut page = instance.new_page().await?;
+
+    let html = r#"
+<html><body>
+    <section data-block-level-container="ClassicSection">
+        <div data-mesh-id="mesh-container-1">
+            <div data-mesh-id="mesh-container-2">
+                <div data-mesh-id="mesh-container-3">
+                    <div class="wixui-rich-text" data-testid="richTextElement">
+                        <p>Recursive mesh content</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+</body></html>
+"#;
+
+    page.navigate(
+        &data_url(html),
+        WaitUntil::Selector("[data-block-level-container=\"ClassicSection\"]".to_string()),
+        Duration::from_secs(15),
+    )
+    .await?;
+
+    let sections = page
+        .query_selector_all("[data-block-level-container=\"ClassicSection\"]")
+        .await?;
+    let section = sections
+        .first()
+        .ok_or_else(|| std::io::Error::other("expected section node"))?;
+
+    let result = section
+        .outer_html_with_strategy(OuterHtmlStrategy::Recursive)
+        .await?;
+    let content = result
+        .content()
+        .ok_or_else(|| std::io::Error::other("Recursive strategy should yield Content"))?;
+
+    assert!(
+        content.contains("data-mesh-id=\"mesh-container-3\""),
+        "Recursive strategy must include deep mesh descendants; got: {content}"
+    );
+    assert!(
+        content.contains("Recursive mesh content"),
+        "Recursive strategy must include deep text content; got: {content}"
+    );
+
+    page.close().await?;
+    instance.shutdown().await?;
+    Ok(())
+}
+
+/// `outer_html_with_strategy(Recursive)` on a shadow-DOM host should
+/// surface the shadow content (CDP `DOM.getOuterHTML` includes shadow roots
+/// by default).
+#[tokio::test]
+#[ignore = "requires Chrome"]
+async fn outer_html_strategy_recursive_includes_shadow_dom()
+-> Result<(), Box<dyn std::error::Error>> {
+    use stygian_browser::page::OuterHtmlStrategy;
+
+    let instance = BrowserInstance::launch(test_config()).await?;
+    let mut page = instance.new_page().await?;
+
+    let html = r#"
+<html><body>
+    <div id="host"></div>
+    <script>
+      const host = document.getElementById('host');
+      const shadow = host.attachShadow({mode: 'open'});
+      const span = document.createElement('span');
+      span.id = 'shadow-content';
+      span.textContent = 'shadow-text';
+      shadow.appendChild(span);
+    </script>
+</body></html>
+"#;
+    page.navigate(
+        &data_url(html),
+        WaitUntil::Selector("#host".to_string()),
+        Duration::from_secs(15),
+    )
+    .await?;
+
+    let hosts = page.query_selector_all("#host").await?;
+    let host = hosts
+        .first()
+        .ok_or_else(|| std::io::Error::other("expected #host node"))?;
+
+    let result = host
+        .outer_html_with_strategy(OuterHtmlStrategy::Recursive)
+        .await?;
+    let content = result
+        .content()
+        .ok_or_else(|| std::io::Error::other("Recursive strategy should yield Content"))?;
+
+    assert!(
+        content.contains("shadow-text"),
+        "Recursive strategy must surface shadow-DOM content; got: {content}"
+    );
+
+    page.close().await?;
+    instance.shutdown().await?;
+    Ok(())
+}
+
 /// `next_sibling()` advances to the next element in the same parent.
 ///
 /// DOM: `<ul><li id="a">A</li><li id="b">B</li></ul>`
