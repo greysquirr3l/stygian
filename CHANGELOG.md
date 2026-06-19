@@ -7,6 +7,104 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **stygian-proxy (proxy classification)**: new `IpClass` taxonomy
+  (`Mobile` / `Isp` / `Residential` / `Datacenter` / `Unknown`) on
+  `Proxy` and `ProxyCapabilities` lets capability-aware acquisition
+  route by anti-bot vendor. Free-list fetchers now tag datacenter IPs
+  on ingest. Paired with `TargetVendorCompatibility` (Preferred /
+  Acceptable / Marginal / Blocked) so operators can declare which
+  vendor each proxy class is known to defeat.
+- **stygian-proxy (rotation)**: new Thompson-sampling Bayesian
+  rotation strategy behind the `bayesian-rotation` feature. The
+  strategy learns per-proxy health online and replaces blind
+  round-robin on protected-target workloads. Cites 76% success vs
+  36% round-robin on identical proxies in the `ProxyOps` benchmark
+  (549,114 requests / 7 days). Per-proxy `Beta(α, β)` counters use
+  `AtomicU64`; hot-path acquisition stays sub-microsecond.
+- **stygian-proxy (coherence)**: new `CoherencePort` trait and
+  `DefaultCoherenceValidator` behind the `coherence-validation`
+  feature. Catches the WebRTC + DNS + timezone + locale +
+  Accept-Language five-vector mismatch at the orchestration layer
+  before a request is sent — the most commonly overlooked leak
+  cited by the 2026 scraping guide. `ProxyManager::acquire_proxy_with_coherence(ctx, policy)`
+  integrates the check with a configurable hard-fail / advisory
+  severity model and zero allocation per call.
+- **stygian-proxy (capability filtering)**: extended `ProxyCapabilities`
+  with `asn` / `city` / `postal_code` fields for Infatica-style
+  fine-grained geo filtering. `well_known` submodule exposes
+  canonical ASNs for Cloudflare (13,335), Akamai (20,940), Fastly
+  (54,113), CloudFront (16,509), Google (15,169), Azure (8,075) plus
+  an `ALL_KNOWN_ASNS` companion slice. Ingest validation rejects
+  malformed values (`asn = 0` / `u32::MAX`, empty `city`,
+  empty `postal_code`).
+- **stygian-proxy (session stickiness)**: new per-vendor
+  stickiness policy behind the `vendor-stickiness` feature.
+  Built-in defaults encode the 2026 anti-bot matrix: Akamai 30min
+  sticky, Cloudflare 5min sticky, Imperva 15min sticky, PerimeterX /
+  Kasada fresh per domain, DataDome fresh per request, everything
+  else fresh per request. Per-vendor override is supported; unknown
+  vendors fall back to `FreshPerRequest` (safest default).
+- **stygian-proxy (ingest validation)**: new `vendor_quirks::check`
+  validation table catches provider-specific URL traps at ingest
+  time. The Crawlera / Zyte port 8011 plain-HTTP trap (which would
+  crash with `BoringSSL WRONG_VERSION_NUMBER` if forwarded) is now
+  rejected outright; Bright Data and IPRoyal username-format
+  warnings surface in the ingest log. Table is a const slice with
+  zero per-call allocation.
+- **CI (release workflow)**: new `verify-ci` job polls the GitHub
+  API for CI workflow status on the tagged commit and gates the
+  `publish` job on a green CI conclusion. Prevents releasing when
+  CI is red.
+- **CI (release trigger)**: added a `workflow_run` listener for
+  the auto-tag workflow. Tags created by the auto-tagger via
+  `GITHUB_TOKEN` no longer silently skip the release pipeline.
+- **CI (stealth canary)**: regression-issue creation now
+  deduplicates. Repeated failures comment on the existing open
+  issue rather than opening a new one.
+
+### Changed
+
+- `workspace`: refreshed direct dependencies, including `indexmap`
+  1.9.3 → 2.14.0, `openapiv3` 1.0.4 → 2.2.0, `redis` 1.0.4 → 1.2.3,
+  `deadpool-redis` 0.20.0 → 0.23.0, `webpki-roots` 0.26.11 → 1.0.8,
+  `quick-xml` 0.37.5 → 0.38.4, `lru` 0.16.4 → 0.18.0, `scraper`
+  0.25.0 → 0.27.0, `prometheus-client` 0.24.1 → 0.25.0, `hmac`
+  0.12.1 → 0.13.0. The `openapiv3` 2.x upgrade required a
+  source-level fix for the `Boolean` type usage in
+  `crates/stygian-graph/src/adapters/openapi_gen.rs`.
+- `stygian-proxy`: pre-existing strict-clippy baseline brought to
+  zero errors under the pedantic + nursery + perf profile. No
+  public API renames or signature changes — pure mechanical lint
+  remediation on `must_use_candidate` / `missing_errors_doc` /
+  `missing_panics_doc` / `struct_excessive_bools` / `large_futures`.
+- `stygian-charon`: same strict-clippy baseline cleanup. The
+  `token_lifecycle` module is now under the same zero-warning bar
+  as the rest of the workspace.
+
+### Fixed
+
+- `stygian-proxy`: free-list fetchers (`FreeListFetcher`,
+  `FreeApiProxiesFetcher`, `DnsTxtFetcher`) now tag ingested
+  proxies as `IpClass::Datacenter` with `default_blocked()` vendor
+  compatibility, so operators don't accidentally route Akamai /
+  PerimeterX traffic through public datacenter proxies.
+- `stygian-graph/openapi_gen`: openapiv3 2.x `Boolean` type API
+  change was a hard break for code generation. Adjusted the schema
+  builder to the new `ReferenceOr<Schema>` shape.
+
+### Security
+
+- CodeQL: silenced `rust/hard-coded-cryptographic-value` alert
+  on 13 deterministic test-label callsites in
+  `crates/stygian-charon/src/token_lifecycle/` via inline
+  `// codeql[rust/hard-coded-cryptographic-value]` suppression
+  comments. Production code in `token_lifecycle` is unchanged:
+  nonces are server-issued random material at runtime. The
+  GitHub alert is a false positive on test-fixture labels; the
+  suppression comments document the rationale at each callsite.
+
 ## [0.13.5] - 2026-05-26
 
 ### Added
