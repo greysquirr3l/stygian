@@ -99,7 +99,7 @@ quick-xml = { version = "0.38", features = ["serialize"] }
 flate2 = "1.1"
 
 # OpenAPI spec parsing
-openapiv3 = "1"
+openapiv3 = "2"
 serde_yaml = "0.9"
 indexmap = "1"
 
