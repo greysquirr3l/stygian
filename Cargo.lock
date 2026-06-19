@@ -4475,7 +4475,7 @@ dependencies = [
  "flate2",
  "futures",
  "hmac 0.13.0",
- "indexmap 1.9.3",
+ "indexmap 2.14.0",
  "indicatif",
  "lru",
  "mockall",
