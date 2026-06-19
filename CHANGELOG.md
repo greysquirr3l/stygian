@@ -63,6 +63,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CI (stealth canary)**: regression-issue creation now
   deduplicates. Repeated failures comment on the existing open
   issue rather than opening a new one.
+- **stygian-browser (deep outer-HTML resolution)**: new
+  `OuterHtmlStrategy { Current, Recursive }` selector on
+  `NodeHandle::outer_html_with_strategy(strategy)` exposes a
+  single-round-trip `DOM.getOuterHTML` backend (with shadow-DOM
+  roots included by default) plus a Rust-side `DOM.describeNode`
+  walk fallback. Resolves the Wix Studio / Editor X empty-payload
+  case (issue [#66]) without introducing Wix-specific selectors
+  or heuristics. The existing `NodeHandle::outer_html()` is now
+  a thin backwards-compatible wrapper that preserves its
+  `Result<String>` contract.
 
 ### Changed
 

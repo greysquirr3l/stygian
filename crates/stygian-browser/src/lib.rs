@@ -187,7 +187,9 @@ pub use interstitial_router::{
     InterstitialRouter, InterstitialSeverity, PageSignature, RouterDecision, classify_and_route,
     route,
 };
-pub use page::{NodeHandle, PageHandle, ResourceFilter, WaitUntil};
+pub use page::{
+    NodeHandle, OuterHtmlResult, OuterHtmlStrategy, PageHandle, ResourceFilter, WaitUntil,
+};
 pub use pool::{BrowserHandle, BrowserPool, PoolStats};
 pub use proxy::{DirectLease, ProxyLease, ProxySource};
 pub use replay_defense::{
