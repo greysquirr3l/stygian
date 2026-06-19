@@ -20,8 +20,36 @@ tls-profiled = ["dep:stygian-browser", "stygian-browser/tls-config"]
 # MCP (Model Context Protocol) server — exposes proxy pool tools over stdin/stdout JSON-RPC 2.0
 mcp = []
 dns-fetcher  = ["dep:hickory-resolver"]
+## Bayesian multi-armed-bandit rotation (Thompson sampling) backed by
+## per-proxy `Beta(α, β)` counters and a fast xorshift64 RNG. Off by
+## default so existing deployments retain deterministic round-robin.
+## Wires into the `full` aggregator below.
+bayesian-rotation = []
+## Network-identity coherence validator. Detects the "US residential
+## proxy + Pakistani DNS resolver + WebRTC local IP" mismatch cited by
+## the 2026 guide (L3135-3138). Adds the `CoherencePort` trait plus a
+## `DefaultCoherenceValidator` covering country + DNS + WebRTC public
+## IP /16 + timezone vectors. Off by default so existing pipelines are
+## unaffected. Wires into the `full` aggregator below.
+coherence-validation = []
+## Per-vendor session stickiness policy. Translates the 2026 guide's
+## anti-bot-specific stickiness matrix (`Akamai` → 30min sticky,
+## `PerimeterX` / `Kasada` → fresh per domain, `DataDome` → fresh per
+## request, `Cloudflare` → 5min sticky, `Imperva` → 15min sticky,
+## everything else → fresh per request) into a typed policy keyed by
+## [`VendorId`](crate::types::VendorId). Wires into
+## [`SessionMap::acquire_session`](crate::session::SessionMap::acquire_session)
+## and [`ProxyManager::acquire_for_domain_with_vendor`](crate::manager::ProxyManager::acquire_for_domain_with_vendor).
+## Off by default so existing deployments that rely on the current
+## per-domain-only sticky policy are unaffected. Wires into the `full`
+## aggregator below.
+vendor-stickiness = []
+## Aggregator — every feature in the crate compiled in. Used by CI and
+## downstream `stygian-graph` integration tests.
+full = ["socks", "graph", "browser", "tls-profiled", "mcp", "dns-fetcher", "bayesian-rotation", "coherence-validation", "vendor-stickiness"]
 
-[dependencies]
+
+[dependencies] 
 # Workspace deps
 tokio       = { workspace = true }
 tokio-util  = { workspace = true }
@@ -52,6 +80,7 @@ hickory-resolver = { version = "0.26.1", features = ["tokio"], optional = true }
 tokio       = { workspace = true }
 tokio-test  = "0.4"
 wiremock    = "0.6"
+toml        = { workspace = true }
 
 [lints]
 workspace = true

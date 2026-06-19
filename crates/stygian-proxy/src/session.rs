@@ -28,6 +28,9 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
+use crate::stickiness::{StickinessPolicy, VendorStickinessMap};
+use crate::types::VendorId;
+
 /// Default session TTL: 5 minutes.
 const DEFAULT_TTL_SECS: u64 = 300;
 
@@ -193,6 +196,140 @@ impl SessionMap {
         };
         guard.values().filter(|s| !s.is_expired()).count()
     }
+
+    /// Acquire (or refresh) a sticky session for `(domain, vendor)`
+    /// according to `policy_map`.
+    ///
+    /// Translates the 2026 guide's per-vendor stickiness matrix
+    /// ([`VendorStickinessMap::with_builtin_defaults`]) into a typed
+    /// [`SessionDecision`]:
+    ///
+    /// - [`StickinessPolicy::StickyForever`] and
+    ///   [`StickinessPolicy::StickyForTtl`] → reuse an existing binding
+    ///   when present, otherwise emit
+    ///   [`SessionDecision::AcquireAndBind`] with the policy TTL (or
+    ///   [`Duration::MAX`](Duration) for `StickyForever`).
+    /// - [`StickinessPolicy::FreshPerDomain`] → evict any existing
+    ///   binding for `domain` and emit
+    ///   [`SessionDecision::AcquireFresh`].
+    /// - [`StickinessPolicy::FreshPerRequest`] → emit
+    ///   [`SessionDecision::AcquireFresh`] (no binding to evict).
+    /// - [`StickinessPolicy::StickyForRequestCount`] → emitted as
+    ///   [`SessionDecision::AcquireFresh`]. The request-count stickiness
+    ///   is documented as a no-op at this layer because the [`SessionMap`]
+    ///   does not count requests per session; operators that need
+    ///   per-request counting should switch to `StickyForTtl` instead.
+    ///
+    /// Unknown vendors (those without an explicit entry in `policy_map`)
+    /// fall back to [`StickinessPolicy::FreshPerRequest`] (the safest
+    /// default) and so always emit [`SessionDecision::AcquireFresh`].
+    ///
+    /// This method is pure — it never blocks on async I/O and never
+    /// touches the rotation strategy — so it is safe to call from the
+    /// hot acquisition path.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_proxy::session::{SessionDecision, SessionMap};
+    /// use stygian_proxy::stickiness::VendorStickinessMap;
+    /// use stygian_proxy::types::VendorId;
+    /// use std::time::Duration;
+    /// use uuid::Uuid;
+    ///
+    /// let map = SessionMap::new();
+    /// let policy = VendorStickinessMap::with_builtin_defaults();
+    ///
+    /// // Pre-bind as if the manager already acquired a proxy.
+    /// let proxy_id = Uuid::new_v4();
+    /// map.bind("example.com", proxy_id, Duration::from_mins(30));
+    ///
+    /// // Subsequent `acquire_session` for `Akamai` reuses the binding.
+    /// let decision = map.acquire_session("example.com", VendorId::Akamai, &policy);
+    /// assert_eq!(decision, SessionDecision::UseSticky(proxy_id));
+    ///
+    /// // `PerimeterX` always evicts the binding and asks for fresh
+    /// // (FreshPerDomain semantics from the 2026 guide).
+    /// let decision = map.acquire_session("example.com", VendorId::PerimeterX, &policy);
+    /// assert_eq!(decision, SessionDecision::AcquireFresh);
+    /// assert_eq!(map.lookup("example.com"), None, "PerimeterX evicts the binding");
+    /// ```
+    #[must_use]
+    pub fn acquire_session(
+        &self,
+        domain: &str,
+        vendor: VendorId,
+        policy_map: &VendorStickinessMap,
+    ) -> SessionDecision {
+        let policy = policy_map.for_vendor(vendor);
+        let ttl = match policy {
+            StickinessPolicy::StickyForever => Some(Duration::MAX),
+            StickinessPolicy::StickyForTtl { ttl } => Some(ttl),
+            StickinessPolicy::StickyForRequestCount { .. }
+            | StickinessPolicy::FreshPerRequest
+            | StickinessPolicy::FreshPerDomain => None,
+        };
+
+        // Sticky path: reuse existing binding, otherwise ask caller to
+        // acquire-and-bind with the policy TTL. Fresh path: evict any
+        // prior binding for `FreshPerDomain` and always ask caller to
+        // acquire fresh — `FreshPerRequest` and
+        // `StickyForRequestCount` leave any existing binding untouched
+        // (no per-domain semantics).
+        let evict_for_fresh_domain = matches!(policy, StickinessPolicy::FreshPerDomain);
+        ttl.map_or_else(
+            || {
+                if evict_for_fresh_domain {
+                    self.unbind(domain);
+                }
+                SessionDecision::AcquireFresh
+            },
+            |ttl| {
+                self.lookup(domain).map_or(
+                    SessionDecision::AcquireAndBind(ttl),
+                    SessionDecision::UseSticky,
+                )
+            },
+        )
+    }
+}
+
+// ── SessionDecision ──────────────────────────────────────────────────────────
+
+/// Outcome of [`SessionMap::acquire_session`].
+///
+/// Describes whether the caller should reuse an existing sticky binding,
+/// acquire a fresh proxy (without binding), or acquire a fresh proxy and
+/// bind it for a TTL. Returned by `acquire_session` so the caller can
+/// drive the rotation-strategy call itself (the
+/// [`SessionMap`](Self) stays pure — no async, no strategy dependency).
+///
+/// # Example
+///
+/// ```
+/// use stygian_proxy::session::SessionDecision;
+/// use std::time::Duration;
+/// use uuid::Uuid;
+///
+/// let id = Uuid::new_v4();
+/// let decision = SessionDecision::UseSticky(id);
+/// assert!(matches!(decision, SessionDecision::UseSticky(_)));
+/// let decision = SessionDecision::AcquireAndBind(Duration::from_mins(30));
+/// assert!(matches!(decision, SessionDecision::AcquireAndBind(_)));
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionDecision {
+    /// Reuse the existing sticky binding for `proxy_id`. No fresh
+    /// acquisition is needed.
+    UseSticky(Uuid),
+    /// Acquire a fresh proxy via the rotation strategy; do **not** bind
+    /// it. Used for `FreshPerRequest` (and as the safe fallback for
+    /// `StickyForRequestCount`).
+    AcquireFresh,
+    /// Acquire a fresh proxy via the rotation strategy and bind it for
+    /// `ttl`. Used for `StickyForTtl` and `StickyForever` when no
+    /// binding currently exists.
+    AcquireAndBind(Duration),
 }
 
 // ── serde helper ─────────────────────────────────────────────────────────────
@@ -297,5 +434,231 @@ mod tests {
         let back: StickyPolicy = serde_json::from_str(&json)?;
         assert!(matches!(back, StickyPolicy::Domain { ttl } if ttl == Duration::from_mins(2)));
         Ok(())
+    }
+
+    // ── T99: per-vendor acquire_session ─────────────────────────────────────
+
+    use crate::stickiness::{StickinessPolicy, VendorStickinessMap};
+
+    fn vendor_policy_map() -> VendorStickinessMap {
+        VendorStickinessMap::with_builtin_defaults()
+    }
+
+    #[test]
+    fn acquire_session_akamai_no_binding_returns_acquire_and_bind_30min() {
+        let map = SessionMap::new();
+        let policy = vendor_policy_map();
+
+        let decision = map.acquire_session("example.com", VendorId::Akamai, &policy);
+        assert_eq!(
+            decision,
+            SessionDecision::AcquireAndBind(Duration::from_mins(30))
+        );
+    }
+
+    #[test]
+    fn acquire_session_akamai_with_existing_binding_returns_sticky() {
+        let map = SessionMap::new();
+        let policy = vendor_policy_map();
+        let proxy_id = Uuid::new_v4();
+
+        // Simulate the manager having bound the proxy on a prior call.
+        map.bind("example.com", proxy_id, Duration::from_mins(30));
+
+        let decision = map.acquire_session("example.com", VendorId::Akamai, &policy);
+        assert_eq!(decision, SessionDecision::UseSticky(proxy_id));
+    }
+
+    #[test]
+    fn acquire_session_akamai_100_calls_within_ttl_return_same_proxy() {
+        let map = SessionMap::new();
+        let policy = vendor_policy_map();
+        let proxy_id = Uuid::new_v4();
+        map.bind("example.com", proxy_id, Duration::from_mins(30));
+
+        for _ in 0..100 {
+            assert_eq!(
+                map.acquire_session("example.com", VendorId::Akamai, &policy),
+                SessionDecision::UseSticky(proxy_id)
+            );
+        }
+    }
+
+    #[test]
+    fn acquire_session_akamai_expired_binding_returns_acquire_and_bind() {
+        let map = SessionMap::new();
+        let policy = vendor_policy_map();
+        let stale_id = Uuid::new_v4();
+
+        // TTL of 0 expires immediately.
+        map.bind("example.com", stale_id, Duration::ZERO);
+        std::thread::sleep(Duration::from_millis(1));
+
+        let decision = map.acquire_session("example.com", VendorId::Akamai, &policy);
+        assert_eq!(
+            decision,
+            SessionDecision::AcquireAndBind(Duration::from_mins(30))
+        );
+    }
+
+    #[test]
+    fn acquire_session_cloudflare_no_binding_returns_acquire_and_bind_5min() {
+        let map = SessionMap::new();
+        let policy = vendor_policy_map();
+
+        let decision = map.acquire_session("example.com", VendorId::Cloudflare, &policy);
+        assert_eq!(
+            decision,
+            SessionDecision::AcquireAndBind(Duration::from_mins(5))
+        );
+    }
+
+    #[test]
+    fn acquire_session_imperva_no_binding_returns_acquire_and_bind_15min() {
+        let map = SessionMap::new();
+        let policy = vendor_policy_map();
+
+        let decision = map.acquire_session("example.com", VendorId::Imperva, &policy);
+        assert_eq!(
+            decision,
+            SessionDecision::AcquireAndBind(Duration::from_mins(15))
+        );
+    }
+
+    #[test]
+    fn acquire_session_data_dome_always_returns_acquire_fresh() {
+        let map = SessionMap::new();
+        let policy = vendor_policy_map();
+
+        // Even with a binding in place, DataDome says "fresh per request".
+        map.bind("example.com", Uuid::new_v4(), Duration::from_hours(1));
+        let decision = map.acquire_session("example.com", VendorId::DataDome, &policy);
+        assert_eq!(decision, SessionDecision::AcquireFresh);
+    }
+
+    #[test]
+    fn acquire_session_perimeter_x_evicts_existing_binding() {
+        let map = SessionMap::new();
+        let policy = vendor_policy_map();
+        map.bind("example.com", Uuid::new_v4(), Duration::from_hours(1));
+
+        let decision = map.acquire_session("example.com", VendorId::PerimeterX, &policy);
+        assert_eq!(decision, SessionDecision::AcquireFresh);
+        // FreshPerDomain must evict the prior binding so the next call
+        // also acquires fresh.
+        assert_eq!(map.lookup("example.com"), None);
+    }
+
+    #[test]
+    fn acquire_session_perimeter_x_no_existing_binding_returns_fresh() {
+        let map = SessionMap::new();
+        let policy = vendor_policy_map();
+        let decision = map.acquire_session("example.com", VendorId::PerimeterX, &policy);
+        assert_eq!(decision, SessionDecision::AcquireFresh);
+    }
+
+    #[test]
+    fn acquire_session_kasada_evicts_existing_binding() {
+        let map = SessionMap::new();
+        let policy = vendor_policy_map();
+        map.bind("example.com", Uuid::new_v4(), Duration::from_hours(1));
+
+        let decision = map.acquire_session("example.com", VendorId::Kasada, &policy);
+        assert_eq!(decision, SessionDecision::AcquireFresh);
+        assert_eq!(map.lookup("example.com"), None);
+    }
+
+    #[test]
+    fn acquire_session_unknown_vendor_defaults_to_fresh() {
+        let map = SessionMap::new();
+        let policy = vendor_policy_map();
+        map.bind("example.com", Uuid::new_v4(), Duration::from_hours(1));
+
+        // Unknown vendors inherit the safest default (FreshPerRequest),
+        // which leaves any binding alone but asks the caller to acquire
+        // fresh — different from FreshPerDomain, which would evict the
+        // binding.
+        let decision = map.acquire_session("example.com", VendorId::Unknown, &policy);
+        assert_eq!(decision, SessionDecision::AcquireFresh);
+        // FreshPerRequest does not evict prior bindings.
+        assert!(map.lookup("example.com").is_some());
+    }
+
+    #[test]
+    fn acquire_session_sticky_forever_uses_max_duration() {
+        let map = SessionMap::new();
+        let custom = VendorStickinessMap::new()
+            .with_override(VendorId::Akamai, StickinessPolicy::StickyForever);
+
+        let decision = map.acquire_session("example.com", VendorId::Akamai, &custom);
+        assert_eq!(decision, SessionDecision::AcquireAndBind(Duration::MAX));
+    }
+
+    #[test]
+    fn acquire_session_sticky_for_request_count_treated_as_fresh() {
+        let map = SessionMap::new();
+        let custom = VendorStickinessMap::new().with_override(
+            VendorId::Akamai,
+            StickinessPolicy::StickyForRequestCount { max_requests: 5 },
+        );
+
+        let decision = map.acquire_session("example.com", VendorId::Akamai, &custom);
+        assert_eq!(decision, SessionDecision::AcquireFresh);
+    }
+
+    #[test]
+    fn acquire_session_sticky_forever_uses_existing_binding() {
+        let map = SessionMap::new();
+        let custom = VendorStickinessMap::new()
+            .with_override(VendorId::Akamai, StickinessPolicy::StickyForever);
+        let proxy_id = Uuid::new_v4();
+        map.bind("example.com", proxy_id, Duration::from_hours(1));
+
+        let decision = map.acquire_session("example.com", VendorId::Akamai, &custom);
+        assert_eq!(decision, SessionDecision::UseSticky(proxy_id));
+    }
+
+    #[test]
+    fn acquire_session_override_replaces_builtin_akamai_policy() {
+        let map = SessionMap::new();
+        let policy = vendor_policy_map().with_override(
+            VendorId::Akamai,
+            StickinessPolicy::StickyForTtl {
+                ttl: Duration::from_mins(2),
+            },
+        );
+
+        let decision = map.acquire_session("example.com", VendorId::Akamai, &policy);
+        assert_eq!(
+            decision,
+            SessionDecision::AcquireAndBind(Duration::from_mins(2))
+        );
+    }
+
+    #[test]
+    fn acquire_session_empty_map_defaults_all_to_fresh() {
+        // A `VendorStickinessMap::new()` (no built-ins) is the operator's
+        // way of saying "fresh for everything". This must be safe even
+        // when no entries are present.
+        let map = SessionMap::new();
+        let empty = VendorStickinessMap::new();
+        map.bind("example.com", Uuid::new_v4(), Duration::from_hours(1));
+
+        for vendor in [
+            VendorId::Akamai,
+            VendorId::Cloudflare,
+            VendorId::DataDome,
+            VendorId::PerimeterX,
+            VendorId::Kasada,
+            VendorId::Imperva,
+            VendorId::Unknown,
+            VendorId::Hcaptcha,
+        ] {
+            assert_eq!(
+                map.acquire_session("example.com", vendor, &empty),
+                SessionDecision::AcquireFresh,
+                "{vendor:?} should default to fresh when no entry exists"
+            );
+        }
     }
 }

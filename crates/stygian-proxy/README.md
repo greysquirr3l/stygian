@@ -131,6 +131,40 @@ impl RotationStrategy for MyStrategy {
 
 ---
 
+## IP Class and Target-Vendor Compatibility
+
+Per the 2026 scraping guide, anti-bot vendors rank proxy egress IPs into a
+four-tier trust hierarchy. `stygian-proxy` exposes this directly so
+acquisition can route "scrape Akamai" → ISP-static, "scrape DataDome" →
+mobile, and "scrape public data" → free-list datacenter.
+
+```rust,no_run
+use stygian_proxy::{
+    CapabilityRequirement, IpClass, IpClassRequirement, ProxyManager,
+    TargetVendorCompatibility, TrustTier, VendorId,
+};
+
+// Filter acquisitions to mobile-class proxies only.
+let req = CapabilityRequirement {
+    require_ip_class: Some(IpClassRequirement { minimum: IpClass::Isp }),
+    target_vendor: Some(VendorId::DataDome),
+    ..Default::default()
+};
+
+// Acquire a proxy that meets the requirement.
+# async fn run(manager: &ProxyManager, req: &CapabilityRequirement) {
+let handle = manager.acquire_with_capabilities(req).await.unwrap();
+# }
+```
+
+Every free-list fetcher (`FreeListFetcher`, `FreeApiProxiesFetcher`,
+`DnsTxtFetcher`) tags ingested proxies as `IpClass::Datacenter` and
+`TargetVendorCompatibility::default_blocked()` so callers cannot
+accidentally route premium traffic through a public free-list pool. To
+opt a proxy back in, override the per-proxy fields at registration.
+
+---
+
 ## Circuit Breaker
 
 Each proxy has its own `CircuitBreaker`. After `circuit_open_threshold` consecutive failures the breaker opens, and the proxy is excluded from rotation for `circuit_half_open_after`. After that window the proxy is tried once in HalfOpen state — a success closes it; another failure reopens it.

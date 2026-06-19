@@ -323,6 +323,7 @@ mod tests {
 
     #[test]
     fn token_contract_age_secs_clamps_clock_skew_to_zero() {
+        // codeql[rust/hard-coded-cryptographic-value] false-positive: deterministic test label
         let contract = TokenContract {
             token_id: "x".to_string(),
             issued_at_unix_secs: 100,
@@ -341,6 +342,7 @@ mod tests {
 
     #[test]
     fn token_contract_is_expired_returns_true_after_ttl() {
+        // codeql[rust/hard-coded-cryptographic-value] false-positive: deterministic test label
         let contract = TokenContract {
             token_id: "x".to_string(),
             issued_at_unix_secs: 0,
@@ -361,6 +363,7 @@ mod tests {
 
     #[test]
     fn token_contract_serializes_round_trip() {
+        // codeql[rust/hard-coded-cryptographic-value] false-positive: deterministic test label
         let contract = TokenContract {
             token_id: "x".to_string(),
             issued_at_unix_secs: 100,

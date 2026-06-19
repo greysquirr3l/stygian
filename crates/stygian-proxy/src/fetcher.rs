@@ -60,7 +60,7 @@ use crate::{
 /// use stygian_proxy::{Proxy, ProxyType};
 /// use stygian_proxy::fetcher::ProxyFetcher;
 /// use stygian_proxy::error::ProxyResult;
-/// use stygian_proxy::types::ProxyCapabilities;
+/// use stygian_proxy::types::{IpClass, ProxyCapabilities, TargetVendorCompatibility};
 ///
 /// struct MyStaticFetcher;
 ///
@@ -75,6 +75,8 @@ use crate::{
 ///             weight: 1,
 ///             tags: vec!["static".into()],
 ///             capabilities: ProxyCapabilities::default(),
+///             ip_class: IpClass::Isp,
+///             target_compatibility: TargetVendorCompatibility::default(),
 ///         }])
 ///     }
 /// }
@@ -371,6 +373,9 @@ impl FreeListFetcher {
                         is_cdn_edge: matches!(proxy_type, ProxyType::CdnEdge),
                         ..Default::default()
                     },
+                    ip_class: crate::types::IpClass::Datacenter,
+                    target_compatibility: crate::types::TargetVendorCompatibility::default_blocked(
+                    ),
                 })
             })
             .collect();
@@ -664,6 +669,8 @@ impl FreeApiProxiesFetcher {
                 is_cdn_edge: matches!(proxy_type, ProxyType::CdnEdge),
                 ..Default::default()
             },
+            ip_class: crate::types::IpClass::Datacenter,
+            target_compatibility: crate::types::TargetVendorCompatibility::default_blocked(),
         })
     }
 
@@ -923,20 +930,43 @@ impl DnsTxtFetcher {
     }
 
     /// Parse a single TXT record string into a [`Proxy`].
+    ///
+    /// The optional 4th field is an operator-provided
+    /// [`crate::types::IpClass`] tag (e.g. `"mobile"`, `"isp"`,
+    /// `"residential"`, `"datacenter"`). Unknown or missing values
+    /// default to [`crate::types::IpClass::Datacenter`] so DNS-discovered
+    /// entries fail-securely when a `require_ip_class` capability gate
+    /// is in play.
     fn parse_record(&self, record: &str) -> Option<Proxy> {
         let record = record.trim();
         if record.is_empty() || record.starts_with('#') {
             return None;
         }
-        // Extract host and port, supporting bracketed IPv6 addresses.
-        let (host, port, remainder) = if let Some(rest) = record.strip_prefix('[') {
+        let (host, port, remainder) = Self::parse_host_port_remainder(record)?;
+        if host.is_empty() || port == 0 {
+            return None;
+        }
+        // 4 fields: type, [user, pass, ip_class] or [provider, _, ip_class] for cdn_edge.
+        // splitn(4, ':') so the password (or provider) can keep its colons.
+        let parts: Vec<&str> = remainder.splitn(4, ':').collect();
+        let type_str = parts.first().map_or("http", |s| s.trim());
+        match type_str.to_ascii_lowercase().as_str() {
+            "cdn_edge" | "cdn" => Some(self.build_cdn_edge_proxy(&host, port, &parts)),
+            type_str => Some(self.build_typed_proxy(&host, port, type_str, &parts)),
+        }
+    }
+
+    /// Extract `(host, port, remainder)` from a TXT record, supporting
+    /// bracketed IPv6 addresses.
+    fn parse_host_port_remainder(record: &str) -> Option<(String, u16, &str)> {
+        if let Some(rest) = record.strip_prefix('[') {
             let end = rest.find(']')?;
             let host = format!("[{}]", rest.get(..end)?);
             let after = rest.get(end + 1..).unwrap_or("").trim_start_matches(':');
             let colon = after.find(':').unwrap_or(after.len());
             let port: u16 = after.get(..colon)?.trim().parse().ok()?;
             let rem = after.get(colon + 1..).unwrap_or("");
-            (host, port, rem)
+            Some((host, port, rem))
         } else {
             let first = record.find(':')?;
             let host = record.get(..first)?.trim().to_string();
@@ -944,75 +974,93 @@ impl DnsTxtFetcher {
             let second = rest.find(':').unwrap_or(rest.len());
             let port: u16 = rest.get(..second)?.trim().parse().ok()?;
             let rem = rest.get(second + 1..).unwrap_or("");
-            (host, port, rem)
-        };
-        if host.is_empty() || port == 0 {
-            return None;
+            Some((host, port, rem))
         }
-        let parts: Vec<&str> = remainder.splitn(3, ':').collect();
-        let type_str = parts.first().map_or("http", |s| s.trim());
-        match type_str.to_ascii_lowercase().as_str() {
-            "cdn_edge" | "cdn" => {
-                let provider = parts
-                    .get(1)
-                    .copied()
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(str::to_string);
-                Some(Proxy {
-                    url: format!("https://{host}:{port}"),
-                    proxy_type: ProxyType::CdnEdge,
-                    username: None,
-                    password: None,
-                    weight: 1,
-                    tags: self.tags.clone(),
-                    capabilities: crate::types::ProxyCapabilities {
-                        is_cdn_edge: true,
-                        cdn_provider: provider,
-                        ..Default::default()
-                    },
-                })
-            }
-            type_str => {
-                let proxy_type = match type_str {
-                    "https" => ProxyType::Https,
-                    #[cfg(feature = "socks")]
-                    "socks5" | "socks" => ProxyType::Socks5,
-                    #[cfg(feature = "socks")]
-                    "socks4" => ProxyType::Socks4,
-                    _ => ProxyType::Http,
-                };
-                let scheme = match proxy_type {
-                    ProxyType::Http => "http",
-                    ProxyType::Https => "https",
-                    #[cfg(feature = "socks")]
-                    ProxyType::Socks4 => "socks4",
-                    #[cfg(feature = "socks")]
-                    ProxyType::Socks5 => "socks5",
-                    ProxyType::CdnEdge => "https",
-                };
-                let username = parts
-                    .get(1)
-                    .copied()
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(str::to_string);
-                let password = parts
-                    .get(2)
-                    .copied()
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(str::to_string);
-                Some(Proxy {
-                    url: format!("{scheme}://{host}:{port}"),
-                    proxy_type,
-                    username,
-                    password,
-                    weight: 1,
-                    tags: self.tags.clone(),
-                    capabilities: crate::types::ProxyCapabilities::default(),
-                })
-            }
+    }
+
+    /// Build the `Proxy` for a `cdn_edge` TXT record.
+    ///
+    /// `parts` is the 4-field split: `[type, provider, _, ip_class]`.
+    fn build_cdn_edge_proxy(&self, host: &str, port: u16, parts: &[&str]) -> Proxy {
+        let provider = parts
+            .get(1)
+            .copied()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let ip_class = parts
+            .get(2)
+            .copied()
+            .map(str::trim)
+            .and_then(crate::types::IpClass::from_label)
+            .unwrap_or(crate::types::IpClass::Datacenter);
+        Proxy {
+            url: format!("https://{host}:{port}"),
+            proxy_type: ProxyType::CdnEdge,
+            username: None,
+            password: None,
+            weight: 1,
+            tags: self.tags.clone(),
+            capabilities: crate::types::ProxyCapabilities {
+                is_cdn_edge: true,
+                cdn_provider: provider,
+                ..Default::default()
+            },
+            ip_class,
+            target_compatibility: crate::types::TargetVendorCompatibility::default_blocked(),
+        }
+    }
+
+    /// Build the `Proxy` for a typed (non-cdn-edge) TXT record.
+    ///
+    /// `parts` is the 4-field split: `[type, user, pass, ip_class]`.
+    /// `type_str` is the lowercased type tag.
+    fn build_typed_proxy(&self, host: &str, port: u16, type_str: &str, parts: &[&str]) -> Proxy {
+        let proxy_type = match type_str {
+            "https" => ProxyType::Https,
+            #[cfg(feature = "socks")]
+            "socks5" | "socks" => ProxyType::Socks5,
+            #[cfg(feature = "socks")]
+            "socks4" => ProxyType::Socks4,
+            _ => ProxyType::Http,
+        };
+        let scheme = match proxy_type {
+            ProxyType::Http => "http",
+            ProxyType::Https => "https",
+            #[cfg(feature = "socks")]
+            ProxyType::Socks4 => "socks4",
+            #[cfg(feature = "socks")]
+            ProxyType::Socks5 => "socks5",
+            ProxyType::CdnEdge => "https",
+        };
+        let username = parts
+            .get(1)
+            .copied()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let password = parts
+            .get(2)
+            .copied()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let ip_class = parts
+            .get(3)
+            .copied()
+            .map(str::trim)
+            .and_then(crate::types::IpClass::from_label)
+            .unwrap_or(crate::types::IpClass::Datacenter);
+        Proxy {
+            url: format!("{scheme}://{host}:{port}"),
+            proxy_type,
+            username,
+            password,
+            weight: 1,
+            tags: self.tags.clone(),
+            capabilities: crate::types::ProxyCapabilities::default(),
+            ip_class,
+            target_compatibility: crate::types::TargetVendorCompatibility::default_blocked(),
         }
     }
 }
@@ -1119,13 +1167,24 @@ impl ProxyFetcher for DnsTxtFetcher {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)] // test assertions on Option/Result are deterministic
 mod tests {
     use super::*;
 
     // ── DnsTxtFetcher::parse_record ───────────────────────────────────────────
 
     #[cfg(feature = "dns-fetcher")]
-    #[expect(clippy::unwrap_used, reason = "test assertions on Option")]
+    #[allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing
+    )]
     mod dns_txt {
         use super::*;
 
@@ -1201,6 +1260,82 @@ mod tests {
         #[test]
         fn parse_invalid_port_returns_none() {
             assert!(fetcher().parse_record("10.0.0.1:notaport").is_none());
+        }
+
+        /// T95: a TXT record with an explicit `mobile` `IpClass` tag
+        /// produces a `Mobile` proxy; missing/unknown tags fall back to
+        /// `Datacenter` (fail-secure).
+        #[test]
+        fn parse_record_with_mobile_ip_class_tag() {
+            // user:pass:ipclass — splitn(4, ':') → ["http", "alice", "secret", "mobile"]
+            let proxy = fetcher()
+                .parse_record("10.0.0.1:3128:http:alice:secret:mobile")
+                .unwrap();
+            assert_eq!(proxy.username.as_deref(), Some("alice"));
+            assert_eq!(proxy.password.as_deref(), Some("secret"));
+            assert_eq!(proxy.ip_class, crate::types::IpClass::Mobile);
+        }
+
+        #[test]
+        fn parse_record_with_isp_ip_class_tag() {
+            // The 4-field layout is host:port:type:user:pass:ipclass
+            // (6 colon-separated parts). With splitn(4, ':') on the
+            // type+remainder, "http:::isp" → parts = ["http", "", "", "isp"]
+            // so ipclass is the 4th part (ipclass). Leaving user/pass empty
+            // (two consecutive colons) is the canonical way to declare
+            // an unauthenticated, ipclass-tagged DNS record.
+            let proxy = fetcher().parse_record("10.0.0.1:3128:http:::isp").unwrap();
+            assert_eq!(proxy.ip_class, crate::types::IpClass::Isp);
+            // username / password remain empty.
+            assert!(proxy.username.is_none());
+            assert!(proxy.password.is_none());
+        }
+
+        #[test]
+        fn parse_record_without_ip_class_defaults_to_datacenter() {
+            let proxy = fetcher().parse_record("10.0.0.1:3128").unwrap();
+            assert_eq!(proxy.ip_class, crate::types::IpClass::Datacenter);
+            // Free-list default: every vendor is Blocked.
+            assert_eq!(
+                proxy
+                    .target_compatibility
+                    .get(crate::types::VendorId::DataDome),
+                Some(crate::types::TrustTier::Blocked)
+            );
+        }
+
+        #[test]
+        fn parse_record_with_unknown_ip_class_label_defaults_to_datacenter() {
+            // Unknown labels must not panic — fail-secure fallback. The
+            // 4th field is "quantum" (not a valid IpClass label) so the
+            // parser falls back to Datacenter.
+            let proxy = fetcher()
+                .parse_record("10.0.0.1:3128:http:::quantum")
+                .unwrap();
+            assert_eq!(proxy.ip_class, crate::types::IpClass::Datacenter);
+        }
+
+        #[test]
+        fn parse_cdn_edge_with_ip_class_tag() {
+            // cdn_edge layout: host:port:cdn_edge:provider:ipclass.
+            let proxy = fetcher()
+                .parse_record("edge.example.com:443:cdn_edge:cloudflare:mobile")
+                .unwrap();
+            assert!(proxy.capabilities.is_cdn_edge);
+            assert_eq!(
+                proxy.capabilities.cdn_provider.as_deref(),
+                Some("cloudflare")
+            );
+            assert_eq!(proxy.ip_class, crate::types::IpClass::Mobile);
+        }
+
+        #[test]
+        fn parse_cdn_edge_without_ip_class_defaults_to_datacenter() {
+            let proxy = fetcher()
+                .parse_record("edge.example.com:443:cdn_edge:cloudflare")
+                .unwrap();
+            assert!(proxy.capabilities.is_cdn_edge);
+            assert_eq!(proxy.ip_class, crate::types::IpClass::Datacenter);
         }
 
         #[test]
@@ -1421,6 +1556,9 @@ mod tests {
                     weight: 1,
                     tags: fetcher.tags.clone(),
                     capabilities: crate::types::ProxyCapabilities::default(),
+                    ip_class: crate::types::IpClass::Datacenter,
+                    target_compatibility: crate::types::TargetVendorCompatibility::default_blocked(
+                    ),
                 })
             })
             .collect();
@@ -1453,6 +1591,79 @@ mod tests {
         assert!(FreeListFetcher::parse_host_port_line("1.2.3.4:0").is_none());
         assert!(FreeListFetcher::parse_host_port_line(":8080").is_none());
         assert!(FreeListFetcher::parse_host_port_line("2001:db8::1:8080").is_none());
+    }
+
+    /// T95: every free-list ingest path tags proxies as `IpClass::Datacenter`
+    /// regardless of the upstream source content (the source data does not
+    /// include an `IpClass` column).
+    #[test]
+    fn free_list_fetcher_ingest_tags_datacenter_and_blocked() {
+        let fetcher = FreeListFetcher::new(vec![]);
+        let text = "1.2.3.4:8080\n";
+        let proxies: Vec<Proxy> = text
+            .lines()
+            .filter_map(|line| {
+                let (host, port) = FreeListFetcher::parse_host_port_line(line)?;
+                Some(Proxy {
+                    url: format!("http://{host}:{port}"),
+                    proxy_type: ProxyType::Http,
+                    username: None,
+                    password: None,
+                    weight: 1,
+                    tags: fetcher.tags.clone(),
+                    capabilities: crate::types::ProxyCapabilities::default(),
+                    ip_class: crate::types::IpClass::Datacenter,
+                    target_compatibility: crate::types::TargetVendorCompatibility::default_blocked(
+                    ),
+                })
+            })
+            .collect();
+        assert_eq!(proxies.len(), 1);
+        let proxy = proxies.first().expect("at least one proxy");
+        assert_eq!(proxy.ip_class, crate::types::IpClass::Datacenter);
+        // Free-list pools must NOT satisfy a free-form vendor requirement
+        // (every vendor is Blocked by default).
+        assert_eq!(
+            proxy
+                .target_compatibility
+                .get(crate::types::VendorId::DataDome),
+            Some(crate::types::TrustTier::Blocked)
+        );
+        assert_eq!(
+            proxy
+                .target_compatibility
+                .get(crate::types::VendorId::Akamai),
+            Some(crate::types::TrustTier::Blocked)
+        );
+    }
+
+    /// T95: `FreeApiProxiesFetcher::parse_payload` (the JSON ingest path)
+    /// also tags every proxy as `IpClass::Datacenter` and every vendor as
+    /// `TrustTier::Blocked` — same fail-secure default as the plain-text
+    /// free-list fetcher.
+    #[test]
+    fn free_api_proxies_fetcher_parse_tags_datacenter_and_blocked() {
+        let fetcher = FreeApiProxiesFetcher::with_endpoint("https://example.test/api");
+        let body = r#"
+[
+    {"host":"1.2.3.4","port":8080,"protocol":"http"}
+]
+"#;
+        let proxies = fetcher.parse_payload(body).expect("payload should parse");
+        let proxy = proxies.first().expect("at least one proxy");
+        assert_eq!(proxy.ip_class, crate::types::IpClass::Datacenter);
+        assert_eq!(
+            proxy
+                .target_compatibility
+                .get(crate::types::VendorId::DataDome),
+            Some(crate::types::TrustTier::Blocked)
+        );
+        assert_eq!(
+            proxy
+                .target_compatibility
+                .get(crate::types::VendorId::Cloudflare),
+            Some(crate::types::TrustTier::Blocked)
+        );
     }
 
     #[test]

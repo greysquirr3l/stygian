@@ -350,6 +350,8 @@ mod tests {
             weight: 1,
             tags: vec![],
             capabilities: crate::types::ProxyCapabilities::default(),
+            ip_class: crate::types::IpClass::Unknown,
+            target_compatibility: crate::types::TargetVendorCompatibility::default(),
         }
     }
     #[test]
