@@ -10,9 +10,31 @@ all requests to the same site use the same exit IP for the lifetime of the bindi
 When the binding expires the next request automatically picks a fresh proxy and pins
 the new one.
 
+The 0.14.0 release adds **per-vendor** stickiness on top of the existing
+per-domain API — different anti-bot vendors want different strategies, and
+`PerimeterX` / `Kasada` are typically better off with a *fresh per domain*
+strategy while `Akamai` is better off with a *sticky for TTL* strategy.
+
 ---
 
-## Configuration
+## Quick reference
+
+There are now two orthogonal stickiness surfaces in the crate:
+
+- **`ProxyConfig::sticky_policy`** — the legacy domain-only path, always
+  compiled, controls `acquire_for_domain()`. Use this for simple "all
+  requests to this domain share an IP for 5 minutes" cases.
+- **`ProxyManagerBuilder::stickiness_map(VendorStickinessMap)`** — the
+  new per-vendor path, gated behind the `vendor-stickiness` cargo
+  feature, controls `acquire_for_domain_with_vendor()`. Use this when
+  you know which anti-bot vendor protects a target domain.
+
+The two compose: the per-vendor path consults the stickiness map, and the
+per-domain path still applies its TTL on top.
+
+---
+
+## Per-domain stickiness (always compiled)
 
 Sticky-session behaviour is controlled by `ProxyConfig::sticky_policy`:
 
@@ -33,9 +55,7 @@ let config = ProxyConfig {
 
 The default TTL for `StickyPolicy::domain_default()` is **5 minutes**.
 
----
-
-## Using sticky sessions
+### Using per-domain sticky sessions
 
 Once the policy is set, use `acquire_for_domain` instead of `acquire_proxy`:
 
@@ -62,6 +82,7 @@ mgr.add_proxy(Proxy {
     password:   Some("pass".into()),
     weight:     1,
     tags:       vec!["residential".into()],
+    ..Default::default()
 }).await?;
 
 // ── Login flow ────────────────────────────────────────────────────────────────
@@ -89,24 +110,125 @@ handle.mark_success();
 
 ---
 
+## Per-vendor stickiness (feature `vendor-stickiness`)
+
+Different vendors reward different strategies. The 2026 scraping guide
+encodes the matrix as built-in defaults; override individual entries
+when you have a strong opinion.
+
+### Built-in defaults
+
+| Vendor | Default policy | Rationale |
+| --- | --- | --- |
+| `Akamai` | `StickyForTtl { ttl: 30 min }` | Akamai Bot Manager degrades gracefully on sticky sessions and aggressively scores IP churn |
+| `Cloudflare` | `StickyForTtl { ttl: 5 min }` | Cloudflare's bot-score model includes session continuity; full-session stickiness is overkill |
+| `Imperva` | `StickyForTtl { ttl: 15 min }` | Imperva sits between Akamai and Cloudflare on stickiness benefit |
+| `PerimeterX` | `FreshPerDomain` | PerimeterX tracks session-bound device fingerprints; a fresh IP per domain disrupts the signal |
+| `Kasada` | `FreshPerDomain` | Same rationale as PerimeterX |
+| `DataDome` | `FreshPerRequest` | DataDome aggressively fingerprints IP churn; never reuse |
+| Anything else (including `VendorId::Unknown`) | `FreshPerRequest` | Safest default — fail open to fresh |
+
+### Customising the map
+
+```rust,no_run
+use std::time::Duration;
+use stygian_proxy::stickiness::{StickinessPolicy, VendorStickinessMap};
+use stygian_proxy::types::VendorId;
+
+let map = VendorStickinessMap::with_builtin_defaults()
+    // Force Akamai to never rotate during the process lifetime.
+    .with_override(VendorId::Akamai, StickinessPolicy::StickyForever)
+    // Per-domain fresh rotation for a vendor not in the built-in matrix.
+    .with_override(VendorId::Hcaptcha, StickinessPolicy::FreshPerDomain);
+```
+
+`VendorStickinessMap` is a transparent newtype around
+`BTreeMap<VendorId, StickinessPolicy>`. Lookups via
+`map.for_vendor(vendor)` fall back to `FreshPerRequest` for any vendor
+that has no entry — that is the **safest default** and matches the
+"unknown vendor" row of the built-in table.
+
+### Installing on a `ProxyManager`
+
+```rust,no_run
+use std::sync::Arc;
+use stygian_proxy::{
+    MemoryProxyStore, ProxyConfig, ProxyManager,
+    stickiness::VendorStickinessMap,
+};
+use stygian_proxy::types::VendorId;
+
+let storage = Arc::new(MemoryProxyStore::default());
+let mgr = ProxyManager::with_round_robin(storage, ProxyConfig::default())?
+    .builder()
+    .stickiness_map(VendorStickinessMap::with_builtin_defaults())
+    .build()?;
+```
+
+The builder method is feature-gated. When the `vendor-stickiness`
+feature is off, `ProxyManagerBuilder::stickiness_map` does not exist;
+calling `acquire_for_domain_with_vendor` returns
+`ProxyError::VendorStickinessDisabled`.
+
+### Acquiring with a vendor tag
+
+```rust,no_run
+use stygian_proxy::types::VendorId;
+
+// Akamai's 30-minute sticky policy applies for this call.
+let handle = mgr.acquire_for_domain_with_vendor(
+    "store.example.com",
+    VendorId::Akamai,
+).await?;
+```
+
+`SessionDecision` describes the outcome:
+
+| Variant | Meaning |
+| --- | --- |
+| `UseSticky(Uuid)` | The vendor's policy returned an existing binding; the inner `Uuid` is the bound proxy |
+| `AcquireFresh` | No active binding; the manager picked a fresh proxy from the pool |
+| `AcquireAndBind(Duration)` | No active binding; the manager picked a fresh proxy and bound it for the inner TTL |
+
+### Unknown-vendor fallback
+
+`VendorId::Unknown` is a real value (used when the operator has not
+classified a domain). The built-in map returns
+`StickinessPolicy::FreshPerRequest` for it, which is the safe default.
+
+---
+
 ## Session lifecycle
 
 ```mermaid
 stateDiagram-v2
     [*] --> Unbound : First request to domain
 
-    Unbound --> Bound : acquire_for_domain()\nselects proxy via strategy\nbind(domain, proxy_id, ttl)
+    Unbound --> Bound : acquire_for_domain()\nor acquire_for_domain_with_vendor()\nselects proxy via strategy\nbind(domain, proxy_id, ttl)
 
     Bound --> Bound : acquire_for_domain()\nlookup() hit — same proxy returned
 
-    Bound --> Expired : TTL elapsed
+    Bound --> Expired : TTL elapsed\n(or FreshPerDomain / FreshPerRequest policy)
 
     Expired --> Bound : acquire_for_domain()\npicks fresh proxy\nbinds new session
 
     Bound --> Unbound : ProxyHandle dropped\nwithout mark_success()\nunbind(domain) called
 
     Bound --> Unbound : proxy removed from pool\nor circuit breaker open\nsession invalidated
+
+    note right of Bound
+        Per-vendor policy
+        consults VendorStickinessMap
+        before reusing the binding
+    end note
 ```
+
+For `FreshPerDomain` the "expired" transition fires on every call to the
+same domain — there is no reuse within a domain, but a different domain
+keeps its own binding.
+
+For `FreshPerRequest` there is no `Bound` state at all — every call goes
+through `AcquireFresh`.
 
 ---
 
@@ -166,6 +288,7 @@ sessions.unbind("login.example.com");
 | `unbind(domain)` | Remove a binding immediately |
 | `purge_expired() -> usize` | Evict all expired bindings; returns count removed |
 | `active_count() -> usize` | Number of non-expired bindings currently held |
+| `acquire_session(domain, vendor, policy_map)` *(feature `vendor-stickiness`)* | Combine the legacy `lookup` with the per-vendor `VendorStickinessMap` decision logic |
 
 ---
 
@@ -202,3 +325,8 @@ tokio::join!(
     fetch(&h3, "https://shop-c.com/products"),
 );
 ```
+
+When the per-vendor path is enabled, `acquire_for_domain_with_vendor(domain, vendor)`
+treats `(domain, vendor)` as the binding key — so `acquire_for_domain_with_vendor("shop-a.com", VendorId::Akamai)`
+and `acquire_for_domain_with_vendor("shop-a.com", VendorId::Cloudflare)` produce
+independent bindings under the same domain name.

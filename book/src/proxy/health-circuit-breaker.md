@@ -183,3 +183,47 @@ let config = ProxyConfig {
 
 When both fields are `None` the connection lifetime is governed entirely by the proxy
 server and TCP keepalive. Set either limit to prevent silent connection staleness.
+
+---
+
+## Thompson-sampling interaction
+
+When the `bayesian-rotation` cargo feature is enabled and the manager is
+built with [`ProxyManager::with_thompson_sampling`](https://docs.rs/stygian-proxy/0.14/stygian_proxy/struct.ProxyManager.html#method.with_thompson_sampling),
+`ThompsonStrategy` is registered as **both** the rotation strategy and
+the Bayesian observer. The same `ProxyHandle::mark_success` and
+drop-failure signals that drive the circuit breaker also feed the
+per-proxy `Beta(α, β)` posterior.
+
+| Signal | Effect on circuit breaker | Effect on Thompson posterior |
+| --- | --- | --- |
+| `handle.mark_success()` | Resets failure counter, closes circuit | `α += 1` on the bound proxy |
+| Drop without `mark_success()` | Increments failure counter | `β += 1` on the bound proxy |
+| Health-check success | Closes circuit | `α += 1` (if the proxy was already bound to a session, also feeds the strategy) |
+| Health-check failure | Opens circuit after threshold | `β += 1` |
+
+There is **no separate observer call** required at the call site. The
+two observation streams (live traffic + background health checks) feed
+the same posterior and the same circuit breaker state.
+
+To seed the bandit from a known-good feed at startup (warm-up before
+the cold-start traffic reaches statistical equilibrium), call
+`strategy_warmup_observe(proxy_id, success)` once for each entry in your
+trust list. See the [Thompson-sampling Bayesian rotation](strategies.md#thompsonsampling-bayesian-rotation)
+section for the full API.
+
+---
+
+## TLS-profiled request mode
+
+When the `tls-profiled` cargo feature is enabled, `ProxyConfig` exposes
+a `tls_profiled_request_mode: ProfiledRequestMode` field that the
+`HealthChecker` consults at construction time to choose how probes
+exercise the TLS stack. The default is `ProfiledRequestMode::Disabled`,
+which produces the same probes as the un-profiled `HealthChecker`.
+
+Other variants exercise the proxy's TLS profile end-to-end so a broken
+profile trips the circuit before any live request hits it. The exact
+variant catalogue is in the rustdoc; the relevant operational effect is
+that **a profile mismatch surfaces as a circuit-open event**, not as a
+runtime TLS error in the request path.

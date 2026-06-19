@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Security
+
+## [0.14.0] - 2026-06-19
+
+### Added
+
 - **stygian-proxy (proxy classification)**: new `IpClass` taxonomy
   (`Mobile` / `Isp` / `Residential` / `Datacenter` / `Unknown`) on
   `Proxy` and `ProxyCapabilities` lets capability-aware acquisition
@@ -1409,7 +1419,17 @@ Both crates are functional and well-tested, but APIs may evolve based on communi
 
 ---
 
-[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/greysquirr3l/stygian/compare/v0.13.5...v0.14.0
+[0.13.5]: https://github.com/greysquirr3l/stygian/compare/v0.13.4...v0.13.5
+[0.13.4]: https://github.com/greysquirr3l/stygian/compare/v0.13.3...v0.13.4
+[0.13.3]: https://github.com/greysquirr3l/stygian/compare/v0.13.2...v0.13.3
+[0.13.2]: https://github.com/greysquirr3l/stygian/compare/v0.13.1...v0.13.2
+[0.13.1]: https://github.com/greysquirr3l/stygian/compare/v0.13.0...v0.13.1
+[0.13.0]: https://github.com/greysquirr3l/stygian/compare/v0.12.1...v0.13.0
+[0.12.1]: https://github.com/greysquirr3l/stygian/compare/v0.12.0...v0.12.1
+[0.12.0]: https://github.com/greysquirr3l/stygian/compare/v0.11.0...v0.12.0
+[0.11.0]: https://github.com/greysquirr3l/stygian/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/greysquirr3l/stygian/compare/v0.9.6...v0.10.0
 [0.9.6]: https://github.com/greysquirr3l/stygian/compare/v0.9.5...v0.9.6
 [0.9.5]: https://github.com/greysquirr3l/stygian/compare/v0.9.4...v0.9.5

@@ -33,7 +33,7 @@ let node = &nodes[0]; // NodeHandle
 // Inner text (JS textContent)
 let text: String = node.text_content().await?;
 
-// Full outer HTML
+// Full outer HTML — the default `OuterHtmlStrategy::Current` strategy.
 let html: String = node.outer_html().await?;
 
 // Inner HTML only (children, not the element itself)
@@ -57,6 +57,81 @@ let ancestors: Vec<String> = node.ancestors().await?;
 let href:    String = node.attr("href").await?;
 let data_id: String = node.attr("data-id").await?;
 ```
+
+---
+
+## Deep outerHTML resolution (`outer_html_with_strategy`)
+
+`NodeHandle::outer_html()` uses the legacy `OuterHtmlStrategy::Current`
+strategy by default — a Chromium element-level JS evaluation of
+`this.outerHTML` with a `XMLSerializer` fallback when the primary call
+returns an empty payload. That covers most pages, but highly dynamic
+sites (notably Wix Studio / Editor X meshes, large SPAs, and pages with
+deep shadow-DOM subtrees) intermittently return truncated or empty
+payloads from the JS-side `outerHTML` accessor.
+
+For those cases use `outer_html_with_strategy(OuterHtmlStrategy::Recursive)`
+directly. The `Recursive` strategy prefers the dedicated CDP command
+`DOM.getOuterHTML` — a single round-trip that performs the serialisation
+**inside the browser** with shadow-DOM roots included by default — and
+falls back to a Rust-side walk that calls `DOM.describeNode(nodeId, depth=-1)`
+and serialises the resulting `Node` tree locally.
+
+```rust,no_run
+use stygian_browser::OuterHtmlStrategy;
+
+let result = node.outer_html_with_strategy(OuterHtmlStrategy::Recursive).await?;
+match result {
+    OuterHtmlResult::Content(html) => println!("got {} bytes", html.len()),
+    OuterHtmlResult::Empty         => println!("both backends returned empty"),
+    OuterHtmlResult::Failed { backends } => {
+        eprintln!("all backends failed: {}", backends.join(", "));
+    }
+}
+```
+
+### `OuterHtmlStrategy` variants
+
+| Variant | Backend | When to use |
+| --- | --- | --- |
+| `Current` *(default)* | Element-level JS eval `this.outerHTML` → `XMLSerializer` fallback | The historical default; works for most pages |
+| `Recursive` | CDP `DOM.getOuterHTML` (single round-trip) → Rust-side `DOM.describeNode` walk fallback | Wix Studio / Editor X meshes, large SPAs, deep shadow-DOM subtrees, pages where the JS-side `outerHTML` accessor intermittently returns empty |
+
+### `OuterHtmlResult` variants
+
+| Variant | Meaning |
+| --- | --- |
+| `Content(String)` | Successfully serialised outer markup |
+| `Empty` | Every backend the strategy tried returned an empty payload (page may still be rendering or the node has been detached) |
+| `Failed { backends: Vec<&'static str> }` | Every backend errored; `backends` lists them in attempt order for diagnostics |
+
+`OuterHtmlResult` implements `Serialize` so the outcome can be emitted in
+structured logs and per-request reports. `Display` returns
+`"Empty"`, `"Content(N bytes)"`, or `"Failed(a, b)"` for log lines.
+
+### Why "Recursive" works generically (not Wix-specific)
+
+The `Recursive` strategy resolves the Wix Studio / Editor X empty-payload
+case **without any Wix-specific selectors, attributes, or heuristics**.
+It just selects a different CDP backend — `DOM.getOuterHTML` — that
+already handles deeply nested subtrees, large SPAs, and shadow-DOM
+trees correctly in a single browser-side pass. The Rust-side
+`DOM.describeNode(depth=-1)` walk is the second-line fallback for the
+rare cases where `DOM.getOuterHTML` itself fails.
+
+### Existing `outer_html()` is unchanged
+
+`NodeHandle::outer_html()` is a thin backwards-compatible wrapper:
+
+- `Content(html)` → `Ok(html)` — same as before.
+- `Empty` → `Ok(String::new())` — preserves the historical contract.
+- `Failed { .. }` → `Ok(String::new())` — preserves the historical
+  contract (the legacy method could not surface backend diagnostics, so
+  empty string is the safe fallback).
+
+Callers that need to distinguish Empty / Content / Failed, or that want
+the deep-resolution path on Wix Studio / shadow-DOM pages, should call
+`outer_html_with_strategy` directly.
 
 ---
 
@@ -102,6 +177,13 @@ if let Some(prev) = node.previous_sibling().await? {
 > **Stale nodes:** If the page navigates or the element is removed from the DOM between
 > acquiring a `NodeHandle` and calling a method on it, the call returns
 > `BrowserError::StaleNode`. Handle this like a normal `?` error.
+>
+> For `outer_html_with_strategy` specifically, a stale node surfaces as
+> `OuterHtmlResult::Failed { backends: vec!["DOM.getOuterHTML"] }` (or
+> `"DOM.describeNode-walk"` if the fallback is the one that errored) —
+> the strategy records which backend reported the failure rather than
+> bubbling the error through `?`. Use `outer_html()` directly if you
+> want the legacy `?` error path.
 
 ---
 

@@ -233,3 +233,191 @@ regardless of whether it came from a `graph` or `browser` integration:
 If the handle is dropped without `mark_success()`, the failure counter
 increments. After `circuit_open_threshold` consecutive failures the circuit
 opens and the proxy is skipped until after the `circuit_half_open_after` cooldown.
+
+When the manager is built with
+[`ProxyManager::with_thompson_sampling`](https://docs.rs/stygian-proxy/0.14/stygian_proxy/struct.ProxyManager.html#method.with_thompson_sampling),
+the same `mark_success` / drop-failure signals also feed the Bayesian
+bandit (see [Thompson-sampling Bayesian rotation](strategies.md#thompsonsampling-bayesian-rotation)).
+
+---
+
+## Per-vendor sticky browser integration (`vendor-stickiness` feature)
+
+When the `vendor-stickiness` cargo feature is enabled, a browser bridge
+can opt into per-vendor sticky bindings by calling
+`acquire_for_domain_with_vendor`:
+
+```rust,no_run
+use std::sync::Arc;
+use stygian_proxy::{
+    MemoryProxyStore, ProxyConfig, ProxyManager,
+    stickiness::VendorStickinessMap,
+};
+use stygian_proxy::types::VendorId;
+
+let storage = Arc::new(MemoryProxyStore::default());
+let manager = ProxyManager::with_round_robin(storage, ProxyConfig::default())?
+    .builder()
+    .stickiness_map(VendorStickinessMap::with_builtin_defaults())
+    .build()?;
+
+// Akamai's 30-minute sticky policy applies for "store.example.com".
+let handle = manager
+    .acquire_for_domain_with_vendor("store.example.com", VendorId::Akamai)
+    .await?;
+```
+
+Pair this with `BrowserProxySource` in production:
+
+```rust,no_run
+use stygian_proxy::browser::ProxyManagerBridge;
+use stygian_browser::{BrowserConfig, WaitUntil};
+use std::time::Duration;
+
+let bridge = ProxyManagerBridge::new(Arc::clone(&manager));
+let config = BrowserConfig::builder()
+    .proxy_source(bridge) // <- ProxySource trait, not the free function
+    .headless(true)
+    .build();
+
+// Akamai-guarded sites get the 30-minute sticky binding;
+// DataDome-guarded sites get fresh-per-request.
+let page = config.acquire().await?;
+page.navigate(
+    "https://store.example.com/login",
+    WaitUntil::DomContentLoaded,
+    Duration::from_secs(30),
+).await?;
+```
+
+See the [Sticky Sessions](sticky-sessions.md) chapter for the full
+policy matrix and `VendorStickinessMap` builder API.
+
+---
+
+## Network-identity coherence check (`coherence-validation` feature)
+
+`CoherenceValidator` is a `Box<dyn CoherencePort>` that gates acquisition
+on the WebRTC + DNS + timezone + locale + Accept-Language five-vector
+match. It is composed onto a manager via the builder:
+
+```rust,no_run
+use std::sync::Arc;
+use stygian_proxy::{
+    CoherenceContext, CoherencePolicy, CoherenceValidator,
+    MemoryProxyStore, MismatchField, ProxyConfig, ProxyManager,
+};
+
+let storage = Arc::new(MemoryProxyStore::default());
+let mgr = ProxyManager::with_round_robin(storage, ProxyConfig::default())?
+    .builder()
+    .coherence_validator(Arc::new(CoherenceValidator::default()))
+    .build()?;
+```
+
+At acquire time:
+
+```rust,no_run
+let ctx = CoherenceContext::from_browser_page(&page).await?;
+let policy = CoherencePolicy::hard_fail_on(MismatchField::WebRtcPublicIp);
+let handle = mgr.acquire_proxy_with_coherence(&ctx, &policy).await?;
+```
+
+`policy.advisory()` (the default) logs mismatches at `tracing::warn!` and
+still issues the proxy. `policy.hard_fail_on(field)` upgrades the
+chosen field to a hard reject — the call returns
+`ProxyError::CoherenceMismatch { field, observed, expected }` and no
+proxy is leased. Zero allocation per call once the `CoherenceContext`
+is built; safe on the hot path.
+
+---
+
+## Thompson-sampling rotation wiring
+
+When the `bayesian-rotation` feature is enabled, the manager is built
+with `ThompsonStrategy` and observers are fed by the existing
+`ProxyHandle::mark_success` / drop-failure path — no separate observer
+call is required at the call site. To seed the bandit from a known-good
+feed, use `strategy_warmup_observe`:
+
+```rust,no_run
+use std::sync::Arc;
+use std::time::Duration;
+use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
+
+let storage = Arc::new(MemoryProxyStore::default());
+let mgr = ProxyManager::with_thompson_sampling(
+    storage,
+    ProxyConfig::default(),
+    Duration::from_secs(300), // decay_interval — defaults to 5 min
+)?;
+
+// Seed the bandit from a known-good feed so cold-start traffic
+// is already informed.
+mgr.strategy_warmup_observe(proxy_id_a, true).await;
+mgr.strategy_warmup_observe(proxy_id_b, false).await;
+```
+
+`strategy_warmup_observe` is fire-and-forget — the bandit reads from
+these observations on its next acquire. In production you typically
+seed at startup from a curated trust list and let live traffic update
+the posterior.
+
+---
+
+## Ingest with metadata
+
+`add_proxy_with_metadata` is a convenience constructor that validates
+the URL against `vendor_quirks::check` and accepts `(url, asn, city,
+postal_code)` directly without a `Proxy` struct literal:
+
+```rust,no_run
+use stygian_proxy::types::well_known;
+use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
+use std::sync::Arc;
+
+let storage = Arc::new(MemoryProxyStore::default());
+let mgr = ProxyManager::with_round_robin(storage, ProxyConfig::default())?;
+
+mgr.add_proxy_with_metadata(
+    "http://user:pass@edge1.example.com:8080".into(),
+    well_known::KNOWN_ASN_AKAMAI, // 20_940
+    "Cambridge".into(),
+    "02142".into(),
+).await?;
+```
+
+The metadata is stored on the underlying `Proxy`'s `capabilities.{asn,
+city, postal_code}` fields and participates in
+`CapabilityRequirement::require_asn` / `require_city` /
+`require_postal_code` filters at acquire time.
+
+---
+
+## Vendor-quirk ingest validation
+
+Provider-specific URL traps (Crawlera / Zyte port 8011 plain-HTTP
+errors, Bright Data / IPRoyal username-format warnings) surface late —
+deep in the TLS handshake or on the first request — without warning.
+`vendor_quirks::check` validates at ingest:
+
+```rust,no_run
+use stygian_proxy::vendor_quirks::{check, ProxyUrl, QuirkSeverity};
+
+let url = ProxyUrl::parse("http://proxy.crawlera.com:8011").unwrap();
+for m in check(&url) {
+    match m.severity {
+        QuirkSeverity::Error  => {
+            return Err(format!("rejected: {}", m.description).into());
+        }
+        QuirkSeverity::Warning => tracing::warn!(?m, "vendor-quirk"),
+        QuirkSeverity::Info    => tracing::info!(?m, "vendor-quirk"),
+    }
+}
+```
+
+`ProxyManager::add_proxy_with_metadata` and the free-list fetchers
+internally call this validation; if you build your own ingest
+pipeline, call it before `add_proxy`. Error-severity quirks should
+reject the proxy outright; warning-severity quirks should be logged
+and accepted.
