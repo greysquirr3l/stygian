@@ -22,6 +22,7 @@ of stealth features for bypassing modern bot-detection systems.
 | **Resource filtering** | Block images, fonts, media per-tab to speed up text scraping |
 | **Cookie persistence** | Save/restore full session state (cookies + localStorage); `inject_cookies()` for seeding individual tokens |
 | **Live DOM query** | `query_selector_all()` returns typed `NodeHandle` values; no full-HTML serialisation round-trip |
+| **Deep outerHTML resolution** | `NodeHandle::outer_html_with_strategy(OuterHtmlStrategy::Recursive)` for shadow-DOM / SPA / Wix Studio empty-payload cases via `DOM.getOuterHTML` + Rust-side `DOM.describeNode` fallback |
 | **DOM traversal** | `NodeHandle::parent()`, `next_sibling()`, `previous_sibling()` for element-level tree walking |
 | **Similarity matching** | `find_similar()` locates structurally equivalent elements across page versions using weighted Jaccard scoring (`similarity` feature) |
 | **Structured extraction** | `#[derive(Extract)]` proc-macro maps CSS selectors directly onto Rust structs (`stygian-extract-derive`) |
