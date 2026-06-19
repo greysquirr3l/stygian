@@ -211,7 +211,13 @@ impl std::fmt::Display for OuterHtmlStrategy {
 /// The default `String`-returning [`NodeHandle::outer_html`] flattens this
 /// into a `Result<String>` where `Empty` and `Failed` both surface as the
 /// empty string — preserving the historical contract.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Derives [`Serialize`] so callers can include the outcome in structured
+/// logs, metrics, or per-request reports. `Deserialize` is intentionally not
+/// derived because the `Failed::backends` field holds `&'static str`
+/// backend names — a deserialised value would need owned `String`s and
+/// would lose the typed backend taxonomy this enum encodes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum OuterHtmlResult {
     /// The chosen strategy's backends all returned an empty payload. This
     /// typically means the page is still rendering or the node has been
@@ -412,11 +418,21 @@ impl NodeHandle {
     ///
     /// # Errors
     ///
-    /// Returns an error only when the chosen strategy's *primary* CDP call
-    /// itself fails (e.g. the CDP transport errors out or the page handle is
-    /// invalidated mid-call). Empty or partially-empty payloads from any
-    /// individual backend do **not** error — they are flattened to an empty
-    /// `String` to preserve the historical contract.
+    /// Returns an error when any CDP call the chosen strategy actually
+    /// invokes fails — that includes both the primary call and any fallback
+    /// call (the `XMLSerializer` JS fallback for [`OuterHtmlStrategy::Current`],
+    /// the `DOM.describeNode` walk for [`OuterHtmlStrategy::Recursive`]).
+    /// Errors surface as [`BrowserError::Timeout`] (CDP call exceeded
+    /// `cdp_timeout`), [`BrowserError::StaleNode`] (the handle was
+    /// invalidated mid-call), or [`BrowserError::CdpError`] (transport-level
+    /// failure).
+    ///
+    /// Empty or partially-empty payloads from any individual backend do
+    /// **not** error — they are flattened to an empty `String` so the
+    /// historical `Ok(String)` contract is preserved. Callers that need to
+    /// distinguish an empty payload from a hard failure should call
+    /// [`outer_html_with_strategy`][Self::outer_html_with_strategy]
+    /// directly and inspect the [`OuterHtmlResult`] variant.
     pub async fn outer_html(&self) -> Result<String> {
         match self
             .outer_html_with_strategy(OuterHtmlStrategy::Current)
@@ -553,6 +569,7 @@ impl NodeHandle {
                 );
             }
             Err(e) => {
+                failed_backends.push("DOM.getOuterHTML");
                 debug!(
                     selector = %self.selector,
                     error = %e,
@@ -565,12 +582,20 @@ impl NodeHandle {
             Ok(html) if !html.trim().is_empty() => Ok(OuterHtmlResult::Content(html)),
             Ok(_) => {
                 if failed_backends.is_empty() {
-                    failed_backends.push("DOM.getOuterHTML");
+                    // Every backend returned an empty payload (no errors
+                    // raised). Surface this as `Empty` rather than `Failed`.
+                    Ok(OuterHtmlResult::Empty)
+                } else {
+                    // At least one backend errored and the other returned
+                    // empty — surface as `Failed` so callers can
+                    // distinguish "nothing to serialize" from "backends
+                    // broke".
+                    Ok(OuterHtmlResult::Failed {
+                        backends: failed_backends,
+                    })
                 }
-                Ok(OuterHtmlResult::Empty)
             }
             Err(e) => {
-                failed_backends.push("DOM.getOuterHTML");
                 failed_backends.push("DOM.describeNode-walk");
                 debug!(
                     selector = %self.selector,
@@ -2418,8 +2443,10 @@ const VOID_ELEMENTS: &[&str] = &[
 /// returns an empty payload or errors out. The implementation is a
 /// straightforward depth-first walk that mirrors what Chromium's own
 /// `Element.outerHTML` accessor produces for the same tree:
-/// - element nodes emit `<tag attrs>children</tag>`, except for
-///   [`VOID_ELEMENTS`] which emit `<tag attrs/>`
+/// - element nodes emit `<tag attrs>children</tag>`. [`VOID_ELEMENTS`]
+///   emit `<tag attrs>` with no closing slash and no children, matching
+///   Chromium's `outerHTML` byte-for-byte (which uses HTML5 syntax, not
+///   XHTML self-closing).
 /// - text nodes are HTML-escaped
 /// - comment nodes emit `<!--value-->`
 /// - `<!DOCTYPE …>` declarations are emitted for `DocumentType` roots
@@ -2430,6 +2457,12 @@ const VOID_ELEMENTS: &[&str] = &[
 /// - shadow roots are inlined as additional children of their host
 ///   (no `<shadowroot>` wrapper, since shadow content is what
 ///   `outerHTML` is expected to surface)
+///
+/// This serializer is not intended to be a perfect drop-in for
+/// `Element.outerHTML` on every edge case (`CDATA`, `ProcessingInstruction`,
+/// and namespace prefixes are simplified) — it is the second-line fallback
+/// for the `Recursive` strategy and only fires when `DOM.getOuterHTML`
+/// itself fails.
 fn serialize_node_tree(node: &chromiumoxide::cdp::browser_protocol::dom::Node) -> String {
     let mut out = String::new();
     serialize_node_into(&mut out, node);
@@ -2454,7 +2487,7 @@ fn serialize_node_into(out: &mut String, node: &chromiumoxide::cdp::browser_prot
                 }
             }
             if VOID_ELEMENTS.contains(&tag) {
-                out.push_str("/>");
+                out.push('>');
                 return;
             }
             out.push('>');
@@ -2893,6 +2926,26 @@ mod tests {
         assert!(s.contains("DOM.describeNode-walk"));
     }
 
+    #[test]
+    fn outer_html_result_serializes_each_variant()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let empty_json = serde_json::to_string(&OuterHtmlResult::Empty)?;
+        assert_eq!(empty_json, "\"Empty\"");
+
+        let content_json =
+            serde_json::to_string(&OuterHtmlResult::Content("<p>x</p>".to_string()))?;
+        assert_eq!(content_json, r#"{"Content":"<p>x</p>"}"#);
+
+        let failed_json = serde_json::to_string(&OuterHtmlResult::Failed {
+            backends: vec!["DOM.getOuterHTML", "DOM.describeNode-walk"],
+        })?;
+        assert_eq!(
+            failed_json,
+            r#"{"Failed":{"backends":["DOM.getOuterHTML","DOM.describeNode-walk"]}}"#
+        );
+        Ok(())
+    }
+
     // ── Rust-side CDP Node → HTML serializer tests (T101) ─────────────────────
 
     use chromiumoxide::cdp::browser_protocol::dom::{BackendNodeId, Node, NodeId};
@@ -2980,9 +3033,9 @@ mod tests {
             Some(vec!["src".into(), "/a.png".into()]),
             None,
         );
-        assert_eq!(serialize_node_tree(&img), r#"<img src="/a.png"/>"#);
+        assert_eq!(serialize_node_tree(&img), r#"<img src="/a.png">"#);
         let br = mk_node(node_type::ELEMENT, "br", "BR", "", None, None);
-        assert_eq!(serialize_node_tree(&br), "<br/>");
+        assert_eq!(serialize_node_tree(&br), "<br>");
     }
 
     #[test]
