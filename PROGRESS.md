@@ -404,6 +404,36 @@ standpoint, so the orchestrator can pick whichever is convenient.
 
 ---
 
+## Phase 14 — Proxy Layer Hardening (2026 Scraping Guide)
+
+> Depends on: Phase 9 (Stealth + Proxy Next Wave) complete; T86 (proxy intelligence scoring) shipped.
+> Source: `docs/dev/project/scraping-guide-2026-llm-context.md` §"PROXY PROVIDERS AND TYPES" (L2718), §"DECISION PLAYBOOK" (L2868), §"INNOVATION AND EMERGING TECHNIQUES" (L2938), §"TESTING AND DETECTION TOOLS" (L3520).
+> Scope: additive types + new rotation strategy + new validators in `crates/stygian-proxy/`. No public API breakage. Sub-µs hot-path acquisition preserved per `crates/stygian-proxy/AGENTS.md`.
+
+| Task | Status | Notes |
+|---|---|---|
+| T95 — IP class taxonomy and target-vendor compatibility | `[ ]` | New `IpClass { Mobile, Isp, Residential, Datacenter, Unknown }` + `TargetVendorCompatibility { TrustTier::Preferred/Acceptable/Marginal/Blocked }` on `Proxy` and `ProxyCapabilities`. Free-list fetchers tag datacenter class on ingest. Hot-path field-compare (sub-µs). Default-on, additive serde. |
+| T96 — Thompson sampling Bayesian rotation strategy | `[ ]` | New `ThompsonStrategy` in `crates/stygian-proxy/src/strategy/thompson.rs` with per-proxy Beta(α, β) tracked via `AtomicU64`, time-decay every 300s, deterministic-seed tests. Guide cites 76% success vs 36% round-robin. Behind cargo feature `bayesian-rotation`. Depends on T95. |
+| T97 — WebRTC and network-identity coherence validator | `[ ]` | New port `CoherencePort` + `DefaultCoherenceValidator` covering country + DNS + WebRTC public IP /16 + timezone + Accept-Language. `ProxyManager::acquire_proxy_with_coherence(ctx)` integrates the check. Behind cargo feature `coherence-validation`. |
+| T98 — ASN, city, and ZIP capability fields | `[ ]` | Extend `ProxyCapabilities` / `CapabilityRequirement` with `asn: Option<u32>` + `city: Option<String>` + `postal_code: Option<String>`. `well_known` submodule with Cloudflare 13335, Akamai 20940, Fastly 54113, etc. Ingest validation rejects malformed values. Default-on, additive serde. |
+| T99 — Per-vendor stickiness policy | `[ ]` | New `StickinessPolicy` + `VendorStickinessMap` keyed by `VendorId`. Built-in defaults from the 2026 guide: Akamai → 30min sticky, PerimeterX → fresh per domain, DataDome → fresh per request, Kasada → fresh per domain, Cloudflare → 5min sticky. Integration with `SessionMap`. Behind cargo feature `vendor-stickiness`. Depends on T95. |
+| T100 — Vendor scheme quirks validation table | `[ ]` | New `vendor_quirks::check` catches the Crawlera/Zyte port 8011 plain-HTTP trap + Bright Data session-id username format + IPRoyal country flag. Hard-error quirks reject via `validate_proxy_url`; warnings surface in ingest log. Const table, zero-allocation hot path. Default-on. |
+
+### Phase 14 Dependency Graph (Compact)
+
+```mermaid
+graph TD
+  T95[T95 IP Class Taxonomy] --> T96[T96 Thompson Sampling Rotation]
+  T95 --> T99[T99 Per-Vendor Stickiness]
+  T97[T97 WebRTC Coherence Validator]
+  T98[T98 ASN/City/ZIP Capabilities]
+  T100[T100 Vendor Scheme Quirks]
+```
+
+**Execution order:** T95 lands first (foundational type). T96 and T99 can run in parallel after T95. T97, T98, T100 are independent — pick by reviewer capacity. All six tasks keep the existing strict workspace clippy preflight at zero regressions (additive only).
+
+---
+
 ## Accumulated Learnings
 
 - T49: strict clippy settings (`-D warnings`, pedantic profile) require `writeln!` over `write!(...\n)`, const-friendly constructors, and panic/index-safe tests even under `#[ignore]`.
