@@ -80,7 +80,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 
 # TLS configuration
 rustls = { version = "0.23", default-features = false, features = ["std", "tls12"] }
-webpki-roots = "0.26"
+webpki-roots = "1.0"
 
 # Cryptography (webhook signature verification)
 hmac = "0.13"
