@@ -111,8 +111,8 @@ pub type BoxedRotationStrategy = Arc<dyn RotationStrategy>;
 /// and `observe(success = false)` on drop without `mark_success`. The
 /// default implementation is [`NoopBayesianObserver`], which discards
 /// observations; the `bayesian-rotation` feature wires
-/// [`ThompsonStrategy`](crate::strategy::ThompsonStrategy) in via
-/// [`ProxyManagerBuilder::with_thompson_sampling`](crate::manager::ProxyManagerBuilder::with_thompson_sampling).
+/// [`ThompsonStrategy`] in via
+/// [`crate::manager::ProxyManagerBuilder::with_thompson_sampling`].
 pub trait BayesianObserver: Send + Sync + 'static {
     /// Record one outcome for `proxy_id`. Implementations must be safe to
     /// call from any thread and must never block on locks the hot path

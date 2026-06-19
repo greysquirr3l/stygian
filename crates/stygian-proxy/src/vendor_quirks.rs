@@ -33,7 +33,7 @@
 //! so the table is zero-cost at runtime; [`check`] walks the slice using
 //! pure pointer/length compares and returns all matches in a small
 //! [`Vec`]. Hard-error quirks (like `Crawlera` 8011 + `https://`) are
-//! surfaced at ingest time by [`crate::storage::validate_proxy_url`],
+//! surfaced at ingest time by `validate_proxy_url`,
 //! which rejects the URL outright; warning-severity quirks are logged
 //! and the URL is accepted.
 //!
@@ -159,7 +159,7 @@ impl FromStr for Scheme {
 
 /// Severity classification for a [`QuirkMatch`].
 ///
-/// The ingest flow in [`crate::storage::validate_proxy_url`] treats the
+/// The ingest flow in `validate_proxy_url` treats the
 /// severity as the action gate:
 ///
 /// - [`QuirkSeverity::Error`] — hard-error quirks reject the URL outright.
@@ -237,7 +237,7 @@ pub struct VendorQuirk {
     pub required_scheme: Scheme,
     /// Human-readable description of the quirk and the failure mode it
     /// prevents. Used as the structured error reason in
-    /// [`crate::storage::validate_proxy_url`].
+    /// `validate_proxy_url`.
     pub description: &'static str,
     /// Severity classification — drives whether the URL is rejected,
     /// warned, or just recorded.
@@ -364,8 +364,8 @@ pub struct ProxyUrl {
 /// Errors emitted by [`ProxyUrl::parse`].
 ///
 /// Distinct from the host/port validation errors in
-/// [`crate::storage::validate_proxy_url`] (which produce
-/// [`crate::error::ProxyError::InvalidProxyUrl`]) so a caller can
+/// `validate_proxy_url` (which produce
+/// `ProxyError::InvalidProxyUrl`) so a caller can
 /// decide whether to surface the parse failure as an upstream error
 /// or attempt recovery.
 #[derive(Debug, Error, PartialEq, Eq)]

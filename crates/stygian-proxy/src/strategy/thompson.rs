@@ -39,7 +39,7 @@
 //!
 //! ## Prior bias for `TargetVendorCompatibility` (T95 seam)
 //!
-//! When a [`TargetVendorCompatibility`] is known for a vendor, the strategy
+//! When a [`crate::TargetVendorCompatibility`] is known for a vendor, the strategy
 //! can pre-bias the prior so an Akamai scrape prefers ISP-static proxies
 //! from the start. The `beta_bias` term multiplies β by `(1 - tier_rank/4)`
 //! so a `Preferred` vendor lowers β and a `Blocked` vendor raises β —

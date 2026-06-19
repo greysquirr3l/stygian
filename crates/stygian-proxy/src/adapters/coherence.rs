@@ -1,4 +1,4 @@
-//! Default [`CoherencePort`](crate::ports::coherence::CoherencePort) adapter.
+//! Default [`crate::ports::coherence::CoherencePort`] adapter.
 //!
 //! Applies the five-vector rule from the 2026 scraping guide (L2839,
 //! L3135-3138): the proxy exit's country, the recursive DNS resolver's

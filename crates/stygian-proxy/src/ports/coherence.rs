@@ -709,7 +709,7 @@ impl CoherenceContext {
 /// Implementors decide whether `ctx` is safe to send through: a clean
 /// context returns [`CoherenceVerdict::Coherent`], a disagreement on a
 /// specific vector returns
-/// [`CoherenceVerdict::Mismatch`](CoherenceVerdict::Mismatch) with the
+/// [`CoherenceVerdict::Mismatch`] with the
 /// matching [`MismatchField`] and [`MismatchSeverity`], and a missing
 /// observation (no DNS data, WebRTC disabled, …) returns
 /// [`CoherenceVerdict::Unknown`].
@@ -717,7 +717,7 @@ impl CoherenceContext {
 /// `Send + Sync + 'static` so the implementation can live behind an
 /// `Arc<dyn CoherencePort>` on the manager. The default implementation
 /// in
-/// [`crate::adapters::coherence::DefaultCoherenceValidator`](crate::adapters::coherence::DefaultCoherenceValidator)
+/// [`crate::adapters::coherence::DefaultCoherenceValidator`]
 /// is `Send + Sync + 'static` and stateless; an alternative adapter
 /// that needed caching would add a Mutex but the trait itself never
 /// requires one.

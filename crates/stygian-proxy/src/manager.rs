@@ -360,7 +360,7 @@ impl ProxyManager {
     ///
     /// Returns [`ProxyError::StorageError`] when the underlying storage backend
     /// rejects the new proxy record, or
-    /// [`ProxyError::InvalidGeoMetadata`](crate::error::ProxyError::InvalidGeoMetadata)
+    /// [`ProxyError::InvalidGeoMetadata`]
     /// when the proxy's geo-metadata fields fail ingest validation
     /// (e.g. `asn = 0`, `city = ""`, `postal_code = ""`).
     #[allow(clippy::significant_drop_tightening)]
@@ -395,11 +395,11 @@ impl ProxyManager {
     /// specific geographic or network ranges — the "Infatica-style
     /// city, ZIP, and ASN filter" cited by the 2026 guide (L2837).
     /// Constructs the [`Proxy`] and underlying
-    /// [`ProxyCapabilities`] for the caller, populates the geo
+    /// [`crate::ProxyCapabilities`] for the caller, populates the geo
     /// fields, and runs the same ingest validation as
     /// [`add_proxy`](Self::add_proxy) (so `asn = 0`, `city = ""`,
     /// etc. are rejected with
-    /// [`ProxyError::InvalidGeoMetadata`](crate::error::ProxyError::InvalidGeoMetadata)
+    /// [`ProxyError::InvalidGeoMetadata`]
     /// before the record is stored).
     ///
     /// The `proxy_type`, `username`, `password`, `weight`, `tags`, and
@@ -431,9 +431,9 @@ impl ProxyManager {
     ///
     /// # Errors
     ///
-    /// Returns [`ProxyError::InvalidProxyUrl`](crate::error::ProxyError::InvalidProxyUrl)
+    /// Returns [`ProxyError::InvalidProxyUrl`]
     /// when `url` is malformed, or
-    /// [`ProxyError::InvalidGeoMetadata`](crate::error::ProxyError::InvalidGeoMetadata)
+    /// [`ProxyError::InvalidGeoMetadata`]
     /// when any geo field fails the validation rules documented in
     /// [`crate::types::validate_asn`], [`crate::types::validate_city`],
     /// or [`crate::types::validate_postal_code`]. Storage failures
@@ -1032,7 +1032,7 @@ impl ProxyManagerBuilder {
         self
     }
 
-    /// Set a custom [`BayesianObserver`]. Mostly useful for tests and for
+    /// Set a custom [`crate::BayesianObserver`]. Mostly useful for tests and for
     /// callers who want to plug in their own bandit algorithm without
     /// using [`with_thompson_sampling`](Self::with_thompson_sampling).
     #[must_use]
@@ -1057,7 +1057,7 @@ impl ProxyManagerBuilder {
     /// Wire a [`ThompsonStrategy`](crate::strategy::ThompsonStrategy) into
     /// the manager and use it as both the rotation strategy *and* the
     /// observer so success/failure outcomes are recorded back into the
-    /// bandit on every [`ProxyHandle`](crate::manager::ProxyHandle)
+    /// bandit on every [`ProxyHandle`]
     /// drop. Mirrors `with_random` / `with_weighted` etc. on the
     /// convenience constructor side; requires the `bayesian-rotation`
     /// cargo feature.
