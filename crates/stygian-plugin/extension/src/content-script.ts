@@ -391,6 +391,43 @@ type CsElementWithPath = any;
     };
   }
 
+  // Explicit HTML entity decoder that does NOT invoke the HTML parser.
+  // Avoids the taint flow that the prior `textarea.innerHTML` trick and
+  // the `DOMParser().parseFromString(..., "text/html")` chain both
+  // trigger in CodeQL's `js/xss-through-dom` rule. The output is the
+  // canonical entity-decoded string; literal markup such as `<b>` is
+  // left intact (it was never a valid entity to begin with).
+  const NAMED_ENTITIES: Record<string, string> = {
+    amp: "&",
+    lt: "<",
+    gt: ">",
+    quot: "\"",
+    apos: "'",
+    nbsp: "\u00a0",
+  };
+  function decodeHtmlEntities(input: string): string {
+    return input.replace(
+      /&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z][a-zA-Z0-9]*);/g,
+      (match, body: string) => {
+        if (body[0] === "#") {
+          const code =
+            body[1] === "x" || body[1] === "X"
+              ? parseInt(body.slice(2), 16)
+              : parseInt(body.slice(1), 10);
+          if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) {
+            return match;
+          }
+          try {
+            return String.fromCodePoint(code);
+          } catch {
+            return match;
+          }
+        }
+        return NAMED_ENTITIES[body] ?? match;
+      },
+    );
+  }
+
   function applyTransformations(
     value: string,
     transformations: any[],
@@ -421,14 +458,7 @@ type CsElementWithPath = any;
       } else if (type === "StripHtml" && typeof current === "string") {
         current = current.replace(/<[^>]+>/g, "");
       } else if (type === "DecodeHtml" && typeof current === "string") {
-        // Behavior matches the prior `textarea.innerHTML` trick:
-        // HTML entities are decoded AND any real markup in the input is stripped
-        // (e.g. `<b>hi</b>` → `hi`, `&lt;b&gt;hi&lt;/b&gt;` → `<b>hi</b>`).
-        // The DOMParser + textContent result is a plain string assigned back to
-        // `current` and never written to the DOM.
-        // codeql[js/xss-through-dom] - parseFromString("text/html") is a safe
-        // entity-decode sink; the textContent result is a read-only string.
-        current = new DOMParser().parseFromString(current, "text/html").documentElement.textContent ?? current;
+        current = decodeHtmlEntities(current);
       } else if (type === "ParseJson" && typeof current === "string") {
         try {
           current = JSON.parse(current);
