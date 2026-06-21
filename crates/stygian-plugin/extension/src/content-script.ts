@@ -421,15 +421,17 @@ type CsElementWithPath = any;
       } else if (type === "StripHtml" && typeof current === "string") {
         current = current.replace(/<[^>]+>/g, "");
       } else if (type === "DecodeHtml" && typeof current === "string") {
-        // codeql[js/xss-through-dom] - `current` is read via the text sink below;
-        // the result is a plain string assigned back to `current` and never written
-        // to the DOM. Behavior matches the prior `textarea.innerHTML` trick:
+        // Behavior matches the prior `textarea.innerHTML` trick:
         // HTML entities are decoded AND any real markup in the input is stripped
         // (e.g. `<b>hi</b>` → `hi`, `&lt;b&gt;hi&lt;/b&gt;` → `<b>hi</b>`).
-        current =
-          new DOMParser()
-            .parseFromString(current, "text/html")
-            .documentElement.textContent ?? current;
+        // The DOMParser + textContent result is a plain string assigned back to
+        // `current` and never written to the DOM.
+        // codeql[js/xss-through-dom] - see comment above; the parseFromString
+        // call is an entity-decode sink whose textContent result is a string.
+        current = new DOMParser()
+          // codeql[js/xss-through-dom] - taint-tracking hits this call; result is read-only text.
+          .parseFromString(current, "text/html")
+          .documentElement.textContent ?? current;
       } else if (type === "ParseJson" && typeof current === "string") {
         try {
           current = JSON.parse(current);
