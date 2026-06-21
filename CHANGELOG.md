@@ -41,10 +41,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   transformation in `extractWithTemplate` previously used the
   `textarea.innerHTML = ...` trick to decode HTML entities, which
   CodeQL flags as `js/xss-through-dom` even though the textarea
-  sink is non-executing. Replaced with
-  `DOMParser().parseFromString(input, "text/html").documentElement.textContent`
-  for the same decode semantics without the innerHTML sink.
-  Resolves alert 144.
+  sink is non-executing. Replaced with a regex-based
+  `decodeHtmlEntities` helper that decodes the standard named
+  entities (`&amp;` / `&lt;` / `&gt;` / `&quot;` / `&apos;` /
+  `&nbsp;`) and `&#NN;` / `&#xHH;` numeric entities without
+  ever invoking the HTML parser, eliminating the taint flow
+  that the `DOMParser` and `textarea` approaches both trigger.
+  Behavior change (intentional, aligned with the Rust
+  `Transformation::DecodeHtml`): literal markup in the input is
+  now left intact rather than being stripped — callers that
+  need the old strip-tags behavior should also apply `StripHtml`.
+  Resolves alerts 144, 150, 151, 152.
 - **CI (action pinning)**: pinned all `github/codeql-action/*`
   references in `.github/workflows/codeql.yml` and
   `scorecard.yml` to commit SHA `8aad20d150bbac5944a9f9d289da16a4b0d87c1e`
