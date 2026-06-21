@@ -153,6 +153,7 @@ async fn cmd_run(file: &str, watch: bool, watch_interval: u64) -> anyhow::Result
                 let path2 = path.clone();
                 tokio::spawn(async move {
                     if let Err(e) = run_pipeline_once(&path2).await {
+                        // codeql[rust/unused-variable] - `e` is used via the captured format arg below.
                         error!("Pipeline run failed: {e}");
                     }
                 });

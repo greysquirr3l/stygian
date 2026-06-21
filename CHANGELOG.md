@@ -13,7 +13,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **CodeQL (false positives)**: added targeted
+  `// codeql[rust/unused-variable]` suppression comments for the
+  ten captured-format-arg, structured-tracing-field, and
+  `assert_eq!`-macro-argument cases in `stygian-graph` and
+  `stygian-browser` that CodeQL's `rust/unused-variable` rule does
+  not track. No semantic change — the variables are read; the rule
+  just doesn't model the implicit capture. Resolves alerts 131–140.
+
 ### Security
+
+- **stygian-plugin (extension XSS, HIGH)**: `content-script.ts`
+  `showNameInputCard` previously built the floating region-name card
+  by interpolating DOM-derived `path.css` and `textPreview` into an
+  `innerHTML` template literal, allowing any page the recorder was
+  inspecting to break out of attribute and text contexts. The card
+  is now assembled via `createElement` / `textContent` /
+  `setAttribute` so user-controlled values never reach the HTML
+  parser. Resolves alert 145.
+- **stygian-plugin (extension HTML decoding)**: the `DecodeHtml`
+  transformation in `extractWithTemplate` previously used the
+  `textarea.innerHTML = ...` trick to decode HTML entities, which
+  CodeQL flags as `js/xss-through-dom` even though the textarea
+  sink is non-executing. Replaced with
+  `DOMParser().parseFromString(input, "text/html").documentElement.textContent`
+  for the same decode semantics without the innerHTML sink.
+  Resolves alert 144.
+- **CI (action pinning)**: pinned all `github/codeql-action/*`
+  references in `.github/workflows/codeql.yml` and
+  `scorecard.yml` to commit SHA `8aad20d150bbac5944a9f9d289da16a4b0d87c1e`
+  (v4.36.2), matching the pin style already used for
+  `actions/checkout`, `actions/upload-artifact`, and
+  `ossf/scorecard-action`. Closes the four `PinnedDependenciesID`
+  OSSF-Scorecard findings (alerts 146–149).
 
 ## [0.14.0] - 2026-06-19
 

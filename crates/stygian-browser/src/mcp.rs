@@ -1315,6 +1315,7 @@ impl McpBrowserServer {
                 let handler_task = tokio::spawn(async move {
                     while let Some(event) = handler.next().await {
                         if let Err(error) = event {
+                            // codeql[rust/unused-variable] - `error` is used via the captured format arg below.
                             tracing::warn!(%error, "attached browser handler error");
                             break;
                         }

@@ -89,11 +89,13 @@ fn bench_lru_cache_throughput(c: &mut Criterion) {
         b.to_async(&rt).iter(|| async {
             let cache = BoundedLruCache::new(NonZeroUsize::new(128).unwrap());
             for i in 0u32..100 {
+                // codeql[rust/unused-variable] - `i` is used via the captured format args below.
                 let key = format!("key:{i}");
                 let val = format!("val:{i}");
                 cache.set(&key, val, None).await.expect("set");
             }
             for i in 0u32..100 {
+                // codeql[rust/unused-variable] - `i` is used via the captured format arg below.
                 let key = format!("key:{i}");
                 cache.get(&key).await.expect("get");
             }
@@ -109,6 +111,7 @@ fn bench_dashmap_cache_write_heavy(c: &mut Criterion) {
         b.to_async(&rt).iter(|| async {
             let cache = DashMapCache::new(Duration::from_mins(5));
             for i in 0u32..200 {
+                // codeql[rust/unused-variable] - `i` is used via the captured format args below.
                 let key = format!("k{i}");
                 let val = format!("v{i}");
                 cache.set(&key, val, None).await.expect("set");

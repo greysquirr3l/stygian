@@ -334,6 +334,7 @@ impl<Q: WorkQueuePort + 'static> DistributedDagExecutor<Q> {
                             };
                             match output {
                                 Ok(out) => {
+                                    // codeql[rust/unused-variable] - `out` is consumed by the `json!` macro below.
                                     let val = serde_json::json!({
                                         "data": out.data,
                                         "metadata": out.metadata,
@@ -348,6 +349,7 @@ impl<Q: WorkQueuePort + 'static> DistributedDagExecutor<Q> {
                         }
                         Ok(None) => break, // queue empty
                         Err(e) => {
+                            // codeql[rust/unused-variable] - `e` is used via the structured field below.
                             error!(error = %e, "worker dequeue error");
                             break;
                         }
