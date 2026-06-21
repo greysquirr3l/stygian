@@ -9,6 +9,10 @@ members = [
     "crates/stygian-charon",
     "crates/stygian-plugin",
 ]
+# The cargo-fuzz harness lives under crates/stygian-charon/fuzz and
+# requires nightly Rust + libfuzzer-sys. Keep it out of the regular
+# workspace build; the `cargo-fuzz` workflow invokes it directly.
+exclude = ["crates/stygian-charon/fuzz"]
 
 [workspace.package]
 version = "0.14.1"
