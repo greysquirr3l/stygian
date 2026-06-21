@@ -2,7 +2,16 @@
 name = "stygian-charon-fuzz"
 version = "0.0.0"
 publish = false
-edition.workspace = true
+edition = "2024"
+
+# Mark this directory as a separate workspace root. cargo-fuzz creates
+# the harness in a sub-crate of `stygian-charon`; without this empty
+# `[workspace]` table, cargo walks up from this manifest, finds the
+# parent workspace at ../../Cargo.toml, and complains that this
+# package isn't listed in `workspace.members` (or excluded). The
+# parent workspace's `exclude = ["crates/stygian-charon/fuzz"]` is
+# the matching belt; this empty table is the suspenders.
+[workspace]
 
 [package.metadata]
 cargo-fuzz = true
