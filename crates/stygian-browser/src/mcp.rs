@@ -2422,6 +2422,7 @@ impl McpBrowserServer {
     ) -> Result<crate::page::PageHandle> {
         let handle_guard = handle_arc.lock().await;
         if let Some(handle) = handle_guard.as_ref() {
+            // codeql[rust/unused-variable] - `session_id` is used via the captured format args below.
             let browser = handle.browser().ok_or_else(|| {
                 BrowserError::ConfigError(format!("Browser handle invalid: {session_id}"))
             })?;

@@ -421,6 +421,11 @@ type CsElementWithPath = any;
       } else if (type === "StripHtml" && typeof current === "string") {
         current = current.replace(/<[^>]+>/g, "");
       } else if (type === "DecodeHtml" && typeof current === "string") {
+        // codeql[js/xss-through-dom] - `current` is read via the text sink below;
+        // the result is a plain string assigned back to `current` and never written
+        // to the DOM. Behavior matches the prior `textarea.innerHTML` trick:
+        // HTML entities are decoded AND any real markup in the input is stripped
+        // (e.g. `<b>hi</b>` → `hi`, `&lt;b&gt;hi&lt;/b&gt;` → `<b>hi</b>`).
         current =
           new DOMParser()
             .parseFromString(current, "text/html")
@@ -679,12 +684,6 @@ type CsElementWithPath = any;
     const nameField = document.createElement("div");
     nameField.style.cssText = "margin-bottom:8px";
 
-    const nameLabel = document.createElement("label");
-    nameLabel.style.cssText =
-      "display:block;font-size:11px;color:#64748b;margin-bottom:4px;font-weight:500";
-    nameLabel.textContent = "REGION NAME";
-    nameField.appendChild(nameLabel);
-
     const nameInput = document.createElement("input");
     nameInput.id = "stygian-region-name-input";
     nameInput.type = "text";
@@ -693,6 +692,13 @@ type CsElementWithPath = any;
       "width:100%;padding:7px 10px;border:1px solid #d0d7e0;border-radius:6px;font-size:13px;outline:none;box-sizing:border-box";
     nameInput.autocomplete = "off";
     nameInput.spellcheck = false;
+
+    const nameLabel = document.createElement("label");
+    nameLabel.htmlFor = nameInput.id;
+    nameLabel.style.cssText =
+      "display:block;font-size:11px;color:#64748b;margin-bottom:4px;font-weight:500";
+    nameLabel.textContent = "REGION NAME";
+    nameField.appendChild(nameLabel);
     nameField.appendChild(nameInput);
     card.appendChild(nameField);
 
