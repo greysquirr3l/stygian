@@ -391,6 +391,43 @@ type CsElementWithPath = any;
     };
   }
 
+  // Explicit HTML entity decoder that does NOT invoke the HTML parser.
+  // Avoids the taint flow that the prior `textarea.innerHTML` trick and
+  // the `DOMParser().parseFromString(..., "text/html")` chain both
+  // trigger in CodeQL's `js/xss-through-dom` rule. The output is the
+  // canonical entity-decoded string; literal markup such as `<b>` is
+  // left intact (it was never a valid entity to begin with).
+  const NAMED_ENTITIES: Record<string, string> = {
+    amp: "&",
+    lt: "<",
+    gt: ">",
+    quot: "\"",
+    apos: "'",
+    nbsp: "\u00a0",
+  };
+  function decodeHtmlEntities(input: string): string {
+    return input.replace(
+      /&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z][a-zA-Z0-9]*);/g,
+      (match, body: string) => {
+        if (body[0] === "#") {
+          const code =
+            body[1] === "x" || body[1] === "X"
+              ? parseInt(body.slice(2), 16)
+              : parseInt(body.slice(1), 10);
+          if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) {
+            return match;
+          }
+          try {
+            return String.fromCodePoint(code);
+          } catch {
+            return match;
+          }
+        }
+        return NAMED_ENTITIES[body] ?? match;
+      },
+    );
+  }
+
   function applyTransformations(
     value: string,
     transformations: any[],
@@ -421,9 +458,7 @@ type CsElementWithPath = any;
       } else if (type === "StripHtml" && typeof current === "string") {
         current = current.replace(/<[^>]+>/g, "");
       } else if (type === "DecodeHtml" && typeof current === "string") {
-        const textarea = document.createElement("textarea");
-        textarea.innerHTML = current;
-        current = textarea.value;
+        current = decodeHtmlEntities(current);
       } else if (type === "ParseJson" && typeof current === "string") {
         try {
           current = JSON.parse(current);
@@ -669,33 +704,87 @@ type CsElementWithPath = any;
       width: 280px;
     `;
 
-    card.innerHTML = `
-      <div style="font-weight:600;color:#1e293b;margin-bottom:10px">Add Region</div>
-      <div style="margin-bottom:8px">
-        <label style="display:block;font-size:11px;color:#64748b;margin-bottom:4px;font-weight:500">REGION NAME</label>
-        <input id="stygian-region-name-input" type="text" placeholder='e.g. product_title'
-          style="width:100%;padding:7px 10px;border:1px solid #d0d7e0;border-radius:6px;font-size:13px;outline:none;box-sizing:border-box"
-          autocomplete="off" spellcheck="false" />
-      </div>
-      <div style="margin-bottom:10px;padding:6px 8px;background:#f8fafc;border-radius:4px;font-size:10px;color:#64748b;font-family:monospace">
-        ${path.css.length > 48 ? path.css.slice(0, 48) + "…" : path.css}
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
-        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${confidence.color}"></span>
-        <span style="font-size:11px;color:#64748b">${confidence.label}</span>
-        ${textPreview ? `<span style="font-size:10px;color:#94a3b8">· "${textPreview.length > 20 ? textPreview.slice(0, 20) + "…" : textPreview}"</span>` : ""}
-      </div>
-      <div style="display:flex;gap:8px">
-        <button id="stygian-cancel-btn" data-stygian="name-card"
-          style="flex:1;padding:7px;border:1px solid #e2e8f0;background:white;border-radius:6px;cursor:pointer;font-size:12px;color:#64748b">
-          Cancel (Esc)
-        </button>
-        <button id="stygian-add-btn" data-stygian="name-card"
-          style="flex:2;padding:7px;border:none;background:#667eea;color:white;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">
-          Add Region (Enter)
-        </button>
-      </div>
-    `;
+    const titleEl = document.createElement("div");
+    titleEl.style.cssText =
+      "font-weight:600;color:#1e293b;margin-bottom:10px";
+    titleEl.textContent = "Add Region";
+    card.appendChild(titleEl);
+
+    const nameField = document.createElement("div");
+    nameField.style.cssText = "margin-bottom:8px";
+
+    const nameInput = document.createElement("input");
+    nameInput.id = "stygian-region-name-input";
+    nameInput.type = "text";
+    nameInput.placeholder = "e.g. product_title";
+    nameInput.style.cssText =
+      "width:100%;padding:7px 10px;border:1px solid #d0d7e0;border-radius:6px;font-size:13px;outline:none;box-sizing:border-box";
+    nameInput.autocomplete = "off";
+    nameInput.spellcheck = false;
+
+    const nameLabel = document.createElement("label");
+    nameLabel.htmlFor = nameInput.id;
+    nameLabel.style.cssText =
+      "display:block;font-size:11px;color:#64748b;margin-bottom:4px;font-weight:500";
+    nameLabel.textContent = "REGION NAME";
+    nameField.appendChild(nameLabel);
+    nameField.appendChild(nameInput);
+    card.appendChild(nameField);
+
+    const pathField = document.createElement("div");
+    pathField.style.cssText =
+      "margin-bottom:10px;padding:6px 8px;background:#f8fafc;border-radius:4px;font-size:10px;color:#64748b;font-family:monospace";
+    pathField.textContent =
+      path.css.length > 48 ? path.css.slice(0, 48) + "…" : path.css;
+    card.appendChild(pathField);
+
+    const confidenceRow = document.createElement("div");
+    confidenceRow.style.cssText =
+      "display:flex;align-items:center;gap:6px;margin-bottom:10px";
+
+    const dot = document.createElement("span");
+    dot.style.cssText =
+      "display:inline-block;width:8px;height:8px;border-radius:50%";
+    dot.style.background = confidence.color;
+    confidenceRow.appendChild(dot);
+
+    const confLabel = document.createElement("span");
+    confLabel.style.cssText = "font-size:11px;color:#64748b";
+    confLabel.textContent = confidence.label;
+    confidenceRow.appendChild(confLabel);
+
+    if (textPreview) {
+      const previewSpan = document.createElement("span");
+      previewSpan.style.cssText = "font-size:10px;color:#94a3b8";
+      previewSpan.textContent = `· "${
+        textPreview.length > 20
+          ? textPreview.slice(0, 20) + "…"
+          : textPreview
+      }"`;
+      confidenceRow.appendChild(previewSpan);
+    }
+    card.appendChild(confidenceRow);
+
+    const buttonRow = document.createElement("div");
+    buttonRow.style.cssText = "display:flex;gap:8px";
+
+    const cancelBtnEl = document.createElement("button");
+    cancelBtnEl.id = "stygian-cancel-btn";
+    cancelBtnEl.setAttribute("data-stygian", "name-card");
+    cancelBtnEl.style.cssText =
+      "flex:1;padding:7px;border:1px solid #e2e8f0;background:white;border-radius:6px;cursor:pointer;font-size:12px;color:#64748b";
+    cancelBtnEl.textContent = "Cancel (Esc)";
+    buttonRow.appendChild(cancelBtnEl);
+
+    const addBtnEl = document.createElement("button");
+    addBtnEl.id = "stygian-add-btn";
+    addBtnEl.setAttribute("data-stygian", "name-card");
+    addBtnEl.style.cssText =
+      "flex:2;padding:7px;border:none;background:#667eea;color:white;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600";
+    addBtnEl.textContent = "Add Region (Enter)";
+    buttonRow.appendChild(addBtnEl);
+
+    card.appendChild(buttonRow);
 
     // Position: prefer below the element
     const top =

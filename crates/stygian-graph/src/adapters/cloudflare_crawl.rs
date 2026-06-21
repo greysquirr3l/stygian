@@ -298,6 +298,7 @@ impl CloudflareCrawlAdapter {
                         .into());
                     }
                     Some(other) => {
+                        // codeql[rust/unused-variable] - `other` is used via the structured field below.
                         debug!(%job_id, status = %other, "Crawl job in progress");
                     }
                     None => {

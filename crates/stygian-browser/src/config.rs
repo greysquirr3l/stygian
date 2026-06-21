@@ -1245,6 +1245,7 @@ mod tests {
         ];
         for (val, expected) in cases {
             temp_env::with_var("STYGIAN_CDP_FIX_MODE", Some(val), || {
+                // codeql[rust/unused-variable] - `expected` is the `assert_eq!` expected-value argument.
                 assert_eq!(
                     CdpFixMode::from_env(),
                     expected,
