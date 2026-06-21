@@ -426,12 +426,9 @@ type CsElementWithPath = any;
         // (e.g. `<b>hi</b>` → `hi`, `&lt;b&gt;hi&lt;/b&gt;` → `<b>hi</b>`).
         // The DOMParser + textContent result is a plain string assigned back to
         // `current` and never written to the DOM.
-        // codeql[js/xss-through-dom] - see comment above; the parseFromString
-        // call is an entity-decode sink whose textContent result is a string.
-        current = new DOMParser()
-          // codeql[js/xss-through-dom] - taint-tracking hits this call; result is read-only text.
-          .parseFromString(current, "text/html")
-          .documentElement.textContent ?? current;
+        // codeql[js/xss-through-dom] - parseFromString("text/html") is a safe
+        // entity-decode sink; the textContent result is a read-only string.
+        current = new DOMParser().parseFromString(current, "text/html").documentElement.textContent ?? current;
       } else if (type === "ParseJson" && typeof current === "string") {
         try {
           current = JSON.parse(current);
