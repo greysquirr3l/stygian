@@ -113,7 +113,7 @@ quote       = "1"
 proc-macro2 = "1"
 
 # WASM plugins (optional heavy dep)
-wasmtime = { version = "43.0.2", default-features = false, features = ["runtime", "cranelift", "component-model"] }
+wasmtime = { version = "45.0.2", default-features = false, features = ["runtime", "cranelift", "component-model"] }
 
 # Database (optional)
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "json", "migrate"] }
