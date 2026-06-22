@@ -17,8 +17,10 @@
 //! ┌─────────────────────────────┐
 //! │        McpAggregator         │
 //! │                             │
+//! │  server/discover ─── fanout ┤
 //! │  tools/list  ─── merge ─── ┤
 //! │  tools/call  ─── route ─┐  │
+//! │  _meta gate  ──────────┼──┤
 //! └─────────────────────────┼──┘
 //!      ┌──────────────────┬─┘
 //!      ▼                  ▼
@@ -37,5 +39,16 @@
 //! | ---- | ----------- |
 //! | `scrape_proxied` | HTTP scrape routed through the proxy pool |
 //! | `browser_proxied` | Browser session with proxy from the pool |
+//!
+//! ## Protocol
+//!
+//! Implements MCP 2026-07-28. Every request must carry
+//! `io.modelcontextprotocol/protocolVersion` in `params._meta`; see
+//! [`aggregator::SUPPORTED_PROTOCOL_VERSIONS`] for the negotiated list.
+//! The aggregator is the per-request gate for that protocol version —
+//! PRs 1–3 in the [MCP-001] migration sequence add the same helpers
+//! on each server but leave enforcement to the aggregator.
+//!
+//! [MCP-001]: https://github.com/greysquirr3l/stygian/issues/95
 
 pub mod aggregator;
