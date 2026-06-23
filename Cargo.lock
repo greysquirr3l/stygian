@@ -3276,9 +3276,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-proto"
-version = "0.11.14"
+version = "0.11.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "434b42fec591c96ef50e21e886936e66d3cc3f737104fdb9b737c40ffb94c098"
+checksum = "4fcb935c5bec503c2f0e306bdd3e58bb9029dcb14fa8d9ac76e3a5256ac0763e"
 dependencies = [
  "aws-lc-rs",
  "bytes",
@@ -4414,7 +4414,7 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "stygian-browser"
-version = "0.14.1"
+version = "0.14.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4441,7 +4441,7 @@ dependencies = [
 
 [[package]]
 name = "stygian-charon"
-version = "0.14.1"
+version = "0.14.2"
 dependencies = [
  "lru",
  "redis",
@@ -4455,7 +4455,7 @@ dependencies = [
 
 [[package]]
 name = "stygian-extract-derive"
-version = "0.14.1"
+version = "0.14.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4464,7 +4464,7 @@ dependencies = [
 
 [[package]]
 name = "stygian-graph"
-version = "0.14.1"
+version = "0.14.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4520,7 +4520,7 @@ dependencies = [
 
 [[package]]
 name = "stygian-mcp"
-version = "0.14.1"
+version = "0.14.2"
 dependencies = [
  "anyhow",
  "serde_json",
@@ -4536,7 +4536,7 @@ dependencies = [
 
 [[package]]
 name = "stygian-plugin"
-version = "0.14.1"
+version = "0.14.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4563,7 +4563,7 @@ dependencies = [
 
 [[package]]
 name = "stygian-proxy"
-version = "0.14.1"
+version = "0.14.2"
 dependencies = [
  "async-trait",
  "futures",
