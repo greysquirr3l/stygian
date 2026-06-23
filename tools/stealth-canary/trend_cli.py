@@ -204,8 +204,12 @@ def _observation_severity_for(
 def _verdict_table(verdicts: list[trend.TrendVerdict]) -> str:
     """Render the per-target verdict table."""
 
+    header = (
+        "| label | status | current | rolling_mean | delta |"
+        " consecutive_drops | baseline | observation |"
+    )
     lines = [
-        "| label | status | current | rolling_mean | delta | consecutive_drops | baseline | observation |",
+        header,
         "|---|---|---:|---:|---:|---:|---|---|",
     ]
     for v in verdicts:
