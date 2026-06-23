@@ -73,7 +73,7 @@
     for (const attr of STABLE_ATTRIBUTE_NAMES) {
       const value = element.getAttribute(attr);
       if (value && value.trim().length > 0) {
-        const escaped = value.replace(/"/g, '\\"');
+        const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
         selectors.push(`[${attr}="${escaped}"]`);
         selectors.push(`${tagName}[${attr}="${escaped}"]`);
       }

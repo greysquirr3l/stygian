@@ -205,8 +205,7 @@ def _verdict_table(verdicts: list[trend.TrendVerdict]) -> str:
     """Render the per-target verdict table."""
 
     lines = [
-        "| label | status | current | rolling_mean | delta | "
-        "consecutive_drops | baseline | observation |",
+        "| label | status | current | rolling_mean | delta | consecutive_drops | baseline | observation |",
         "|---|---|---:|---:|---:|---:|---|---|",
     ]
     for v in verdicts:
