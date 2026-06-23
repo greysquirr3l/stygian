@@ -3298,22 +3298,46 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn initialize_method_is_no_longer_recognized() {
-        // MCP 2026-07-28 removed the `initialize` handshake. We can't
-        // easily drive the full async dispatch in a unit test (it needs
-        // a BrowserPool + Channel), so we assert the migration is in
-        // place at the source level: `handle_initialize` no longer
-        // exists and the dispatch arm for `initialize` is gone. The
-        // surrounding code (and `discover_response_advertises_protocol_version`)
-        // covers the replacement path.
+    #[tokio::test]
+    async fn initialize_method_is_no_longer_recognized() {
+        // MCP 2026-07-28 removed the `initialize` handshake. The browser
+        // server's dispatch routes unknown methods to -32601.
+        let server = McpBrowserServer::new(crate::BrowserPool::placeholder());
+        let req = json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}});
+        let resp = server.dispatch(&req).await;
+        assert_eq!(
+            resp.pointer("/error/code"),
+            Some(&json!(-32601)),
+            "initialize must return Method not found"
+        );
+        assert!(
+            resp.pointer("/error/message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("")
+                .contains("initialize"),
+            "error message should name the rejected method"
+        );
     }
 
-    #[test]
-    fn ping_method_is_no_longer_recognized() {
-        // `ping` is removed in MCP 2026-07-28. See
-        // `initialize_method_is_no_longer_recognized` for why this is a
-        // source-level assertion.
+    #[tokio::test]
+    async fn ping_method_is_no_longer_recognized() {
+        // `ping` is removed in MCP 2026-07-28; same as
+        // `initialize_method_is_no_longer_recognized`.
+        let server = McpBrowserServer::new(crate::BrowserPool::placeholder());
+        let req = json!({"jsonrpc":"2.0","id":1,"method":"ping","params":{}});
+        let resp = server.dispatch(&req).await;
+        assert_eq!(
+            resp.pointer("/error/code"),
+            Some(&json!(-32601)),
+            "ping must return Method not found"
+        );
+        assert!(
+            resp.pointer("/error/message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("")
+                .contains("ping"),
+            "error message should name the rejected method"
+        );
     }
 
     #[test]

@@ -42,11 +42,12 @@
 //!
 //! ## Protocol
 //!
-//! Implements MCP 2026-07-28. Every request must carry
-//! `io.modelcontextprotocol/protocolVersion` in `params._meta`; see
-//! [`aggregator::SUPPORTED_PROTOCOL_VERSIONS`] for the negotiated list.
-//! The aggregator is the per-request gate for that protocol version —
-//! PRs 1–3 in the [MCP-001] migration sequence add the same helpers
+//! Implements MCP 2026-07-28. Every request **except** `server/discover`
+//! must carry `io.modelcontextprotocol/protocolVersion` in `params._meta`;
+//! see [`aggregator::SUPPORTED_PROTOCOL_VERSIONS`] for the negotiated list.
+//! `server/discover` is exempt so clients can call it before they know which
+//! version to send. The aggregator is the per-request gate for all other
+//! methods — PRs 1–3 in the [MCP-001] migration sequence add the same helpers
 //! on each server but leave enforcement to the aggregator.
 //!
 //! [MCP-001]: https://github.com/greysquirr3l/stygian/issues/95

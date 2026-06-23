@@ -225,36 +225,27 @@ impl McpAggregator {
             ));
         };
 
+        // MCP 2026-07-28 §3: `server/discover` is intentionally exempt from
+        // the protocol-version gate — clients need it to learn which version
+        // to send before they can form a compliant request.
+        //
+        // §2: every other request must carry
+        // `params._meta.io.modelcontextprotocol/protocolVersion`; a missing or
+        // unsupported value returns `UnsupportedProtocolVersionError` (-32022)
+        // without touching any of the underlying servers.
         let response = match method {
-            // MCP 2026-07-28 §3: `server/discover` replaces the `initialize`
-            // handshake. The handshake (`initialize` + `notifications/initialized`)
-            // and the unrelated `ping` RPC are removed.
-            //
-            // §2: every request must advertise its protocol version in
-            // `params._meta.io.modelcontextprotocol/protocolVersion`. We gate
-            // here before dispatching, so a missing/unsupported version
-            // returns `UnsupportedProtocolVersionError` (-32022) without
-            // touching any of the underlying servers.
-            "server/discover" => {
-                if let Err(rejection) = enforce_protocol_version(req) {
-                    rejection
-                } else {
-                    handle_discover(req)
-                }
-            }
-            "tools/list" => self.handle_tools_list(id).await,
-            "tools/call" => self.handle_tools_call(id, req).await,
-            "resources/list" => self.handle_resources_list(id).await,
-            "resources/read" => self.handle_resources_read(id, req).await,
+            "server/discover" => handle_discover(req),
             other => {
-                // Gate every non-discover method through the protocol-version
-                // check. The underlying servers (PRs 1–3) don't enforce it
-                // because they're also called directly; the aggregator is the
-                // single per-request gate.
                 if let Err(rejection) = enforce_protocol_version(req) {
                     rejection
                 } else {
-                    error_response(id, -32601, &format!("Method not found: {other}"))
+                    match other {
+                        "tools/list" => self.handle_tools_list(id).await,
+                        "tools/call" => self.handle_tools_call(id, req).await,
+                        "resources/list" => self.handle_resources_list(id).await,
+                        "resources/read" => self.handle_resources_read(id, req).await,
+                        other => error_response(id, -32601, &format!("Method not found: {other}")),
+                    }
                 }
             }
         };
@@ -1296,20 +1287,45 @@ mod tests {
 
     #[test]
     fn test_initialize_method_is_no_longer_recognized() {
-        // MCP 2026-07-28 removed the `initialize` handshake. The
-        // dispatcher should return `Method not found` for `initialize`
-        // even when `_meta` is valid.
+        // MCP 2026-07-28 removed the `initialize` handshake. The aggregator
+        // routes `initialize` to the `other` arm after verifying the version
+        // gate; a valid meta therefore yields -32601.
         //
-        // We can't easily drive the full async dispatch in a unit test
-        // (it requires BrowserPool, McpProxyServer, McpAggregator),
-        // so we assert the migration is in place at the source level:
-        // `handle_initialize` is gone, the dispatch arm for `initialize`
-        // is gone, and `server/discover` is in its place.
+        // Full async dispatch requires real browser/proxy backends, so we
+        // verify the building blocks: `enforce_protocol_version` accepts the
+        // request (valid meta), confirming that `initialize` would reach the
+        // `other => -32601` arm. No `handle_initialize` function or dispatch
+        // arm exists at the source level.
+        let req = json!({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": {
+                "_meta": {
+                    "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+                }
+            }
+        });
+        assert!(
+            enforce_protocol_version(&req).is_ok(),
+            "valid meta must pass the version gate so initialize reaches the -32601 arm"
+        );
     }
 
     #[test]
     fn test_ping_method_is_no_longer_recognized() {
-        // See `test_initialize_method_is_no_longer_recognized`.
+        // `ping` is removed in MCP 2026-07-28; same reasoning as
+        // `test_initialize_method_is_no_longer_recognized`.
+        let req = json!({
+            "jsonrpc": "2.0", "id": 1, "method": "ping",
+            "params": {
+                "_meta": {
+                    "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+                }
+            }
+        });
+        assert!(
+            enforce_protocol_version(&req).is_ok(),
+            "valid meta must pass the version gate so ping reaches the -32601 arm"
+        );
     }
 
     #[test]
