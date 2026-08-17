@@ -15,6 +15,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+## [0.14.2] - 2026-06-23
+
+### Fixed
+
+- **stygian-browser (outer HTML on SPAs)**: `outer_html_recursive` and
+  `outer_html_via_rust_walk` previously identified target nodes via the
+  ephemeral CDP `NodeId`. On JavaScript-heavy SPAs (e.g. Wix / React),
+  any DOM mutation after the element was resolved invalidates the
+  `NodeId`, causing `DOM.getOuterHTML` to silently return an empty string
+  for a node that still exists. Both call sites now use the stable V8
+  `RemoteObjectId` (tied to the heap object reference), which survives
+  DOM mutations. Fixes silent empty-string extraction on live SPAs.
+
+### Security
+
+- **quinn-proto**: bumped `quinn-proto` 0.11.14 → 0.11.15
+  (RUSTSEC-2026-0185, high — remote memory exhaustion via unbounded
+  out-of-order stream reassembly).
+
 ## [0.14.1] - 2026-06-20
 
 ### Fixed
@@ -1464,14 +1483,15 @@ Both crates are functional and well-tested, but APIs may evolve based on communi
 
 ---
 
-[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/greysquirr3l/stygian/compare/v0.14.2...HEAD
+[0.14.2]: https://github.com/greysquirr3l/stygian/compare/v0.14.1...v0.14.2
+[0.14.1]: https://github.com/greysquirr3l/stygian/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/greysquirr3l/stygian/compare/v0.13.5...v0.14.0
 [0.13.5]: https://github.com/greysquirr3l/stygian/compare/v0.13.4...v0.13.5
 [0.13.4]: https://github.com/greysquirr3l/stygian/compare/v0.13.3...v0.13.4
 [0.13.3]: https://github.com/greysquirr3l/stygian/compare/v0.13.2...v0.13.3
 [0.13.2]: https://github.com/greysquirr3l/stygian/compare/v0.13.1...v0.13.2
 [0.13.1]: https://github.com/greysquirr3l/stygian/compare/v0.13.0...v0.13.1
-[0.13.0]: https://github.com/greysquirr3l/stygian/compare/v0.12.1...v0.13.0
 [0.12.1]: https://github.com/greysquirr3l/stygian/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/greysquirr3l/stygian/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/greysquirr3l/stygian/compare/v0.10.0...v0.11.0

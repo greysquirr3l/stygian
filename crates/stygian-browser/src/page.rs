@@ -528,8 +528,8 @@ impl NodeHandle {
     /// Strategy body for [`OuterHtmlStrategy::Recursive`].
     ///
     /// Primary: `DOM.getOuterHTML` (single round-trip, browser-side
-    /// serialisation). Fallback: `DOM.describeNode(nodeId, depth=-1)` +
-    /// Rust-side `Node` → HTML serializer.
+    /// serialisation via stable `objectId`). Fallback: `DOM.describeNode`
+    /// with `objectId` + `depth=-1`, Rust-side `Node` → HTML serializer.
     async fn outer_html_recursive(&self) -> Result<OuterHtmlResult> {
         use chromiumoxide::cdp::browser_protocol::dom::{GetOuterHtmlParams, GetOuterHtmlReturns};
         use chromiumoxide::types::CommandResponse;
@@ -540,7 +540,14 @@ impl NodeHandle {
             self.cdp_timeout,
             self.page.execute(
                 GetOuterHtmlParams::builder()
-                    .node_id(self.element.node_id)
+                    // Use the stable V8 RemoteObjectId instead of the
+                    // ephemeral CDP NodeId. NodeIds are invalidated whenever
+                    // the page's JavaScript mutates the DOM (e.g. React
+                    // re-renders on SPAs like Wix), causing DOM.getOuterHTML
+                    // to silently return an empty string for a valid node.
+                    // RemoteObjectId is tied to the V8 heap object reference
+                    // and survives DOM mutations.
+                    .object_id(self.element.remote_object_id.clone())
                     .build(),
             ),
         )
@@ -609,9 +616,9 @@ impl NodeHandle {
         }
     }
 
-    /// Rust-side fallback: `DOM.describeNode` with `depth = -1` returns the
-    /// entire subtree rooted at the target node; we walk it locally and emit
-    /// HTML using [`serialize_node_tree`].
+    /// Rust-side fallback: `DOM.describeNode` with `depth = -1` and
+    /// `objectId` returns the entire subtree rooted at the target node;
+    /// we walk it locally and emit HTML using [`serialize_node_tree`].
     async fn outer_html_via_rust_walk(&self) -> Result<String> {
         use chromiumoxide::cdp::browser_protocol::dom::DescribeNodeParams;
         use chromiumoxide::types::CommandResponse;
@@ -622,7 +629,10 @@ impl NodeHandle {
             self.cdp_timeout,
             self.page.execute(
                 DescribeNodeParams::builder()
-                    .node_id(self.element.node_id)
+                    // Use stable RemoteObjectId rather than ephemeral NodeId
+                    // for the same reason as outer_html_recursive — NodeIds
+                    // become stale after SPA DOM mutations.
+                    .object_id(self.element.remote_object_id.clone())
                     .depth(-1)
                     .build(),
             ),
