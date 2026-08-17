@@ -17,7 +17,7 @@
 //! ┌─────────────────────────────┐
 //! │        McpAggregator         │
 //! │                             │
-//! │  server/discover ─── fanout ┤
+//! │  server/discover ─── static ┤
 //! │  tools/list  ─── merge ─── ┤
 //! │  tools/call  ─── route ─┐  │
 //! │  _meta gate  ──────────┼──┤
