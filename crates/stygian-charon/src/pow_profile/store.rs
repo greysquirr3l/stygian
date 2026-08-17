@@ -187,18 +187,21 @@ impl PowCapabilityStore {
         sample: &PowCapabilitySample,
     ) {
         let key = pow_profile_key(domain, target_class, vendor);
-        let mut profile = self
-            .store
-            .peek(&key)
-            .unwrap_or_else(|| PowCapabilityProfile::new(domain, target_class, vendor));
-        profile.merge(sample);
-        // Refresh the recorded_at_unix_secs to the current
-        // wall clock so the merge timestamp stays useful
-        // even when peek returned a freshly-built default
-        // (whose merge() already set the timestamp, but
-        // the new path is explicit for readability).
-        profile.recorded_at_unix_secs = current_unix_secs();
-        self.store.put(key, profile);
+        // Read-modify-write must be atomic under concurrency; otherwise
+        // two simultaneous `record_sample` calls would each see a
+        // stale profile and the merges would clobber each other.
+        self.store.mutate(key, |existing| {
+            let mut profile =
+                existing.unwrap_or_else(|| PowCapabilityProfile::new(domain, target_class, vendor));
+            profile.merge(sample);
+            // Refresh the recorded_at_unix_secs to the current
+            // wall clock so the merge timestamp stays useful even
+            // when peek returned a freshly-built default (whose
+            // merge() already set the timestamp, but the new path
+            // is explicit for readability).
+            profile.recorded_at_unix_secs = current_unix_secs();
+            profile
+        });
     }
 
     /// Look up the current profile for a

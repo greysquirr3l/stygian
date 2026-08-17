@@ -460,7 +460,7 @@ const fn is_applicable(vendor: VendorId, challenge_class: ChallengeClass) -> boo
             matches!(challenge_class, C::Captcha | C::CookieRefresh | C::Unknown)
         }
         V::FingerprintCom => matches!(challenge_class, C::None | C::CookieRefresh | C::Unknown),
-        V::Cloudflare => matches!(
+        V::Cloudflare | V::Fastly => matches!(
             challenge_class,
             C::None | C::Interstitial | C::CookieRefresh | C::Unknown
         ),

@@ -1,5 +1,5 @@
-use crate::challenge_feedback::ChallengeMemory;
-use crate::types::{RequirementsProfile, RuntimePolicy, TargetClass};
+use crate::challenge_feedback::{ChallengeMemory, EngineKey};
+use crate::types::{RequirementsProfile, RuntimePolicy};
 
 /// Documented **upper bound** for any single per-key risk-score
 /// adjustment the challenge memory can apply.
@@ -92,7 +92,7 @@ impl Default for ChallengeFeedbackPolicy {
 }
 
 /// Compute the risk-score adjustment a [`ChallengeMemory`] would
-/// apply for a `(domain, target_class)` key, using the
+/// apply for an [`EngineKey`], using the
 /// [`ChallengeFeedbackPolicy::default`] clamp.
 ///
 /// Returns `0.0` when the memory has no entry for the key (the
@@ -102,49 +102,61 @@ impl Default for ChallengeFeedbackPolicy {
 ///
 /// ```
 /// use stygian_charon::challenge_feedback::{
-///     memory_adjustment_for, ChallengeMemory, ChallengeOutcome,
+///     memory_adjustment_for, ChallengeMemory, ChallengeOutcome, EngineKey,
 /// };
 /// use stygian_charon::types::TargetClass;
+/// use stygian_charon::vendor_classifier::VendorId;
 ///
 /// let memory = ChallengeMemory::with_defaults();
-/// memory.record("example.com", TargetClass::ContentSite, ChallengeOutcome::Captcha);
-/// let delta = memory_adjustment_for(&memory, "example.com", TargetClass::ContentSite);
+/// let key = EngineKey {
+///     engine: VendorId::Cloudflare,
+///     version: None,
+///     target_class: TargetClass::ContentSite,
+///     tls_profile: None,
+/// };
+/// memory.record(&key, None, ChallengeOutcome::Captcha);
+/// let delta = memory_adjustment_for(&memory, &key);
 /// assert!(delta > 0.0);
 /// ```
 #[must_use]
-pub fn memory_adjustment_for(
-    memory: &ChallengeMemory,
-    domain: &str,
-    target_class: TargetClass,
-) -> f64 {
-    memory.lookup(domain, target_class).map_or(0.0, |entry| {
-        clamp_to_policy(&ChallengeFeedbackPolicy::default(), entry.risk_delta())
+pub fn memory_adjustment_for(memory: &ChallengeMemory, key: &EngineKey) -> f64 {
+    memory.lookup(key).map_or(0.0, |entry| {
+        clamp_to_policy(
+            &ChallengeFeedbackPolicy::default(),
+            entry.last_outcome.risk_delta_for(key.target_class),
+        )
     })
 }
 
 /// Build a [`RuntimePolicy`] from an investigation report and
 /// requirements profile, then apply a bounded challenge-memory
-/// adjustment to the risk score.
+/// adjustment via [`adjust_runtime_policy`].
 ///
-/// The adjustment path is identical to
-/// [`adjust_runtime_policy`] — this is a convenience wrapper for
-/// the common "rebuild policy from scratch" workflow.
+/// Convenience wrapper for the common "rebuild policy from scratch"
+/// workflow.
 ///
 /// # Example
 ///
 /// ```
 /// use stygian_charon::challenge_feedback::{
-///     build_runtime_policy_with_memory, ChallengeMemory, ChallengeOutcome,
+///     build_runtime_policy_with_memory, ChallengeMemory, ChallengeOutcome, EngineKey,
 /// };
 /// use stygian_charon::build_runtime_policy;
 /// use stygian_charon::types::{
 ///     AdapterStrategy, AntiBotProvider, Detection, IntegrationRecommendation,
 ///     InvestigationReport, RequirementsProfile, TargetClass,
 /// };
+/// use stygian_charon::vendor_classifier::VendorId;
 /// use std::collections::BTreeMap;
 ///
 /// let memory = ChallengeMemory::with_defaults();
-/// memory.record("example.com", TargetClass::ContentSite, ChallengeOutcome::Captcha);
+/// let key = EngineKey {
+///     engine: VendorId::Cloudflare,
+///     version: None,
+///     target_class: TargetClass::ContentSite,
+///     tls_profile: None,
+/// };
+/// memory.record(&key, None, ChallengeOutcome::Captcha);
 /// let report = InvestigationReport {
 ///     page_title: Some("example.com".to_string()),
 ///     total_requests: 100,
@@ -175,13 +187,7 @@ pub fn memory_adjustment_for(
 ///     },
 /// };
 /// let policy = build_runtime_policy(&report, &requirements);
-/// let with_memory = build_runtime_policy_with_memory(
-///     &report,
-///     &requirements,
-///     &memory,
-///     "example.com",
-///     TargetClass::ContentSite,
-/// );
+/// let with_memory = build_runtime_policy_with_memory(&report, &requirements, &memory, &key);
 /// assert!(with_memory.risk_score >= policy.risk_score);
 /// ```
 #[must_use]
@@ -189,19 +195,18 @@ pub fn build_runtime_policy_with_memory(
     report: &crate::types::InvestigationReport,
     requirements: &RequirementsProfile,
     memory: &ChallengeMemory,
-    domain: &str,
-    target_class: TargetClass,
+    key: &EngineKey,
 ) -> RuntimePolicy {
     let policy = crate::policy::build_runtime_policy(report, requirements);
-    adjust_runtime_policy(&policy, memory, domain, target_class)
+    adjust_runtime_policy(&policy, memory, key)
 }
 
 /// Apply a bounded challenge-memory adjustment to an existing
 /// [`RuntimePolicy`].
 ///
-/// The adjustment is added to `policy.risk_score` and the result is
-/// re-clamped to `[0.0, 1.0]`. The adjustment itself is
-/// **per-key clamped** to
+/// The adjustment is looked up under the supplied [`EngineKey`]
+/// and added to `policy.risk_score`; the result is re-clamped to
+/// `[0.0, 1.0]`. The adjustment itself is **per-key clamped** to
 /// [`ChallengeFeedbackPolicy::max_delta`][ChallengeFeedbackPolicy::max_delta]
 /// (default `MAX_RISK_DELTA = 0.20`) before being added, so a single
 /// entry can never shift the risk score by more than the documented
@@ -211,15 +216,22 @@ pub fn build_runtime_policy_with_memory(
 ///
 /// ```
 /// use stygian_charon::challenge_feedback::{
-///     adjust_runtime_policy, ChallengeMemory, ChallengeOutcome, MAX_RISK_DELTA,
+///     adjust_runtime_policy, ChallengeMemory, ChallengeOutcome, EngineKey, MAX_RISK_DELTA,
 /// };
 /// use stygian_charon::types::{
 ///     ExecutionMode, RuntimePolicy, SessionMode, TargetClass, TelemetryLevel,
 /// };
+/// use stygian_charon::vendor_classifier::VendorId;
 /// use std::collections::BTreeMap;
 ///
 /// let memory = ChallengeMemory::with_defaults();
-/// memory.record("example.com", TargetClass::ContentSite, ChallengeOutcome::Captcha);
+/// let key = EngineKey {
+///     engine: VendorId::Cloudflare,
+///     version: None,
+///     target_class: TargetClass::ContentSite,
+///     tls_profile: None,
+/// };
+/// memory.record(&key, None, ChallengeOutcome::Captcha);
 ///
 /// let base = RuntimePolicy {
 ///     execution_mode: ExecutionMode::Http,
@@ -235,7 +247,7 @@ pub fn build_runtime_policy_with_memory(
 ///     config_hints: BTreeMap::new(),
 ///     risk_score: 0.30,
 /// };
-/// let adjusted = adjust_runtime_policy(&base, &memory, "example.com", TargetClass::ContentSite);
+/// let adjusted = adjust_runtime_policy(&base, &memory, &key);
 /// assert!(adjusted.risk_score >= base.risk_score);
 /// assert!(adjusted.risk_score <= base.risk_score + MAX_RISK_DELTA);
 /// ```
@@ -243,10 +255,9 @@ pub fn build_runtime_policy_with_memory(
 pub fn adjust_runtime_policy(
     policy: &RuntimePolicy,
     memory: &ChallengeMemory,
-    domain: &str,
-    target_class: TargetClass,
+    key: &EngineKey,
 ) -> RuntimePolicy {
-    let adjustment = memory_adjustment_for(memory, domain, target_class);
+    let adjustment = memory_adjustment_for(memory, key);
     let mut adjusted = policy.clone();
     adjusted.risk_score = (policy.risk_score + adjustment).clamp(0.0, 1.0);
     adjusted
@@ -275,16 +286,54 @@ fn clamp_to_policy(policy: &ChallengeFeedbackPolicy, raw_delta: f64) -> f64 {
 mod tests {
     use super::*;
     use crate::challenge_feedback::ChallengeOutcome;
+    use crate::challenge_feedback::EngineKey;
     use crate::types::{
         AdapterStrategy, AntiBotProvider, Detection, ExecutionMode, IntegrationRecommendation,
-        InvestigationReport, RuntimePolicy, SessionMode, TelemetryLevel,
+        InvestigationReport, RuntimePolicy, SessionMode, TargetClass, TelemetryLevel,
     };
+    use crate::vendor_classifier::VendorId;
     use std::collections::BTreeMap;
     use std::num::NonZeroUsize;
     use std::time::Duration;
 
     fn approx_eq(a: f64, b: f64) -> bool {
         (a - b).abs() < 1e-9
+    }
+
+    fn cf_content() -> EngineKey {
+        EngineKey {
+            engine: VendorId::Cloudflare,
+            version: None,
+            target_class: TargetClass::ContentSite,
+            tls_profile: None,
+        }
+    }
+
+    fn cf_api() -> EngineKey {
+        EngineKey {
+            engine: VendorId::Cloudflare,
+            version: None,
+            target_class: TargetClass::Api,
+            tls_profile: None,
+        }
+    }
+
+    fn cf_high_security() -> EngineKey {
+        EngineKey {
+            engine: VendorId::Cloudflare,
+            version: None,
+            target_class: TargetClass::HighSecurity,
+            tls_profile: None,
+        }
+    }
+
+    fn cf_unknown() -> EngineKey {
+        EngineKey {
+            engine: VendorId::Cloudflare,
+            version: None,
+            target_class: TargetClass::Unknown,
+            tls_profile: None,
+        }
     }
 
     fn base_policy() -> RuntimePolicy {
@@ -343,23 +392,17 @@ mod tests {
     fn policy_with_no_memory_returns_base() {
         let memory = ChallengeMemory::with_defaults();
         let policy = base_policy();
-        let adjusted =
-            adjust_runtime_policy(&policy, &memory, "example.com", TargetClass::ContentSite);
+        let adjusted = adjust_runtime_policy(&policy, &memory, &cf_content());
         assert!(approx_eq(adjusted.risk_score, policy.risk_score));
     }
 
     #[test]
     fn positive_outcome_lifts_risk_score_within_clamp() {
         let memory = ChallengeMemory::new(NonZeroUsize::new(4).unwrap(), Duration::from_mins(1));
-        memory.record(
-            "example.com",
-            TargetClass::ContentSite,
-            ChallengeOutcome::HardChallenge,
-        );
+        memory.record(&cf_content(), None, ChallengeOutcome::HardChallenge);
 
         let policy = base_policy();
-        let adjusted =
-            adjust_runtime_policy(&policy, &memory, "example.com", TargetClass::ContentSite);
+        let adjusted = adjust_runtime_policy(&policy, &memory, &cf_content());
 
         let expected_delta = ChallengeOutcome::HardChallenge.risk_delta();
         assert!(adjusted.risk_score >= policy.risk_score);
@@ -373,15 +416,10 @@ mod tests {
     #[test]
     fn negative_outcome_lowers_risk_score_within_clamp() {
         let memory = ChallengeMemory::new(NonZeroUsize::new(4).unwrap(), Duration::from_mins(1));
-        memory.record(
-            "example.com",
-            TargetClass::ContentSite,
-            ChallengeOutcome::Pass,
-        );
+        memory.record(&cf_content(), None, ChallengeOutcome::Pass);
 
         let policy = base_policy();
-        let adjusted =
-            adjust_runtime_policy(&policy, &memory, "example.com", TargetClass::ContentSite);
+        let adjusted = adjust_runtime_policy(&policy, &memory, &cf_content());
 
         assert!(adjusted.risk_score <= policy.risk_score);
         assert!(adjusted.risk_score >= (policy.risk_score - MAX_RISK_DELTA).max(0.0));
@@ -390,18 +428,13 @@ mod tests {
     #[test]
     fn risk_score_clamps_to_unit_interval_under_extreme_inputs() {
         let memory = ChallengeMemory::with_defaults();
-        memory.record(
-            "example.com",
-            TargetClass::ContentSite,
-            ChallengeOutcome::Captcha,
-        );
+        memory.record(&cf_content(), None, ChallengeOutcome::Captcha);
 
         let high = RuntimePolicy {
             risk_score: 0.95,
             ..base_policy()
         };
-        let adjusted =
-            adjust_runtime_policy(&high, &memory, "example.com", TargetClass::ContentSite);
+        let adjusted = adjust_runtime_policy(&high, &memory, &cf_content());
         assert!(adjusted.risk_score <= 1.0);
         // Single Captcha adds 0.20, so 0.95 + 0.20 = 1.15 clamps to 1.0
         assert!(approx_eq(adjusted.risk_score, 1.0));
@@ -412,8 +445,7 @@ mod tests {
         };
         // No memory entry — the low baseline is unchanged.
         let no_memory = ChallengeMemory::with_defaults();
-        let low_adjusted =
-            adjust_runtime_policy(&low, &no_memory, "nope.example", TargetClass::ContentSite);
+        let low_adjusted = adjust_runtime_policy(&low, &no_memory, &cf_unknown());
         assert!(approx_eq(low_adjusted.risk_score, low.risk_score));
     }
 
@@ -422,18 +454,13 @@ mod tests {
         // Even an outcome that is the largest possible (Blocked/Captcha = 0.20)
         // must never push the adjustment beyond MAX_RISK_DELTA.
         let memory = ChallengeMemory::with_defaults();
-        memory.record(
-            "example.com",
-            TargetClass::ContentSite,
-            ChallengeOutcome::Blocked,
-        );
+        memory.record(&cf_content(), None, ChallengeOutcome::Blocked);
 
         let policy = RuntimePolicy {
             risk_score: 0.0,
             ..base_policy()
         };
-        let adjusted =
-            adjust_runtime_policy(&policy, &memory, "example.com", TargetClass::ContentSite);
+        let adjusted = adjust_runtime_policy(&policy, &memory, &cf_content());
 
         let lift = adjusted.risk_score - policy.risk_score;
         assert!(lift >= 0.0);
@@ -459,22 +486,13 @@ mod tests {
     #[test]
     fn build_runtime_policy_with_memory_includes_adjustment() {
         let memory = ChallengeMemory::with_defaults();
-        memory.record(
-            "example.com",
-            TargetClass::ContentSite,
-            ChallengeOutcome::Captcha,
-        );
+        memory.record(&cf_content(), None, ChallengeOutcome::Captcha);
 
         let report = empty_report(TargetClass::ContentSite);
         let requirements = empty_requirements();
         let base = crate::policy::build_runtime_policy(&report, &requirements);
-        let adjusted = build_runtime_policy_with_memory(
-            &report,
-            &requirements,
-            &memory,
-            "example.com",
-            TargetClass::ContentSite,
-        );
+        let adjusted =
+            build_runtime_policy_with_memory(&report, &requirements, &memory, &cf_content());
 
         assert!(adjusted.risk_score >= base.risk_score);
     }
@@ -482,9 +500,31 @@ mod tests {
     #[test]
     fn memory_adjustment_for_returns_zero_when_absent() {
         let memory = ChallengeMemory::with_defaults();
-        assert!(approx_eq(
-            memory_adjustment_for(&memory, "nope.example", TargetClass::ContentSite),
-            0.0
-        ));
+        let missing = EngineKey {
+            engine: VendorId::DataDome,
+            version: None,
+            target_class: TargetClass::ContentSite,
+            tls_profile: None,
+        };
+        assert!(approx_eq(memory_adjustment_for(&memory, &missing), 0.0));
+    }
+
+    /// T110 guard test (policy layer): `adjust_runtime_policy`
+    /// looks up by engine + `target_class` + `tls_profile`, so a
+    /// patch recorded under one `target_class` cannot leak into
+    /// an adjustment for a different `target_class`.
+    #[test]
+    fn adjust_runtime_policy_is_target_class_scoped() {
+        let memory = ChallengeMemory::with_defaults();
+        memory.record(&cf_content(), None, ChallengeOutcome::Captcha);
+
+        let policy = base_policy();
+        let content_adjusted = adjust_runtime_policy(&policy, &memory, &cf_content());
+        let api_adjusted = adjust_runtime_policy(&policy, &memory, &cf_api());
+        let high_adjusted = adjust_runtime_policy(&policy, &memory, &cf_high_security());
+
+        assert!(content_adjusted.risk_score > policy.risk_score);
+        assert!(approx_eq(api_adjusted.risk_score, policy.risk_score));
+        assert!(approx_eq(high_adjusted.risk_score, policy.risk_score));
     }
 }

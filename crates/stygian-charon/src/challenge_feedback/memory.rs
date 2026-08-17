@@ -4,7 +4,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
 use crate::cache::LruTtlStore;
-use crate::challenge_feedback::ChallengeOutcome;
+use crate::challenge_feedback::{ChallengeOutcome, EngineKey};
 use crate::types::TargetClass;
 
 /// Default TTL for the challenge memory: **10 minutes**.
@@ -16,9 +16,9 @@ use crate::types::TargetClass;
 /// to back off entirely.
 pub const DEFAULT_CHALLENGE_TTL: Duration = Duration::from_mins(10);
 
-/// Default capacity (in `(domain, target_class)` entries) for the
-/// challenge memory. Conservative default — most workflows touch
-/// only a handful of distinct target classes.
+/// Default capacity (in [`EngineKey`] entries) for the challenge
+/// memory. Conservative default — most workflows touch only a
+/// handful of distinct (engine, `target_class`, `tls_profile`) keys.
 #[allow(clippy::unwrap_used)]
 pub const DEFAULT_CHALLENGE_CAPACITY: NonZeroUsize = match NonZeroUsize::new(64) {
     Some(value) => value,
@@ -31,56 +31,63 @@ pub const DEFAULT_CHALLENGE_CAPACITY: NonZeroUsize = match NonZeroUsize::new(64)
 /// while still being a valid serialisation.
 const ZERO_FALLBACK_UNIX_SECS: u64 = 0;
 
-/// Build a stable, lower-cased cache key for the challenge memory
-/// entry keyed by `(domain, target_class)`.
+/// Build a stable cache key for the challenge memory entry keyed
+/// by [`EngineKey`].
+///
+/// The wire shape is
+/// `charon:challenge:engine[/version][+tls_profile]:target_class`
+/// so it round-trips with [`EngineKey::Display`] and never
+/// collides with `charon:pow:...` (T93) or `charon:token_nonce:...`
+/// (T91) entries on a shared backing primitive.
 ///
 /// # Example
 ///
 /// ```
-/// use stygian_charon::challenge_feedback::challenge_memory_key;
+/// use stygian_charon::challenge_feedback::{engine_memory_key, EngineKey};
 /// use stygian_charon::types::TargetClass;
+/// use stygian_charon::vendor_classifier::VendorId;
 ///
-/// let key = challenge_memory_key("Example.COM", TargetClass::Api);
-/// assert!(key.starts_with("charon:challenge:example.com:"));
+/// let key = EngineKey {
+///     engine: VendorId::Cloudflare,
+///     version: None,
+///     target_class: TargetClass::Api,
+///     tls_profile: None,
+/// };
+/// let wire = engine_memory_key(&key);
+/// assert!(wire.starts_with("charon:challenge:cloudflare:api"));
 /// ```
 #[must_use]
-pub fn challenge_memory_key(domain: &str, target_class: TargetClass) -> String {
-    format!(
-        "charon:challenge:{}:{}",
-        domain.to_ascii_lowercase(),
-        target_class_label(target_class)
-    )
-}
-
-const fn target_class_label(c: TargetClass) -> &'static str {
-    match c {
-        TargetClass::Api => "api",
-        TargetClass::ContentSite => "content_site",
-        TargetClass::HighSecurity => "high_security",
-        TargetClass::Unknown => "unknown",
-    }
+pub fn engine_memory_key(key: &EngineKey) -> String {
+    format!("charon:challenge:{key}")
 }
 
 /// One entry in the challenge memory.
 ///
 /// An entry represents the **last observed** outcome for a single
-/// `(domain, target_class)` pair, along with a count of how many
-/// times the runner has recorded an outcome for that key (capped at
-/// `u32::MAX` for monotonic counters). The TTL is owned by the
-/// `LruTtlStore` backing the
-/// [`ChallengeMemory`] — once the LRU entry expires, the whole
-/// entry is dropped and the runner falls back to the unadjusted
-/// risk score.
+/// [`EngineKey`], along with a count of how many times the runner
+/// has recorded an outcome for that key (capped at `u32::MAX` for
+/// monotonic counters) and the **last URL** the runner saw the
+/// outcome on (kept as a secondary debugging index only — the
+/// primary key is the engine, not the URL). The TTL is owned by
+/// the [`LruTtlStore`] backing the [`ChallengeMemory`] — once the
+/// LRU entry expires, the whole entry is dropped and the runner
+/// falls back to the unadjusted risk score.
 ///
 /// # Example
 ///
 /// ```
-/// use stygian_charon::challenge_feedback::{ChallengeMemoryEntry, ChallengeOutcome};
+/// use stygian_charon::challenge_feedback::{ChallengeMemoryEntry, ChallengeOutcome, EngineKey};
 /// use stygian_charon::types::TargetClass;
+/// use stygian_charon::vendor_classifier::VendorId;
 ///
 /// let entry = ChallengeMemoryEntry {
-///     domain: "example.com".to_string(),
-///     target_class: TargetClass::ContentSite,
+///     key: EngineKey {
+///         engine: VendorId::Cloudflare,
+///         version: None,
+///         target_class: TargetClass::ContentSite,
+///         tls_profile: None,
+///     },
+///     last_observed_url: Some("https://example.com/path".to_string()),
 ///     last_outcome: ChallengeOutcome::HardChallenge,
 ///     observation_count: 1,
 ///     recorded_at_unix_secs: 1_700_000_000,
@@ -89,10 +96,15 @@ const fn target_class_label(c: TargetClass) -> &'static str {
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChallengeMemoryEntry {
-    /// Lower-cased host the outcome was recorded for.
-    pub domain: String,
-    /// Target class the outcome was recorded for.
-    pub target_class: TargetClass,
+    /// Primary identity of this entry — the engine, target class,
+    /// version, and TLS profile the entry was recorded under.
+    pub key: EngineKey,
+    /// Optional last URL the outcome was observed on. Kept for
+    /// debugging ("where did we last see this engine?") — it is
+    /// NOT a primary key. Two different URLs on the same engine
+    /// share the same memory entry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_observed_url: Option<String>,
     /// Most recently recorded outcome for this key.
     pub last_outcome: ChallengeOutcome,
     /// Number of outcomes the runner has recorded for this key
@@ -112,28 +124,63 @@ impl ChallengeMemoryEntry {
     pub const fn risk_delta(&self) -> f64 {
         self.last_outcome.risk_delta()
     }
+
+    /// Convenience accessor for the entry's target class.
+    /// Mirrors [`EngineKey::target_class`] so callers do not have
+    /// to reach through `entry.key.target_class`.
+    #[must_use]
+    pub const fn target_class(&self) -> TargetClass {
+        self.key.target_class
+    }
+
+    /// Convenience accessor for the entry's engine. Mirrors
+    /// [`EngineKey::engine`] so callers do not have to reach
+    /// through `entry.key.engine`.
+    #[must_use]
+    pub const fn engine(&self) -> crate::vendor_classifier::VendorId {
+        self.key.engine
+    }
 }
 
-/// Short-horizon, capacity-bounded LRU memory of challenge outcomes
-/// keyed by `(domain, target_class)`.
+/// Capacity-bounded LRU+TTL store of [`ChallengeMemoryEntry`]s
+/// keyed by [`EngineKey`].
 ///
-/// The store reuses the same `LruTtlStore`
-/// primitive that backs the investigation report cache. That keeps
-/// eviction + expiry semantics consistent across both caches and
-/// satisfies the "no new cache store" requirement.
+/// The store reuses the same [`LruTtlStore`] primitive the
+/// investigation cache and the `PoW` / token-nonce stores use (see
+/// [`crate::cache::LruTtlStore`]). That keeps eviction + expiry
+/// semantics consistent across every short-horizon store in the
+/// crate and satisfies the "no new cache store" rule.
+///
+/// ## Why engine-keyed?
+///
+/// The primary key is the **engine** (Akamai, Cloudflare, `DataDome`,
+/// …), **not** the URL. A self-healing patch recorded against one
+/// URL on one engine heals every URL on that engine — a captcha
+/// workaround learned on `example.com/cloudflare/page1` is
+/// immediately applied to `example.com/cloudflare/page2` and to
+/// every other Cloudflare-fronted URL the runner sees. The URL
+/// is kept on each entry only as a secondary debugging index
+/// (see [`ChallengeMemoryEntry::last_observed_url`]).
 ///
 /// # Example
 ///
 /// ```
-/// use stygian_charon::challenge_feedback::{ChallengeMemory, ChallengeOutcome};
+/// use stygian_charon::challenge_feedback::{ChallengeMemory, ChallengeOutcome, EngineKey};
 /// use stygian_charon::types::TargetClass;
+/// use stygian_charon::vendor_classifier::VendorId;
 /// use std::num::NonZeroUsize;
 /// use std::time::Duration;
 ///
 /// let memory =
 ///     ChallengeMemory::new(NonZeroUsize::new(8).expect("non-zero"), Duration::from_mins(5));
-/// memory.record("example.com", TargetClass::ContentSite, ChallengeOutcome::Captcha);
-/// let entry = memory.lookup("example.com", TargetClass::ContentSite).expect("entry");
+/// let key = EngineKey {
+///     engine: VendorId::Cloudflare,
+///     version: None,
+///     target_class: TargetClass::ContentSite,
+///     tls_profile: None,
+/// };
+/// memory.record(&key, Some("https://example.com/a"), ChallengeOutcome::Captcha);
+/// let entry = memory.lookup(&key).expect("entry");
 /// assert_eq!(entry.last_outcome, ChallengeOutcome::Captcha);
 /// assert_eq!(entry.observation_count, 1);
 /// ```
@@ -151,8 +198,7 @@ impl ChallengeMemory {
     }
 
     /// Create a new challenge memory with
-    /// `DEFAULT_CHALLENGE_CAPACITY` and
-    /// `DEFAULT_CHALLENGE_TTL`.
+    /// [`DEFAULT_CHALLENGE_CAPACITY`] and [`DEFAULT_CHALLENGE_TTL`].
     #[must_use]
     pub fn with_default_ttl(capacity: NonZeroUsize) -> Self {
         Self::new(capacity, DEFAULT_CHALLENGE_TTL)
@@ -165,55 +211,78 @@ impl ChallengeMemory {
         Self::new(DEFAULT_CHALLENGE_CAPACITY, DEFAULT_CHALLENGE_TTL)
     }
 
-    /// Record a challenge outcome for a `(domain, target_class)`
-    /// key. Replaces the existing entry (if any) and increments the
-    /// observation counter atomically with the read-modify-write
-    /// sequence. Lower-cases the domain for stable keying.
+    /// Record a challenge outcome for an [`EngineKey`] and
+    /// optionally the URL the outcome was observed on. The URL is
+    /// stored only as a secondary debugging index — the primary
+    /// key is the engine.
+    ///
+    /// The read-modify-write sequence (peek current observation
+    /// count → build new entry → put) is **atomic** under
+    /// concurrency: two simultaneous `record` calls always observe
+    /// each other's prior increments. See
+    /// [`LruTtlStore::mutate`][crate::cache::LruTtlStore] for the
+    /// locking primitive.
+    ///
+    /// Expired entries start a fresh observation at count=1 (the
+    /// underlying `mutate` evicts expired entries first).
     ///
     /// # Example
     ///
     /// ```
-    /// use stygian_charon::challenge_feedback::{ChallengeMemory, ChallengeOutcome};
+    /// use stygian_charon::challenge_feedback::{ChallengeMemory, ChallengeOutcome, EngineKey};
     /// use stygian_charon::types::TargetClass;
+    /// use stygian_charon::vendor_classifier::VendorId;
     ///
     /// let memory = ChallengeMemory::with_defaults();
-    /// memory.record("Example.COM", TargetClass::Api, ChallengeOutcome::Pass);
-    /// let entry = memory.lookup("example.com", TargetClass::Api).unwrap();
+    /// let key = EngineKey {
+    ///     engine: VendorId::Cloudflare,
+    ///     version: None,
+    ///     target_class: TargetClass::Api,
+    ///     tls_profile: None,
+    /// };
+    /// memory.record(&key, None, ChallengeOutcome::Pass);
+    /// let entry = memory.lookup(&key).expect("entry");
     /// assert_eq!(entry.last_outcome, ChallengeOutcome::Pass);
     /// assert_eq!(entry.observation_count, 1);
     /// ```
-    pub fn record(&self, domain: &str, target_class: TargetClass, outcome: ChallengeOutcome) {
-        let key = challenge_memory_key(domain, target_class);
-        let lower = domain.to_ascii_lowercase();
-        let next_count = self
-            .store
-            .peek(&key)
-            .map_or(1, |existing| existing.observation_count.saturating_add(1));
-        let entry = ChallengeMemoryEntry {
-            domain: lower,
-            target_class,
-            last_outcome: outcome,
-            observation_count: next_count,
-            recorded_at_unix_secs: current_unix_secs(),
-        };
-        self.store.put(key, entry);
+    pub fn record(&self, key: &EngineKey, observed_url: Option<&str>, outcome: ChallengeOutcome) {
+        let cache_key = engine_memory_key(key);
+        let entry_key = key.clone();
+        let observed_url_owned = observed_url.map(str::to_string);
+        self.store.mutate(cache_key, |existing| {
+            let next_count = existing.map_or(1, |prev| prev.observation_count.saturating_add(1));
+            ChallengeMemoryEntry {
+                key: entry_key,
+                last_observed_url: observed_url_owned,
+                last_outcome: outcome,
+                observation_count: next_count,
+                recorded_at_unix_secs: current_unix_secs(),
+            }
+        });
     }
 
-    /// Look up the current entry for a `(domain, target_class)` key.
-    /// Returns `None` if the key is absent or has expired.
+    /// Look up the current entry for an [`EngineKey`]. Returns
+    /// `None` if the key is absent or has expired.
     ///
     /// # Example
     ///
     /// ```
-    /// use stygian_charon::challenge_feedback::ChallengeMemory;
+    /// use stygian_charon::challenge_feedback::{ChallengeMemory, EngineKey};
     /// use stygian_charon::types::TargetClass;
+    /// use stygian_charon::vendor_classifier::VendorId;
     ///
     /// let memory = ChallengeMemory::with_defaults();
-    /// assert!(memory.lookup("nope.example", TargetClass::Api).is_none());
+    /// let key = EngineKey {
+    ///     engine: VendorId::DataDome,
+    ///     version: None,
+    ///     target_class: TargetClass::HighSecurity,
+    ///     tls_profile: None,
+    /// };
+    /// assert!(memory.lookup(&key).is_none());
     /// ```
     #[must_use]
-    pub fn lookup(&self, domain: &str, target_class: TargetClass) -> Option<ChallengeMemoryEntry> {
-        self.store.get(&challenge_memory_key(domain, target_class))
+    pub fn lookup(&self, key: &EngineKey) -> Option<ChallengeMemoryEntry> {
+        self.store.get(&engine_memory_key(key))
     }
 
     /// Number of entries currently retained.
@@ -233,10 +302,9 @@ impl ChallengeMemory {
         self.store.clear();
     }
 
-    /// Invalidate a single `(domain, target_class)` key.
-    pub fn invalidate(&self, domain: &str, target_class: TargetClass) {
-        self.store
-            .invalidate(&challenge_memory_key(domain, target_class));
+    /// Invalidate a single [`EngineKey`].
+    pub fn invalidate(&self, key: &EngineKey) {
+        self.store.invalidate(&engine_memory_key(key));
     }
 }
 
@@ -257,45 +325,61 @@ mod tests {
     use super::*;
     use std::thread;
 
+    fn cf_api() -> EngineKey {
+        EngineKey {
+            engine: crate::vendor_classifier::VendorId::Cloudflare,
+            version: None,
+            target_class: TargetClass::Api,
+            tls_profile: None,
+        }
+    }
+
+    fn cf_content() -> EngineKey {
+        EngineKey {
+            target_class: TargetClass::ContentSite,
+            ..cf_api()
+        }
+    }
+
+    fn cf_api_tls_chrome136() -> EngineKey {
+        EngineKey {
+            tls_profile: Some("chrome136".to_string()),
+            ..cf_api()
+        }
+    }
+
     #[test]
     fn record_overwrites_last_outcome_and_increments_count() {
         let memory = ChallengeMemory::new(NonZeroUsize::new(4).unwrap(), Duration::from_mins(1));
-        let key = ("example.com", TargetClass::ContentSite);
+        let key = cf_content();
 
-        memory.record(key.0, key.1, ChallengeOutcome::Pass);
-        memory.record(key.0, key.1, ChallengeOutcome::HardChallenge);
-        memory.record(key.0, key.1, ChallengeOutcome::Captcha);
+        memory.record(&key, None, ChallengeOutcome::Pass);
+        memory.record(&key, None, ChallengeOutcome::HardChallenge);
+        memory.record(&key, None, ChallengeOutcome::Captcha);
 
-        let entry = memory.lookup(key.0, key.1).expect("entry present");
+        let entry = memory.lookup(&key).expect("entry present");
         assert_eq!(entry.last_outcome, ChallengeOutcome::Captcha);
         assert_eq!(entry.observation_count, 3);
-        assert_eq!(entry.domain, "example.com");
-        assert_eq!(entry.target_class, TargetClass::ContentSite);
+        assert_eq!(entry.key, key);
     }
 
     #[test]
     fn entries_decay_after_ttl() {
         let memory = ChallengeMemory::new(NonZeroUsize::new(4).unwrap(), Duration::from_millis(1));
-        memory.record("example.com", TargetClass::Api, ChallengeOutcome::Blocked);
+        memory.record(&cf_api(), None, ChallengeOutcome::Blocked);
         thread::sleep(Duration::from_millis(5));
-        assert!(memory.lookup("example.com", TargetClass::Api).is_none());
+        assert!(memory.lookup(&cf_api()).is_none());
     }
 
     #[test]
     fn distinct_target_classes_keep_distinct_entries() {
         let memory = ChallengeMemory::new(NonZeroUsize::new(8).unwrap(), Duration::from_mins(1));
 
-        memory.record("example.com", TargetClass::Api, ChallengeOutcome::Pass);
-        memory.record(
-            "example.com",
-            TargetClass::ContentSite,
-            ChallengeOutcome::Captcha,
-        );
+        memory.record(&cf_api(), None, ChallengeOutcome::Pass);
+        memory.record(&cf_content(), None, ChallengeOutcome::Captcha);
 
-        let api = memory.lookup("example.com", TargetClass::Api).unwrap();
-        let content = memory
-            .lookup("example.com", TargetClass::ContentSite)
-            .unwrap();
+        let api = memory.lookup(&cf_api()).unwrap();
+        let content = memory.lookup(&cf_content()).unwrap();
 
         assert_eq!(api.last_outcome, ChallengeOutcome::Pass);
         assert_eq!(content.last_outcome, ChallengeOutcome::Captcha);
@@ -304,44 +388,203 @@ mod tests {
     #[test]
     fn clear_drops_everything() {
         let memory = ChallengeMemory::new(NonZeroUsize::new(4).unwrap(), Duration::from_mins(1));
-        memory.record("example.com", TargetClass::Api, ChallengeOutcome::Pass);
-        memory.record("other.example", TargetClass::Api, ChallengeOutcome::Blocked);
+        memory.record(&cf_api(), None, ChallengeOutcome::Pass);
+        let other = EngineKey {
+            engine: crate::vendor_classifier::VendorId::Akamai,
+            ..cf_api()
+        };
+        memory.record(&other, None, ChallengeOutcome::Blocked);
         assert_eq!(memory.len(), 2);
         memory.clear();
         assert!(memory.is_empty());
     }
 
     #[test]
-    fn domain_is_normalised_to_lower_case() {
-        let memory = ChallengeMemory::new(NonZeroUsize::new(4).unwrap(), Duration::from_mins(1));
-        memory.record(
-            "Example.COM",
-            TargetClass::Api,
-            ChallengeOutcome::SoftChallenge,
-        );
-        let entry = memory.lookup("EXAMPLE.com", TargetClass::Api).unwrap();
-        assert_eq!(entry.domain, "example.com");
-        assert_eq!(entry.last_outcome, ChallengeOutcome::SoftChallenge);
-    }
-
-    #[test]
     fn risk_delta_uses_last_outcome() {
         let memory = ChallengeMemory::new(NonZeroUsize::new(4).unwrap(), Duration::from_mins(1));
-        memory.record(
-            "example.com",
-            TargetClass::Api,
-            ChallengeOutcome::HardChallenge,
-        );
-        let entry = memory.lookup("example.com", TargetClass::Api).unwrap();
+        memory.record(&cf_api(), None, ChallengeOutcome::HardChallenge);
+        let entry = memory.lookup(&cf_api()).unwrap();
         assert!((entry.risk_delta() - ChallengeOutcome::HardChallenge.risk_delta()).abs() < 1e-9);
     }
 
     #[test]
     fn lru_capacity_is_respected() {
         let memory = ChallengeMemory::new(NonZeroUsize::new(2).unwrap(), Duration::from_mins(1));
-        memory.record("a.example", TargetClass::Api, ChallengeOutcome::Pass);
-        memory.record("b.example", TargetClass::Api, ChallengeOutcome::Pass);
-        memory.record("c.example", TargetClass::Api, ChallengeOutcome::Pass);
+        for (i, vendor) in [
+            crate::vendor_classifier::VendorId::Akamai,
+            crate::vendor_classifier::VendorId::Cloudflare,
+            crate::vendor_classifier::VendorId::DataDome,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let key = EngineKey {
+                engine: vendor,
+                ..cf_api()
+            };
+            // Differentiate by target_class on the last iteration
+            // to avoid the same-key overwrite collapsing entries.
+            let key = if i == 2 {
+                EngineKey {
+                    target_class: TargetClass::HighSecurity,
+                    ..key
+                }
+            } else {
+                key
+            };
+            memory.record(&key, None, ChallengeOutcome::Pass);
+        }
         assert!(memory.len() <= 2);
+    }
+
+    // ----------------------------------------------------------------
+    // T110 guard tests
+    // ----------------------------------------------------------------
+
+    /// Guard test (T110): a self-healing patch recorded against
+    /// URL A on engine E propagates to URL B on engine E. The URL
+    /// is not the key; the engine is the key.
+    #[test]
+    fn same_engine_different_url_propagates_patch() {
+        let memory = ChallengeMemory::new(NonZeroUsize::new(4).unwrap(), Duration::from_mins(1));
+        let key = cf_api();
+
+        memory.record(
+            &key,
+            Some("https://example.com/cloudflare/page1"),
+            ChallengeOutcome::Captcha,
+        );
+
+        // Re-read with a *different* URL — same engine, same
+        // target class, no TLS profile. The patch must propagate.
+        let entry = memory.lookup(&key).expect("entry present");
+        assert_eq!(
+            entry.last_outcome,
+            ChallengeOutcome::Captcha,
+            "captcha recorded on URL A must heal the engine for URL B too"
+        );
+        assert_eq!(
+            entry.observation_count, 1,
+            "observation_count must reflect the single record (URLs are not keys)"
+        );
+        assert_eq!(
+            entry.last_observed_url.as_deref(),
+            Some("https://example.com/cloudflare/page1"),
+            "last_observed_url records the most-recent URL we saw the engine on"
+        );
+
+        // A subsequent record with a different URL updates the
+        // observed_url but keeps the same engine entry.
+        memory.record(
+            &key,
+            Some("https://example.com/cloudflare/page2"),
+            ChallengeOutcome::Pass,
+        );
+        let entry = memory.lookup(&key).expect("entry present");
+        assert_eq!(entry.observation_count, 2);
+        assert_eq!(
+            entry.last_observed_url.as_deref(),
+            Some("https://example.com/cloudflare/page2")
+        );
+    }
+
+    /// Guard test (T110): two `EngineKey`s differing only by
+    /// `target_class` keep separate memory. The `target_class`
+    /// field participates in the key.
+    #[test]
+    fn same_engine_different_target_class_keeps_separate_memory() {
+        let memory = ChallengeMemory::new(NonZeroUsize::new(4).unwrap(), Duration::from_mins(1));
+        let api = cf_api();
+        let content = cf_content();
+
+        memory.record(&api, None, ChallengeOutcome::Pass);
+        memory.record(&content, None, ChallengeOutcome::Captcha);
+
+        assert_eq!(
+            memory.lookup(&api).unwrap().last_outcome,
+            ChallengeOutcome::Pass
+        );
+        assert_eq!(
+            memory.lookup(&content).unwrap().last_outcome,
+            ChallengeOutcome::Captcha
+        );
+        assert_ne!(
+            memory.lookup(&api),
+            memory.lookup(&content),
+            "entries differing only by target_class must be distinct"
+        );
+    }
+
+    /// Guard test (T110): two `EngineKey`s differing only by
+    /// `tls_profile` keep separate memory. Encoding the wrong
+    /// combination is structurally impossible.
+    #[test]
+    fn same_engine_different_tls_profile_keeps_separate_memory() {
+        let memory = ChallengeMemory::new(NonZeroUsize::new(4).unwrap(), Duration::from_mins(1));
+        let baseline = cf_api();
+        let tls = cf_api_tls_chrome136();
+
+        memory.record(&baseline, None, ChallengeOutcome::Pass);
+        memory.record(&tls, None, ChallengeOutcome::HardChallenge);
+
+        let base_entry = memory.lookup(&baseline).expect("baseline entry");
+        let tls_entry = memory.lookup(&tls).expect("tls entry");
+        assert_eq!(base_entry.last_outcome, ChallengeOutcome::Pass);
+        assert_eq!(tls_entry.last_outcome, ChallengeOutcome::HardChallenge);
+        assert_ne!(base_entry.key, tls_entry.key);
+        assert_eq!(memory.len(), 2, "two distinct keys => two entries");
+    }
+
+    /// Guard test (T110): `EngineKey` round-trips through both
+    /// `Display`/`FromStr` and `Serialize`/`Deserialize`, and
+    /// the `engine_memory_key` wire format round-trips with
+    /// `EngineKey::Display` for every supported field shape.
+    #[test]
+    fn engine_key_round_trips_through_display_fromstr_and_serde() {
+        let samples = [
+            EngineKey {
+                engine: crate::vendor_classifier::VendorId::Cloudflare,
+                version: None,
+                target_class: TargetClass::Api,
+                tls_profile: None,
+            },
+            EngineKey {
+                engine: crate::vendor_classifier::VendorId::Akamai,
+                version: Some("bot-manager-v3".to_string()),
+                target_class: TargetClass::HighSecurity,
+                tls_profile: None,
+            },
+            EngineKey {
+                engine: crate::vendor_classifier::VendorId::DataDome,
+                version: None,
+                target_class: TargetClass::ContentSite,
+                tls_profile: Some("firefox130".to_string()),
+            },
+            EngineKey {
+                engine: crate::vendor_classifier::VendorId::PerimeterX,
+                version: Some("human-v1".to_string()),
+                target_class: TargetClass::HighSecurity,
+                tls_profile: Some("chrome136".to_string()),
+            },
+        ];
+
+        for key in &samples {
+            let wire = engine_memory_key(key);
+            // The wire form embeds EngineKey::Display.
+            assert!(
+                wire.starts_with("charon:challenge:"),
+                "namespace prefix must be stable (got {wire})"
+            );
+
+            // Display <-> FromStr round-trip.
+            let rendered = key.to_string();
+            let parsed: EngineKey = rendered.parse().expect("FromStr round-trip");
+            assert_eq!(&parsed, key, "Display <-> FromStr round-trip failed");
+
+            // Serde <-> Serde round-trip via JSON.
+            let json = serde_json::to_string(key).expect("Serialize");
+            let de: EngineKey = serde_json::from_str(&json).expect("Deserialize");
+            assert_eq!(&de, key, "JSON round-trip failed for {key:?}");
+        }
     }
 }

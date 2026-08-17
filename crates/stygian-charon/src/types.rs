@@ -11,7 +11,9 @@ use serde::{Deserialize, Serialize};
 /// - **`ContentSite`**: Public web content; moderate block tolerance.
 /// - **`HighSecurity`**: Banking, auth, sensitive data; higher block ratio acceptable.
 /// - **Unknown**: Default classification when unable to determine target type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum TargetClass {
     /// REST API or GraphQL endpoint; expect clean machine-to-machine paths.
@@ -21,6 +23,7 @@ pub enum TargetClass {
     /// High-security property (banking, auth, sensitive data); strict anti-bot expected.
     HighSecurity,
     /// Unknown or unclassified target.
+    #[default]
     Unknown,
 }
 

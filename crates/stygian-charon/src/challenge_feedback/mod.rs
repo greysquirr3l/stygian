@@ -1,4 +1,4 @@
-//! Challenge-aware policy feedback loop (T83).
+//! Challenge-aware policy feedback loop (T83, T110).
 //!
 //! ## What this module does
 //!
@@ -10,11 +10,39 @@
 //! vendor to escalate, eventually locking the scraper out.
 //!
 //! [`ChallengeMemory`] keeps a short-horizon record of the **last
-//! observed outcome** per `(domain, target_class)` key with a TTL
-//! and a max-entries cap (LRU eviction). [`adjust_runtime_policy`]
-//! (and [`build_runtime_policy_with_memory`]) consume the memory to
+//! observed outcome** per [`EngineKey`] with a TTL and a
+//! max-entries cap (LRU eviction). [`adjust_runtime_policy`] (and
+//! [`build_runtime_policy_with_memory`]) consume the memory to
 //! nudge the risk score up (when the last outcome was adversarial)
 //! or down (when the last outcome was a clean pass).
+//!
+//! ## Why engine-keyed memory? (T110)
+//!
+//! The primary key of [`ChallengeMemory`] is the **engine** —
+//! `(engine, version, target_class, tls_profile)` — **not** the
+//! URL. A self-healing patch recorded against one URL on one
+//! engine heals every URL on that engine: a captcha workaround
+//! learned on `example.com/cloudflare/page1` is immediately
+//! applied to `example.com/cloudflare/page2` and to every other
+//! Cloudflare-fronted URL the runner sees. The URL is kept on each
+//! entry only as a secondary debugging index (see
+//! [`ChallengeMemoryEntry::last_observed_url`]) — it is **not** a
+//! primary key. The principle being encoded is the platform-keyed
+//! memory instinct from the source guide: *"the durable asset is
+//! not the record you extracted, it is the route you learned to
+//! it."*
+//!
+//! All four fields of [`EngineKey`] participate in the
+//! equivalence, hash, and ordering so re-keying a vendor version
+//! (`bot-manager-v3` → `bot-manager-v4`) or changing the TLS
+//! profile (`chrome136` → `firefox130`) deliberately produces a
+//! fresh memory slot. The four guard tests in
+//! [`ChallengeMemory`] exercise this property:
+//!
+//! - `same_engine_different_url_propagates_patch`
+//! - `same_engine_different_target_class_keeps_separate_memory`
+//! - `same_engine_different_tls_profile_keeps_separate_memory`
+//! - `engine_key_round_trips_through_display_fromstr_and_serde`
 //!
 //! ## Why a clamp?
 //!
@@ -50,16 +78,23 @@
 //!
 //! ```
 //! use stygian_charon::challenge_feedback::{
-//!     ChallengeMemory, ChallengeOutcome, adjust_runtime_policy, MAX_RISK_DELTA,
+//!     ChallengeMemory, ChallengeOutcome, EngineKey, adjust_runtime_policy, MAX_RISK_DELTA,
 //! };
 //! use stygian_charon::types::{
 //!     ExecutionMode, RuntimePolicy, SessionMode, TargetClass, TelemetryLevel,
 //! };
+//! use stygian_charon::vendor_classifier::VendorId;
 //! use std::collections::BTreeMap;
 //! use std::num::NonZeroUsize;
 //!
 //! let memory = ChallengeMemory::with_default_ttl(NonZeroUsize::new(64).expect("non-zero"));
-//! memory.record("example.com", TargetClass::ContentSite, ChallengeOutcome::Captcha);
+//! let key = EngineKey {
+//!     engine: VendorId::Cloudflare,
+//!     version: None,
+//!     target_class: TargetClass::ContentSite,
+//!     tls_profile: None,
+//! };
+//! memory.record(&key, Some("https://example.com/a"), ChallengeOutcome::Captcha);
 //!
 //! let policy = RuntimePolicy {
 //!     execution_mode: ExecutionMode::Http,
@@ -76,17 +111,21 @@
 //!     risk_score: 0.20,
 //! };
 //!
-//! let adjusted =
-//!     adjust_runtime_policy(&policy, &memory, "example.com", TargetClass::ContentSite);
+//! let adjusted = adjust_runtime_policy(&policy, &memory, &key);
 //! assert!(adjusted.risk_score >= policy.risk_score);
 //! assert!(adjusted.risk_score <= policy.risk_score + MAX_RISK_DELTA);
 //! ```
 
+mod key;
 mod memory;
 mod outcome;
 mod policy;
 
-pub use memory::{ChallengeMemory, ChallengeMemoryEntry, challenge_memory_key};
+pub use key::{EngineKey, EngineKeyParseError};
+pub use memory::{
+    ChallengeMemory, ChallengeMemoryEntry, DEFAULT_CHALLENGE_CAPACITY, DEFAULT_CHALLENGE_TTL,
+    engine_memory_key,
+};
 pub use outcome::ChallengeOutcome;
 pub use policy::{
     ChallengeFeedbackPolicy, MAX_RISK_DELTA, adjust_runtime_policy,
