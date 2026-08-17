@@ -228,7 +228,7 @@ mod tests {
         let template_id = template.id;
 
         store.save(&template).await?;
-        assert!(store.get(&template_id).await?.id == template_id);
+        assert_eq!(store.get(&template_id).await?.id, template_id);
 
         store.delete(&template_id).await?;
         assert!(store.get(&template_id).await.is_err());
@@ -406,7 +406,10 @@ mod tests {
             .await;
 
         assert!(response.get("content").is_some());
-        assert!(response.get("isError").and_then(serde_json::Value::as_bool) != Some(true));
+        assert_ne!(
+            response.get("isError").and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
         Ok(())
     }
 

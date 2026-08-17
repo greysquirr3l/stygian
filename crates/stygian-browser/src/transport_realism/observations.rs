@@ -425,6 +425,6 @@ mod tests {
     fn unused_constants_are_reachable() {
         // Reference capture constants must remain reachable so other
         // modules (diagnostic.rs, tls_validation.rs) can keep using them.
-        assert!(CHROME_131_JA3.len() == 32);
+        assert_eq!(CHROME_131_JA3.len(), 32);
     }
 }
