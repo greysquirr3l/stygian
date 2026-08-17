@@ -15,6 +15,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+## [0.15.0] - 2026-08-17
+
+### Changed
+
+- **BREAKING**: `stygian-graph`, `stygian-browser`, `stygian-proxy`,
+  `stygian-mcp`: migrated all four MCP JSON-RPC servers from the
+  `2025-11-25` protocol to the now-final `2026-07-28` spec. Removes
+  the `initialize`/`initialized` handshake and `ping` /
+  `logging/setLevel` / `notifications/roots/list_changed`; adds a
+  `server/discover` RPC (exempt from the per-request version gate so
+  clients can call it before negotiating); every other request must
+  now carry `_meta.io.modelcontextprotocol/protocolVersion`; all
+  success responses carry `resultType: "complete"`. `stygian-mcp`'s
+  aggregator enforces the version gate for every method except
+  `server/discover`. Closes #95, #96, #98, #99, #100.
+- `workspace`: refreshed dependencies — `mockall` 0.14.0 → 0.15.0,
+  `wasmtime` 45.0.2 → 46.0.2, `quick-xml` 0.40 → 0.41 (workspace
+  constraint) and `feed-rs` 2.3 → 2.4 (needed to reach a patched
+  `quick-xml` on both the direct and transitive paths),
+  `crossbeam-epoch` 0.9.18 → 0.9.20, `anyhow` 1.0.102 → 1.0.103,
+  `lru` 0.18.0 → 0.18.2, `quinn-proto` 0.11.15 → 0.11.16.
+- `stygian-graph`: brought back to zero-warning clippy after a newer
+  toolchain surfaced 3 pre-existing `useless_borrows_in_formatting`
+  warnings (redundant `&` in `format!` arguments), unrelated to any
+  dependency change.
+- test style: replaced `assert!(a == b)` / `assert!(a != b)` with
+  `assert_eq!` / `assert_ne!` in `stygian-browser` and
+  `stygian-plugin` test code for clearer failure output (flagged by
+  `clippy::manual_assert_eq`, a pedantic lint enabled in the
+  workspace's local rust-analyzer config but not by CI).
+
+### Fixed
+
+- **stygian-plugin (extension, CodeQL `js/incomplete-sanitization`)**:
+  `selector-utils.ts` CSS attribute-selector escaping only escaped
+  `"` but not `\`, so an attribute value containing a backslash
+  could escape the quoted context. Backslashes are now escaped
+  before double-quotes. Resolves #91.
+- **tools/stealth-canary (CodeQL `py/implicit-string-concatenation-in-list`)**:
+  `trend_cli.py` had two adjacent string literals in a list with no
+  separating comma — an accidental-omission bug that happened to
+  still produce the intended single header string. Joined into one
+  literal to remove the ambiguity. Resolves #90.
+
+### Security
+
+- **RUSTSEC-2026-0204** (`crossbeam-epoch`, invalid pointer
+  dereference in the `Atomic`/`Shared` `fmt::Pointer` impl),
+  **RUSTSEC-2026-0190** (`anyhow`, undefined behavior in
+  `Error::downcast_mut()`), **RUSTSEC-2026-0253** (`lru`,
+  use-after-free on a panicking `Drop` during `pop()`),
+  **RUSTSEC-2026-0194** / **RUSTSEC-2026-0195** (`quick-xml`,
+  quadratic attribute-name check and unbounded namespace allocation,
+  both denial-of-service) — all fixed via in-range dependency bumps,
+  except the `rust-s3` → `aws-creds` path, which hard-pins
+  `quick-xml = "0.38"` with no newer `aws-creds` release available
+  yet; that path is acknowledged in `deny.toml` and the
+  `cargo-audit` ignore list pending an upstream fix.
+
 ## [0.14.2] - 2026-06-23
 
 ### Fixed
