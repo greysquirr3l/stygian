@@ -83,10 +83,24 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-stealth-
 
       - name: Install Chromium
+        # `chromium-browser` on Ubuntu 24.04 (noble) is a snap wrapper whose
+        # pre-install script fetches snapd assertions from api.snapcraft.io —
+        # that endpoint returns HTTP 408 inside the GitHub Actions runner
+        # sandbox, which makes the dpkg pre-install hook exit non-zero and
+        # aborts the entire job before any probe runs. Pull Chrome stable
+        # directly from Google's official deb repo instead: it's a real .deb
+        # (no snap), same Chromium engine, and the path is honoured by the
+        # `STYGIAN_CHROME_PATH` env var the test harness reads.
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y chromium-browser
-          echo "STYGIAN_CHROME_PATH=$(which chromium-browser)" >> "$GITHUB_ENV"
+          sudo apt-get install -y wget gnupg
+          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub \
+            | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" \
+            | sudo tee /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update -q
+          sudo apt-get install -y google-chrome-stable
+          echo "STYGIAN_CHROME_PATH=$(which google-chrome-stable)" >> "$GITHUB_ENV"
 
       - name: Validate stealth canary config
         run: python3 .github/scripts/validate_stealth_canary.py

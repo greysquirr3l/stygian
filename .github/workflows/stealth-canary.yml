@@ -2,13 +2,13 @@ name: Stealth Canary
 
 on:
   schedule:
-    - cron: '0 6 * * *'   # daily at 06:00 UTC
+    - cron: "0 6 * * *" # daily at 06:00 UTC
   workflow_dispatch:
     inputs:
       threshold:
-        description: 'Synthetic check pass threshold (0.0–1.0, default: 0.95)'
+        description: "Synthetic check pass threshold (0.0–1.0, default: 0.95)"
         required: false
-        default: '0.95'
+        default: "0.95"
   pull_request:
     branches: [main]
   push:
@@ -47,10 +47,24 @@ jobs:
           restore-keys: ${{ runner.os }}-canary-
 
       - name: Install Chromium
+        # `chromium-browser` on Ubuntu 24.04 (noble) is a snap wrapper whose
+        # pre-install script fetches snapd assertions from api.snapcraft.io —
+        # that endpoint returns HTTP 408 inside the GitHub Actions runner
+        # sandbox, which makes the dpkg pre-install hook exit non-zero and
+        # aborts the entire job before any probe runs. Pull Chrome stable
+        # directly from Google's official deb repo instead: it's a real .deb
+        # (no snap), same Chromium engine, and the path is honoured by the
+        # `STYGIAN_CHROME_PATH` env var the test harness reads.
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y chromium-browser
-          CHROME_BIN="$(which chromium-browser)"
+          sudo apt-get install -y wget gnupg
+          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub \
+            | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" \
+            | sudo tee /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update -q
+          sudo apt-get install -y google-chrome-stable
+          CHROME_BIN="$(which google-chrome-stable)"
           echo "CHROME_PATH=${CHROME_BIN}" >> "$GITHUB_ENV"
           echo "STYGIAN_CHROME_PATH=${CHROME_BIN}" >> "$GITHUB_ENV"
 
