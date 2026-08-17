@@ -9,10 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Security
+
+## [0.16.0] - 2026-08-17
+
+### Added
+
 - `stygian-charon` (challenge feedback loop, T110): `EngineKey` is
   the new durable identity for a scraping target's anti-bot engine.
   `ChallengeMemory` is now keyed on `(engine, version, target_class,
-  tls_profile)` rather than `(domain, target_class)`, so a
+tls_profile)` rather than `(domain, target_class)`, so a
   self-healing patch recorded against one URL on one engine heals
   every URL on that engine. The URL is preserved on each entry only
   as a secondary debugging index, never as a primary key. New public
@@ -1146,7 +1156,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Runtime.evaluate`, returns a `DiagnosticReport`; individual script errors are captured
   as failed checks (non-fatal) so the full report is always returned
 - `stygian-proxy`: sticky session support — `StickyPolicy` enum (`Disabled` / `Domain {
-  ttl }`), `SessionMap` with `bind()` / `lookup()` / `unbind()` / `purge_expired()`,
+ttl }`), `SessionMap` with `bind()` / `lookup()` / `unbind()` / `purge_expired()`,
   and `acquire_for_domain()` on `ProxyManager` to pin a domain to a proxy for the session TTL
 - `stygian-graph`: `EscalationPolicy` port trait — `EscalationTier` enum (HttpPlain →
   HttpTlsProfiled → BrowserBasic → BrowserAdvanced), `ResponseContext`, and async
