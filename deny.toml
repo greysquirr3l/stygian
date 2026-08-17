@@ -54,4 +54,9 @@ ignore = [
     { id = "RUSTSEC-2025-0057", reason = "Transitive via scraper->selectors; no action available" },
     # number_prefix unmaintained — transitive dep; no direct upgrade path.
     { id = "RUSTSEC-2025-0119", reason = "Transitive unmaintained dep; no direct upgrade path" },
+    # quick-xml DoS (quadratic attribute check) — transitive via rust-s3->aws-creds, which
+    # pins quick-xml = "0.38"; no newer aws-creds release available yet.
+    { id = "RUSTSEC-2026-0194", reason = "Transitive via rust-s3->aws-creds; upstream pinned to quick-xml 0.38, no newer release available" },
+    # quick-xml DoS (unbounded namespace allocation) — same transitive path as above.
+    { id = "RUSTSEC-2026-0195", reason = "Transitive via rust-s3->aws-creds; upstream pinned to quick-xml 0.38, no newer release available" },
 ]
