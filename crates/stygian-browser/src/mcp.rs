@@ -27,16 +27,28 @@
 //!
 //! ## Protocol
 //!
-//! The server implements MCP 2025-11-25 over JSON-RPC 2.0 on stdin/stdout.
+//! The server implements MCP 2026-07-28 over JSON-RPC 2.0 on stdin/stdout.
 //! Supported methods:
 //!
 //! | MCP Method | Description |
 //! | ----------- | ------------- |
-//! | `initialize` | Handshake, return server capabilities |
+//! | `server/discover` | Advertise protocol versions, identity, capabilities |
 //! | `tools/list` | List available browser tools |
 //! | `tools/call` | Execute a browser tool |
 //! | `resources/list` | List active browser sessions as MCP resources |
 //! | `resources/read` | Read session state |
+//!
+//! ## Migrating from MCP 2025-11-25
+//!
+//! The `initialize` / `notifications/initialized` handshake was removed. Clients
+//! must advertise their protocol version, identity, and capabilities in the
+//! `_meta` block of every request under the `io.modelcontextprotocol/*` keys.
+//! See the `extract_client_protocol_version` and `extract_meta` helpers for
+//! the reader-side extraction (used by future PRs in the [MCP-001] migration
+//! sequence; PR 3 only adds them as helpers — enforcement lands in PR 4
+//! alongside the aggregator).
+//!
+//! [MCP-001]: https://github.com/greysquirr3l/stygian/issues/95
 //!
 //! ## Tools
 //!
@@ -139,10 +151,27 @@ pub struct JsonRpcError {
 }
 
 impl JsonRpcResponse {
-    const fn ok(id: Value, result: Value) -> Self {
+    /// Wrap a successful result in a JSON-RPC 2.0 envelope.
+    ///
+    /// MCP 2026-07-28 §8: every result carries a `resultType` field. `"complete"`
+    /// for ordinary responses; `"input_required"` for MRTR interim responses.
+    /// We only emit `"complete"` here — MRTR lands in a later migration PR.
+    fn ok(id: Value, result: Value) -> Self {
+        let wrapped = match result {
+            Value::Object(mut obj) => {
+                obj.insert("resultType".to_owned(), json!("complete"));
+                Value::Object(obj)
+            }
+            other => {
+                let mut obj = serde_json::Map::new();
+                obj.insert("resultType".to_owned(), json!("complete"));
+                obj.insert("value".to_owned(), other);
+                Value::Object(obj)
+            }
+        };
         Self {
             jsonrpc: "2.0",
-            result: Some(result),
+            result: Some(wrapped),
             error: None,
             id,
         }
@@ -163,6 +192,58 @@ impl JsonRpcResponse {
 
     fn method_not_found(id: Value, method: &str) -> Self {
         Self::err(id, -32601, format!("Method not found: {method}"))
+    }
+}
+
+// ─── MCP 2026-07-28 _meta helpers ──────────────────────────────────────────────
+
+/// Read the `io.modelcontextprotocol/<key>` entry from a request's
+/// `params._meta` block. Returns `None` when the request omits `_meta` or
+/// the requested key is absent.
+///
+/// MCP 2026-07-28 §2: every request now carries its protocol version, client
+/// identity, and client capabilities under the `io.modelcontextprotocol/*`
+/// namespace within `params._meta`.
+#[allow(dead_code)] // Used by PR 4 (aggregator) and future per-request gates.
+fn extract_meta<'a>(req: &'a Value, key: &str) -> Option<&'a Value> {
+    let meta = req.get("params")?.get("_meta")?.as_object()?;
+    meta.get(&format!("io.modelcontextprotocol/{key}"))
+}
+
+/// Extract the client's advertised protocol version from a request's `_meta`.
+///
+/// Returns `None` when the field is absent. Spec mandates this be present on
+/// every 2026-07-28 request; enforcement is the aggregator's responsibility
+/// (lands in PR 4 of [MCP-001]).
+///
+/// [MCP-001]: https://github.com/greysquirr3l/stygian/issues/95
+#[allow(dead_code)] // Used by PR 4 (aggregator) and future per-request gates.
+fn extract_client_protocol_version(req: &Value) -> Option<String> {
+    extract_meta(req, "protocolVersion")
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+}
+
+/// Compare a client-advertised protocol version against a list of versions the
+/// server supports. Returns `Ok(())` when the version is in the supported
+/// list, `Err(unsupported)` with the offending value otherwise.
+///
+/// MCP 2026-07-28 §2: version mismatch on any request returns
+/// `UnsupportedProtocolVersionError` (code `-32022`). PR 3 exposes the
+/// helper; PR 4 wires it into the aggregator's per-request gate.
+///
+/// Uses `std::result::Result` (the module's `Result` is `Result<T,
+/// BrowserError>` and would conflict with the `String` error type we
+/// need here).
+#[cfg(test)]
+fn is_supported_protocol_version(
+    client: &str,
+    supported: &[&str],
+) -> std::result::Result<(), String> {
+    if supported.contains(&client) {
+        Ok(())
+    } else {
+        Err(format!("Unsupported protocol version: {client}"))
     }
 }
 
@@ -780,9 +861,9 @@ impl McpBrowserServer {
     /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let pool = BrowserPool::new(BrowserConfig::default()).await?;
     /// let server = McpBrowserServer::new(pool);
-    /// let req = json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}});
+    /// let req = json!({"jsonrpc":"2.0","id":1,"method":"server/discover"});
     /// let resp = server.dispatch(&req).await;
-    /// assert_eq!(resp["result"]["protocolVersion"], "2025-11-25");
+    /// assert_eq!(resp["result"]["protocolVersion"], "2026-07-28");
     /// # Ok(())
     /// # }
     /// ```
@@ -804,34 +885,45 @@ impl McpBrowserServer {
     async fn handle_request(&self, req: JsonRpcRequest) -> JsonRpcResponse {
         let id = req.id.clone();
         match req.method.as_str() {
-            "initialize" => Self::handle_initialize(id),
+            // MCP 2026-07-28 §3: `server/discover` replaces the `initialize`
+            // handshake. The handshake (`initialize` + `notifications/initialized`)
+            // and the unrelated `ping` RPC are removed.
+            "server/discover" => Self::handle_discover(id),
             "tools/list" => Self::handle_tools_list(id),
             "tools/call" => self.handle_tools_call(id, req.params).await,
             "resources/list" => self.handle_resources_list(id).await,
             "resources/read" => self.handle_resources_read(id, req.params).await,
-            "notifications/initialized" | "ping" => {
-                // Notifications — no response needed; return a no-op result.
-                JsonRpcResponse::ok(id, json!({}))
-            }
             other => JsonRpcResponse::method_not_found(id, other),
         }
     }
 
     // ── MCP lifecycle ──────────────────────────────────────────────────────────
 
-    fn handle_initialize(id: Value) -> JsonRpcResponse {
+    /// Advertise the server's identity, supported protocol versions, and
+    /// capabilities. Replaces the `initialize` handshake removed in
+    /// MCP 2026-07-28.
+    ///
+    /// Note: the prior version advertised `resources.subscribe: false`. That
+    /// field is removed in 2026-07-28 since `resources/subscribe` /
+    /// `resources/unsubscribe` are replaced by the server-pushed
+    /// `subscriptions/listen` stream. Browser has no subscriptions today
+    /// (resources expose static session snapshots); the listen endpoint
+    /// lands in a follow-up PR once we have a use case for it.
+    fn handle_discover(id: Value) -> JsonRpcResponse {
         JsonRpcResponse::ok(
             id,
             json!({
-                "protocolVersion": "2025-11-25",
+                "protocolVersion": "2026-07-28",
+                "supportedProtocolVersions": ["2026-07-28"],
                 "capabilities": {
                     "tools": { "listChanged": false },
-                    "resources": { "listChanged": false, "subscribe": false }
+                    "resources": { "listChanged": false }
                 },
                 "serverInfo": {
                     "name": "stygian-browser",
                     "version": env!("CARGO_PKG_VERSION")
-                }
+                },
+                "extensions": []
             }),
         )
     }
@@ -3145,8 +3237,163 @@ mod tests {
         let s = serde_json::to_string(&r)?;
         assert!(s.contains("\"hello\""));
         assert!(s.contains("\"jsonrpc\":\"2.0\""));
+        // MCP 2026-07-28 §8: every result envelope carries `resultType: "complete"`.
+        assert!(s.contains("\"resultType\":\"complete\""));
         assert!(!s.contains("\"error\""));
         Ok(())
+    }
+
+    #[test]
+    fn jsonrpc_response_ok_wraps_non_object_result_with_value_key()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        // Defensive branch: if a caller passes a non-object payload, the
+        // envelope still carries `resultType: "complete"` and the value
+        // is parked under `value`. The MCP spec only defines object
+        // results, but a bug in a caller should not produce an invalid
+        // envelope.
+        let r = JsonRpcResponse::ok(json!(1), json!("plain-string"));
+        let s = serde_json::to_string(&r)?;
+        assert!(s.contains("\"resultType\":\"complete\""));
+        assert!(s.contains("\"value\":\"plain-string\""));
+        Ok(())
+    }
+
+    #[test]
+    fn discover_response_advertises_protocol_version()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let resp = McpBrowserServer::handle_discover(json!(1));
+        let s = serde_json::to_value(resp)?;
+        assert_eq!(
+            s.pointer("/result/protocolVersion").and_then(Value::as_str),
+            Some("2026-07-28")
+        );
+        assert_eq!(
+            s.pointer("/result/supportedProtocolVersions")
+                .and_then(Value::as_array)
+                .and_then(|v| v.first())
+                .and_then(Value::as_str),
+            Some("2026-07-28")
+        );
+        assert_eq!(
+            s.pointer("/result/serverInfo/name").and_then(Value::as_str),
+            Some("stygian-browser")
+        );
+        assert_eq!(
+            s.pointer("/result/resultType").and_then(Value::as_str),
+            Some("complete")
+        );
+        // MCP 2026-07-28 §8: extensions array present even when empty.
+        assert!(
+            s.pointer("/result/extensions")
+                .and_then(Value::as_array)
+                .is_some()
+        );
+        // The deprecated `resources.subscribe: false` capability is gone —
+        // `subscriptions/listen` replaces `resources/subscribe` (lands in
+        // a follow-up PR once browser has a use case for the listen stream).
+        assert!(
+            s.pointer("/result/capabilities/resources/subscribe")
+                .is_none()
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn initialize_method_is_no_longer_recognized() {
+        // MCP 2026-07-28 removed the `initialize` handshake. The browser
+        // server's dispatch routes unknown methods to -32601.
+        let server = McpBrowserServer::new(crate::BrowserPool::placeholder());
+        let req = json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}});
+        let resp = server.dispatch(&req).await;
+        assert_eq!(
+            resp.pointer("/error/code"),
+            Some(&json!(-32601)),
+            "initialize must return Method not found"
+        );
+        assert!(
+            resp.pointer("/error/message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("")
+                .contains("initialize"),
+            "error message should name the rejected method"
+        );
+    }
+
+    #[tokio::test]
+    async fn ping_method_is_no_longer_recognized() {
+        // `ping` is removed in MCP 2026-07-28; same as
+        // `initialize_method_is_no_longer_recognized`.
+        let server = McpBrowserServer::new(crate::BrowserPool::placeholder());
+        let req = json!({"jsonrpc":"2.0","id":1,"method":"ping","params":{}});
+        let resp = server.dispatch(&req).await;
+        assert_eq!(
+            resp.pointer("/error/code"),
+            Some(&json!(-32601)),
+            "ping must return Method not found"
+        );
+        assert!(
+            resp.pointer("/error/message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("")
+                .contains("ping"),
+            "error message should name the rejected method"
+        );
+    }
+
+    #[test]
+    fn extract_meta_reads_namespaced_keys() {
+        // The `_meta` reader must look under `params._meta.io.modelcontextprotocol/*`.
+        // `protocolVersion`, `clientInfo`, `clientCapabilities` are the three
+        // carriers defined by MCP 2026-07-28 §2.
+        let req = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/list",
+            "params": {
+                "_meta": {
+                    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                    "io.modelcontextprotocol/clientInfo": {
+                        "name": "test-client",
+                        "version": "0.0.1"
+                    },
+                    "io.modelcontextprotocol/clientCapabilities": {
+                        "tools": {}
+                    },
+                    "unrelated": "ignored"
+                }
+            }
+        });
+        assert_eq!(
+            extract_client_protocol_version(&req).as_deref(),
+            Some("2026-07-28")
+        );
+        assert_eq!(
+            extract_meta(&req, "clientInfo")
+                .and_then(|v| v.get("name"))
+                .and_then(Value::as_str),
+            Some("test-client")
+        );
+        assert!(extract_meta(&req, "clientCapabilities").is_some());
+        assert!(extract_meta(&req, "not-a-key").is_none());
+
+        // `_meta` absent → all helpers return None.
+        let bare = json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"});
+        assert!(extract_client_protocol_version(&bare).is_none());
+        assert!(extract_meta(&bare, "protocolVersion").is_none());
+    }
+
+    #[test]
+    fn is_supported_protocol_version_accepts_listed_and_rejects_others() {
+        // MCP 2026-07-28 §2: clients advertise their protocol version on every
+        // request. Servers reject unknown versions with
+        // `UnsupportedProtocolVersionError` (code `-32022`). The aggregator
+        // (PR 4 of MCP-001) wires this check into the per-request gate; the
+        // browser server itself stays permissive at this layer because it
+        // is also called directly via `tools/list` / `tools/call` and the
+        // dispatcher doesn't enforce `_meta` yet.
+        assert!(is_supported_protocol_version("2026-07-28", &["2026-07-28"]).is_ok());
+        assert!(is_supported_protocol_version("2026-07-28", &["2025-11-25"]).is_err());
+        assert!(is_supported_protocol_version("2025-11-25", &["2026-07-28", "2025-11-25"]).is_ok());
     }
 
     #[test]
