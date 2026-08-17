@@ -77,7 +77,7 @@ impl IdempotencyKey {
     /// The cache key used to store this record.
     #[must_use]
     pub fn cache_key(&self) -> String {
-        format!("idempotency:{}", &self.0)
+        format!("idempotency:{}", self.0)
     }
 }
 
