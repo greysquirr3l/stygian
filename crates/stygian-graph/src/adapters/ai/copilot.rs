@@ -171,7 +171,7 @@ impl AIProvider for CopilotProvider {
         let response = self
             .client
             .post(API_URL)
-            .header("Authorization", format!("Bearer {}", &self.config.token))
+            .header("Authorization", format!("Bearer {}", self.config.token))
             .header("Content-Type", "application/json")
             .json(&body)
             .send()
