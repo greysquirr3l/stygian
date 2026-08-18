@@ -160,6 +160,36 @@ For `StealthLevel::Advanced`, identity resolution is coherence-first by default:
 This keeps JS-visible identity surfaces internally consistent across layers and
 reduces cross-signal mismatch risk in VM-style anti-bot collectors.
 
+### Fingerprint axes are bound at the type level
+
+The wire-level fingerprint axes — TLS handshake, HTTP/2 SETTINGS, HTTP/3 perk, and
+User-Agent — are not configured independently. They travel as a single
+[`TlsProfilePack`](../../src/tls.rs) value that no public constructor lets a caller
+half-populate. A profile that pins Chrome 136 *cannot* ship with a Safari 17 UA
+header; the type system refuses to express the combination.
+
+The pattern is deliberate. A fingerprint mismatch between the wire handshake and
+the UA string is one of the highest-signal probes an anti-bot suite scores against,
+and historically these mismatches were introduced by future edits that retuned
+*one* axis without realising the others had to move with it. Binding the axes at
+the type level removes the class of defect: every code path that produces a
+profile produces the whole profile.
+
+```rust,no_run
+use stygian_browser::tls::{PACK_CHROME_131, PACK_FIREFOX_133};
+
+// Two complete profiles. No way to mix-and-match Chrome's TLS with Firefox's UA.
+let chrome = PACK_CHROME_131;
+let firefox = PACK_FIREFOX_133;
+assert_eq!(chrome.profile.name, "Chrome 131");
+assert_eq!(firefox.profile.name, "Firefox 133");
+```
+
+This is what makes downstream coherence tests (the cross-context probes in
+`coherence/`) meaningful: with the axes already bound, the only remaining
+coherence question is *cross-context* (top frame vs. iframe vs. worker),
+not cross-axis (TLS vs. UA vs. navigator).
+
 ### Layer 4 — Behavioral Mimicry (`behavior.rs`)
 
 Active only at `StealthLevel::Advanced`.  Applied when calling

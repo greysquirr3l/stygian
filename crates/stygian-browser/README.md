@@ -164,6 +164,32 @@ All config values can be overridden at runtime without recompiling:
   concurrency, device memory), human-like mouse/keyboard events.  Adds ~10–30 ms overhead
   per page but passes all major detection suites.
 
+### Fingerprint axes are bound, not configured
+
+Every profile the browser emits travels as a [`TlsProfilePack`](src/tls.rs) — a single
+value that pins the TLS handshake fingerprint, the HTTP/2 SETTINGS frame, the HTTP/3 perk,
+and the User-Agent together. A profile that pins Chrome 136 **cannot** ship with a Safari
+17 UA; the type system refuses to express the combination. There is no public constructor
+that lets a caller select half a fingerprint.
+
+The pattern is deliberate, not an oversight: a fingerprint mismatch between the wire
+handshake and the UA string is one of the most reliable signals a detector suite scores
+against. By binding the axes at the type level, the bug **cannot be recreated by a future
+edit** — every code path that produces a profile produces the whole profile. This is the
+*fixing a defect by removing a class of defect* pattern, not the *tuning a parameter to
+match a probe* pattern.
+
+```rust,no_run
+use stygian_browser::tls::PACK_CHROME_131;
+
+// One value. Profile, UA, HTTP/2 settings, HTTP/3 perk — all bound.
+let pack = PACK_CHROME_131;
+assert_eq!(pack.profile.name, "Chrome 131");
+```
+
+See [`src/tls.rs`](src/tls.rs) for the family-specific `PACK_*` statics and the
+`ProfileChannel::resolve` pathway.
+
 ---
 
 ## Browser Pool

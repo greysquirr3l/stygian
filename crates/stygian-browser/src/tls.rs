@@ -2755,6 +2755,31 @@ impl ProfileMetadata {
 /// A versioned TLS profile bundle pairing a [`TlsProfile`] with its
 /// [`ProfileMetadata`].
 ///
+/// # Bind the axes — the fingerprint axes travel as one unit
+///
+/// The [`TlsProfilePack`] is the **durable identity** of a scraping
+/// client: the TLS handshake fingerprint, the HTTP/2 SETTINGS frame,
+/// the HTTP/3 perk, and the user-agent are bound together in a single
+/// value. A profile that pins Chrome 136 *cannot* ship with a Safari
+/// 17 UA; the type system refuses to express the combination.
+///
+/// The pattern comes from a real production fix that the source
+/// scraping guide calls out as the *right* way to address fingerprint
+/// defects: _"Rather than finding the correct setting, they made the
+/// wrong one impossible to express: the handshake profile and the
+/// user agent now travel together as a single unit, so you cannot
+/// select one without the other. The bug cannot be recreated by a
+/// future edit. That is the difference between fixing a defect and
+/// removing a class of defect."_ ([Web Scraping Guide §Innovation,
+/// Aug 2026](https://web-scraping-guide.com/#innovation))
+///
+/// All public constructors of [`TlsProfilePack`] (the family-specific
+/// statics — `PACK_CHROME_131`, `PACK_FIREFOX_133`, etc. — and the
+/// [`ProfileChannel::resolve`] pathway) return the pack as a whole,
+/// never a half-populated subset. The wire-level fingerprint cannot
+/// be selected independently of the UA, the HTTP/2 SETTINGS, or the
+/// HTTP/3 perk because no constructor accepts them independently.
+///
 /// # Example
 ///
 /// ```

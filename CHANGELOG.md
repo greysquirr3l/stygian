@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `stygian-browser` (docs, T113): promoted the existing `TlsProfilePack`
+  design (UA + TLS handshake + HTTP/2 SETTINGS + HTTP/3 perk bound
+  together as a single value) from "internal detail" to a
+  documented differentiator. New `tls.rs` §"Bind the axes" rustdoc,
+  README §"Fingerprint axes are bound, not configured" subsection,
+  and `docs/architecture.md` §"Fingerprint axes are bound at the
+  type level" — all citing the source
+  [Web Scraping Guide §Innovation](https://web-scraping-guide.com/#innovation)
+  pattern verbatim.
+
 ### Changed
 
 ### Fixed
