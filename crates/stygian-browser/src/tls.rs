@@ -663,22 +663,22 @@ impl Ja4q {
             cilen_bytes.len(),
             cilen
         );
-        let cilen_hex = cilen_bytes[..cilen as usize]
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect::<String>();
+        let (cid_used, rest) = cilen_bytes.split_at(cilen as usize);
+        let mut cilen_hex = String::with_capacity(cid_used.len() * 2);
+        for b in cid_used {
+            use std::fmt::Write;
+            let _ = write!(cilen_hex, "{b:02x}");
+        }
         // First 12 hex chars of MD5 over the parameter stream.
-        let params_str: String = transport_parameters
-            .iter()
-            .map(|(id, value)| {
-                let mut s = format!("{id}");
-                for b in value {
-                    s.push_str(&format!("{b:02x}"));
-                }
-                s
-            })
-            .collect::<Vec<_>>()
-            .join(";");
+        let mut params_str = String::new();
+        for (id, value) in transport_parameters {
+            use std::fmt::Write;
+            let _ = write!(params_str, "{id}");
+            for b in value {
+                let _ = write!(params_str, "{b:02x}");
+            }
+            params_str.push(';');
+        }
         let params_hash_full = md5_hex(params_str.as_bytes());
         let params_hash = truncate_hex(&params_hash_full, 12);
         // Initial packet hash: include version + cilen + token flag (the
@@ -688,7 +688,10 @@ impl Ja4q {
         let init_input = format!("{version:08x}|{cilen}|{token_present}");
         let init_hash_full = md5_hex(init_input.as_bytes());
         let init_hash = truncate_hex(&init_hash_full, 12);
-        Ja4q {
+        // Unused: rest of input beyond cilen; reserved for future use
+        // when the JA4Q spec exposes a richer initial packet hash.
+        let _ = rest;
+        Self {
             fingerprint: format!("q{version:08x}_{cilen_hex}_{params_hash}_{init_hash}"),
             version,
             cilen,
@@ -1036,7 +1039,7 @@ impl TlsProfile {
         if name.starts_with("Chrome ") || name.starts_with("Edge ") {
             Some(Ja4q {
                 fingerprint: CHROME_136_JA4Q.to_string(),
-                version: 0x00000001,
+                version: 0x0000_0001,
                 cilen: 8,
                 transport_parameter_count: 6,
                 token_present: false,
@@ -1044,7 +1047,7 @@ impl TlsProfile {
         } else if name.starts_with("Firefox ") {
             Some(Ja4q {
                 fingerprint: FIREFOX_130_JA4Q.to_string(),
-                version: 0x00000001,
+                version: 0x0000_0001,
                 cilen: 8,
                 transport_parameter_count: 6,
                 token_present: false,
@@ -1052,7 +1055,7 @@ impl TlsProfile {
         } else if name.starts_with("Safari ") {
             Some(Ja4q {
                 fingerprint: SAFARI_18_JA4Q.to_string(),
-                version: 0x00000001,
+                version: 0x0000_0001,
                 cilen: 8,
                 transport_parameter_count: 6,
                 token_present: false,
@@ -2203,9 +2206,11 @@ mod tests {
 
     #[test]
     fn ja4q_chrome_matches_reference_constant() {
-        let ja4q = CHROME_131.ja4q().expect("chrome should have ja4q");
+        let ja4q = CHROME_131
+            .ja4q()
+            .unwrap_or_else(|| panic!("chrome should have ja4q"));
         assert_eq!(ja4q.fingerprint, CHROME_136_JA4Q);
-        assert_eq!(ja4q.version, 0x00000001);
+        assert_eq!(ja4q.version, 0x0000_0001);
         assert_eq!(ja4q.cilen, 8);
         assert_eq!(ja4q.transport_parameter_count, 6);
         assert!(!ja4q.token_present);
@@ -2213,13 +2218,17 @@ mod tests {
 
     #[test]
     fn ja4q_firefox_matches_reference_constant() {
-        let ja4q = FIREFOX_133.ja4q().expect("firefox should have ja4q");
+        let ja4q = FIREFOX_133
+            .ja4q()
+            .unwrap_or_else(|| panic!("firefox should have ja4q"));
         assert_eq!(ja4q.fingerprint, FIREFOX_130_JA4Q);
     }
 
     #[test]
     fn ja4q_safari_matches_reference_constant() {
-        let ja4q = SAFARI_18.ja4q().expect("safari should have ja4q");
+        let ja4q = SAFARI_18
+            .ja4q()
+            .unwrap_or_else(|| panic!("safari should have ja4q"));
         assert_eq!(ja4q.fingerprint, SAFARI_18_JA4Q);
     }
 
@@ -2233,17 +2242,17 @@ mod tests {
     fn ja4q_from_components_reproduces_reference_constant() {
         // Same inputs as the Chrome 136 reference: QUIC v1, 8-byte CID,
         // empty parameter list, no token.
-        let computed = Ja4q::from_components(0x00000001, 8, &[0u8; 8], &[], false);
+        let computed = Ja4q::from_components(0x0000_0001, 8, &[0u8; 8], &[], false);
         // The exact suffix may differ if the impl hashes over
         // additional fixed-context bytes, but the format must match
-        // and the fingerprint must round-start with 'q' + version.
+        // and the fingerprint must round-start wit_h 'q' + version.
         assert!(
             computed.fingerprint.starts_with("q00000001_"),
             "expected fingerprint to start with 'q00000001_', got {}",
             computed.fingerprint
         );
         // And the structural fields must match.
-        assert_eq!(computed.version, 0x00000001);
+        assert_eq!(computed.version, 0x0000_0001);
         assert_eq!(computed.cilen, 8);
         assert_eq!(computed.transport_parameter_count, 0);
         assert!(!computed.token_present);
@@ -2252,7 +2261,7 @@ mod tests {
     #[test]
     fn ja4q_panics_on_short_cilen_bytes() {
         let result = std::panic::catch_unwind(|| {
-            let _ = Ja4q::from_components(0x00000001, 16, &[0u8; 8], &[], false);
+            let _ = Ja4q::from_components(0x0000_0001, 16, &[0u8; 8], &[], false);
         });
         assert!(
             result.is_err(),
