@@ -78,20 +78,39 @@ impl<V: Clone> LruTtlStore<V> {
         }
     }
 
-    /// Peek at a value without updating LRU recency. Useful for
-    /// "read-modify-write" patterns (e.g. incrementing an observation
-    /// counter without bumping the LRU order on the read).
-    #[allow(dead_code)]
-    pub(crate) fn peek(&self, key: &str) -> Option<V> {
-        let Ok(cache) = self.inner.lock() else {
-            return None;
+    /// Atomically read, mutate, and write a value under `key`.
+    ///
+    /// The closure receives the **current** value (`None` if the key
+    /// is absent or its entry is expired-and-evicted) and returns the
+    /// new value. The peek, expire-eviction, mutate, and put all
+    /// happen under a single mutex acquisition — so the read-modify-
+    /// write is atomic with respect to other threads.
+    ///
+    /// This is the right primitive for read-modify-write patterns
+    /// like "increment an observation counter" (T110). A naïve
+    /// `peek` + `put` sequence releases the mutex between the two
+    /// operations and is **not** safe under concurrency — two
+    /// threads can both observe count=N, both compute N+1, and both
+    /// write N+1, losing one increment.
+    pub(crate) fn mutate<F>(&self, key: String, f: F)
+    where
+        F: FnOnce(Option<V>) -> V,
+    {
+        let Ok(mut cache) = self.inner.lock() else {
+            return;
         };
 
-        match cache.peek(key) {
-            Some(entry) if entry.is_expired() => None,
-            Some(entry) => Some(entry.value.clone()),
-            None => None,
+        // Evict expired entries first so the closure observes `None`
+        // rather than a stale value. Done in two phases to satisfy
+        // the borrow checker (peek borrows immutably, pop mutably).
+        let expired = cache.peek(&key).is_some_and(TtlEntry::is_expired);
+        if expired {
+            cache.pop(&key);
         }
+        let existing = cache.peek(&key).map(|e| e.value.clone());
+
+        let value = f(existing);
+        cache.put(key, TtlEntry::new(value, self.ttl));
     }
 
     /// Insert or replace a value, applying the configured TTL.

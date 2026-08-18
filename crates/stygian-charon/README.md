@@ -41,12 +41,12 @@ stygian-charon = { version = "*", features = ["metrics", "caching"] }
 
 ### Feature Reference
 
-| Feature | Purpose |
-| ------- | ------- |
-| `metrics` | Collect telemetry counters and blocked-ratio aggregates |
+| Feature           | Purpose                                                      |
+| ----------------- | ------------------------------------------------------------ |
+| `metrics`         | Collect telemetry counters and blocked-ratio aggregates      |
 | `live-validation` | Enable the live validator example for URL-backed HAR capture |
-| `caching` | Enable in-memory investigation caching APIs |
-| `redis-cache` | Enable Redis-backed caching on top of `caching` |
+| `caching`         | Enable in-memory investigation caching APIs                  |
+| `redis-cache`     | Enable Redis-backed caching on top of `caching`              |
 
 ---
 
@@ -158,6 +158,8 @@ fn main() {
 - acquisition mapping: `map_runtime_policy`, `map_policy_hints`, `map_adapter_strategy`
 - target-class playbooks: `Playbook`, `PlaybookResolver`, `PlaybookOverrides`, `ValidationError`
 - adaptive thresholds: `AdaptiveSloPolicy`, `RegressionHistoryPolicy`
+- challenge feedback loop: `ChallengeMemory`, `ChallengeOutcome`, `EngineKey`, `adjust_runtime_policy`, `build_runtime_policy_with_memory`
+- engine-keyed memory (T110): `ChallengeMemory` is keyed on `(engine, version, target_class, tls_profile)` so a self-healing patch recorded against one URL on one engine heals every URL on that engine; the URL is kept only as a debugging index, never as a primary key
 - snapshot compatibility and drift analysis: snapshot normalization, validation, and drift helpers
 
 ---

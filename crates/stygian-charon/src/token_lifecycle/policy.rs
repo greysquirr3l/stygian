@@ -193,13 +193,15 @@ impl TokenPolicy {
                 true,
                 false,
             ),
-            VendorId::Akamai | VendorId::PerimeterX | VendorId::Imperva => Self::new(
-                Duration::from_mins(15),
-                Duration::from_mins(30),
-                true,
-                true,
-                true,
-            ),
+            VendorId::Akamai | VendorId::PerimeterX | VendorId::Imperva | VendorId::Fastly => {
+                Self::new(
+                    Duration::from_mins(15),
+                    Duration::from_mins(30),
+                    true,
+                    true,
+                    true,
+                )
+            }
             VendorId::DataDome | VendorId::ShapeSecurity => Self::new(
                 Duration::from_mins(10),
                 Duration::from_mins(20),

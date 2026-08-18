@@ -88,6 +88,8 @@ pub enum VendorId {
     ShapeSecurity,
     /// Imperva (Incapsula) bot management.
     Imperva,
+    /// Fastly bot management.
+    Fastly,
     /// Catch-all when no vendor matched.
     #[default]
     Unknown,
@@ -119,6 +121,7 @@ impl VendorId {
             Self::FingerprintCom => "fingerprint_com",
             Self::ShapeSecurity => "shape_security",
             Self::Imperva => "imperva",
+            Self::Fastly => "fastly",
             Self::Unknown => "unknown",
         }
     }
@@ -145,7 +148,8 @@ impl VendorId {
             | Self::Kasada
             | Self::FingerprintCom
             | Self::ShapeSecurity
-            | Self::Imperva => 2,
+            | Self::Imperva
+            | Self::Fastly => 2,
             Self::Unknown => 0,
         }
     }
@@ -174,6 +178,7 @@ impl VendorId {
             "fingerprint_com" => Some(Self::FingerprintCom),
             "shape_security" => Some(Self::ShapeSecurity),
             "imperva" => Some(Self::Imperva),
+            "fastly" => Some(Self::Fastly),
             "unknown" => Some(Self::Unknown),
             _ => None,
         }

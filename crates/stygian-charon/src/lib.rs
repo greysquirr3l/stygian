@@ -107,7 +107,8 @@ pub use cache::{InvestigationReportCache, MemoryInvestigationCache, investigatio
 #[cfg(feature = "caching")]
 pub use challenge_feedback::{
     ChallengeFeedbackPolicy, ChallengeMemory, ChallengeMemoryEntry, ChallengeOutcome,
-    MAX_RISK_DELTA, adjust_runtime_policy, build_runtime_policy_with_memory, challenge_memory_key,
+    DEFAULT_CHALLENGE_CAPACITY, DEFAULT_CHALLENGE_TTL, EngineKey, EngineKeyParseError,
+    MAX_RISK_DELTA, adjust_runtime_policy, build_runtime_policy_with_memory, engine_memory_key,
     memory_adjustment_for,
 };
 #[cfg(feature = "caching")]

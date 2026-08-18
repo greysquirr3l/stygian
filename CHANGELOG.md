@@ -15,6 +15,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+## [0.16.0] - 2026-08-17
+
+### Added
+
+- `stygian-charon` (challenge feedback loop, T110): `EngineKey` is
+  the new durable identity for a scraping target's anti-bot engine.
+  `ChallengeMemory` is now keyed on `(engine, version, target_class,
+tls_profile)` rather than `(domain, target_class)`, so a
+  self-healing patch recorded against one URL on one engine heals
+  every URL on that engine. The URL is preserved on each entry only
+  as a secondary debugging index, never as a primary key. New public
+  API: `EngineKey`, `EngineKeyParseError`, `risk_delta_for`, plus
+  `Display` / `FromStr` / serde round-tripping for stable wire
+  format `engine[/version][+tls_profile]:target_class`. Per-target-
+  class modulation in `memory_adjustment_for` so the same outcome
+  on different target classes produces different signals (e.g. an
+  API hitting a Captcha is anomalous and inverts the delta, while a
+  Captcha on a Content site raises the risk score).
+
+### Changed
+
+- `stygian-charon`: `Outcome::risk_delta_for(target_class)` — new
+  per-target-class modulation that flips the sign on
+  `TargetClass::Api` (machine-to-machine should always pass) and
+  returns `0.0` for `TargetClass::Unknown` (no signal). Existing
+  `Outcome::risk_delta()` is unchanged.
+- `stygian-charon`: `LruTtlStore` gained a `mutate(key, f)` primitive
+  that holds the mutex across the read-modify-write — three callers
+  (`ChallengeMemory::record`, `PowCapabilityStore::record_sample`,
+  `NonceBook::record`) now use it. The previous `peek + put`
+  pattern in those callers was a TOCTOU race: two concurrent calls
+  could both observe count=N, both compute N+1, and both write N+1,
+  losing one increment.
+
+### Fixed
+
+- `stygian-charon` (concurrent counter correctness, all three LRU
+  stores): atomicised `ChallengeMemory::record`,
+  `PowCapabilityStore::record_sample`, and `NonceBook::record` via
+  the new `LruTtlStore::mutate` primitive. Under concurrent
+  `Send + Sync` use the observation counters no longer drop
+  increments and the final stored outcome reflects the most recent
+  writer rather than racing on a stale peek. Previously latent; the
+  T110 refactor surfaced it because the new `EngineKey::recorded`
+  field is shared across callers.
+
+### Security
+
 ## [0.15.0] - 2026-08-17
 
 ### Changed
@@ -1108,7 +1156,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Runtime.evaluate`, returns a `DiagnosticReport`; individual script errors are captured
   as failed checks (non-fatal) so the full report is always returned
 - `stygian-proxy`: sticky session support — `StickyPolicy` enum (`Disabled` / `Domain {
-  ttl }`), `SessionMap` with `bind()` / `lookup()` / `unbind()` / `purge_expired()`,
+ttl }`), `SessionMap` with `bind()` / `lookup()` / `unbind()` / `purge_expired()`,
   and `acquire_for_domain()` on `ProxyManager` to pin a domain to a proxy for the session TTL
 - `stygian-graph`: `EscalationPolicy` port trait — `EscalationTier` enum (HttpPlain →
   HttpTlsProfiled → BrowserBasic → BrowserAdvanced), `ResponseContext`, and async

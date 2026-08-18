@@ -189,16 +189,18 @@ impl NonceBook {
     /// ```
     pub fn record(&self, vendor: VendorId, challenge_class: ChallengeClass, nonce: &str) {
         let key = nonce_book_key(vendor, nonce);
-        let next_count = self
-            .store
-            .peek(&key)
-            .map_or(1, |existing| existing.observation_count.saturating_add(1));
-        let obs = NonceObservation {
-            vendor,
-            challenge_class,
-            observation_count: next_count,
-        };
-        self.store.put(key, obs);
+        // Read-modify-write must be atomic under concurrency;
+        // otherwise two simultaneous `record` calls would both
+        // observe count=N, both compute N+1, and both write N+1,
+        // losing one increment.
+        self.store.mutate(key, |existing| {
+            let next_count = existing.map_or(1, |prev| prev.observation_count.saturating_add(1));
+            NonceObservation {
+                vendor,
+                challenge_class,
+                observation_count: next_count,
+            }
+        });
     }
 
     /// Look up the current observation count for a `(vendor,
