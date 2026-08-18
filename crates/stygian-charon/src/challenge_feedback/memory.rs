@@ -36,7 +36,7 @@ const ZERO_FALLBACK_UNIX_SECS: u64 = 0;
 ///
 /// The wire shape is
 /// `charon:challenge:engine[/version][+tls_profile]:target_class`
-/// so it round-trips with [`EngineKey::Display`] and never
+/// so it round-trips with [`EngineKey`]'s `Display` impl and never
 /// collides with `charon:pow:...` (T93) or `charon:token_nonce:...`
 /// (T91) entries on a shared backing primitive.
 ///
@@ -69,7 +69,7 @@ pub fn engine_memory_key(key: &EngineKey) -> String {
 /// monotonic counters) and the **last URL** the runner saw the
 /// outcome on (kept as a secondary debugging index only — the
 /// primary key is the engine, not the URL). The TTL is owned by
-/// the [`LruTtlStore`] backing the [`ChallengeMemory`] — once the
+/// the LRU+TTL store backing the [`ChallengeMemory`] — once the
 /// LRU entry expires, the whole entry is dropped and the runner
 /// falls back to the unadjusted risk score.
 ///
@@ -145,11 +145,11 @@ impl ChallengeMemoryEntry {
 /// Capacity-bounded LRU+TTL store of [`ChallengeMemoryEntry`]s
 /// keyed by [`EngineKey`].
 ///
-/// The store reuses the same [`LruTtlStore`] primitive the
-/// investigation cache and the `PoW` / token-nonce stores use (see
-/// [`crate::cache::LruTtlStore`]). That keeps eviction + expiry
-/// semantics consistent across every short-horizon store in the
-/// crate and satisfies the "no new cache store" rule.
+/// The store reuses the same LRU+TTL primitive the investigation
+/// cache and the `PoW` / token-nonce stores use (the shared
+/// `crate::cache::LruTtlStore` type — not re-exported). That keeps
+/// eviction + expiry semantics consistent across every short-horizon
+/// store in the crate and satisfies the "no new cache store" rule.
 ///
 /// ## Why engine-keyed?
 ///
@@ -219,9 +219,10 @@ impl ChallengeMemory {
     /// The read-modify-write sequence (peek current observation
     /// count → build new entry → put) is **atomic** under
     /// concurrency: two simultaneous `record` calls always observe
-    /// each other's prior increments. See
-    /// [`LruTtlStore::mutate`][crate::cache::LruTtlStore] for the
-    /// locking primitive.
+    /// each other's prior increments. The underlying LRU+TTL store
+    /// exposes a `mutate(key, f)` primitive that holds the mutex
+    /// across the read-modify-write — see the
+    /// `stygian_charon::cache` module for the implementation.
     ///
     /// Expired entries start a fresh observation at count=1 (the
     /// underlying `mutate` evicts expired entries first).
@@ -538,7 +539,7 @@ mod tests {
     /// Guard test (T110): `EngineKey` round-trips through both
     /// `Display`/`FromStr` and `Serialize`/`Deserialize`, and
     /// the `engine_memory_key` wire format round-trips with
-    /// `EngineKey::Display` for every supported field shape.
+    /// `EngineKey`'s `Display` impl for every supported field shape.
     #[test]
     fn engine_key_round_trips_through_display_fromstr_and_serde() {
         let samples = [

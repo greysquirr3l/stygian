@@ -62,7 +62,7 @@
 //! The LRU+TTL store is **shared** with the existing investigation
 //! report cache
 //! ([`crate::cache::MemoryInvestigationCache`]). It is exposed here
-//! as the crate-private `LruTtlStore`
+//! as the crate-private LRU+TTL store
 //! helper so the challenge memory and the investigation cache
 //! share eviction + expiry semantics and we do not introduce a
 //! parallel "second cache store" with its own semantics.
@@ -71,7 +71,7 @@
 //!
 //! The module is **default-on** (the `caching` feature is now part
 //! of `stygian-charon`'s default feature set, so the
-//! `LruTtlStore` is always available). No new feature gate is
+//! LRU+TTL store is always available). No new feature gate is
 //! introduced.
 //!
 //! # Example
