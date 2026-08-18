@@ -51,6 +51,7 @@ injection, and behavioral mimicry layers.
 | `coherence/` | Cross-context (`Top` / `Iframe` / `Worker`) identity-surface drift probes. |
 | `replay_defense/` | Adaptive session-rotation policy (T81) — signature drift, nonce age, and rotation interval gates; serialisable. |
 | `transport_realism/` | HTTP/2 + HTTP/3 transport-realism scoring (T82) — per-target `TransportCompatibility` score with confidence/coverage markers; integrates with `tls_validation` rather than duplicating it. |
+| `tls.rs` (JA4Q, T102) | QUIC Initial packet fingerprint alongside JA3 / JA4 / HTTP/2 frame order / HTTP/3 perk — closes the QUIC fingerprint surface Cloudflare has begun collecting (per [Web Scraping Guide §Detection](https://web-scraping-guide.com/#detect)). |
 
 ---
 
