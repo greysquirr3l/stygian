@@ -23,3 +23,9 @@ pub use proxy_status::{
     DownstreamInfo, ProxyErrorClass, ProxyStatusError, ProxyStatusParser, ProxyStatusReport,
     Rfc9209Parser,
 };
+pub mod geofeed;
+
+pub use geofeed::{
+    Asn, DivergenceClass, GeofeedCountry, GeofeedDivergence, GeofeedEntry, GeofeedError,
+    GeofeedSource, GeofeedVerifier, InMemoryGeofeedAdapter, ObservedIpInfo,
+};

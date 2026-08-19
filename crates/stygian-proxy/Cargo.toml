@@ -67,6 +67,9 @@ reqwest = { workspace = true }
 # Async concurrency utilities
 futures = { workspace = true }
 
+# IP CIDR parsing for geofeed ranges
+ipnet = "2.10"
+
 # Random strategy
 rand = { workspace = true }
 
