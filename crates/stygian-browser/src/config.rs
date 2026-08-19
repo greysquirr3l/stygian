@@ -170,6 +170,23 @@ impl Default for PoolConfig {
     }
 }
 
+/// Transport-layer preferences. Mirrors the
+/// [`crate::transport_realism::TransportProfile`] preference axes but
+/// lives on `BrowserConfig` so callers can set them at construction time
+/// without depending on the transport-realism stack.
+///
+/// Currently only HTTP/3 preference is exposed; future fields (proxy
+/// protocol allow-list, ALPN pinning, etc.) land here.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TransportConfig {
+    /// Prefer HTTP/3 over QUIC where the server supports it.
+    ///
+    /// Note: HTTP/3 cannot traverse a conventional HTTP proxy or
+    /// SOCKS5 tunnel — see `BrowserConfig::diagnostic_hints` for the
+    /// T105 protocol-downgrade warning.
+    pub prefer_h3: bool,
+}
+
 // ─── BrowserConfig ────────────────────────────────────────────────────────────
 
 /// Top-level configuration for a browser session.
@@ -285,6 +302,9 @@ pub struct BrowserConfig {
     /// Browser pool settings.
     pub pool: PoolConfig,
 
+    /// Transport-layer preferences (HTTP/3 vs HTTP/2 etc.).
+    pub transport: TransportConfig,
+
     /// Browser launch timeout.
     ///
     /// Env: `STYGIAN_LAUNCH_TIMEOUT_SECS` (default: `10`)
@@ -335,6 +355,7 @@ impl Default for BrowserConfig {
             cdp_fix_mode: CdpFixMode::from_env(),
             source_url: std::env::var("STYGIAN_SOURCE_URL").ok(),
             pool: PoolConfig::default(),
+            transport: TransportConfig::default(),
             launch_timeout: Duration::from_secs(env_u64("STYGIAN_LAUNCH_TIMEOUT_SECS", 10)),
             cdp_timeout: Duration::from_secs(env_u64("STYGIAN_CDP_TIMEOUT_SECS", 30)),
             proxy_source: None,
@@ -523,6 +544,38 @@ impl BrowserConfig {
         } else {
             Err(errors)
         }
+    }
+
+    /// Non-fatal diagnostic hints for this configuration.
+    ///
+    /// Unlike [`validate`], hints never block the browser from launching —
+    /// they surface structural incompatibilities (T105: proxy + HTTP/3) the
+    /// operator may want to know about. The existing
+    /// `browser_stealth_check` MCP tool surfaces these hints in its report.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use stygian_browser::BrowserConfig;
+    /// let cfg = BrowserConfig::default();
+    /// let hints = cfg.diagnostic_hints();
+    /// // Default config emits no hints.
+    /// assert!(hints.is_empty());
+    /// ```
+    #[must_use]
+    pub fn diagnostic_hints(&self) -> Vec<crate::diagnostic::DiagnosticHint> {
+        let mut hints = Vec::new();
+        // T105: when an HTTP proxy is configured and the operator asked
+        // for HTTP/3, Chrome will silently negotiate HTTP/2. Warn so the
+        // operator knows the H3 preference is structurally unreachable.
+        if self.proxy.is_some() && self.transport.prefer_h3 {
+            hints.push(crate::diagnostic::protocol_downgrade_hint(
+                crate::diagnostic::ProtocolVersion::H2,
+                crate::diagnostic::ProtocolVersion::H3,
+                crate::diagnostic::DowngradeCause::ProxyConfigured,
+            ));
+        }
+        hints
     }
 
     /// Serialize this configuration to a JSON string.
@@ -1075,6 +1128,76 @@ mod tests {
                 assert!(cfg.validate().is_ok(), "default config must be valid");
             },
         );
+    }
+
+    // T105: HTTP/3 + proxy downgrade diagnostic hint.
+
+    #[test]
+    fn diagnostic_hints_default_config_is_empty() {
+        temp_env::with_vars(
+            [("STYGIAN_PROXY", None::<&str>)],
+            || {
+                let cfg = BrowserConfig::default();
+                assert!(cfg.diagnostic_hints().is_empty());
+            },
+        );
+    }
+
+    #[test]
+    fn diagnostic_hints_no_hint_when_proxy_set_and_h3_off() {
+        temp_env::with_vars([("STYGIAN_PROXY", Some("http://proxy.example:3128"))], || {
+            let cfg = BrowserConfig::default();
+            assert!(
+                cfg.diagnostic_hints().is_empty(),
+                "proxy without prefer_h3 must not emit a hint"
+            );
+        });
+    }
+
+    #[test]
+    fn diagnostic_hints_no_hint_when_prefer_h3_without_proxy() {
+        let cfg = BrowserConfig {
+            transport: TransportConfig { prefer_h3: true },
+            ..BrowserConfig::default()
+        };
+        assert!(
+            cfg.diagnostic_hints().is_empty(),
+            "prefer_h3 without proxy must not emit a hint"
+        );
+    }
+
+    #[test]
+    fn diagnostic_hints_emits_protocol_downgrade_when_proxy_and_h3() {
+        temp_env::with_vars([("STYGIAN_PROXY", Some("http://proxy.example:3128"))], || {
+            let cfg = BrowserConfig {
+                transport: TransportConfig { prefer_h3: true },
+                ..BrowserConfig::default()
+            };
+            let hints = cfg.diagnostic_hints();
+            assert_eq!(hints.len(), 1, "expected exactly one hint");
+            let hint = &hints[0];
+            assert_eq!(hint.kind, "protocol_downgrade");
+            assert!(hint.is_warning(), "hint must be Warning severity");
+            assert!(hint.message.contains("h3"));
+            assert!(hint.message.contains("h2"));
+            assert!(hint.message.contains("proxy_configured"));
+        });
+    }
+
+    #[test]
+    fn diagnostic_hints_emitted_via_validate_does_not_block() {
+        // T105 spec: the hint is Warning severity, not Error — validate()
+        // must still return Ok when only a Warning is emitted.
+        temp_env::with_vars([("STYGIAN_PROXY", Some("http://proxy.example:3128"))], || {
+            let cfg = BrowserConfig {
+                transport: TransportConfig { prefer_h3: true },
+                ..BrowserConfig::default()
+            };
+            assert!(
+                cfg.validate().is_ok(),
+                "validate() must not block on Warning hints"
+            );
+        });
     }
 
     #[test]

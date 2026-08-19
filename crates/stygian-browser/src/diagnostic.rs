@@ -34,6 +34,7 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 use crate::integrity_canary::IntegrityCanaryReport;
 use crate::transport_realism::TransportRealismReport;
@@ -1294,4 +1295,141 @@ mod tests {
         assert!(report.transport_realism.is_none());
         assert!(report.transport.is_none());
     }
+}
+
+// =============================================================================
+// Diagnostic hints — non-fatal warnings emitted by configuration validation.
+// =============================================================================
+
+/// HTTP/3 preference supported by the browser stack.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ProtocolVersion {
+    /// HTTP/2 over TLS — Chrome's default when no H3 is negotiated.
+    H2,
+    /// HTTP/3 over QUIC.
+    H3,
+}
+
+impl ProtocolVersion {
+    /// Short wire label.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::H2 => "h2",
+            Self::H3 => "h3",
+        }
+    }
+}
+
+impl fmt::Display for ProtocolVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Why a protocol downgrade occurred — T105 only has one cause today
+/// (operator-configured HTTP proxy), but the variant is open for future
+/// causes (e.g. tunnel wrappers that strip UDP).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DowngradeCause {
+    /// Operator configured an HTTP proxy URL — Chrome is TCP-only over
+    /// SOCKS5 in practice and HTTP proxies tunnel TCP only, so even
+    /// with `prefer_h3 = true` the negotiated protocol falls back to
+    /// HTTP/2 (per [Web Scraping Guide §Innovation](https://web-scraping-guide.com/#innovation)).
+    ProxyConfigured,
+}
+
+impl fmt::Display for DowngradeCause {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ProxyConfigured => f.write_str("proxy_configured"),
+        }
+    }
+}
+
+/// Severity for a [`DiagnosticHint`]. Hints are non-fatal; `Warning`
+/// does not block CI gates that look for hard errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HintSeverity {
+    Info,
+    Warning,
+}
+
+impl fmt::Display for HintSeverity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Info => f.write_str("info"),
+            Self::Warning => f.write_str("warning"),
+        }
+    }
+}
+
+/// Non-fatal diagnostic hint emitted by configuration validation. Hints
+/// surface structural incompatibilities that the operator may want to
+/// know about but that don't block the browser from launching.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiagnosticHint {
+    /// Severity — `Warning` is the default for structural incompatibilities.
+    pub severity: HintSeverity,
+    /// Short identifier (e.g. `"protocol_downgrade"`). Stable across
+    /// versions; useful for tooling that wants to ignore specific hints.
+    pub kind: String,
+    /// Human-readable message.
+    pub message: String,
+}
+
+impl DiagnosticHint {
+    /// New info-level hint.
+    #[must_use]
+    pub fn info(kind: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            severity: HintSeverity::Info,
+            kind: kind.into(),
+            message: message.into(),
+        }
+    }
+
+    /// New warning-level hint.
+    #[must_use]
+    pub fn warning(kind: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            severity: HintSeverity::Warning,
+            kind: kind.into(),
+            message: message.into(),
+        }
+    }
+
+    /// `true` if the hint is a warning.
+    #[must_use]
+    pub const fn is_warning(&self) -> bool {
+        matches!(self.severity, HintSeverity::Warning)
+    }
+
+    /// Render as `[{severity}] {kind}: {message}`.
+    #[must_use]
+    pub fn render(&self) -> String {
+        format!("[{}] {}: {}", self.severity, self.kind, self.message)
+    }
+}
+
+impl fmt::Display for DiagnosticHint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.render())
+    }
+}
+
+/// Build the protocol-downgrade hint payload for a proxy + prefer_h3
+/// combination. Public so the `BrowserConfig::diagnostic_hints()` accessor
+/// can call it without re-implementing the message string.
+#[must_use]
+pub fn protocol_downgrade_hint(
+    detected: ProtocolVersion,
+    preferred: ProtocolVersion,
+    cause: DowngradeCause,
+) -> DiagnosticHint {
+    let kind = "protocol_downgrade".to_string();
+    let message = format!(
+        "configured HTTP preference is {preferred} but Chrome negotiated {detected} because {cause}; HTTP/3 over QUIC cannot traverse an HTTP proxy or SOCKS5 tunnel — switch to a UDP-aware transport (CONNECT-UDP per RFC 9298 or a VPN) to keep H3"
+    );
+    DiagnosticHint::warning(kind, message)
 }
