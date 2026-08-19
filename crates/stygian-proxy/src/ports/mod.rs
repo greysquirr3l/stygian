@@ -17,3 +17,9 @@
 //!   `coherence-validation` cargo feature is enabled.
 
 pub mod coherence;
+pub mod proxy_status;
+
+pub use proxy_status::{
+    DownstreamInfo, ProxyErrorClass, ProxyStatusError, ProxyStatusParser, ProxyStatusReport,
+    Rfc9209Parser,
+};
