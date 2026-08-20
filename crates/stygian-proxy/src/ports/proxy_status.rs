@@ -89,7 +89,7 @@ pub struct DownstreamInfo {
 /// `None` should be used when the header is absent — callers should
 /// call `ProxyStatusParser::parse` only when the header is present.
 /// This type represents the structured payload of a present header.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProxyStatusReport {
     /// Proxy-error token from RFC 9209 (e.g. `"502.5"`, `"connection_refused"`).
     /// `None` when the header is a bare `Proxy-Status: 200` or
@@ -206,10 +206,12 @@ impl Rfc9209Parser {
             (Some(status), Some(err_str.to_string()))
         } else if head.chars().all(|c| c.is_ascii_digit()) {
             // Bare status: `Proxy-Status: 200`.
-            let status = head.parse::<u16>().map_err(|e| ProxyStatusError::Malformed {
-                offset: 0,
-                reason: format!("invalid HTTP status '{head}': {e}"),
-            })?;
+            let status = head
+                .parse::<u16>()
+                .map_err(|e| ProxyStatusError::Malformed {
+                    offset: 0,
+                    reason: format!("invalid HTTP status '{head}': {e}"),
+                })?;
             (Some(status), None)
         } else {
             // Proxy alias: `Proxy-Status: proxy.example`.
@@ -240,7 +242,11 @@ impl Rfc9209Parser {
             // servers to extend with custom parameters
         }
 
-        let error_class = classify(&proxy_error_token, &error_type, http_status);
+        let error_class = classify(
+            proxy_error_token.as_deref(),
+            error_type.as_deref(),
+            http_status,
+        );
 
         Ok(ProxyStatusReport {
             proxy_error: proxy_error_token,
@@ -280,8 +286,8 @@ fn parse_next_hop(value: &str) -> Option<DownstreamInfo> {
 /// back to `Unknown` rather than misattributing to `Provider` (which
 /// would incorrectly penalise the proxy circuit breaker).
 fn classify(
-    proxy_error_token: &Option<String>,
-    error_type: &Option<String>,
+    proxy_error_token: Option<&str>,
+    error_type: Option<&str>,
     http_status: Option<u16>,
 ) -> ProxyErrorClass {
     // Bare success (`Proxy-Status: 200` or `Proxy-Status: proxy.example`)
@@ -290,12 +296,19 @@ fn classify(
         let token_lower = token.to_ascii_lowercase();
         match token_lower.as_str() {
             // 5xx-class proxy error codes — RFC 9209 §3 proxy-error codes.
-            "connection_timeout" | "connection_read_timeout" | "connection_refused"
-            | "connection_reset" | "connection_aborted" | "network_read_timeout"
-            | "network_unreachable" | "network_connect_timeout" => {
+            "connection_timeout"
+            | "connection_read_timeout"
+            | "connection_refused"
+            | "connection_reset"
+            | "connection_aborted"
+            | "network_read_timeout"
+            | "network_unreachable"
+            | "network_connect_timeout" => {
                 return ProxyErrorClass::Network;
             }
-            "http_protocol_error" | "http_request_error" | "proxy_internal_error"
+            "http_protocol_error"
+            | "http_request_error"
+            | "proxy_internal_error"
             | "proxy_configuration_error" => return ProxyErrorClass::Provider,
             // Note: bare numeric tokens like "502.7" are split so the
             // proxy-error-token is just the sub-code (e.g. "7"). The full
@@ -349,12 +362,10 @@ impl ProxyStatusParser for Rfc9209Parser {
         else {
             return Err(ProxyStatusError::Missing);
         };
-        let value = value
-            .to_str()
-            .map_err(|e| ProxyStatusError::Malformed {
-                offset: 0,
-                reason: format!("header value is not valid ASCII: {e}"),
-            })?;
+        let value = value.to_str().map_err(|e| ProxyStatusError::Malformed {
+            offset: 0,
+            reason: format!("header value is not valid ASCII: {e}"),
+        })?;
         self.parse_value(value)
     }
 }
@@ -412,13 +423,8 @@ mod tests {
 
     #[test]
     fn parse_named_provider_error() {
-        let report = Rfc9209Parser
-            .parse_value("proxy_internal_error")
-            .unwrap();
-        assert_eq!(
-            report.proxy_error.as_deref(),
-            Some("proxy_internal_error")
-        );
+        let report = Rfc9209Parser.parse_value("proxy_internal_error").unwrap();
+        assert_eq!(report.proxy_error.as_deref(), Some("proxy_internal_error"));
         assert_eq!(report.error_class, ProxyErrorClass::Provider);
     }
 
@@ -427,9 +433,7 @@ mod tests {
         // `Proxy-Status: proxy.example; error=connection_timeout; next-hop=192.0.2.1:443`
         // — the head is a proxy alias (no '.' separator), not a status code.
         let report = Rfc9209Parser
-            .parse_value(
-                "proxy.example; error=connection_timeout; next-hop=192.0.2.1:443",
-            )
+            .parse_value("proxy.example; error=connection_timeout; next-hop=192.0.2.1:443")
             .unwrap();
         assert_eq!(report.proxy_error.as_deref(), Some("proxy.example"));
         assert_eq!(report.http_status, None);

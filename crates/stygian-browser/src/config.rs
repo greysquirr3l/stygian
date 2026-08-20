@@ -170,10 +170,12 @@ impl Default for PoolConfig {
     }
 }
 
-/// Transport-layer preferences. Mirrors the
-/// [`crate::transport_realism::TransportProfile`] preference axes but
-/// lives on `BrowserConfig` so callers can set them at construction time
-/// without depending on the transport-realism stack.
+/// Transport-layer preferences.
+///
+/// Mirrors the [`crate::transport_realism::TransportProfile`]
+/// preference axes but lives on `BrowserConfig` so callers can set them
+/// at construction time without depending on the transport-realism
+/// stack.
 ///
 /// Currently only HTTP/3 preference is exposed; future fields (proxy
 /// protocol allow-list, ALPN pinning, etc.) land here.
@@ -570,9 +572,9 @@ impl BrowserConfig {
         // operator knows the H3 preference is structurally unreachable.
         if self.proxy.is_some() && self.transport.prefer_h3 {
             hints.push(crate::diagnostic::protocol_downgrade_hint(
-                crate::diagnostic::ProtocolVersion::H2,
-                crate::diagnostic::ProtocolVersion::H3,
-                crate::diagnostic::DowngradeCause::ProxyConfigured,
+                &crate::diagnostic::ProtocolVersion::H2,
+                &crate::diagnostic::ProtocolVersion::H3,
+                &crate::diagnostic::DowngradeCause::ProxyConfigured,
             ));
         }
         hints
@@ -1134,24 +1136,24 @@ mod tests {
 
     #[test]
     fn diagnostic_hints_default_config_is_empty() {
-        temp_env::with_vars(
-            [("STYGIAN_PROXY", None::<&str>)],
-            || {
-                let cfg = BrowserConfig::default();
-                assert!(cfg.diagnostic_hints().is_empty());
-            },
-        );
+        temp_env::with_vars([("STYGIAN_PROXY", None::<&str>)], || {
+            let cfg = BrowserConfig::default();
+            assert!(cfg.diagnostic_hints().is_empty());
+        });
     }
 
     #[test]
     fn diagnostic_hints_no_hint_when_proxy_set_and_h3_off() {
-        temp_env::with_vars([("STYGIAN_PROXY", Some("http://proxy.example:3128"))], || {
-            let cfg = BrowserConfig::default();
-            assert!(
-                cfg.diagnostic_hints().is_empty(),
-                "proxy without prefer_h3 must not emit a hint"
-            );
-        });
+        temp_env::with_vars(
+            [("STYGIAN_PROXY", Some("http://proxy.example:3128"))],
+            || {
+                let cfg = BrowserConfig::default();
+                assert!(
+                    cfg.diagnostic_hints().is_empty(),
+                    "proxy without prefer_h3 must not emit a hint"
+                );
+            },
+        );
     }
 
     #[test]
@@ -1168,36 +1170,44 @@ mod tests {
 
     #[test]
     fn diagnostic_hints_emits_protocol_downgrade_when_proxy_and_h3() {
-        temp_env::with_vars([("STYGIAN_PROXY", Some("http://proxy.example:3128"))], || {
-            let cfg = BrowserConfig {
-                transport: TransportConfig { prefer_h3: true },
-                ..BrowserConfig::default()
-            };
-            let hints = cfg.diagnostic_hints();
-            assert_eq!(hints.len(), 1, "expected exactly one hint");
-            let hint = &hints[0];
-            assert_eq!(hint.kind, "protocol_downgrade");
-            assert!(hint.is_warning(), "hint must be Warning severity");
-            assert!(hint.message.contains("h3"));
-            assert!(hint.message.contains("h2"));
-            assert!(hint.message.contains("proxy_configured"));
-        });
+        temp_env::with_vars(
+            [("STYGIAN_PROXY", Some("http://proxy.example:3128"))],
+            || {
+                let cfg = BrowserConfig {
+                    transport: TransportConfig { prefer_h3: true },
+                    ..BrowserConfig::default()
+                };
+                let hints = cfg.diagnostic_hints();
+                assert_eq!(hints.len(), 1, "expected exactly one hint");
+                let Some(hint) = hints.first() else {
+                    unreachable!("hints.len() == 1 asserted above; first() must be Some");
+                };
+                assert_eq!(hint.kind, "protocol_downgrade");
+                assert!(hint.is_warning(), "hint must be Warning severity");
+                assert!(hint.message.contains("h3"));
+                assert!(hint.message.contains("h2"));
+                assert!(hint.message.contains("proxy_configured"));
+            },
+        );
     }
 
     #[test]
     fn diagnostic_hints_emitted_via_validate_does_not_block() {
         // T105 spec: the hint is Warning severity, not Error — validate()
         // must still return Ok when only a Warning is emitted.
-        temp_env::with_vars([("STYGIAN_PROXY", Some("http://proxy.example:3128"))], || {
-            let cfg = BrowserConfig {
-                transport: TransportConfig { prefer_h3: true },
-                ..BrowserConfig::default()
-            };
-            assert!(
-                cfg.validate().is_ok(),
-                "validate() must not block on Warning hints"
-            );
-        });
+        temp_env::with_vars(
+            [("STYGIAN_PROXY", Some("http://proxy.example:3128"))],
+            || {
+                let cfg = BrowserConfig {
+                    transport: TransportConfig { prefer_h3: true },
+                    ..BrowserConfig::default()
+                };
+                assert!(
+                    cfg.validate().is_ok(),
+                    "validate() must not block on Warning hints"
+                );
+            },
+        );
     }
 
     #[test]

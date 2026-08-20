@@ -13,17 +13,17 @@ for bypassing modern anti-bot systems: Cloudflare, `DataDome`, `PerimeterX`, Aka
 
 ## Features
 
-| Feature | Description | Default |
-| --------- | ------------- | --------- |
-| `stealth` | Navigation spoofing, canvas noise, WebGL randomization, CDP protection | ✓ |
-| `tls-config` | TLS fingerprint profiling via rustls (requires `stealth`) | — |
-| `mcp` | MCP (Model Context Protocol) tools | — |
-| `mcp-attach` | Attach to an existing browser via CDP WebSocket (`browser_attach` tool; requires `mcp`) | — |
-| `metrics` | Prometheus metrics exporter | — |
-| `extract` | Structured data extraction via `#[derive(Extract)]` | — |
-| `similarity` | Similarity scoring for duplicate detection | — |
-| `browserbase` | Optional Browserbase-managed acquisition stage integration (requires MCP/runtime opt-in) | — |
-| `full` | All features enabled | — |
+| Feature       | Description                                                                              | Default |
+| ------------- | ---------------------------------------------------------------------------------------- | ------- |
+| `stealth`     | Navigation spoofing, canvas noise, WebGL randomization, CDP protection                   | ✓       |
+| `tls-config`  | TLS fingerprint profiling via rustls (requires `stealth`)                                | —       |
+| `mcp`         | MCP (Model Context Protocol) tools                                                       | —       |
+| `mcp-attach`  | Attach to an existing browser via CDP WebSocket (`browser_attach` tool; requires `mcp`)  | —       |
+| `metrics`     | Prometheus metrics exporter                                                              | —       |
+| `extract`     | Structured data extraction via `#[derive(Extract)]`                                      | —       |
+| `similarity`  | Similarity scoring for duplicate detection                                               | —       |
+| `browserbase` | Optional Browserbase-managed acquisition stage integration (requires MCP/runtime opt-in) | —       |
+| `full`        | All features enabled                                                                     | —       |
 
 ---
 
@@ -133,35 +133,35 @@ let config = BrowserConfig::builder()
 
 All config values can be overridden at runtime without recompiling:
 
-| Variable | Default | Description |
-| ---------- | --------- | ------------- |
-| `STYGIAN_CHROME_PATH` | auto-detect | Path to Chrome/Chromium binary |
-| `STYGIAN_HEADLESS` | `true` | `false` for headed mode |
-| `STYGIAN_STEALTH_LEVEL` | `advanced` | `none`, `basic`, `advanced` |
-| `STYGIAN_POOL_MIN` | `2` | Minimum warm browser count |
-| `STYGIAN_POOL_MAX` | `10` | Maximum concurrent browsers |
-| `STYGIAN_POOL_ACQUIRE_TIMEOUT_SECS` | `30` | Seconds to wait for pool slot |
-| `STYGIAN_CDP_FIX_MODE` | `addBinding` | `addBinding`, `isolatedWorld`, `enableDisable`, `none` |
-| `STYGIAN_PROXY` | — | Proxy URL |
-| `STYGIAN_DISABLE_SANDBOX` | auto-detect | `true` to pass `--no-sandbox` (see note below) |
+| Variable                            | Default      | Description                                            |
+| ----------------------------------- | ------------ | ------------------------------------------------------ |
+| `STYGIAN_CHROME_PATH`               | auto-detect  | Path to Chrome/Chromium binary                         |
+| `STYGIAN_HEADLESS`                  | `true`       | `false` for headed mode                                |
+| `STYGIAN_STEALTH_LEVEL`             | `advanced`   | `none`, `basic`, `advanced`                            |
+| `STYGIAN_POOL_MIN`                  | `2`          | Minimum warm browser count                             |
+| `STYGIAN_POOL_MAX`                  | `10`         | Maximum concurrent browsers                            |
+| `STYGIAN_POOL_ACQUIRE_TIMEOUT_SECS` | `30`         | Seconds to wait for pool slot                          |
+| `STYGIAN_CDP_FIX_MODE`              | `addBinding` | `addBinding`, `isolatedWorld`, `enableDisable`, `none` |
+| `STYGIAN_PROXY`                     | —            | Proxy URL                                              |
+| `STYGIAN_DISABLE_SANDBOX`           | auto-detect  | `true` to pass `--no-sandbox` (see note below)         |
 
 ---
 
 ## Stealth Levels
 
-| Level | `navigator` spoof | Canvas noise | WebGL random | CDP protection | Human behavior |
-| ------- | ----------------- | ------------ | ------------ | -------------- | -------------- |
-| `None` | — | — | — | — | — |
-| `Basic` | ✓ | — | — | ✓ | — |
-| `Advanced` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Level      | `navigator` spoof | Canvas noise | WebGL random | CDP protection | Human behavior |
+| ---------- | ----------------- | ------------ | ------------ | -------------- | -------------- |
+| `None`     | —                 | —            | —            | —              | —              |
+| `Basic`    | ✓                 | —            | —            | ✓              | —              |
+| `Advanced` | ✓                 | ✓            | ✓            | ✓              | ✓              |
 
 **Trade-offs:**
 
-- `None` — maximum performance, no evasion.  Suitable for sites with no bot detection.
+- `None` — maximum performance, no evasion. Suitable for sites with no bot detection.
 - `Basic` — hides `navigator.webdriver`, masks the headless UA, enables CDP protection.
   Fast; appropriate for most scraping workloads.
 - `Advanced` — full fingerprint injection (canvas noise, WebGL, audio, fonts, hardware
-  concurrency, device memory), human-like mouse/keyboard events.  Adds ~10–30 ms overhead
+  concurrency, device memory), human-like mouse/keyboard events. Adds ~10–30 ms overhead
   per page but passes all major detection suites.
 
 ### Fingerprint axes are bound, not configured
@@ -176,14 +176,14 @@ The pattern is deliberate, not an oversight: a fingerprint mismatch between the 
 handshake and the UA string is one of the most reliable signals a detector suite scores
 against. By binding the axes at the type level, the bug **cannot be recreated by a future
 edit** — every code path that produces a profile produces the whole profile. This is the
-*fixing a defect by removing a class of defect* pattern, not the *tuning a parameter to
-match a probe* pattern.
+_fixing a defect by removing a class of defect_ pattern, not the _tuning a parameter to
+match a probe_ pattern.
 
 ```rust,no_run
 use stygian_browser::tls::PACK_CHROME_131;
 
 // One value. Profile, UA, HTTP/2 settings, HTTP/3 perk — all bound.
-let pack = PACK_CHROME_131;
+let pack = &PACK_CHROME_131;
 assert_eq!(pack.profile.name, "Chrome 131");
 ```
 
@@ -247,14 +247,14 @@ fingerprinting while keeping values plausible (real GPU family names are used).
 
 ### CDP Leak Protection
 
-The Chrome `DevTools` Protocol itself can expose automation.  Three modes are
+The Chrome `DevTools` Protocol itself can expose automation. Three modes are
 available via `CdpFixMode`:
 
-| Mode | Protection | Compatibility |
-| ------ | ----------- | --------------- |
-| `AddBinding` | Wraps calls to hide `Runtime.enable` side-effects | Best overall |
-| `IsolatedWorld` | Runs injection in a separate execution context | Moderate |
-| `EnableDisable` | Toggles enable/disable around each command | Broad |
+| Mode            | Protection                                        | Compatibility |
+| --------------- | ------------------------------------------------- | ------------- |
+| `AddBinding`    | Wraps calls to hide `Runtime.enable` side-effects | Best overall  |
+| `IsolatedWorld` | Runs injection in a separate execution context    | Moderate      |
+| `EnableDisable` | Toggles enable/disable around each command        | Broad         |
 
 ### Human-Like Behavior (Advanced only)
 
@@ -267,7 +267,7 @@ available via `CdpFixMode`:
 
 `TypingSimulator` models:
 
-- Per-key WPM variation (70–130 WPM base)  
+- Per-key WPM variation (70–130 WPM base)
 - Configurable typo-and-correct rate
 - Burst/pause rhythm typical of humans
 
@@ -308,7 +308,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // This browser is now routed through a proxy from the pool
     // On release: proxy success/failure is automatically recorded
-    
+
     handle.release().await;
     Ok(())
 }
@@ -317,7 +317,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 When a browser is released after use, the proxy's circuit breaker is updated:
 
 - **Clean return to idle queue**: proxy marked as success ✓
-- **Browser unhealthy**: proxy marked as failure ✗  
+- **Browser unhealthy**: proxy marked as failure ✗
 - **Browser crashed**: proxy marked as failure ✗
 
 ---
@@ -398,32 +398,32 @@ Example: `RuntimePolicy` payload
 
 ```json
 {
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "tools/call",
-    "params": {
-        "name": "browser_apply_behavior_json",
-        "arguments": {
-            "behavior": {
-                "execution_mode": "Browser",
-                "session_mode": "Sticky",
-                "telemetry_level": "Deep",
-                "rate_limit_rps": 0.8,
-                "max_retries": 4,
-                "backoff_base_ms": 1200,
-                "enable_warmup": true,
-                "enforce_webrtc_proxy_only": true,
-                "sticky_session_ttl_secs": 1800,
-                "required_stygian_features": ["browser", "stealth"],
-                "config_hints": {
-                    "proxy_url": "http://127.0.0.1:8080",
-                    "viewport_width": "1366",
-                    "viewport_height": "768"
-                },
-                "risk_score": 0.92
-            }
-        }
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "browser_apply_behavior_json",
+    "arguments": {
+      "behavior": {
+        "execution_mode": "Browser",
+        "session_mode": "Sticky",
+        "telemetry_level": "Deep",
+        "rate_limit_rps": 0.8,
+        "max_retries": 4,
+        "backoff_base_ms": 1200,
+        "enable_warmup": true,
+        "enforce_webrtc_proxy_only": true,
+        "sticky_session_ttl_secs": 1800,
+        "required_stygian_features": ["browser", "stealth"],
+        "config_hints": {
+          "proxy_url": "http://127.0.0.1:8080",
+          "viewport_width": "1366",
+          "viewport_height": "768"
+        },
+        "risk_score": 0.92
+      }
     }
+  }
 }
 ```
 
@@ -431,57 +431,57 @@ Example: `InvestigationBundle` payload
 
 ```json
 {
-    "jsonrpc": "2.0",
-    "id": 2,
-    "method": "tools/call",
-    "params": {
-        "name": "browser_apply_behavior_json",
-        "arguments": {
-            "behavior": {
-                "report": {
-                    "page_title": "example",
-                    "total_requests": 42,
-                    "blocked_requests": 4,
-                    "status_histogram": {"200": 38, "403": 4},
-                    "resource_type_histogram": {"document": 1, "script": 12},
-                    "provider_histogram": {"Cloudflare": 4},
-                    "top_markers": [],
-                    "hosts": [],
-                    "suspicious_requests": [],
-                    "aggregate": {
-                        "provider": "Cloudflare",
-                        "confidence": 0.87,
-                        "markers": ["turnstile"]
-                    }
-                },
-                "requirements": {
-                    "provider": "Cloudflare",
-                    "confidence": 0.87,
-                    "requirements": [],
-                    "recommendation": {
-                        "strategy": "StickyProxy",
-                        "rationale": "bot challenge observed",
-                        "required_stygian_features": ["browser", "stealth"],
-                        "config_hints": {"proxy_url": "http://127.0.0.1:8080"}
-                    }
-                },
-                "policy": {
-                    "execution_mode": "Browser",
-                    "session_mode": "Sticky",
-                    "telemetry_level": "Standard",
-                    "rate_limit_rps": 1.0,
-                    "max_retries": 3,
-                    "backoff_base_ms": 800,
-                    "enable_warmup": true,
-                    "enforce_webrtc_proxy_only": true,
-                    "sticky_session_ttl_secs": 1200,
-                    "required_stygian_features": ["browser", "stealth"],
-                    "config_hints": {"proxy_url": "http://127.0.0.1:8080"},
-                    "risk_score": 0.78
-                }
-            }
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "browser_apply_behavior_json",
+    "arguments": {
+      "behavior": {
+        "report": {
+          "page_title": "example",
+          "total_requests": 42,
+          "blocked_requests": 4,
+          "status_histogram": { "200": 38, "403": 4 },
+          "resource_type_histogram": { "document": 1, "script": 12 },
+          "provider_histogram": { "Cloudflare": 4 },
+          "top_markers": [],
+          "hosts": [],
+          "suspicious_requests": [],
+          "aggregate": {
+            "provider": "Cloudflare",
+            "confidence": 0.87,
+            "markers": ["turnstile"]
+          }
+        },
+        "requirements": {
+          "provider": "Cloudflare",
+          "confidence": 0.87,
+          "requirements": [],
+          "recommendation": {
+            "strategy": "StickyProxy",
+            "rationale": "bot challenge observed",
+            "required_stygian_features": ["browser", "stealth"],
+            "config_hints": { "proxy_url": "http://127.0.0.1:8080" }
+          }
+        },
+        "policy": {
+          "execution_mode": "Browser",
+          "session_mode": "Sticky",
+          "telemetry_level": "Standard",
+          "rate_limit_rps": 1.0,
+          "max_retries": 3,
+          "backoff_base_ms": 800,
+          "enable_warmup": true,
+          "enforce_webrtc_proxy_only": true,
+          "sticky_session_ttl_secs": 1200,
+          "required_stygian_features": ["browser", "stealth"],
+          "config_hints": { "proxy_url": "http://127.0.0.1:8080" },
+          "risk_score": 0.78
         }
+      }
     }
+  }
 }
 ```
 
@@ -489,20 +489,20 @@ Bind behavior to an active session by also passing `session_id`:
 
 ```json
 {
-    "jsonrpc": "2.0",
-    "id": 3,
-    "method": "tools/call",
-    "params": {
-        "name": "browser_apply_behavior_json",
-        "arguments": {
-            "session_id": "01JXYZ...",
-            "behavior": {
-                "headless": false,
-                "stealth_level": "basic",
-                "interaction_level": "medium"
-            }
-        }
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "browser_apply_behavior_json",
+    "arguments": {
+      "session_id": "01JXYZ...",
+      "behavior": {
+        "headless": false,
+        "stealth_level": "basic",
+        "interaction_level": "medium"
+      }
     }
+  }
 }
 ```
 
@@ -523,15 +523,15 @@ A: macOS and Linux are fully supported. Windows is validated in CI on `windows-l
 with runtime behavior depending on the `chromiumoxide` backend.
 
 **Q: Which Chrome versions are supported?**  
-A: The library targets Chrome 120+.  Older versions may work but stealth scripts are
+A: The library targets Chrome 120+. Older versions may work but stealth scripts are
 only tested against current release channels.
 
 **Q: Can I use it without a display (CI/CD)?**  
-A: Yes — the default config is `headless: true`.  No display server is required.
+A: Yes — the default config is `headless: true`. No display server is required.
 
 **Q: Does Advanced stealth guarantee Cloudflare bypass?**  
-A: There is no guarantee.  Cloudflare Turnstile and Bot Management use both
-JavaScript signals and TLS/network-layer heuristics.  Advanced stealth eliminates
+A: There is no guarantee. Cloudflare Turnstile and Bot Management use both
+JavaScript signals and TLS/network-layer heuristics. Advanced stealth eliminates
 all known JavaScript signals, which is necessary but may not be sufficient.
 
 **Q: How do I set a custom Chrome path?**  
@@ -539,14 +539,14 @@ A: Set `STYGIAN_CHROME_PATH=/path/to/chrome` or use
 `BrowserConfig::builder().chrome_path("/path/to/chrome".into()).build()`.
 
 **Q: Why does `stats().idle` always return 0?**  
-A: `idle` is a lock-free approximation.  The count is not maintained in the hot
-acquire/release path to avoid contention.  Use `available` and `active` instead.
+A: `idle` is a lock-free approximation. The count is not maintained in the hot
+acquire/release path to avoid contention. Use `available` and `active` instead.
 
 **Q: Should I set `STYGIAN_DISABLE_SANDBOX=true`?**  
 A: Only inside a container (Docker, Kubernetes, etc.) where Chromium's renderer
-sandbox cannot function due to missing user namespaces.  This is auto-detected via
+sandbox cannot function due to missing user namespaces. This is auto-detected via
 `/.dockerenv` and `/proc/1/cgroup` on Linux — you normally don't need to set it
-explicitly.  **Never set this on a bare-metal host** without an equivalent isolation
+explicitly. **Never set this on a bare-metal host** without an equivalent isolation
 boundary; doing so removes a meaningful OS-level security layer.
 
 For highest-security deployments, run each browser session in its own container and

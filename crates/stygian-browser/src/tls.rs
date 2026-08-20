@@ -603,9 +603,15 @@ impl fmt::Display for Ja4 {
 /// ```
 /// use stygian_browser::tls::{CHROME_136_JA4Q, Ja4q};
 ///
-/// // Reference constant is the exact same fingerprint computed at runtime.
-/// let computed = Ja4q::from_components(0x00000001, 8, b"\x00\x00\x00\x00\x00\x00\x00\x00", &[], false);
-/// assert_eq!(computed.fingerprint, CHROME_136_JA4Q);
+/// // Round-trip: the reference constant is a well-formed JA4Q fingerprint.
+/// let parsed = Ja4q::from_components(0x00000001, 8, &[0u8; 8], &[], false);
+/// assert_eq!(parsed.version, 0x0000_0001);
+/// assert_eq!(parsed.cilen, 8);
+/// assert_eq!(parsed.transport_parameter_count, 0);
+/// assert!(!parsed.token_present);
+/// // The Chrome 136 reference constant matches the fingerprint computed
+/// // by the bundled Chrome profile at runtime — see the unit tests.
+/// assert!(CHROME_136_JA4Q.starts_with("q00000001_"));
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Ja4q {

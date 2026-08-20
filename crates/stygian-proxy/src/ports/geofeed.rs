@@ -17,7 +17,7 @@
 //!   lookup against an in-memory table populated from a manually supplied
 //!   CSV or via [`refresh`](GeofeedVerifier::refresh).
 //!
-//! The HTTP "BGPView" adapter is **out of scope for T106**: pulling
+//! The HTTP `BGPView` adapter is **out of scope for T106**: pulling
 //! geofeed data over the network requires a `wiremock`-based test setup
 //! or a recorded fixture. The data structure here is shape-compatible
 //! with that future adapter — wire the trait into the strategy module
@@ -84,7 +84,7 @@ pub enum GeofeedSource {
         /// Path of the CSV on disk (for diagnostics).
         path: String,
     },
-    /// Reserved for future adapters (HTTP, BGPView, etc.).
+    /// Reserved for future adapters (HTTP, `BGPView`, etc.).
     Remote {
         /// Stable identifier for the upstream (e.g. `"bgpview"`).
         provider: String,
@@ -119,7 +119,7 @@ pub struct GeofeedEntry {
 }
 
 /// What we actually observed about an IP at scrape time. Operators may
-/// supply this from their own IP-info service (MaxMind, IP2Location,
+/// supply this from their own IP-info service (`MaxMind`, `IP2Location`,
 /// etc.).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ObservedIpInfo {
@@ -224,7 +224,7 @@ pub struct InMemoryGeofeedAdapter {
 impl InMemoryGeofeedAdapter {
     /// New empty adapter with the given source label.
     #[must_use]
-    pub fn new(source: GeofeedSource) -> Self {
+    pub const fn new(source: GeofeedSource) -> Self {
         Self {
             source,
             entries: BTreeMap::new(),
@@ -243,16 +243,10 @@ impl InMemoryGeofeedAdapter {
         // byte prefix with the new range — i.e. anything that could
         // potentially overlap. The cheap pre-check is to compare the
         // CIDR containment.
-        if self.entries.contains_key(&entry.ip_range) {
-            let existing_country = self
-                .entries
-                .get(&entry.ip_range)
-                .map_or(GeofeedCountry::new("ZZ").unwrap(), |e| {
-                    e.claimed_country.clone()
-                });
+        if let Some(existing) = self.entries.get(&entry.ip_range) {
             return Err(GeofeedError::Overlap {
                 new_range: entry.ip_range,
-                existing_country,
+                existing_country: existing.claimed_country.clone(),
             });
         }
         self.entries.insert(entry.ip_range, entry);

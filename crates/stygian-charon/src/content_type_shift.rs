@@ -48,35 +48,33 @@ impl MimeClass {
     /// parameters ignored).
     #[must_use]
     pub fn from_content_type(value: &str) -> Self {
-        let head = value.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
-        let (family, subtype) = match head.split_once('/') {
-            Some(pair) => pair,
-            None => return Self::Unknown,
+        let head = value
+            .split(';')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_ascii_lowercase();
+        let Some((family, subtype)) = head.split_once('/') else {
+            return Self::Unknown;
         };
         match (family, subtype) {
             ("text", s) if s == "html" || s == "xhtml" => Self::Html,
             ("text", "markdown") => Self::Markdown,
-            ("application", s) | ("text", s) if s == "json" || s.ends_with("+json") => {
-                if subtype == "json" || subtype.ends_with("+json") {
-                    Self::Json
-                } else {
-                    Self::Unknown
-                }
-            }
+            // Both `application` and `text` families can carry JSON
+            // (including suffixes like `+json`). Match on the
+            // subtype that's already been narrowed by the guard.
+            _ if subtype == "json" || subtype.ends_with("+json") => Self::Json,
             ("application", s) if s == "xml" || s == "xhtml" || s.ends_with("+xml") => Self::Xml,
             ("text", _) => Self::Text,
-            ("image", _)
-            | ("audio", _)
-            | ("video", _)
-            | ("application", "octet-stream")
-            | ("application", "pdf") => Self::Binary,
+            ("image" | "audio" | "video", _) => Self::Binary,
+            ("application", s) if s == "octet-stream" || s == "pdf" => Self::Binary,
             _ => Self::Unknown,
         }
     }
 }
 
 /// One observation per scrape.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContentTypeObservation {
     /// Identity the observation is keyed under. Same identity → same
     /// history slot.
@@ -179,14 +177,14 @@ impl RollingBaselineDetector {
 
     /// Override the per-identity ring-buffer cap.
     #[must_use]
-    pub fn with_capacity(mut self, capacity: usize) -> Self {
+    pub const fn with_capacity(mut self, capacity: usize) -> Self {
         self.capacity = capacity;
         self
     }
 
     /// Override the `ByteCollapse` ratio threshold.
     #[must_use]
-    pub fn with_byte_collapse_threshold(mut self, threshold: f64) -> Self {
+    pub const fn with_byte_collapse_threshold(mut self, threshold: f64) -> Self {
         self.byte_collapse_threshold = threshold;
         self
     }
@@ -195,7 +193,9 @@ impl RollingBaselineDetector {
         let Ok(mut map) = self.history.lock() else {
             return;
         };
-        let entry = map.entry(observation.key.clone()).or_insert_with(|| VecDeque::with_capacity(self.capacity));
+        let entry = map
+            .entry(observation.key.clone())
+            .or_insert_with(|| VecDeque::with_capacity(self.capacity));
         if entry.len() == self.capacity {
             entry.pop_front();
         }
@@ -233,6 +233,10 @@ impl ContentTypeShiftDetector for RollingBaselineDetector {
                     to: current_class,
                 })
             } else if baseline.byte_length > 0 {
+                // `u64 as f64` may lose precision for bodies > 2^53
+                // bytes (~9 PB). HTTP response bodies are capped well
+                // below that, so the precision loss is acceptable.
+                #[allow(clippy::cast_precision_loss)]
                 let ratio = observation.byte_length as f64 / baseline.byte_length as f64;
                 if ratio < self.byte_collapse_threshold {
                     Some(ContentTypeDrift::ByteCollapse { ratio })
@@ -260,7 +264,10 @@ impl ContentTypeShiftDetector for RollingBaselineDetector {
 #[must_use]
 pub fn drift_summary(report: &ContentTypeShiftReport) -> String {
     match &report.drift {
-        None => format!("[{}] {} (no drift)", report.key, report.current.content_type),
+        None => format!(
+            "[{}] {} (no drift)",
+            report.key, report.current.content_type
+        ),
         Some(ContentTypeDrift::ClassChange { from, to }) => {
             format!(
                 "[{}] class drift: {} -> {}",
@@ -270,10 +277,7 @@ pub fn drift_summary(report: &ContentTypeShiftReport) -> String {
             )
         }
         Some(ContentTypeDrift::ByteCollapse { ratio }) => {
-            format!(
-                "[{}] byte collapse: ratio={:.3}",
-                report.key, ratio
-            )
+            format!("[{}] byte collapse: ratio={:.3}", report.key, ratio)
         }
     }
 }
@@ -381,16 +385,17 @@ mod tests {
         let mut d = RollingBaselineDetector::new();
         d.record(&obs("k1", "text/html", 100)).unwrap();
         let report = d.record(&obs("k1", "text/html", 110)).unwrap();
-        assert!(report.drift.is_none(), "identical observations must not drift");
+        assert!(
+            report.drift.is_none(),
+            "identical observations must not drift"
+        );
     }
 
     #[test]
     fn html_to_markdown_shift_is_class_change() {
         let mut d = RollingBaselineDetector::new();
         d.record(&obs("k1", "text/html", 50_000)).unwrap();
-        let report = d
-            .record(&obs("k1", "text/markdown", 2_000))
-            .unwrap();
+        let report = d.record(&obs("k1", "text/markdown", 2_000)).unwrap();
         match report.drift {
             Some(ContentTypeDrift::ClassChange { from, to }) => {
                 assert_eq!(from, MimeClass::Html);
@@ -442,9 +447,7 @@ mod tests {
     fn distinct_keys_dont_cross_pollute() {
         let mut d = RollingBaselineDetector::new();
         d.record(&obs("k1", "text/html", 50_000)).unwrap();
-        let report = d
-            .record(&obs("k2", "text/markdown", 100))
-            .unwrap();
+        let report = d.record(&obs("k2", "text/markdown", 100)).unwrap();
         assert!(
             report.drift.is_none(),
             "different keys must not trigger drift"

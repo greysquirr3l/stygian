@@ -1418,14 +1418,14 @@ impl fmt::Display for DiagnosticHint {
     }
 }
 
-/// Build the protocol-downgrade hint payload for a proxy + prefer_h3
+/// Build the protocol-downgrade hint payload for a proxy + `prefer_h3`
 /// combination. Public so the `BrowserConfig::diagnostic_hints()` accessor
 /// can call it without re-implementing the message string.
 #[must_use]
 pub fn protocol_downgrade_hint(
-    detected: ProtocolVersion,
-    preferred: ProtocolVersion,
-    cause: DowngradeCause,
+    detected: &ProtocolVersion,
+    preferred: &ProtocolVersion,
+    cause: &DowngradeCause,
 ) -> DiagnosticHint {
     let kind = "protocol_downgrade".to_string();
     let message = format!(

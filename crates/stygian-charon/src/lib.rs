@@ -1,10 +1,9 @@
 #![warn(missing_docs, rustdoc::broken_intra_doc_links)]
 #![deny(unsafe_code)]
 
-//! stygian-charon
+//! stygian-charon — defensive anti-bot diagnostics for Stygian.
 //!
-//! Defensive anti-bot diagnostics for Stygian.
-//! The crate classifies likely anti-bot providers from transaction evidence
+//! Classifies likely anti-bot providers from transaction evidence
 //! and from HTTP Archive (HAR) files.
 
 /// Mapping layer from runtime policy to acquisition strategy hints.
@@ -20,11 +19,6 @@ pub mod bundle;
 /// Investigation report cache backends and cache key helpers.
 #[cfg(feature = "caching")]
 pub mod cache;
-/// Content-Type shift detection (T104) — rolling baseline tracker that
-/// catches the publisher-cloaking pattern (HTML replaced with a
-/// Markdown stub for AI-bot User-Agents, same URL, same 200, parse
-/// succeeds, but a different edition of the page).
-pub mod content_type_shift;
 /// Challenge-aware policy feedback loop (T83).
 #[cfg(feature = "caching")]
 pub mod challenge_feedback;
@@ -37,6 +31,12 @@ pub mod challenge_feedback;
 pub mod change_feed;
 /// Provider signature classification logic.
 pub mod classifier;
+/// Content-Type shift detection (T104) — rolling baseline tracker.
+///
+/// Catches the publisher-cloaking pattern: HTML replaced with a
+/// Markdown stub for AI-bot User-Agents, same URL, same 200, parse
+/// succeeds, but a different edition of the page.
+pub mod content_type_shift;
 /// Mode differential regression runner across snapshot capture modes.
 pub mod differential;
 /// HAR parsing and extraction utilities.
@@ -109,10 +109,6 @@ pub use bundle::{
 pub use cache::RedisInvestigationCache;
 #[cfg(feature = "caching")]
 pub use cache::{InvestigationReportCache, MemoryInvestigationCache, investigation_cache_key};
-pub use content_type_shift::{
-    ContentTypeDrift, ContentTypeError, ContentTypeObservation, ContentTypeShiftDetector,
-    ContentTypeShiftReport, MimeClass, RollingBaselineDetector, current_unix_secs, drift_summary,
-};
 #[cfg(feature = "caching")]
 pub use challenge_feedback::{
     ChallengeFeedbackPolicy, ChallengeMemory, ChallengeMemoryEntry, ChallengeOutcome,
@@ -129,6 +125,10 @@ pub use change_feed::{
 pub use classifier::{
     classify_har, classify_har_with_profile, classify_transaction,
     classify_transaction_with_profile,
+};
+pub use content_type_shift::{
+    ContentTypeDrift, ContentTypeError, ContentTypeObservation, ContentTypeShiftDetector,
+    ContentTypeShiftReport, MimeClass, RollingBaselineDetector, current_unix_secs, drift_summary,
 };
 pub use differential::{
     ModeComparison, ModeDifferentialCorpus, ModeDifferentialError, ModeDifferentialPairResult,
