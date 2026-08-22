@@ -48,6 +48,20 @@ pub mod investigation;
 pub mod metrics;
 /// External observatory runner and comparison reports.
 pub mod observatory;
+/// T107 poisoned-data field-level anomaly detector.
+///
+/// Catches the "tarpit / poisoned data / silent 200s" pattern from
+/// <https://web-scraping-guide.com/#post-extract>: targets that
+/// return clean `200` responses with subtly wrong field values
+/// (price drift, listing reorder, fabricated rows, stale
+/// snapshots). The detector observes every field value the pipeline
+/// publishes and emits [`field_anomaly::AnomalyReport`]s when a
+/// value is statistically inconsistent with the rolling baseline.
+///
+/// Hidden behind a `field-anomaly` cargo feature so existing
+/// charon users aren't forced to opt in.
+#[cfg(feature = "field-anomaly")]
+pub mod field_anomaly;
 /// Target-class playbooks as code (T85). Resolves per-target
 /// acquisition / proxy / pacing / escalation knobs with
 /// deterministic precedence.

@@ -59,7 +59,7 @@ indicatif.workspace = true
 prometheus-client.workspace = true
 
 # Time (T108: mandatory `fetched_at` on sink rows)
-chrono = { version = "0.4", features = ["serde"] }
+chrono.workspace = true
 
 # API server
 axum.workspace = true

@@ -76,6 +76,7 @@ prometheus-client = "0.25"
 figment = { version = "0.10", features = ["toml", "env"] }
 clap = { version = "4", features = ["derive"] }
 indicatif = "0.18"
+chrono = { version = "0.4", features = ["serde"] }
 
 # API server
 axum = { version = "0.8", features = ["macros"] }

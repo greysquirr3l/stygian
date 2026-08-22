@@ -4437,7 +4437,10 @@ dependencies = [
 name = "stygian-charon"
 version = "0.16.0"
 dependencies = [
+ "async-trait",
+ "chrono",
  "lru",
+ "parking_lot",
  "redis",
  "reqwest 0.13.4",
  "serde",
