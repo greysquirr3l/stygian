@@ -68,7 +68,7 @@ reqwest = { workspace = true }
 futures = { workspace = true }
 
 # IP CIDR parsing for geofeed ranges
-ipnet = "2.10"
+ipnet = { version = "2.10", features = ["serde"] }
 
 # Random strategy
 rand = { workspace = true }

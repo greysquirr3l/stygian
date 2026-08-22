@@ -111,7 +111,16 @@ impl McpAggregator {
         // Build fallback chain: plain HTTP (primary) → plugin extraction (fallback).
         // The HTTP adapter uses default anti-bot configuration; the plugin adapter uses
         // the same stores as the MCP server so templates are immediately available.
-        let http_primary = Arc::new(HttpAdapter::with_config(HttpConfig::default()));
+        let http_primary = Arc::new(HttpAdapter::with_config(HttpConfig {
+            // T112: opt in to the catalogue allow-list. The rotation
+            // pool emits browser-class UAs only, so this is a no-op
+            // in practice — but explicit is safer than implicit, and
+            // any future caller that overrides `stealth_profile`
+            // with a sentinel that returns a catalogue UA will be
+            // rejected at the wire.
+            allow_plain_http: true,
+            ..HttpConfig::default()
+        }));
         let plugin_fallback = Arc::new(PluginExtractionAdapter::new(
             template_store,
             Arc::new(ExtractionEngine),

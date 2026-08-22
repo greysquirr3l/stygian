@@ -825,6 +825,10 @@ impl McpGraphServer {
             timeout: std::time::Duration::from_secs(timeout_secs),
             proxy_url,
             rotate_user_agent: rotate_ua,
+            // T112: opt in to catalogue-UA allow-list. The rotation
+            // pool only emits browser-class UAs, so this is a no-op
+            // in practice — but explicit is safer than implicit.
+            allow_plain_http: true,
             ..HttpConfig::default()
         };
         let adapter = HttpAdapter::with_config(config);
@@ -1837,6 +1841,10 @@ where
         "http" => {
             let config = HttpConfig {
                 timeout: Duration::from_secs(timeout_secs),
+                // T112: explicit opt-in — same rationale as the
+                // scrape tool above. The rotation pool emits
+                // browser-class UAs only.
+                allow_plain_http: true,
                 ..HttpConfig::default()
             };
             let adapter = HttpAdapter::with_config(config);
