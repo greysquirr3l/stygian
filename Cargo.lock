@@ -4518,11 +4518,14 @@ name = "stygian-mcp"
 version = "0.16.0"
 dependencies = [
  "anyhow",
+ "async-trait",
+ "serde",
  "serde_json",
  "stygian-browser",
  "stygian-graph",
  "stygian-plugin",
  "stygian-proxy",
+ "thiserror",
  "tokio",
  "tokio-util",
  "tracing",

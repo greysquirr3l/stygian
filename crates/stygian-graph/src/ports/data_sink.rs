@@ -433,7 +433,8 @@ mod tests {
     }
 
     #[test]
-    fn fetched_at_round_trips_through_json() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    fn fetched_at_round_trips_through_json() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
         use chrono::TimeZone;
         let fetched_at = chrono::Utc
             .with_ymd_and_hms(2026, 8, 22, 12, 0, 0)
