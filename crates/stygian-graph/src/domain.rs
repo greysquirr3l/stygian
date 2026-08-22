@@ -12,6 +12,9 @@ pub mod introspection;
 /// Pipeline types with typestate pattern
 pub mod pipeline;
 
+/// Robots policy value type + decision — recon/production reconciliation (T111).
+pub mod policy;
+
 /// Worker pool executor with backpressure
 pub mod executor;
 

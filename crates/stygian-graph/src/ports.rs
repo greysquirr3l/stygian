@@ -785,3 +785,6 @@ pub mod escalation;
 
 /// Data sink port — publish scraped records to an external system
 pub mod data_sink;
+
+/// Robots-policy guard port — recon/production URL permission check (T111).
+pub mod robots_policy;
