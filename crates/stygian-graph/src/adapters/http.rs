@@ -628,11 +628,9 @@ mod tests {
             );
         }
         assert!(
-            
-                CatalogueFingerprint::detect(
-                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0"
-                )
-        
+            CatalogueFingerprint::detect(
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0"
+            )
             .is_none()
         );
     }

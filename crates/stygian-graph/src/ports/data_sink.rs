@@ -91,32 +91,91 @@ pub struct SinkRecord {
     /// in the port layer.
     pub source_url: String,
 
+    /// **T108 mandatory** — the wall-clock instant at which the source
+    /// was fetched, as observed by the transport (HTTP `Date` header
+    /// for HTTP-sourced records, browser `Date.now()` for
+    /// browser-sourced records).
+    ///
+    /// This field is required. Adapters and consumers cannot construct
+    /// a [`SinkRecord`] without supplying it — use
+    /// [`SinkRecord::with_fetched_at`] or
+    /// [`SinkRecord::fetched_at_or_default`] to provide it.
+    ///
+    /// The `fetched_at` value should be the *transport-supplied*
+    /// timestamp, not `Utc::now()` computed post-extraction. The
+    /// guard test in `tests/sink_invariants.rs` asserts every
+    /// adapter uses a transport-level source.
+    pub fetched_at: chrono::DateTime<chrono::Utc>,
+
     /// Arbitrary string key-value metadata (content-type, run-id, tenant, …).
     pub metadata: HashMap<String, String>,
 }
 
 impl SinkRecord {
-    /// Construct a new [`SinkRecord`] with empty metadata.
+    /// Construct a new [`SinkRecord`] with empty metadata and
+    /// `fetched_at = chrono::Utc::now()` as the **fallback** for
+    /// callers that don't have a transport-level timestamp.
     ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use stygian_graph::ports::data_sink::SinkRecord;
-    ///
-    /// let r = SinkRecord::new("schema-v1", "https://example.com/page", serde_json::Value::Null);
-    /// assert!(r.metadata.is_empty());
-    /// ```
+    /// **Prefer [`SinkRecord::with_fetched_at`]** — using
+    /// `Utc::now()` here means the record carries the time of
+    /// construction, not the time of the upstream fetch.
+    #[must_use]
     pub fn new(
         schema_id: impl Into<String>,
         source_url: impl Into<String>,
         data: serde_json::Value,
     ) -> Self {
+        Self::fetched_at_or_default(schema_id, source_url, data, chrono::Utc::now())
+    }
+
+    /// Construct a [`SinkRecord`] with an explicit `fetched_at`
+    /// timestamp. This is the **preferred constructor** — the
+    /// caller is required to supply a transport-level timestamp.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use stygian_graph::ports::data_sink::SinkRecord;
+    /// use chrono::{TimeZone, Utc};
+    ///
+    /// let fetched_at = Utc.with_ymd_and_hms(2026, 8, 22, 12, 0, 0).unwrap();
+    /// let r = SinkRecord::with_fetched_at(
+    ///     "schema-v1",
+    ///     "https://example.com/page",
+    ///     serde_json::Value::Null,
+    ///     fetched_at,
+    /// );
+    /// assert_eq!(r.fetched_at, fetched_at);
+    /// ```
+    #[must_use]
+    pub fn with_fetched_at(
+        schema_id: impl Into<String>,
+        source_url: impl Into<String>,
+        data: serde_json::Value,
+        fetched_at: chrono::DateTime<chrono::Utc>,
+    ) -> Self {
         Self {
             data,
             schema_id: schema_id.into(),
             source_url: source_url.into(),
+            fetched_at,
             metadata: HashMap::new(),
         }
+    }
+
+    /// Construct a [`SinkRecord`] using `default_fetched_at` only
+    /// when the caller does not have a transport-level timestamp.
+    /// The `default_fetched_at` value is recorded verbatim — use
+    /// [`chrono::Utc::now`] for a "now" fallback, or pass an HTTP
+    /// `Date` header value parsed into a [`chrono::DateTime<Utc>`].
+    #[must_use]
+    pub fn fetched_at_or_default(
+        schema_id: impl Into<String>,
+        source_url: impl Into<String>,
+        data: serde_json::Value,
+        default_fetched_at: chrono::DateTime<chrono::Utc>,
+    ) -> Self {
+        Self::with_fetched_at(schema_id, source_url, data, default_fetched_at)
     }
 
     /// Attach a metadata entry and return `self` for builder-style use.
@@ -125,6 +184,7 @@ impl SinkRecord {
     ///
     /// ```rust
     /// use stygian_graph::ports::data_sink::SinkRecord;
+    /// use chrono::Utc;
     ///
     /// let r = SinkRecord::new("s", "https://x.com", serde_json::Value::Null)
     ///     .with_meta("run_id", "abc123");
@@ -319,5 +379,84 @@ mod tests {
             DataSinkError::SchemaNotFound("v99".to_string()).to_string(),
             "schema not found: v99"
         );
+    }
+
+    // ── T108 mandatory fetched_at tests ──────────────────────────────
+
+    #[test]
+    fn fetched_at_required_field_compiles_with_new_constructor() {
+        // The new constructor carries the explicit fetched_at
+        // timestamp — this is the happy path adapters must take.
+        use chrono::TimeZone;
+        let fetched_at = chrono::Utc
+            .with_ymd_and_hms(2026, 8, 22, 12, 0, 0)
+            .single()
+            .unwrap_or_else(|| chrono::Utc::now());
+        let r = SinkRecord::with_fetched_at(
+            "schema-v1",
+            "https://example.com",
+            json!({ "sku": "ABC-42" }),
+            fetched_at,
+        );
+        assert_eq!(r.fetched_at, fetched_at);
+    }
+
+    #[test]
+    fn fetched_at_or_default_records_verbatim() {
+        use chrono::TimeZone;
+        let supplied = chrono::Utc
+            .with_ymd_and_hms(2026, 1, 1, 0, 0, 0)
+            .single()
+            .unwrap_or_else(|| chrono::Utc::now());
+        let r = SinkRecord::fetched_at_or_default(
+            "schema-v1",
+            "https://example.com",
+            json!({}),
+            supplied,
+        );
+        assert_eq!(r.fetched_at, supplied);
+    }
+
+    #[test]
+    fn fetched_at_default_constructor_falls_back_to_now() {
+        use chrono::TimeZone;
+        let before = chrono::Utc
+            .with_ymd_and_hms(1970, 1, 1, 0, 0, 0)
+            .single()
+            .unwrap_or_else(|| chrono::Utc::now());
+        let r = SinkRecord::new("schema-v1", "https://example.com", json!({}));
+        let after = chrono::Utc::now() + chrono::Duration::seconds(1);
+        assert!(
+            r.fetched_at >= before && r.fetched_at <= after,
+            "fetched_at must fall within [before, after] window"
+        );
+    }
+
+    #[test]
+    fn fetched_at_round_trips_through_json() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        use chrono::TimeZone;
+        let fetched_at = chrono::Utc
+            .with_ymd_and_hms(2026, 8, 22, 12, 0, 0)
+            .single()
+            .unwrap_or_else(|| chrono::Utc::now());
+        let record = SinkRecord::with_fetched_at(
+            "schema-v1",
+            "https://example.com",
+            json!({ "x": 1 }),
+            fetched_at,
+        );
+        let json_str = serde_json::to_string(&record)?;
+        let restored: SinkRecord = serde_json::from_str(&json_str)?;
+        assert_eq!(restored.fetched_at, record.fetched_at);
+        Ok(())
+    }
+
+    #[test]
+    fn with_meta_is_chainable_after_new_constructor() {
+        let r = SinkRecord::new("s", "https://x.com", json!({}))
+            .with_meta("run_id", "abc123")
+            .with_meta("tenant", "acme");
+        assert_eq!(r.metadata["run_id"], "abc123");
+        assert_eq!(r.metadata["tenant"], "acme");
     }
 }
