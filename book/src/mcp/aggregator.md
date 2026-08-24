@@ -114,6 +114,42 @@ The aggregator inspects the `name` field of every `tools/call` request and route
 | `scrape_proxied` | Aggregator (cross-crate) | — |
 | `browser_proxied` | Aggregator (cross-crate) | — |
 
+### Response sanitisation seam (T109)
+
+The aggregator applies a `PromptInjectionGuard` to every tool response
+before emitting it to the caller. The seam sits between dispatch and
+emission in `handle_tools_call`, so every code path (`graph_`,
+`browser_`, `proxy_`, `plugin_`, plus the aggregator's own
+cross-crate tools) is sanitised uniformly. This closes the gap where
+an LLM-consuming sink would receive an upstream tool response that
+contained prompt-injection payloads (hidden unicode, embedded
+`<script>` / `<iframe>`, known injection phrases, CSS-exfil
+patterns, markdown-link traps) and faithfully re-emit them in a
+later turn.
+
+The default guard `DefaultPromptInjectionGuard` strips or redacts
+each detected pattern and returns:
+
+| Marker | Default action |
+| --- | --- |
+| `HiddenUnicode` | Strip zero-width and tag characters |
+| `ScriptTag` / `IframeInjection` | Drop the `<script>` / `<iframe>` element |
+| `KnownInjectionPhrase` | Redact the phrase to `[REDACTED:prompt-injection]` |
+| `CssExfil` | Drop the CSS attribute pattern |
+| `MarkdownLinkTrap` | Neutralise the link target |
+| `Unknown` | Surface as `Warning` severity and leave the text alone |
+
+Findings are emitted via `tracing::warn!` with the tool name and
+JSON path of the offending text node. The guard itself returns
+`Result<SanitisedText, PromptInjectionError>`; an error from the
+guard does **not** fail the tool call — it falls back to the
+unsanitised response with a warning, since losing the response
+entirely would be worse than emitting it unguarded.
+
+`PromptInjectionGuard` is a consumer-owned port trait. The
+default guard is the first implementation; production deployments
+can supply a stricter adapter without changing the dispatch path.
+
 ---
 
 ## Cross-crate tools
