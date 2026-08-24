@@ -39,6 +39,10 @@ use stygian_plugin::adapters::{ExtractionEngine, PluginExtractionAdapter};
 use stygian_plugin::storage::{FileTemplateStore, MemoryIdempotencyStore};
 use stygian_proxy::mcp::McpProxyServer;
 
+use crate::ports::prompt_injection::{
+    DefaultPromptInjectionGuard, PromptInjectionError, PromptInjectionGuard, SanitisedText,
+    UntrustedText,
+};
 /// Protocol versions the aggregator accepts on every request's
 /// `params._meta.io.modelcontextprotocol/protocolVersion` field.
 ///
@@ -78,6 +82,10 @@ pub struct McpAggregator {
     /// Wrapped in `Option` so it can be taken and awaited in `run()` while
     /// `Drop` can abort it on any early-exit path.
     proxy_bg: Option<JoinHandle<()>>,
+    /// T109: prompt-injection guard applied at the tools/call dispatch seam.
+    /// Walks every `text`-shaped payload in the response and replaces it with
+    /// the sanitised output before the JSON-RPC envelope is emitted.
+    prompt_injection: Arc<dyn PromptInjectionGuard>,
 }
 
 impl McpAggregator {
@@ -143,6 +151,7 @@ impl McpAggregator {
             fallback_chain,
             proxy_token,
             proxy_bg: Some(proxy_bg),
+            prompt_injection: Arc::new(DefaultPromptInjectionGuard),
         })
     }
 
@@ -387,7 +396,7 @@ impl McpAggregator {
         let empty = Value::Null;
         let args = params.get("arguments").unwrap_or(&empty);
 
-        if let Some(short) = name.strip_prefix("graph_") {
+        let response = if let Some(short) = name.strip_prefix("graph_") {
             // Route to graph sub-server with un-prefixed name.
             let sub = json!({
                 "jsonrpc": "2.0",
@@ -429,7 +438,24 @@ impl McpAggregator {
             self.tool_scrape_with_plugin_fallback(id, args).await
         } else {
             error_response(id, -32602, &format!("Unknown tool: {name}"))
+        };
+        // T109: every tool response runs through the prompt-injection
+        // guard before being emitted. Sits at the dispatch seam so every
+        // code path (graph_, browser_, proxy_, plugin_, plus the aggregator
+        // cross-crate tools) is covered uniformly. The chain above is the
+        // tail of an if/else expression; the `;` turns it into a statement
+        // so we can post-process the value here without re-running dispatch.
+        let mut sanitised = response;
+        if let Err(err) =
+            sanitise_response_value(&*self.prompt_injection, &mut sanitised, name).await
+        {
+            tracing::warn!(
+                tool = name,
+                error = %err,
+                "T109 prompt-injection guard failed; returning unsanitised response"
+            );
         }
+        sanitised
     }
 
     // ── resources/list ────────────────────────────────────────────────────────
@@ -1026,6 +1052,126 @@ async fn release_proxy(proxy: &Arc<McpProxyServer>, handle_token: &str, success:
             }
         }))
         .await;
+}
+
+// ─── T109 prompt-injection helpers ───────────────────────────────────────────
+
+/// Walk a JSON tool response and run the prompt-injection guard over every
+/// text-shaped node.
+///
+/// MCP `tools/call` responses are `result.content` arrays of
+/// `{ "type": "text", "text": "..." }` items; we also cover
+/// `error.message` for error envelopes. Each text payload is wrapped in
+/// [`UntrustedText`], run through [`PromptInjectionGuard::sanitise`], and
+/// swapped in place. Findings are surfaced via `tracing::warn!`.
+async fn sanitise_response_value(
+    guard: &dyn PromptInjectionGuard,
+    value: &mut Value,
+    tool_name: &str,
+) -> Result<(), PromptInjectionError> {
+    let items = collect_text_items(value);
+    for (path, text) in items {
+        let untrusted = UntrustedText(text);
+        let (sanitised, findings) = guard.sanitise(untrusted).await?;
+        apply_sanitised_text(value, &path, &sanitised);
+        if !findings.is_empty() {
+            tracing::warn!(
+                tool = tool_name,
+                path = ?path,
+                findings = findings.len(),
+                "T109 prompt-injection guard emitted {} finding(s) at path {:?}",
+                findings.len(),
+                path,
+            );
+            for f in &findings {
+                tracing::warn!(
+                    tool = tool_name,
+                    marker = ?f.marker,
+                    severity = ?f.severity,
+                    reason = %f.reason,
+                    "T109 finding"
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Walk a JSON value and return every `(path, text)` pair where `path` is
+/// the path to the text and `text` is its string content.
+///
+/// Matches two shapes:
+/// - MCP content items: `{ "type": "text", "text": "..." }`
+/// - MCP error envelopes: `error.message`
+fn collect_text_items(value: &Value) -> Vec<(Vec<String>, String)> {
+    let mut out = Vec::new();
+    walk_value(value, Vec::new(), &mut out);
+    out
+}
+
+fn walk_value(value: &Value, path: Vec<String>, out: &mut Vec<(Vec<String>, String)>) {
+    match value {
+        Value::Object(obj) => {
+            let is_text_item = obj
+                .get("type")
+                .and_then(Value::as_str)
+                .is_some_and(|t| t == "text");
+            if is_text_item && let Some(text) = obj.get("text").and_then(Value::as_str) {
+                out.push((path, text.to_owned()));
+                return;
+            }
+            let is_error_message = obj.get("message").and_then(Value::as_str).is_some()
+                && path.last().map(String::as_str) == Some("error");
+            if is_error_message && let Some(msg) = obj.get("message").and_then(Value::as_str) {
+                out.push((path, msg.to_owned()));
+                return;
+            }
+            for (k, v) in obj {
+                let mut child = path.clone();
+                child.push(k.clone());
+                walk_value(v, child, out);
+            }
+        }
+        Value::Array(arr) => {
+            for (i, v) in arr.iter().enumerate() {
+                let mut child = path.clone();
+                child.push(format!("[{i}]"));
+                walk_value(v, child, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Replace the text at the given `path` in the JSON tree with `sanitised`'s
+/// cleaned string.
+fn apply_sanitised_text(value: &mut Value, path: &[String], sanitised: &SanitisedText) {
+    let mut current = value;
+    for key in path {
+        match current {
+            Value::Object(obj) => match obj.get_mut(key) {
+                Some(next) => current = next,
+                None => return,
+            },
+            Value::Array(arr) => {
+                let stripped = key
+                    .strip_prefix('[')
+                    .and_then(|s| s.strip_suffix(']'))
+                    .and_then(|s| s.parse::<usize>().ok());
+                if let Some(idx) = stripped
+                    && let Some(next) = arr.get_mut(idx)
+                {
+                    current = next;
+                } else {
+                    return;
+                }
+            }
+            _ => return,
+        }
+    }
+    if let Value::String(s) = current {
+        sanitised.as_str().clone_into(s);
+    }
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
