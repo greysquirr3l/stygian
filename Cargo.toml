@@ -45,7 +45,7 @@ toml = "1.0"
 reqwest = { version = "0.13", features = ["rustls", "json", "cookies", "gzip", "brotli"] }
 
 # WebSocket client
-tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
 
 # HTML parsing
 scraper = "0.27"
@@ -66,12 +66,12 @@ criterion = { version = "0.8", features = ["async_tokio"] }
 chromiumoxide = "=0.9.1"
 
 # Utilities
-ulid = "1.2"
+ulid = "3.0"
 parking_lot = "0.12"
 rand = "0.10"
 dashmap = "6"
 lru = "0.18"
-base64 = "0.22"
+base64 = "0.23"
 prometheus-client = "0.25"
 figment = { version = "0.10", features = ["toml", "env"] }
 clap = { version = "4", features = ["derive"] }
@@ -109,12 +109,12 @@ serde_yaml = "0.9"
 indexmap = "2"
 
 # Proc-macro support
-syn         = { version = "2", features = ["full"] }
+syn         = { version = "3", features = ["full"] }
 quote       = "1"
 proc-macro2 = "1"
 
 # WASM plugins (optional heavy dep)
-wasmtime = { version = "46.0.1", default-features = false, features = ["runtime", "cranelift", "component-model"] }
+wasmtime = { version = "48.0.0", default-features = false, features = ["runtime", "cranelift", "component-model"] }
 
 # Database (optional)
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "json", "migrate"] }

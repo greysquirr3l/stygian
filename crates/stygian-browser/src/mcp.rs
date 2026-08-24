@@ -1043,7 +1043,7 @@ impl McpBrowserServer {
             );
 
         let handle = self.pool.acquire().await?;
-        let session_id = Ulid::new().to_string();
+        let session_id = Ulid::generate().to_string();
 
         let effective_stealth = format!("{stealth_level:?}").to_lowercase();
         self.sessions.lock().await.insert(
@@ -1414,7 +1414,7 @@ impl McpBrowserServer {
                     }
                 });
 
-                let session_id = Ulid::new().to_string();
+                let session_id = Ulid::generate().to_string();
                 self.sessions.lock().await.insert(
                     session_id.clone(),
                     McpSession {

@@ -796,7 +796,7 @@ impl NodeHandle {
     pub async fn parent(&self) -> Result<Option<Self>> {
         let attr = format!(
             "data-stygian-t-{}",
-            ulid::Ulid::new().to_string().to_lowercase()
+            ulid::Ulid::generate().to_string().to_lowercase()
         );
         let js = format!(
             "function() {{ \
@@ -839,7 +839,7 @@ impl NodeHandle {
     pub async fn next_sibling(&self) -> Result<Option<Self>> {
         let attr = format!(
             "data-stygian-t-{}",
-            ulid::Ulid::new().to_string().to_lowercase()
+            ulid::Ulid::generate().to_string().to_lowercase()
         );
         let js = format!(
             "function() {{ \
@@ -882,7 +882,7 @@ impl NodeHandle {
     pub async fn previous_sibling(&self) -> Result<Option<Self>> {
         let attr = format!(
             "data-stygian-t-{}",
-            ulid::Ulid::new().to_string().to_lowercase()
+            ulid::Ulid::generate().to_string().to_lowercase()
         );
         let js = format!(
             "function() {{ \

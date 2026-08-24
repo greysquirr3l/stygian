@@ -11,9 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Dependency bumps (dependabot): `ulid` 1.2 → 3.0 — `Ulid::new()` renamed
+  to `Ulid::generate()` across all call sites; `stygian-plugin`'s
+  previously independent `ulid` pin now tracks the workspace version.
+  `syn` 2 → 3 in `stygian-extract-derive` (one non-exhaustive-pattern
+  fixup for `TypePath`'s new `attrs` field). `tokio-tungstenite` 0.29 →
+  0.30 and `base64` 0.22 → 0.23 (no code changes required). CodeQL
+  Action pins bumped 4.37.7 → 4.37.8 in `codeql.yml` / `scorecard.yml`.
+
 ### Fixed
 
 ### Security
+
+- Bumped `wasmtime` 46.0.2 → 48.0.0, which includes upstream security
+  backports (no code changes required).
 
 ## [0.17.0] - 2026-08-24
 

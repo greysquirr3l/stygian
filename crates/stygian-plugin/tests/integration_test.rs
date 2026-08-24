@@ -105,7 +105,7 @@ mod tests {
         let adapter =
             PluginExtractionAdapter::new(template_store, extraction_port, idempotency_store);
 
-        let idempotency_key = ulid::Ulid::new();
+        let idempotency_key = ulid::Ulid::generate();
         let html = "<html><h1>First</h1></html>";
 
         let input1 = ServiceInput {

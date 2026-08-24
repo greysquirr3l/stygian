@@ -74,7 +74,7 @@ impl BrowserInstance {
     /// # }
     /// ```
     pub async fn launch(config: BrowserConfig) -> Result<Self> {
-        let id = ulid::Ulid::new().to_string();
+        let id = ulid::Ulid::generate().to_string();
         let launch_timeout = config.launch_timeout;
 
         info!(browser_id = %id, "Launching browser");

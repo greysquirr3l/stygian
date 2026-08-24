@@ -780,7 +780,7 @@ impl McpProxyServer {
         match self.manager.acquire_proxy().await {
             Ok(handle) => {
                 let proxy_url = handle.proxy_url.clone();
-                let token = Ulid::new().to_string();
+                let token = Ulid::generate().to_string();
                 self.handles
                     .lock()
                     .await
@@ -812,7 +812,7 @@ impl McpProxyServer {
         match self.manager.acquire_for_domain(domain).await {
             Ok(handle) => {
                 let proxy_url = handle.proxy_url.clone();
-                let token = Ulid::new().to_string();
+                let token = Ulid::generate().to_string();
                 self.handles
                     .lock()
                     .await
@@ -929,7 +929,7 @@ impl McpProxyServer {
         match self.manager.acquire_with_capabilities(&req).await {
             Ok(handle) => {
                 let proxy_url = handle.proxy_url.clone();
-                let token = Ulid::new().to_string();
+                let token = Ulid::generate().to_string();
                 self.handles
                     .lock()
                     .await

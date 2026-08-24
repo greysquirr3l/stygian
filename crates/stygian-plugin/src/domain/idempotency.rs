@@ -26,7 +26,7 @@ impl IdempotencyKey {
     /// Generate a new idempotency key
     #[must_use]
     pub fn new() -> Self {
-        Self(ulid::Ulid::new())
+        Self(ulid::Ulid::generate())
     }
 
     /// Create from an existing ULID

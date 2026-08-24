@@ -62,7 +62,7 @@ impl IdempotencyKey {
     /// Generate a new unique idempotency key.
     #[must_use]
     pub fn generate() -> Self {
-        Self(Ulid::new())
+        Self(Ulid::generate())
     }
 
     /// Parse an idempotency key from its string representation.

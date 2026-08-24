@@ -59,7 +59,10 @@ impl syn::parse::Parse for SelectorArgs {
 
 /// If `ty` is `Option<Inner>`, return `Some(&Inner)`.  Otherwise `None`.
 fn unwrap_option(ty: &Type) -> Option<&Type> {
-    let Type::Path(TypePath { qself: None, path }) = ty else {
+    let Type::Path(TypePath {
+        qself: None, path, ..
+    }) = ty
+    else {
         return None;
     };
     let seg = path.segments.last()?;
