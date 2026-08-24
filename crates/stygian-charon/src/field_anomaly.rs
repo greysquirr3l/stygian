@@ -91,10 +91,11 @@ impl From<&str> for FieldPath {
     }
 }
 
-/// One observed field value. Covers the four kinds of fields the
-/// detector needs to reason about: numeric (for price/outlier),
-/// string (for cardinality), ordered list of strings (for
-/// listing-reorder), and timestamp (for staleness).
+/// One observed field value.
+///
+/// Covers the four kinds of fields the detector reasons about:
+/// numeric (price/outlier), string (cardinality), ordered list
+/// (listing-reorder), and timestamp (staleness).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum FieldValue {
@@ -105,7 +106,7 @@ pub enum FieldValue {
     /// Ordered list of strings (a page of listings, a search
     /// result set, etc.). Used for listing-reorder detection.
     OrderedList(Vec<String>),
-    /// Timestamp value (published_at, expires_at, etc.). Stored as
+    /// Timestamp value (`published_at`, `expires_at`, etc.). Stored as
     /// seconds since the Unix epoch for portability.
     TimestampSeconds(i64),
     /// Boolean value.
@@ -314,6 +315,27 @@ impl StatisticalFieldAnomalyDetector {
         Self::default()
     }
 
+    /// Convert a `usize` count to `f64` for ratio math.
+    ///
+    /// Counts flowing through this helper are bounded by
+    /// [`Self::WINDOW_SIZE`] (max 64) — well within `u32`, so the
+    /// `usize -> u32 -> f64` chain is precision-safe on every
+    /// target.
+    fn usize_to_f64(n: usize) -> f64 {
+        let n32 = u32::try_from(n).unwrap_or(u32::MAX);
+        f64::from(n32)
+    }
+
+    /// Trim a window to `max` entries from the front.
+    ///
+    /// Not `const` because `VecDeque::len` / `pop_front` are not
+    /// const-stable yet (Rust 1.96).
+    fn cap_window<T>(window: &mut VecDeque<T>, max: usize) {
+        while window.len() > max {
+            window.pop_front();
+        }
+    }
+
     /// Median of a window of f64 values. Returns `None` if empty.
     fn median(window: &VecDeque<f64>) -> Option<f64> {
         if window.is_empty() {
@@ -322,14 +344,18 @@ impl StatisticalFieldAnomalyDetector {
         let mut sorted: Vec<f64> = window.iter().copied().collect();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let mid = sorted.len() / 2;
-        Some(if sorted.len() % 2 == 0 {
-            (sorted[mid - 1] + sorted[mid]) / 2.0
+        if sorted.len().is_multiple_of(2) {
+            let a = sorted.get(mid - 1).copied()?;
+            let b = sorted.get(mid).copied()?;
+            Some(f64::midpoint(a, b))
         } else {
-            sorted[mid]
-        })
+            Some(*sorted.get(mid)?)
+        }
     }
 
     /// First and third quartile of a window.
+    ///
+    /// Returns `None` for windows with fewer than 4 samples.
     fn quartiles(window: &VecDeque<f64>) -> Option<(f64, f64)> {
         if window.len() < 4 {
             return None;
@@ -337,29 +363,27 @@ impl StatisticalFieldAnomalyDetector {
         let mut sorted: Vec<f64> = window.iter().copied().collect();
         sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let mid = sorted.len() / 2;
-        let lower = &sorted[..mid];
-        let upper = &sorted[mid..];
-        let q1 = if lower.is_empty() {
-            sorted[0]
+        // split_at is the safe form of `&v[..n]` + `&v[n..]`.
+        let (lower_slice, upper_with_mid) = sorted.split_at(mid);
+        let q1 = Self::pick_midpoint(lower_slice);
+        let q3 = Self::pick_midpoint(upper_with_mid);
+        Some((q1?, q3?))
+    }
+
+    /// Pick the median (odd-length) or midpoint (even-length) of an
+    /// already-sorted slice. Returns `None` for empty slices.
+    fn pick_midpoint(sorted: &[f64]) -> Option<f64> {
+        if sorted.is_empty() {
+            return None;
+        }
+        let mid = sorted.len() / 2;
+        if sorted.len().is_multiple_of(2) {
+            let a = sorted.get(mid - 1).copied()?;
+            let b = sorted.get(mid).copied()?;
+            Some(f64::midpoint(a, b))
         } else {
-            let idx = lower.len() / 2;
-            if lower.len() % 2 == 0 && lower.len() >= 2 {
-                (lower[idx - 1] + lower[idx]) / 2.0
-            } else {
-                lower[idx]
-            }
-        };
-        let q3 = if upper.is_empty() {
-            sorted[sorted.len() - 1]
-        } else {
-            let idx = upper.len() / 2;
-            if upper.len() % 2 == 0 && upper.len() >= 2 {
-                (upper[idx - 1] + upper[idx]) / 2.0
-            } else {
-                upper[idx]
-            }
-        };
-        Some((q1, q3))
+            Some(*sorted.get(mid)?)
+        }
     }
 
     /// Mean of a window.
@@ -367,7 +391,7 @@ impl StatisticalFieldAnomalyDetector {
         if window.is_empty() {
             return None;
         }
-        Some(window.iter().sum::<f64>() / window.len() as f64)
+        Some(window.iter().sum::<f64>() / Self::usize_to_f64(window.len()))
     }
 
     /// Standard deviation of a window. Returns `None` when fewer
@@ -377,11 +401,8 @@ impl StatisticalFieldAnomalyDetector {
             return None;
         }
         let m = Self::mean(window)?;
-        let variance = window
-            .iter()
-            .map(|v| (v - m).powi(2))
-            .sum::<f64>()
-            / (window.len() as f64 - 1.0);
+        let n = Self::usize_to_f64(window.len());
+        let variance = window.iter().map(|v| (v - m).powi(2)).sum::<f64>() / (n - 1.0);
         Some(variance.sqrt())
     }
 
@@ -400,7 +421,7 @@ impl StatisticalFieldAnomalyDetector {
         if union == 0 {
             0.0
         } else {
-            1.0 - (intersection as f64 / union as f64)
+            1.0 - (Self::usize_to_f64(intersection) / Self::usize_to_f64(union))
         }
     }
 
@@ -440,10 +461,7 @@ impl StatisticalFieldAnomalyDetector {
         n: f64,
         cfg: &TuningConfig,
     ) -> AnomalyReport {
-        let window = baseline
-            .numeric_history
-            .entry(field.clone())
-            .or_insert_with(VecDeque::new);
+        let window = baseline.numeric_history.entry(field.clone()).or_default();
         if let Some((q1, q3)) = Self::quartiles(window) {
             let iqr = q3 - q1;
             if iqr > 0.0 {
@@ -509,43 +527,41 @@ impl StatisticalFieldAnomalyDetector {
         items: &[String],
         cfg: &TuningConfig,
     ) -> AnomalyReport {
-        let window = baseline
-            .list_history
-            .entry(field.clone())
-            .or_insert_with(VecDeque::new);
-        let report = if let Some(prev) = window.back() {
-            let distance = Self::jaccard_distance(prev, items);
-            if distance > cfg.jaccard_threshold {
-                AnomalyReport {
-                    field: field.clone(),
-                    schema_id: schema_id.clone(),
-                    signal: AnomalySignal::ListingReorder { jaccard: distance },
-                    severity: AnomalySeverity::Warning,
-                    reason: format!(
-                        "Jaccard distance {distance:.2} exceeds threshold {:.2}",
-                        cfg.jaccard_threshold
-                    ),
-                }
-            } else {
-                AnomalyReport {
-                    field: field.clone(),
-                    schema_id: schema_id.clone(),
-                    signal: AnomalySignal::None,
-                    severity: AnomalySeverity::Info,
-                    reason: format!("Jaccard distance {distance:.2} within threshold"),
-                }
-            }
-        } else {
-            AnomalyReport {
+        let window = baseline.list_history.entry(field.clone()).or_default();
+        let report = window.back().map_or_else(
+            || AnomalyReport {
                 field: field.clone(),
                 schema_id: schema_id.clone(),
                 signal: AnomalySignal::None,
                 severity: AnomalySeverity::Info,
                 reason: "first observation establishes baseline".to_string(),
-            }
-        };
+            },
+            |prev| {
+                let distance = Self::jaccard_distance(prev, items);
+                if distance > cfg.jaccard_threshold {
+                    AnomalyReport {
+                        field: field.clone(),
+                        schema_id: schema_id.clone(),
+                        signal: AnomalySignal::ListingReorder { jaccard: distance },
+                        severity: AnomalySeverity::Warning,
+                        reason: format!(
+                            "Jaccard distance {distance:.2} exceeds threshold {:.2}",
+                            cfg.jaccard_threshold
+                        ),
+                    }
+                } else {
+                    AnomalyReport {
+                        field: field.clone(),
+                        schema_id: schema_id.clone(),
+                        signal: AnomalySignal::None,
+                        severity: AnomalySeverity::Info,
+                        reason: format!("Jaccard distance {distance:.2} within threshold"),
+                    }
+                }
+            },
+        );
         window.push_back(items.to_vec());
-        Self::cap_list_window(window, cfg.window_size);
+        Self::cap_window(window, cfg.window_size);
         report
     }
 
@@ -560,15 +576,16 @@ impl StatisticalFieldAnomalyDetector {
         let window = baseline
             .cardinality_history
             .entry(field.clone())
-            .or_insert_with(VecDeque::new);
+            .or_default();
         let report = if window.len() >= 2 {
             let previous = window.back().copied().unwrap_or(cardinality);
             let previous_window_avg = if window.len() >= cfg.window_size {
-                window.iter().sum::<usize>() as f64 / window.len() as f64
+                Self::usize_to_f64(window.iter().sum::<usize>())
+                    / Self::usize_to_f64(window.len())
             } else {
-                previous as f64
+                Self::usize_to_f64(previous)
             };
-            let current = cardinality as f64;
+            let current = Self::usize_to_f64(cardinality);
             let drift = if previous_window_avg > 0.0 {
                 (current - previous_window_avg).abs() / previous_window_avg
             } else {
@@ -606,7 +623,7 @@ impl StatisticalFieldAnomalyDetector {
             }
         };
         window.push_back(cardinality);
-        Self::cap_window_usize(window, cfg.window_size);
+        Self::cap_window(window, cfg.window_size);
         report
     }
 
@@ -640,23 +657,6 @@ impl StatisticalFieldAnomalyDetector {
         }
     }
 
-    fn cap_window(window: &mut VecDeque<f64>, max: usize) {
-        while window.len() > max {
-            window.pop_front();
-        }
-    }
-
-    fn cap_window_usize(window: &mut VecDeque<usize>, max: usize) {
-        while window.len() > max {
-            window.pop_front();
-        }
-    }
-
-    fn cap_list_window(window: &mut VecDeque<Vec<String>>, max: usize) {
-        while window.len() > max {
-            window.pop_front();
-        }
-    }
 }
 
 /// Internal tuning snapshot — kept separate from the public
@@ -673,7 +673,7 @@ struct TuningConfig {
 }
 
 impl TuningConfig {
-    fn from_detector(d: &StatisticalFieldAnomalyDetector) -> Self {
+    const fn from_detector(d: &StatisticalFieldAnomalyDetector) -> Self {
         Self {
             window_size: d.window_size,
             iqr_multiplier: d.iqr_multiplier,
@@ -698,22 +698,22 @@ impl FieldAnomalyDetector for StatisticalFieldAnomalyDetector {
         value: &FieldValue,
     ) -> Result<AnomalyReport, AnomalyError> {
         let cfg = TuningConfig::from_detector(self);
-        let now_secs = chrono::Utc::now().timestamp();
+        let now = chrono::Utc::now();
+        let now_secs = now.timestamp();
         let mut guard = self.state.lock();
-        let baseline = guard
-            .entry(schema_id.clone())
-            .or_insert_with(|| SchemaBaseline {
-                schema_id: Some(schema_id.clone()),
-                ..Default::default()
-            });
-        // Reset baseline if schema switched.
+        let baseline = guard.entry(schema_id.clone()).or_default();
+        if baseline.schema_id.is_none() {
+            baseline.schema_id = Some(schema_id.clone());
+        }
         if baseline.schema_id.as_ref() != Some(schema_id) {
             *baseline = SchemaBaseline {
                 schema_id: Some(schema_id.clone()),
                 ..Default::default()
             };
         }
-        Ok(Self::evaluate(baseline, schema_id, field, value, &cfg, now_secs))
+        let report = Self::evaluate(baseline, schema_id, field, value, &cfg, now_secs);
+        drop(guard);
+        Ok(report)
     }
 
     async fn baseline(&self, schema_id: &SchemaId) -> Result<SchemaBaseline, AnomalyError> {
@@ -1015,7 +1015,11 @@ mod tests {
     fn jaccard_distance_identical_sets_is_zero() {
         let a = vec!["x".into(), "y".into(), "z".into()];
         let b = vec!["x".into(), "y".into(), "z".into()];
-        assert_eq!(StatisticalFieldAnomalyDetector::jaccard_distance(&a, &b), 0.0);
+        let distance = StatisticalFieldAnomalyDetector::jaccard_distance(&a, &b);
+        assert!(
+            distance.abs() < 1e-9,
+            "identical sets should have distance 0, got {distance}"
+        );
     }
 
     #[test]
@@ -1035,7 +1039,10 @@ mod tests {
     fn median_even_count() {
         let w: VecDeque<f64> = [4.0, 1.0, 3.0, 2.0].into_iter().collect();
         let m = StatisticalFieldAnomalyDetector::median(&w).unwrap_or(0.0);
-        assert!((m - 2.5).abs() < 1e-9);
+        assert!(
+            (m - 2.5).abs() < 1e-9,
+            "median of even-count window should be 2.5, got {m}"
+        );
     }
 
     #[test]
