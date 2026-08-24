@@ -194,6 +194,59 @@ let response = client.get("https://example.com").send().await?;
 For browser contexts, chrome_tls_args can constrain TLS version behavior, but exact Chrome
 cipher ordering remains tied to the browser binary.
 
+### JA4Q — QUIC Initial Packet fingerprint
+
+`stygian_browser::tls::Ja4q` mirrors the existing `Ja4` (TLS ClientHello)
+fingerprint for the QUIC Initial packet, per the JA4+ spec Cloudflare has
+begun collecting. `TlsProfile::ja4q()` returns family-default reference
+values for supported browser families:
+
+| Family profile | QUIC Initial reference |
+| --- | --- |
+| `CHROME_131`, `CHROME_136` | `CHROME_136_JA4Q` |
+| `FIREFOX_133` | `FIREFOX_130_JA4Q` |
+| `SAFARI_18` | `SAFARI_18_JA4Q` |
+
+`Ja4q::from_components(...)` builds a fingerprint from raw QUIC Initial
+components for cases where you have a live packet capture and want to
+verify against the reference values.
+
+### Bind the axes — `TlsProfilePack`
+
+The UA, TLS ClientHello (JA3/JA4), HTTP/2 SETTINGS frame, and HTTP/3
+perk are not four independent knobs — they are bound together at the
+type level into a `TlsProfilePack`. Mixing Chrome's UA with Firefox's
+TLS fingerprint (or with Safari's H2 SETTINGS) produces a profile no
+real browser will ever emit, and a careful detector suite will flag
+the mismatch faster than a silent request would be.
+
+The `TlsProfile` enum carries all four axes together. Picking one
+profile gives you the matching UA, TLS handshake, H2 SETTINGS, and
+H3 perk in a single value — there's no way to assemble a mixed
+profile by accident. This is the [Web Scraping Guide
+§Innovation](https://web-scraping-guide.com/#innovation) pattern:
+the binding is enforced by the type system, not by convention.
+
+## Diagnostic hints — runtime configuration warnings
+
+`BrowserConfig::diagnostic_hints()` returns a list of non-fatal
+`DiagnosticHint`s that surface structural incompatibilities between
+configuration choices at runtime. Unlike `BrowserConfig::validate()`,
+hints never block the browser from launching — they exist so the
+existing `browser_stealth_check` MCP tool can report them to the
+caller before the first request goes out.
+
+Currently emitted hint:
+
+| Trigger | Hint kind | Why it matters |
+| --- | --- | --- |
+| `proxy.is_some() && transport.prefer_h3` | `protocol_downgrade` | Chrome negotiates HTTP/2 over a configured proxy regardless of server H3 support, so the `prefer_h3` preference is structurally unreachable and will be silently downgraded by the browser |
+
+Hints are advisory. The browser will still launch and the proxy
+will still be used — but the operator will know that the H3
+preference is not being honored. This closes the gap where a
+misconfigured `prefer_h3` would have been silently ignored.
+
 ## Runtime stealth diagnostics
 
 Run diagnostics from a live page handle:
