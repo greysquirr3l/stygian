@@ -144,6 +144,23 @@ impl StoragePort for FileStorage {
             )))
         })?;
 
+        // Flush + sync before dropping the file handle so a subsequent
+        // `list()` on the same path in another task observes the
+        // appended line. Without this, tokio's async File drop can race
+        // the reader's `read_to_string` on filesystems that buffer
+        // append-mode writes (notably CI runners with networked/overlay
+        // filesystems).
+        file.flush().await.map_err(|e| {
+            StygianError::Service(ServiceError::InvalidResponse(format!(
+                "FileStorage: flush failed: {e}"
+            )))
+        })?;
+        file.sync_all().await.map_err(|e| {
+            StygianError::Service(ServiceError::InvalidResponse(format!(
+                "FileStorage: sync_all failed: {e}"
+            )))
+        })?;
+
         Ok(())
     }
 
