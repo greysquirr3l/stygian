@@ -215,7 +215,6 @@ impl McpProxyServer {
         // Launch background handle cleanup task.
         let handles_clone = self.handles.clone();
         let cleanup_handle = tokio::spawn(async move {
-            #[expect(clippy::duration_suboptimal_units)]
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(60)); // 1 minute cleanup interval
             loop {
                 interval.tick().await;
