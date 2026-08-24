@@ -169,7 +169,7 @@ All response fields are optional — omit any field that your scheme does not us
 The most common use of `HttpSigningAdapter` is hooking a mobile app's native signing function via [Frida](https://frida.re/) and exposing it
 through a thin HTTP sidecar.
 
-```
+```text
 ┌─────────── Your machine ────────────────────────────────┐
 │                                                         │
 │  stygian-graph pipeline                                 │

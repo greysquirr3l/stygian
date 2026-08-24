@@ -261,7 +261,7 @@ graph LR
 
 ### Key structure
 
-```
+```text
 {prefix}/{pipeline_id}/{node_name}/{record_id}.json   ← data objects
 {prefix}/_index/{id}                                    ← index for O(1) lookups
 ```

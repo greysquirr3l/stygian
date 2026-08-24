@@ -11,7 +11,7 @@ interface regardless of the underlying destination.
 
 ## Core Concepts
 
-```
+```text
 Scraper → Pipeline → DataSinkPort → Backend
 ```
 

@@ -158,7 +158,7 @@ can supply a stricter adapter without changing the dispatch path.
 
 HTTP fetch through an automatically acquired proxy from the pool.
 
-```
+```text
 proxy_acquire → graph.scrape(url, proxy_url) → proxy_release(success)
 ```
 
@@ -173,7 +173,7 @@ proxy_acquire → graph.scrape(url, proxy_url) → proxy_release(success)
 
 Full browser navigation through a proxy from the pool.
 
-```
+```text
 proxy_acquire → browser_acquire(proxy) → browser_navigate → browser_content
              → browser_release → proxy_release(success)
 ```

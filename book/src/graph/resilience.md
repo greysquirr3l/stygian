@@ -12,7 +12,7 @@ rather than propagating errors upstream.
 `CircuitBreakerImpl` lives in `stygian-graph` and implements the classic three-state
 machine:
 
-```
+```text
 Closed  →  threshold failures reached  →  Open
 Open    →  reset_timeout elapsed        →  Half-Open (probe)
 Half-Open  →  probe success  →  Closed
@@ -123,7 +123,7 @@ are immediately available in the fallback path without any cache invalidation.
 
 ## Execution flow
 
-```
+```text
 execute(ServiceInput { url, template_id, idempotency_key })
   │
   ├─ entry[0]: circuit Closed

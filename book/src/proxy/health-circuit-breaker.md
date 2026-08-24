@@ -76,7 +76,7 @@ marked unhealthy are filtered out before selection.
 Every proxy gets its own `CircuitBreaker` when it is added to the pool. The
 circuit breaker is a **lock-free atomic FSM** with three states:
 
-```
+```text
           failure ≥ threshold
   CLOSED ──────────────────────► OPEN
     ▲                               │

@@ -25,7 +25,7 @@ When using the [aggregator](./aggregator.md), tools keep their `browser_` prefix
 
 Browser sessions are identified by a `session_id` (ULID string). The lifecycle is:
 
-```
+```text
 browser_acquire → browser_navigate → browser_eval / browser_screenshot / browser_content → browser_release
 ```
 
