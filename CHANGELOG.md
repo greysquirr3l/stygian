@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Security
+
+## [0.17.0] - 2026-08-24
+
+### Added
+
 - `stygian-browser` (docs, T113): promoted the existing `TlsProfilePack`
   design (UA + TLS handshake + HTTP/2 SETTINGS + HTTP/3 perk bound
   together as a single value) from "internal detail" to a
@@ -18,12 +28,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   type level" — all citing the source
   [Web Scraping Guide §Innovation](https://web-scraping-guide.com/#innovation)
   pattern verbatim.
+- `stygian-browser` (JA4Q / QUIC Initial Packet fingerprint, T102): new
+  `Ja4q` struct mirroring the existing `Ja4` (TLS ClientHello)
+  fingerprint for the QUIC Initial packet, per the JA4+ spec Cloudflare
+  has begun collecting. `Ja4q::from_components(...)` builds the
+  fingerprint from raw QUIC Initial components; `TlsProfile::ja4q()
+  -> Option<Ja4q>` returns family-default reference values
+  (`CHROME_136_JA4Q`, `FIREFOX_130_JA4Q`, `SAFARI_18_JA4Q`) for
+  supported browser families.
+- `stygian-browser` (H3 + proxy protocol-downgrade warning, T105): new
+  `DiagnosticHint` type and `BrowserConfig::diagnostic_hints()` that
+  emit a non-fatal `protocol_downgrade` warning when a config combines
+  a proxy with `prefer_h3` — Chrome negotiates HTTP/2 over a configured
+  proxy regardless of server H3 support, so the mismatch is now
+  surfaced rather than silently swallowed.
+- `stygian-proxy` (RFC 9209 Proxy-Status header parser, T103): new
+  `ProxyStatusParser` port + `Rfc9209Parser` default adapter that
+  classify a proxy's `Proxy-Status` response header into
+  `ProxyErrorClass` (`Network` / `Provider` / `Target` / `Unknown`), so
+  failure attribution can eventually be based on the header instead of
+  guessing from bare HTTP status codes.
+- `stygian-proxy` (geofeed verifier, T106): new `GeofeedVerifier` port
+  + `InMemoryGeofeedAdapter` that checks an observed IP against a
+  geofeed's claimed country/region/city/ASN and reports
+  `GeofeedDivergence` — closes the gap where "US residential" pools
+  silently egress from the wrong geography.
+- `stygian-charon` (content-type shift detector, T104): new
+  `ContentTypeShiftDetector` port + `RollingBaselineDetector` adapter
+  that flags publisher cloaking — a target serving an HTML-stripped
+  Markdown stub to AI-bot UAs at the same URL/200 — via MIME-class
+  change or byte-count collapse against a rolling baseline.
+- `stygian-charon` (poisoned-data field-level anomaly detector, T107):
+  new `FieldAnomalyDetector` port + `StatisticalFieldAnomalyDetector`
+  adapter (behind the `field-anomaly` feature, off by default) that
+  watches every published field value against a rolling
+  per-`(schema, field)` baseline and flags `PriceDrift`, `Outlier`,
+  `ListingReorder`, `Staleness`, and `CardinalityShift` — closes the
+  "clean 200, subtly wrong field values" tarpit/poisoned-data failure
+  mode.
+- `stygian-mcp` (prompt-injection guard, T109): new
+  `PromptInjectionGuard` port + `DefaultPromptInjectionGuard` adapter
+  (hidden-unicode stripping, `<script>`/`<iframe>` block stripping,
+  known-phrase redaction, CSS-exfil and markdown-link-trap detection),
+  now wired into `McpAggregator`'s `tools/call` dispatch — every tool
+  response (`graph_`, `browser_`, `proxy_`, `plugin_`) is sanitised
+  before being emitted to the LLM-consuming caller.
+- `stygian-graph` (single robots-policy reconciliation, T111): new
+  `RobotsPolicy` (`Obey` / `IgnoreWithAudit` / `IgnoreSilently`) and
+  `RobotsPolicyGuard` port consumed by both recon and production
+  pipeline paths, so a target's robots policy can no longer diverge
+  between exploration and the production deliverable.
+- `stygian-graph` (`HttpAdapter` rejects plain-JA4 by default, T112):
+  `HttpConfig::allow_plain_http` defaults to `false`; library-banner
+  User-Agents (`requests`/`urllib3`/`httpx`/`Scrapy`/`axios`/
+  `node-fetch`/legacy `curl`) are now refused before hitting the wire
+  unless a caller opts in explicitly. New `HttpConfig::stealth_profile`
+  picks a matching browser UA (Chrome/Firefox/Safari) instead.
 
 ### Changed
+
+- `stygian-graph`: `SinkRecord::fetched_at` is now a required field
+  (previously optional metadata). `SinkRecord::new(...)` keeps its
+  existing signature and falls back to `Utc::now()`, but
+  `SinkRecord::with_fetched_at(...)` is the preferred, auditable
+  constructor for callers with a transport-level timestamp (T108).
 
 ### Fixed
 
 ### Security
+
+- Bumped `h2` 0.4.15 → 0.4.19, resolving RUSTSEC-2026-0258 (unbounded
+  empty DATA frames). `quick-xml` remains on two resolved versions
+  (0.38.4 transitively via `rust-s3` → `aws-creds`, which pins
+  `quick-xml = "^0.38"` with no newer release yet) — acknowledged in
+  `deny.toml` / `.cargo/audit.toml` as RUSTSEC-2026-0194/0195.
 
 ## [0.16.0] - 2026-08-17
 
