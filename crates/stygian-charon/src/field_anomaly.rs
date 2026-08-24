@@ -580,8 +580,7 @@ impl StatisticalFieldAnomalyDetector {
         let report = if window.len() >= 2 {
             let previous = window.back().copied().unwrap_or(cardinality);
             let previous_window_avg = if window.len() >= cfg.window_size {
-                Self::usize_to_f64(window.iter().sum::<usize>())
-                    / Self::usize_to_f64(window.len())
+                Self::usize_to_f64(window.iter().sum::<usize>()) / Self::usize_to_f64(window.len())
             } else {
                 Self::usize_to_f64(previous)
             };
@@ -656,7 +655,6 @@ impl StatisticalFieldAnomalyDetector {
             }
         }
     }
-
 }
 
 /// Internal tuning snapshot — kept separate from the public
@@ -754,11 +752,7 @@ mod tests {
     async fn first_observation_is_baseline() {
         let d = det();
         let report = d
-            .observe(
-                &"s1".into(),
-                &"price".into(),
-                &FieldValue::Number(9.99),
-            )
+            .observe(&"s1".into(), &"price".into(), &FieldValue::Number(9.99))
             .await
             .unwrap();
         assert!(matches!(report.signal, AnomalySignal::None));
@@ -775,11 +769,7 @@ mod tests {
         }
         // Outlier
         let report = d
-            .observe(
-                &"s1".into(),
-                &"price".into(),
-                &FieldValue::Number(99.0),
-            )
+            .observe(&"s1".into(), &"price".into(), &FieldValue::Number(99.0))
             .await
             .unwrap();
         assert!(
@@ -898,11 +888,7 @@ mod tests {
                 .unwrap();
         }
         let r = d
-            .observe(
-                &"s1".into(),
-                &"x".into(),
-                &FieldValue::Number(50.0),
-            )
+            .observe(&"s1".into(), &"x".into(), &FieldValue::Number(50.0))
             .await
             .unwrap();
         assert!(
@@ -931,11 +917,7 @@ mod tests {
         // Shift to huge strings
         let huge = "x".repeat(10_000);
         let r = d
-            .observe(
-                &"s1".into(),
-                &"title".into(),
-                &FieldValue::Text(huge),
-            )
+            .observe(&"s1".into(), &"title".into(), &FieldValue::Text(huge))
             .await
             .unwrap();
         assert!(
@@ -949,21 +931,13 @@ mod tests {
     async fn detector_resets_on_schema_change() {
         let d = det();
         // Establish s1 baseline.
-        d.observe(
-            &"s1".into(),
-            &"price".into(),
-            &FieldValue::Number(100.0),
-        )
-        .await
-        .unwrap();
+        d.observe(&"s1".into(), &"price".into(), &FieldValue::Number(100.0))
+            .await
+            .unwrap();
         // Switch to s2 — the baseline for s1 is preserved but
         // s2 starts fresh.
         let r = d
-            .observe(
-                &"s2".into(),
-                &"price".into(),
-                &FieldValue::Number(9.99),
-            )
+            .observe(&"s2".into(), &"price".into(), &FieldValue::Number(9.99))
             .await
             .unwrap();
         assert!(matches!(r.signal, AnomalySignal::None));
@@ -975,13 +949,9 @@ mod tests {
     #[tokio::test]
     async fn reset_clears_schema_state() {
         let d = det();
-        d.observe(
-            &"s1".into(),
-            &"price".into(),
-            &FieldValue::Number(10.0),
-        )
-        .await
-        .unwrap();
+        d.observe(&"s1".into(), &"price".into(), &FieldValue::Number(10.0))
+            .await
+            .unwrap();
         d.reset(&"s1".into()).await.unwrap();
         let b = d.baseline(&"s1".into()).await.unwrap();
         assert!(b.numeric_history.is_empty());

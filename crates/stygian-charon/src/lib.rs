@@ -39,15 +39,6 @@ pub mod classifier;
 pub mod content_type_shift;
 /// Mode differential regression runner across snapshot capture modes.
 pub mod differential;
-/// HAR parsing and extraction utilities.
-pub mod har;
-/// Investigation reports and baseline/candidate diffing.
-pub mod investigation;
-/// Telemetry and metrics collection (feature-gated).
-#[cfg(feature = "metrics")]
-pub mod metrics;
-/// External observatory runner and comparison reports.
-pub mod observatory;
 /// T107 poisoned-data field-level anomaly detector.
 ///
 /// Catches the "tarpit / poisoned data / silent 200s" pattern from
@@ -62,6 +53,15 @@ pub mod observatory;
 /// charon users aren't forced to opt in.
 #[cfg(feature = "field-anomaly")]
 pub mod field_anomaly;
+/// HAR parsing and extraction utilities.
+pub mod har;
+/// Investigation reports and baseline/candidate diffing.
+pub mod investigation;
+/// Telemetry and metrics collection (feature-gated).
+#[cfg(feature = "metrics")]
+pub mod metrics;
+/// External observatory runner and comparison reports.
+pub mod observatory;
 /// Target-class playbooks as code (T85). Resolves per-target
 /// acquisition / proxy / pacing / escalation knobs with
 /// deterministic precedence.

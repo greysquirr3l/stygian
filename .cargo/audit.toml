@@ -8,6 +8,9 @@ ignore = [
     "RUSTSEC-2025-0052",
     # fxhash unmaintained — transitive via scraper->selectors; upstream must update.
     "RUSTSEC-2025-0057",
-    # number_prefix unmaintained — transitive dep; no direct upgrade path.
-    "RUSTSEC-2025-0119",
+    # quick-xml DoS (quadratic attribute check) — transitive via rust-s3->aws-creds, which
+    # pins quick-xml = "0.38"; no newer aws-creds release available yet.
+    "RUSTSEC-2026-0194",
+    # quick-xml DoS (unbounded namespace allocation) — same transitive path as above.
+    "RUSTSEC-2026-0195",
 ]

