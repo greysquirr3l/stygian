@@ -179,7 +179,7 @@ impl McpAggregator {
             debug!(?line, "MCP request");
 
             let response = match serde_json::from_str::<Value>(&line) {
-                Ok(req) => self.handle(&req).await,
+                Ok(req) => Box::pin(self.handle(&req)).await,
                 Err(e) => Some(error_response(
                     &Value::Null,
                     -32700,
