@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `stygian-browser` (Browserbase session resilience, T114): the
+  Browserbase-managed acquisition stage now warms up a session (a
+  settled navigation before the real one) and retries session
+  creation with exponential backoff — honoring Browserbase's
+  `Retry-After` header when present — on a `429` response, both on
+  by default. New `AcquisitionRequest::browserbase_session:
+  Option<BrowserbaseSessionConfig>` tunes or disables either
+  behavior. Setting `BROWSERBASE_SESSION_ID` (or
+  `BrowserbaseSessionConfig::session_id`) reuses an existing
+  session instead of minting a new one per call; a reused session
+  is never deleted by the stage, since the caller owns its
+  lifecycle. New `StageFailureKind::RateLimited` /
+  `BrowserError::RateLimited` distinguish exhausted rate-limit
+  retries from generic transport failures.
+
 ### Changed
 
 - Dependency bumps (dependabot): `ulid` 1.2 → 3.0 — `Ulid::new()` renamed

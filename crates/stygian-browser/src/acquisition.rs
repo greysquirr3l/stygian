@@ -291,6 +291,12 @@ pub struct AcquisitionRequest {
     /// so the calling layer can dispatch the dedicated
     /// route without burning through the generic ladder.
     pub interstitial: Option<InterstitialContext>,
+    /// Optional [`BrowserbaseSessionConfig`] (T114) tuning the
+    /// Browserbase-managed stage's session reuse, warmup, and
+    /// rate-limit retry behavior. Only consulted when
+    /// `browserbase_enabled` is `true`; `None` is equivalent to
+    /// `Some(BrowserbaseSessionConfig::default())`.
+    pub browserbase_session: Option<BrowserbaseSessionConfig>,
 }
 
 impl Default for AcquisitionRequest {
@@ -310,6 +316,58 @@ impl Default for AcquisitionRequest {
             replay_defense: None,
             transport_realism: None,
             interstitial: None,
+            browserbase_session: None,
+        }
+    }
+}
+
+/// Session reuse, warmup, and rate-limit retry configuration for the
+/// Browserbase-managed acquisition stage (T114).
+///
+/// Closes the gap reported against real-world Browserbase usage:
+/// the stage previously minted a brand-new session on every call (no
+/// reuse), never gave the remote session a chance to settle before
+/// the real navigation (no warmup), and treated a `429` from
+/// Browserbase's own session-management API the same as any other
+/// transport failure (no backoff).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserbaseSessionConfig {
+    /// Reuse an existing Browserbase session instead of creating a
+    /// new one. When `None` (or empty), the `BROWSERBASE_SESSION_ID`
+    /// environment variable is consulted next; only when both are
+    /// unset does the stage fall back to creating — and, on
+    /// release, deleting — a fresh session. A session supplied here
+    /// or via the environment variable is never deleted by the
+    /// stage; the caller owns its lifecycle.
+    pub session_id: Option<String>,
+    /// Run a warmup navigation to the target URL, and let it settle,
+    /// before the real extraction navigation. Gives anti-bot
+    /// challenge JS a chance to execute and cookies/fingerprint
+    /// state a chance to stabilize on a freshly connected session
+    /// before the page that actually gets scraped loads. Best
+    /// effort: a warmup failure is logged and does not fail the
+    /// stage.
+    pub warmup: bool,
+    /// Settle delay after the warmup navigation, in milliseconds.
+    pub warmup_stabilize_ms: u64,
+    /// Maximum retry attempts for session creation when Browserbase
+    /// responds `429` (rate limited). `0` disables retries.
+    pub max_retries: u8,
+    /// Base delay for exponential backoff between retries, in
+    /// milliseconds. Attempt `n` (0-indexed) waits
+    /// `backoff_base_ms * 2^n`, unless Browserbase's `Retry-After`
+    /// response header supplies an explicit delay.
+    pub backoff_base_ms: u64,
+}
+
+impl Default for BrowserbaseSessionConfig {
+    fn default() -> Self {
+        Self {
+            session_id: None,
+            warmup: true,
+            warmup_stabilize_ms: 500,
+            max_retries: 3,
+            backoff_base_ms: 500,
         }
     }
 }
@@ -352,6 +410,9 @@ pub enum StageFailureKind {
     /// downstream tooling can dispatch the dedicated route
     /// without burning through the generic ladder.
     InterstitialRouted,
+    /// The remote session provider (e.g. Browserbase) rate-limited
+    /// session management requests and retries were exhausted.
+    RateLimited,
 }
 
 /// Captured failure record for one stage.
@@ -911,14 +972,34 @@ impl AcquisitionRunner {
             }
         };
 
-        let session = match create_browserbase_session(request, &api_key, &project_id).await {
-            Ok(session) => session,
-            Err(err) => {
-                return StageOutcome::Failure(StageFailure {
-                    strategy: StrategyUsed::BrowserbaseManagedSession,
-                    kind: classify_browser_error(&err),
-                    message: err.to_string(),
-                });
+        let config = request.browserbase_session.clone().unwrap_or_default();
+        let env_session_id = std::env::var("BROWSERBASE_SESSION_ID").ok();
+        let reused_session_id =
+            resolve_browserbase_session_id(config.session_id.as_deref(), env_session_id.as_deref());
+
+        let (session, owns_session) = if let Some(session_id) = reused_session_id {
+            match retrieve_browserbase_session(request, &api_key, &session_id).await {
+                Ok(session) => (session, false),
+                Err(err) => {
+                    return StageOutcome::Failure(StageFailure {
+                        strategy: StrategyUsed::BrowserbaseManagedSession,
+                        kind: classify_browser_error(&err),
+                        message: format!("browserbase session reuse failed: {err}"),
+                    });
+                }
+            }
+        } else {
+            match create_browserbase_session_with_retry(request, &api_key, &project_id, &config)
+                .await
+            {
+                Ok(session) => (session, true),
+                Err(err) => {
+                    return StageOutcome::Failure(StageFailure {
+                        strategy: StrategyUsed::BrowserbaseManagedSession,
+                        kind: classify_browser_error(&err),
+                        message: err.to_string(),
+                    });
+                }
             }
         };
 
@@ -931,7 +1012,9 @@ impl AcquisitionRunner {
         {
             Ok(Ok(pair)) => pair,
             Ok(Err(err)) => {
-                let _ = delete_browserbase_session(request, &api_key, &session.id).await;
+                if owns_session {
+                    let _ = delete_browserbase_session(request, &api_key, &session.id).await;
+                }
                 return StageOutcome::Failure(StageFailure {
                     strategy: StrategyUsed::BrowserbaseManagedSession,
                     kind: StageFailureKind::Transport,
@@ -939,7 +1022,9 @@ impl AcquisitionRunner {
                 });
             }
             Err(_) => {
-                let _ = delete_browserbase_session(request, &api_key, &session.id).await;
+                if owns_session {
+                    let _ = delete_browserbase_session(request, &api_key, &session.id).await;
+                }
                 return StageOutcome::Failure(StageFailure {
                     strategy: StrategyUsed::BrowserbaseManagedSession,
                     kind: StageFailureKind::Timeout,
@@ -960,55 +1045,77 @@ impl AcquisitionRunner {
             }
         });
 
-        let run_result =
-            async {
-                let raw_page = browser.new_page("about:blank").await.map_err(|err| {
-                    BrowserError::CdpError {
+        let run_result = async {
+            let raw_page =
+                browser
+                    .new_page("about:blank")
+                    .await
+                    .map_err(|err| BrowserError::CdpError {
                         operation: "Browser.newPage".to_string(),
                         message: err.to_string(),
-                    }
-                })?;
+                    })?;
 
-                let mut page = crate::page::PageHandle::new(raw_page, request.navigation_timeout);
+            let mut page = crate::page::PageHandle::new(raw_page, request.navigation_timeout);
 
-                page.navigate(
-                    &request.url,
-                    WaitUntil::DomContentLoaded,
-                    request.navigation_timeout,
-                )
-                .await?;
-
-                if let Some(selector) = &request.wait_for_selector {
-                    page.wait_for_selector(selector, request.navigation_timeout)
-                        .await?;
+            if config.warmup {
+                let warmup_timeout_ms =
+                    u64::try_from(request.navigation_timeout.as_millis()).unwrap_or(u64::MAX);
+                let warmup_result = page
+                    .warmup(crate::page::WarmupOptions {
+                        url: request.url.clone(),
+                        wait: crate::page::WarmupWait::DomContentLoaded,
+                        timeout_ms: warmup_timeout_ms,
+                        stabilize_ms: config.warmup_stabilize_ms,
+                    })
+                    .await;
+                if let Err(error) = warmup_result {
+                    tracing::warn!(
+                        %error,
+                        "browserbase warmup navigation failed; continuing with primary navigation"
+                    );
                 }
-
-                let extracted = match request.extraction_js.as_deref() {
-                    Some(script) => Some(page.eval::<Value>(script).await.map_err(|err| {
-                        BrowserError::ScriptExecutionFailed {
-                            script: script.to_string(),
-                            reason: err.to_string(),
-                        }
-                    })?),
-                    None => None,
-                };
-
-                let html = page.content().await?;
-                let final_url = page.url().await.ok();
-                let status_code = page.status_code().ok().flatten();
-
-                Ok::<StageSuccess, BrowserError>(StageSuccess {
-                    final_url,
-                    status_code,
-                    html_excerpt: Some(truncate_html(&html, request.html_excerpt_bytes)),
-                    extracted,
-                })
             }
-            .await;
+
+            page.navigate(
+                &request.url,
+                WaitUntil::DomContentLoaded,
+                request.navigation_timeout,
+            )
+            .await?;
+
+            if let Some(selector) = &request.wait_for_selector {
+                page.wait_for_selector(selector, request.navigation_timeout)
+                    .await?;
+            }
+
+            let extracted = match request.extraction_js.as_deref() {
+                Some(script) => Some(page.eval::<Value>(script).await.map_err(|err| {
+                    BrowserError::ScriptExecutionFailed {
+                        script: script.to_string(),
+                        reason: err.to_string(),
+                    }
+                })?),
+                None => None,
+            };
+
+            let html = page.content().await?;
+            let final_url = page.url().await.ok();
+            let status_code = page.status_code().ok().flatten();
+
+            Ok::<StageSuccess, BrowserError>(StageSuccess {
+                final_url,
+                status_code,
+                html_excerpt: Some(truncate_html(&html, request.html_excerpt_bytes)),
+                extracted,
+            })
+        }
+        .await;
 
         let _ = timeout(Duration::from_secs(5), browser.close()).await;
         handler_task.abort();
-        let _ = delete_browserbase_session(request, &api_key, &session.id).await;
+        if owns_session {
+            let _ = delete_browserbase_session(request, &api_key, &session.id).await;
+        }
 
         match run_result {
             Ok(success) => {
@@ -1285,6 +1392,81 @@ struct BrowserbaseSession {
     connect_url: String,
 }
 
+/// Shared non-success handling for Browserbase session-management
+/// responses: classifies `429` into [`BrowserError::RateLimited`]
+/// (carrying the `Retry-After` delay when present) ahead of the
+/// generic non-2xx path, then parses the JSON body.
+#[cfg(feature = "browserbase")]
+async fn browserbase_response_payload(
+    response: reqwest::Response,
+    url: &str,
+    action: &str,
+) -> Result<Value, BrowserError> {
+    if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return Err(BrowserError::RateLimited {
+            retry_after_ms: parse_retry_after_ms(response.headers()),
+        });
+    }
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(BrowserError::ConnectionError {
+            url: url.to_string(),
+            reason: format!("session {action} failed ({status}): {body}"),
+        });
+    }
+
+    response
+        .json()
+        .await
+        .map_err(|err| BrowserError::ConnectionError {
+            url: url.to_string(),
+            reason: format!("session {action} response parse failed: {err}"),
+        })
+}
+
+/// Parses an integer-seconds `Retry-After` header into milliseconds.
+///
+/// Only the delay-seconds form is supported (the HTTP-date form is
+/// rare on rate-limit responses); callers fall back to their own
+/// backoff schedule when this returns `None`.
+#[cfg(feature = "browserbase")]
+fn parse_retry_after_ms(headers: &reqwest::header::HeaderMap) -> Option<u64> {
+    headers
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .map(|secs| secs.saturating_mul(1000))
+}
+
+/// Resolves which Browserbase session id (if any) should be reused
+/// instead of minting a fresh session, preferring an explicitly
+/// configured id over the `BROWSERBASE_SESSION_ID` environment
+/// variable. Blank values are treated as unset.
+#[cfg(feature = "browserbase")]
+fn resolve_browserbase_session_id(
+    configured: Option<&str>,
+    env_value: Option<&str>,
+) -> Option<String> {
+    configured
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| env_value.filter(|value| !value.trim().is_empty()))
+        .map(ToString::to_string)
+}
+
+/// Exponential backoff delay for retry attempt `attempt` (0-indexed):
+/// `base_ms * 2^attempt`, saturating rather than overflowing.
+#[cfg(feature = "browserbase")]
+const fn backoff_delay_ms(base_ms: u64, attempt: u8) -> u64 {
+    let shift = if attempt as u32 > 62 {
+        62
+    } else {
+        attempt as u32
+    };
+    base_ms.saturating_mul(1u64 << shift)
+}
+
 #[cfg(feature = "browserbase")]
 async fn create_browserbase_session(
     request: &AcquisitionRequest,
@@ -1311,22 +1493,7 @@ async fn create_browserbase_session(
             reason: err.to_string(),
         })?;
 
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        return Err(BrowserError::ConnectionError {
-            url: create_url,
-            reason: format!("session create failed ({status}): {body}"),
-        });
-    }
-
-    let payload: Value = response
-        .json()
-        .await
-        .map_err(|err| BrowserError::ConnectionError {
-            url: browserbase_api_base(),
-            reason: format!("session create response parse failed: {err}"),
-        })?;
+    let payload = browserbase_response_payload(response, &create_url, "create").await?;
 
     let connect_url = browserbase_connect_url(&payload).ok_or_else(|| {
         BrowserError::ConfigError("browserbase response missing connect URL".to_string())
@@ -1337,6 +1504,70 @@ async fn create_browserbase_session(
 
     Ok(BrowserbaseSession {
         id: session_id,
+        connect_url,
+    })
+}
+
+/// Retries [`create_browserbase_session`] with exponential backoff
+/// when Browserbase responds `429`, honoring its `Retry-After`
+/// header when present. Any other error is returned immediately.
+#[cfg(feature = "browserbase")]
+async fn create_browserbase_session_with_retry(
+    request: &AcquisitionRequest,
+    api_key: &str,
+    project_id: &str,
+    config: &BrowserbaseSessionConfig,
+) -> Result<BrowserbaseSession, BrowserError> {
+    let mut attempt = 0u8;
+    loop {
+        match create_browserbase_session(request, api_key, project_id).await {
+            Ok(session) => return Ok(session),
+            Err(BrowserError::RateLimited { retry_after_ms }) if attempt < config.max_retries => {
+                let delay_ms = retry_after_ms
+                    .unwrap_or_else(|| backoff_delay_ms(config.backoff_base_ms, attempt));
+                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                attempt += 1;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
+
+/// Fetches connection details for an existing Browserbase session by
+/// id, for the session-reuse path — no new session is created.
+#[cfg(feature = "browserbase")]
+async fn retrieve_browserbase_session(
+    request: &AcquisitionRequest,
+    api_key: &str,
+    session_id: &str,
+) -> Result<BrowserbaseSession, BrowserError> {
+    let client = reqwest::Client::builder()
+        .timeout(request.request_timeout)
+        .build()
+        .map_err(|err| {
+            BrowserError::ConfigError(format!("browserbase client setup failed: {err}"))
+        })?;
+
+    let get_url = format!("{}/sessions/{session_id}", browserbase_api_base());
+    let response = client
+        .get(get_url.clone())
+        .bearer_auth(api_key)
+        .header("x-bb-api-key", api_key)
+        .send()
+        .await
+        .map_err(|err| BrowserError::ConnectionError {
+            url: get_url.clone(),
+            reason: err.to_string(),
+        })?;
+
+    let payload = browserbase_response_payload(response, &get_url, "retrieve").await?;
+
+    let connect_url = browserbase_connect_url(&payload).ok_or_else(|| {
+        BrowserError::ConfigError("browserbase retrieve response missing connect URL".to_string())
+    })?;
+
+    Ok(BrowserbaseSession {
+        id: session_id.to_string(),
         connect_url,
     })
 }
@@ -1470,6 +1701,7 @@ fn classify_browser_error(error: &BrowserError) -> StageFailureKind {
         BrowserError::ConfigError(_) | BrowserError::PoolExhausted { .. } => {
             StageFailureKind::Setup
         }
+        BrowserError::RateLimited { .. } => StageFailureKind::RateLimited,
         BrowserError::ProxyUnavailable { .. }
         | BrowserError::ConnectionError { .. }
         | BrowserError::CdpError { .. }
@@ -1604,6 +1836,91 @@ mod tests {
                 StrategyUsed::TlsProfiledHttp,
             ]
         );
+    }
+
+    #[cfg(feature = "browserbase")]
+    #[test]
+    fn browserbase_session_config_defaults_enable_warmup_and_retry() {
+        let config = BrowserbaseSessionConfig::default();
+        assert!(config.session_id.is_none());
+        assert!(config.warmup);
+        assert_eq!(config.warmup_stabilize_ms, 500);
+        assert_eq!(config.max_retries, 3);
+        assert_eq!(config.backoff_base_ms, 500);
+    }
+
+    #[cfg(feature = "browserbase")]
+    #[test]
+    fn resolve_session_id_prefers_configured_over_env() {
+        assert_eq!(
+            resolve_browserbase_session_id(Some("configured"), Some("from-env")),
+            Some("configured".to_string())
+        );
+    }
+
+    #[cfg(feature = "browserbase")]
+    #[test]
+    fn resolve_session_id_falls_back_to_env_when_unconfigured() {
+        assert_eq!(
+            resolve_browserbase_session_id(None, Some("from-env")),
+            Some("from-env".to_string())
+        );
+    }
+
+    #[cfg(feature = "browserbase")]
+    #[test]
+    fn resolve_session_id_treats_blank_values_as_unset() {
+        assert_eq!(
+            resolve_browserbase_session_id(Some("  "), Some("from-env")),
+            Some("from-env".to_string())
+        );
+        assert_eq!(resolve_browserbase_session_id(Some(""), None), None);
+        assert_eq!(resolve_browserbase_session_id(None, None), None);
+    }
+
+    #[cfg(feature = "browserbase")]
+    #[test]
+    fn backoff_delay_doubles_per_attempt() {
+        assert_eq!(backoff_delay_ms(500, 0), 500);
+        assert_eq!(backoff_delay_ms(500, 1), 1_000);
+        assert_eq!(backoff_delay_ms(500, 2), 2_000);
+        assert_eq!(backoff_delay_ms(500, 3), 4_000);
+    }
+
+    #[cfg(feature = "browserbase")]
+    #[test]
+    fn backoff_delay_saturates_instead_of_overflowing() {
+        assert_eq!(backoff_delay_ms(u64::MAX, 10), u64::MAX);
+        assert_eq!(backoff_delay_ms(1, 100), 1u64 << 62);
+    }
+
+    #[cfg(feature = "browserbase")]
+    #[test]
+    fn retry_after_header_parses_seconds_to_millis() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::RETRY_AFTER,
+            reqwest::header::HeaderValue::from_static("2"),
+        );
+        assert_eq!(parse_retry_after_ms(&headers), Some(2_000));
+    }
+
+    #[cfg(feature = "browserbase")]
+    #[test]
+    fn retry_after_header_missing_returns_none() {
+        let headers = reqwest::header::HeaderMap::new();
+        assert_eq!(parse_retry_after_ms(&headers), None);
+    }
+
+    #[cfg(feature = "browserbase")]
+    #[test]
+    fn retry_after_header_non_numeric_returns_none() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::RETRY_AFTER,
+            reqwest::header::HeaderValue::from_static("Wed, 21 Oct 2026 07:28:00 GMT"),
+        );
+        assert_eq!(parse_retry_after_ms(&headers), None);
     }
 
     #[tokio::test]

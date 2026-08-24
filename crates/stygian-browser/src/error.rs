@@ -86,6 +86,15 @@ pub enum BrowserError {
         reason: String,
     },
 
+    /// A remote session provider (e.g. Browserbase) rate-limited a
+    /// session-management request (HTTP 429).
+    #[error("Rate limited by remote provider (retry_after_ms={retry_after_ms:?})")]
+    RateLimited {
+        /// Provider-supplied retry delay, in milliseconds, if the
+        /// response included a `Retry-After` header.
+        retry_after_ms: Option<u64>,
+    },
+
     /// Underlying I/O error.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),

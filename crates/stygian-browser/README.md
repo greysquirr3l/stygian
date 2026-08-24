@@ -53,6 +53,14 @@ stygian-browser = { version = "*", features = ["browserbase"] }
 When enabled, runner-first acquisition can opt into a Browserbase-managed stage via request flags.
 Set `BROWSERBASE_API_KEY` and `BROWSERBASE_PROJECT_ID` in the runtime environment.
 
+The stage warms up a session (a settled navigation before the real one) and
+retries session creation with backoff when Browserbase responds `429`, both
+on by default — see `AcquisitionRequest::browserbase_session` to tune or
+disable them. Set `BROWSERBASE_SESSION_ID` (or
+`BrowserbaseSessionConfig::session_id`) to reuse an existing session instead
+of minting a new one each call; a reused session is never deleted by the
+stage.
+
 ---
 
 ## Quick Start
