@@ -880,7 +880,7 @@ const fn policy_label(kind: FreshnessPolicyKind) -> &'static str {
 pub fn unix_epoch_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_or(Duration::ZERO, |d| d)
+        .unwrap_or_default()
         .as_millis()
         .try_into()
         .unwrap_or(u64::MAX)

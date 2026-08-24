@@ -345,10 +345,8 @@ impl NodeHandle {
             .map_err(|e| self.cdp_err_or_stale(&e, "attr_map"))?;
 
         let mut map = HashMap::with_capacity(flat.len() / 2);
-        for pair in flat.chunks_exact(2) {
-            if let [name, value] = pair {
-                map.insert(name.clone(), value.clone());
-            }
+        for [name, value] in flat.as_chunks::<2>().0 {
+            map.insert(name.clone(), value.clone());
         }
         Ok(map)
     }
@@ -2486,14 +2484,12 @@ fn serialize_node_into(out: &mut String, node: &chromiumoxide::cdp::browser_prot
             out.push('<');
             out.push_str(tag);
             if let Some(attrs) = &node.attributes {
-                for pair in attrs.chunks_exact(2) {
-                    if let [name, value] = pair {
-                        out.push(' ');
-                        escape_attr_name(out, name);
-                        out.push_str("=\"");
-                        escape_attr_value(out, value);
-                        out.push('"');
-                    }
+                for [name, value] in attrs.as_chunks::<2>().0 {
+                    out.push(' ');
+                    escape_attr_name(out, name);
+                    out.push_str("=\"");
+                    escape_attr_value(out, value);
+                    out.push('"');
                 }
             }
             if VOID_ELEMENTS.contains(&tag) {

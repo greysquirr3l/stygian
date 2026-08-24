@@ -505,13 +505,12 @@ fn md5_hex(data: &[u8]) -> String {
     let mut c0: u32 = 0x98ba_dcfe;
     let mut d0: u32 = 0x1032_5476;
 
-    for chunk in msg.chunks_exact(64) {
+    for chunk in msg.as_chunks::<64>().0 {
         let mut m = [0u32; 16];
-        for (word, quad) in m.iter_mut().zip(chunk.chunks_exact(4)) {
-            // chunks_exact(4) on a 64-byte slice always yields exactly 16
-            if let Ok(bytes) = <[u8; 4]>::try_from(quad) {
-                *word = u32::from_le_bytes(bytes);
-            }
+        for (word, quad) in m.iter_mut().zip(chunk.as_chunks::<4>().0) {
+            // `as_chunks::<4>()` on a 64-byte slice always yields exactly 16
+            // elements; each element is itself `[u8; 4]` we can read directly.
+            *word = u32::from_le_bytes(*quad);
         }
 
         let (mut a, mut b, mut c, mut d) = (a0, b0, c0, d0);

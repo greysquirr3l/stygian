@@ -250,7 +250,7 @@ impl RouterDecisionLog {
 pub fn unix_epoch_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_or(std::time::Duration::ZERO, |d| d)
+        .unwrap_or_default()
         .as_millis()
         .try_into()
         .unwrap_or(u64::MAX)
