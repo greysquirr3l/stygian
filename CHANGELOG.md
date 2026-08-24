@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fingerprint for the QUIC Initial packet, per the JA4+ spec Cloudflare
   has begun collecting. `Ja4q::from_components(...)` builds the
   fingerprint from raw QUIC Initial components; `TlsProfile::ja4q()
-  -> Option<Ja4q>` returns family-default reference values
+-> Option<Ja4q>` returns family-default reference values
   (`CHROME_136_JA4Q`, `FIREFOX_130_JA4Q`, `SAFARI_18_JA4Q`) for
   supported browser families.
 - `stygian-browser` (H3 + proxy protocol-downgrade warning, T105): new
@@ -49,10 +49,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   failure attribution can eventually be based on the header instead of
   guessing from bare HTTP status codes.
 - `stygian-proxy` (geofeed verifier, T106): new `GeofeedVerifier` port
-  + `InMemoryGeofeedAdapter` that checks an observed IP against a
-  geofeed's claimed country/region/city/ASN and reports
-  `GeofeedDivergence` — closes the gap where "US residential" pools
-  silently egress from the wrong geography.
+  - `InMemoryGeofeedAdapter` that checks an observed IP against a
+    geofeed's claimed country/region/city/ASN and reports
+    `GeofeedDivergence` — closes the gap where "US residential" pools
+    silently egress from the wrong geography.
 - `stygian-charon` (content-type shift detector, T104): new
   `ContentTypeShiftDetector` port + `RollingBaselineDetector` adapter
   that flags publisher cloaking — a target serving an HTML-stripped
@@ -90,7 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   creation with exponential backoff — honoring Browserbase's
   `Retry-After` header when present — on a `429` response, both on
   by default. New `AcquisitionRequest::browserbase_session:
-  Option<BrowserbaseSessionConfig>` tunes or disables either
+Option<BrowserbaseSessionConfig>` tunes or disables either
   behavior. Setting `BROWSERBASE_SESSION_ID` (or
   `BrowserbaseSessionConfig::session_id`) reuses an existing session
   instead of minting a new one per call; a reused session is never
