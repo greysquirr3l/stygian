@@ -9,37 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `stygian-browser` (Browserbase session resilience, T114): the
-  Browserbase-managed acquisition stage now warms up a session (a
-  settled navigation before the real one) and retries session
-  creation with exponential backoff — honoring Browserbase's
-  `Retry-After` header when present — on a `429` response, both on
-  by default. New `AcquisitionRequest::browserbase_session:
-  Option<BrowserbaseSessionConfig>` tunes or disables either
-  behavior. Setting `BROWSERBASE_SESSION_ID` (or
-  `BrowserbaseSessionConfig::session_id`) reuses an existing
-  session instead of minting a new one per call; a reused session
-  is never deleted by the stage, since the caller owns its
-  lifecycle. New `StageFailureKind::RateLimited` /
-  `BrowserError::RateLimited` distinguish exhausted rate-limit
-  retries from generic transport failures.
-
 ### Changed
-
-- Dependency bumps (dependabot): `ulid` 1.2 → 3.0 — `Ulid::new()` renamed
-  to `Ulid::generate()` across all call sites; `stygian-plugin`'s
-  previously independent `ulid` pin now tracks the workspace version.
-  `syn` 2 → 3 in `stygian-extract-derive` (one non-exhaustive-pattern
-  fixup for `TypePath`'s new `attrs` field). `tokio-tungstenite` 0.29 →
-  0.30 and `base64` 0.22 → 0.23 (no code changes required). CodeQL
-  Action pins bumped 4.37.7 → 4.37.8 in `codeql.yml` / `scorecard.yml`.
 
 ### Fixed
 
 ### Security
-
-- Bumped `wasmtime` 46.0.2 → 48.0.0, which includes upstream security
-  backports (no code changes required).
 
 ## [0.17.0] - 2026-08-24
 
@@ -110,6 +84,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `node-fetch`/legacy `curl`) are now refused before hitting the wire
   unless a caller opts in explicitly. New `HttpConfig::stealth_profile`
   picks a matching browser UA (Chrome/Firefox/Safari) instead.
+- `stygian-browser` (Browserbase session resilience, T114): the
+  Browserbase-managed acquisition stage now warms up a session (a
+  settled navigation before the real one) and retries session
+  creation with exponential backoff — honoring Browserbase's
+  `Retry-After` header when present — on a `429` response, both on
+  by default. New `AcquisitionRequest::browserbase_session:
+  Option<BrowserbaseSessionConfig>` tunes or disables either
+  behavior. Setting `BROWSERBASE_SESSION_ID` (or
+  `BrowserbaseSessionConfig::session_id`) reuses an existing session
+  instead of minting a new one per call; a reused session is never
+  deleted by the stage, since the caller owns its lifecycle. New
+  `StageFailureKind::RateLimited` / `BrowserError::RateLimited`
+  distinguish exhausted rate-limit retries from generic transport
+  failures.
 
 ### Changed
 
@@ -118,8 +106,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   existing signature and falls back to `Utc::now()`, but
   `SinkRecord::with_fetched_at(...)` is the preferred, auditable
   constructor for callers with a transport-level timestamp (T108).
+- Dependency bumps (dependabot): `ulid` 1.2 → 3.0 — `Ulid::new()`
+  renamed to `Ulid::generate()` across all call sites;
+  `stygian-plugin`'s previously independent `ulid` pin now tracks
+  the workspace version. `syn` 2 → 3 in `stygian-extract-derive`
+  (one non-exhaustive-pattern fixup for `TypePath`'s new `attrs`
+  field). `tokio-tungstenite` 0.29 → 0.30 and `base64` 0.22 → 0.23
+  (no code changes required). CodeQL Action pins bumped 4.37.7 →
+  4.37.8 in `codeql.yml` / `scorecard.yml`.
 
 ### Fixed
+
+- `stygian-mcp`: `Box::pin` the large dispatch future inside
+  `McpAggregator::run` so its state lives on the heap rather than
+  inline in the async state machine — required by
+  `clippy::large_futures` once T109's response sanitisation step was
+  added.
+- `stygian-browser`: isolate `diagnostic_hints_no_hint_when_prefer_h3_without_proxy`
+  from a parallel-execution race with concurrent
+  `temp_env::with_vars` blocks by wrapping the test body in the
+  same mutex guard.
+- `stygian-browser` / `stygian-graph` / `stygian-mcp` / `stygian-charon`:
+  rustdoc 1.97 no longer resolves forward references in module-level
+  docs — fixed intra-doc links across all four crates
+  (`RobotsPolicy`, `FieldAnomalyDetector`, `HttpConfig::allow_plain_http`,
+  `HttpAdapterError::PlainJa4Rejected`, etc.) so the
+  `RUSTDOCFLAGS="-Dwarnings"` doc job stays green.
+- CI: bumped workspace MSRV from 1.94.0 → 1.95.0 (matching
+  `wasmtime@48.0.0`'s minimum rustc requirement). The MSRV CI job
+  now installs toolchain 1.95.0.
 
 ### Security
 
@@ -128,6 +143,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (0.38.4 transitively via `rust-s3` → `aws-creds`, which pins
   `quick-xml = "^0.38"` with no newer release yet) — acknowledged in
   `deny.toml` / `.cargo/audit.toml` as RUSTSEC-2026-0194/0195.
+- Bumped `wasmtime` 46.0.2 → 48.0.0, which includes upstream
+  security backports (no code changes required).
 
 ## [0.16.0] - 2026-08-17
 
