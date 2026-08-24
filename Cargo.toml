@@ -71,7 +71,7 @@ parking_lot = "0.12"
 rand = "0.10"
 dashmap = "6"
 lru = "0.18"
-base64 = "0.22"
+base64 = "0.23"
 prometheus-client = "0.25"
 figment = { version = "0.10", features = ["toml", "env"] }
 clap = { version = "4", features = ["derive"] }
