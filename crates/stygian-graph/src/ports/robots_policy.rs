@@ -8,7 +8,7 @@
 //!
 //! Default adapters shipped by `stygian-graph`:
 //!
-//! - [`PermissiveRobotsGuard`] — returns `Allow` for every URL. Used
+//! - [`PermissiveRobotsGuard`](crate::ports::robots_policy::PermissiveRobotsGuard) — returns `Allow` for every URL. Used
 //!   when the operator has explicitly opted in to `IgnoreSilently` or
 //!   the guard has not been wired up. Safe default for unit tests.
 //! - (Reserved for future adapters) — `CachedRobotsGuard` backed by a
@@ -54,9 +54,9 @@ pub trait RobotsPolicyGuard: Send + Sync {
     ///
     /// # Errors
     ///
-    /// - [`GraphError::ServiceUnavailable`] if the guard cannot reach
-    ///   its data source (e.g. network failure during a live
-    ///   `robots.txt` lookup).
+    /// Returns [`crate::domain::error::GraphError::ExecutionFailed`] if the guard cannot reach
+    /// its data source (e.g. network failure during a live
+    /// `robots.txt` lookup).
     async fn decide(&self, url: &str) -> Result<RobotsDecision>;
 }
 

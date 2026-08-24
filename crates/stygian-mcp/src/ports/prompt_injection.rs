@@ -200,7 +200,7 @@ pub trait PromptInjectionGuard: Send + Sync {
     ///
     /// The returned [`SanitisedText`] is safe to emit to an
     /// LLM-consuming sink. The accompanying findings list is the
-    /// same as [`scan`] would have returned for the same input;
+    /// same as `scan` would have returned for the same input;
     /// callers should log them on the `audit_log`.
     ///
     /// # Errors

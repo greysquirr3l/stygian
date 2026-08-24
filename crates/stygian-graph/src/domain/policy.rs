@@ -5,9 +5,10 @@
 //! agent-built scrapers: _"Two robots.txt policies, never reconciled.
 //! Exploration ignores it; the deliverable obeys it."_
 //!
-//! This module exposes a single [`RobotsPolicy`] enum plus its decision
-//! type [`RobotsDecision`]. Both recon and production consume the same
-//! value through [`RobotsPolicyGuard`] (in `ports/robots_policy.rs`), so
+//! This module exposes a single [`RobotsPolicy`](crate::domain::policy::RobotsPolicy) enum plus its decision
+//! type [`RobotsDecision`](crate::domain::policy::RobotsDecision). Both recon and production consume the same
+//! value through [`RobotsPolicyGuard`](crate::ports::robots_policy::RobotsPolicyGuard)
+//! (in `ports/robots_policy.rs`), so
 //! the policy choice can be asserted at pipeline-build time and again at
 //! execute time.
 

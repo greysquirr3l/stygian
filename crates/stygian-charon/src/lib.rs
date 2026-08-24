@@ -46,7 +46,7 @@ pub mod differential;
 /// return clean `200` responses with subtly wrong field values
 /// (price drift, listing reorder, fabricated rows, stale
 /// snapshots). The detector observes every field value the pipeline
-/// publishes and emits [`field_anomaly::AnomalyReport`]s when a
+/// publishes and emits `field_anomaly::AnomalyReport`s when a
 /// value is statistically inconsistent with the rolling baseline.
 ///
 /// Hidden behind a `field-anomaly` cargo feature so existing

@@ -11,8 +11,9 @@
 //!   banners (`requests`, `urllib3`, `httpx`, `Scrapy`, `axios`,
 //!   `node-fetch`, `curl <8.4`). A catalogue hit is rejected before
 //!   hitting the wire unless the caller opts in via
-//!   [`HttpConfig::allow_plain_http`]. This is the safe default — see
-//!   the module-level docs for [`HttpAdapterError::PlainJa4Rejected`].
+//!   [`HttpConfig::allow_plain_http`](crate::adapters::http::HttpConfig::allow_plain_http).
+//!   This is the safe default — see
+//!   the module-level docs for [`HttpAdapterError::PlainJa4Rejected`](crate::adapters::http::HttpAdapterError::PlainJa4Rejected).
 //!
 //! # Example
 //!
@@ -60,7 +61,7 @@ static USER_AGENTS: &[&str] = &[
 /// Each variant is matched by [`CatalogueFingerprint::matches`] against the
 /// outbound User-Agent string. The deny-list is exhaustive: every
 /// `CatalogueFingerprint` variant must have a non-empty match pattern
-/// (compile-time enforced by [`CatalogueFingerprint::PATTERNS`]).
+/// (compile-time enforced by `Self::PATTERNS`).
 ///
 /// Adding a new variant here is a deliberate security decision: the
 /// caller is declaring "this UA is so widely catalogued that any
@@ -245,7 +246,7 @@ pub enum StealthProfile {
 }
 
 impl StealthProfile {
-    /// Pick a User-Agent string from [`USER_AGENTS`] that matches this
+    /// Pick a User-Agent string from `USER_AGENTS` that matches this
     /// profile. Falls back to the first pool entry if no match.
     #[must_use]
     pub fn pick_user_agent(self) -> &'static str {

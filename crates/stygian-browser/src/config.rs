@@ -550,7 +550,7 @@ impl BrowserConfig {
 
     /// Non-fatal diagnostic hints for this configuration.
     ///
-    /// Unlike [`validate`], hints never block the browser from launching —
+    /// Unlike `validate`, hints never block the browser from launching —
     /// they surface structural incompatibilities (T105: proxy + HTTP/3) the
     /// operator may want to know about. The existing
     /// `browser_stealth_check` MCP tool surfaces these hints in its report.

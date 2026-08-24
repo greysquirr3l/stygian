@@ -5,13 +5,13 @@
 //! clean `200` responses with subtly wrong field values
 //! (price drift, listing reorder, fabricated rows, stale
 //! snapshots). The detector observes every field value the pipeline
-//! publishes and emits [`AnomalyReport`]s when a value is
+//! publishes and emits [`AnomalyReport`](crate::field_anomaly::AnomalyReport)s when a value is
 //! statistically inconsistent with the rolling baseline.
 //!
 //! Two pieces:
 //!
-//! - [`FieldAnomalyDetector`] — the consumer-owned port trait.
-//! - [`StatisticalFieldAnomalyDetector`] — the default adapter
+//! - [`FieldAnomalyDetector`](crate::field_anomaly::FieldAnomalyDetector) — the consumer-owned port trait.
+//! - [`StatisticalFieldAnomalyDetector`](crate::field_anomaly::StatisticalFieldAnomalyDetector) — the default adapter
 //!   implementing price-drift, outlier, listing-reorder,
 //!   staleness, and cardinality-shift detection.
 //!
