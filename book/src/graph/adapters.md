@@ -26,13 +26,38 @@ let adapter = HttpAdapter::with_config(HttpConfig {
 
 **Registered service name**: `"http"`
 
-| Config field | Default | Description |
-| --- | --- | --- |
-| `timeout` | 30 s | Per-request timeout |
-| `user_agent` | `None` | Override `User-Agent` header |
-| `follow_redirects` | `true` | Follow 3xx responses |
-| `max_redirects` | `10` | Redirect chain limit |
-| `proxy` | `None` | HTTP/HTTPS/SOCKS5 proxy URL |
+| Config field       | Default         | Description                                                                                                                                                                   |
+| ------------------ | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timeout`          | 30 s            | Per-request timeout                                                                                                                                                           |
+| `user_agent`       | `None`          | Override `User-Agent` header                                                                                                                                                  |
+| `follow_redirects` | `true`          | Follow 3xx responses                                                                                                                                                          |
+| `max_redirects`    | `10`            | Redirect chain limit                                                                                                                                                          |
+| `proxy`            | `None`          | HTTP/HTTPS/SOCKS5 proxy URL                                                                                                                                                   |
+| `allow_plain_http` | `false` (0.17+) | Refuse library-banner UAs (`requests` / `urllib3` / `httpx` / `Scrapy` / `axios` / `node-fetch` / `curl <8.4`) before hitting the wire; opt in explicitly to send them anyway |
+| `stealth_profile`  | `None` (0.17+)  | Optional browser profile (`Chrome`, `Firefox`, `Safari`); picks a matching browser UA and TLS handshake so the request blends in with ordinary browser traffic                |
+
+### Catalogue-fingerprint rejection (T112)
+
+Starting with 0.17, `allow_plain_http` defaults to `false`. The
+`HttpAdapter` matches the outbound `User-Agent` against a deny-list
+of library banners that every major detector suite catalogues
+within seconds. A hit raises `HttpAdapterError::PlainJa4Rejected`
+before any bytes hit the wire, so the call is fast and the target
+never sees a "telltale library" fingerprint.
+
+If you genuinely need to send a library-banner UA (e.g. for a
+debugging session or a target that genuinely serves a different
+shape to that UA), opt in explicitly:
+
+```rust
+HttpConfig { allow_plain_http: true, ..Default::default() }
+```
+
+Setting `stealth_profile` is the recommended alternative: the
+adapter picks a matching browser-class UA (and the
+`TlsProfilePack`-bound TLS handshake when run through a profiled
+client) so the request blends in with ordinary browser traffic
+without explicitly opting in to a library banner.
 
 ---
 
@@ -70,28 +95,28 @@ let input = ServiceInput {
 
 ### Config fields
 
-| Field | Default | Description |
-| --- | --- | --- |
-| `timeout` | 30 s | Per-request timeout |
-| `max_retries` | 3 | Retry attempts on transient errors (`429`, `5xx`, network) |
-| `retry_base_delay` | 1 s | Base for exponential backoff |
-| `proxy_url` | `None` | HTTP/HTTPS/SOCKS5 proxy URL |
+| Field              | Default | Description                                                |
+| ------------------ | ------- | ---------------------------------------------------------- |
+| `timeout`          | 30 s    | Per-request timeout                                        |
+| `max_retries`      | 3       | Retry attempts on transient errors (`429`, `5xx`, network) |
+| `retry_base_delay` | 1 s     | Base for exponential backoff                               |
+| `proxy_url`        | `None`  | HTTP/HTTPS/SOCKS5 proxy URL                                |
 
 ### `ServiceInput.params` contract
 
-| Param | Required | Default | Description |
-| --- | --- | --- | --- |
-| `method` | — | `"GET"` | `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD` |
-| `body` | — | — | JSON body for `POST`/`PUT`/`PATCH` |
-| `body_raw` | — | — | Raw string body (takes precedence over `body`) |
-| `headers` | — | — | Extra request headers object |
-| `query` | — | — | Extra query string parameters object |
-| `accept` | — | `"application/json"` | `Accept` header |
-| `auth` | — | none | Authentication object (see below) |
-| `response.data_path` | — | full body | Dot path into the JSON response to extract |
-| `response.collect_as_array` | — | `false` | Force multi-page results into a JSON array |
-| `pagination.strategy` | — | `"none"` | `"none"`, `"offset"`, `"cursor"`, `"link_header"` |
-| `pagination.max_pages` | — | `1` | Maximum pages to fetch |
+| Param                       | Required | Default              | Description                                       |
+| --------------------------- | -------- | -------------------- | ------------------------------------------------- |
+| `method`                    | —        | `"GET"`              | `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`   |
+| `body`                      | —        | —                    | JSON body for `POST`/`PUT`/`PATCH`                |
+| `body_raw`                  | —        | —                    | Raw string body (takes precedence over `body`)    |
+| `headers`                   | —        | —                    | Extra request headers object                      |
+| `query`                     | —        | —                    | Extra query string parameters object              |
+| `accept`                    | —        | `"application/json"` | `Accept` header                                   |
+| `auth`                      | —        | none                 | Authentication object (see below)                 |
+| `response.data_path`        | —        | full body            | Dot path into the JSON response to extract        |
+| `response.collect_as_array` | —        | `false`              | Force multi-page results into a JSON array        |
+| `pagination.strategy`       | —        | `"none"`             | `"none"`, `"offset"`, `"cursor"`, `"link_header"` |
+| `pagination.max_pages`      | —        | `1`                  | Maximum pages to fetch                            |
 
 ### Authentication
 
@@ -122,12 +147,12 @@ key   = "${env:API_KEY}"
 
 ### Pagination strategies
 
-| Strategy | How it works | Best for |
-| --- | --- | --- |
-| `"none"` | Single request | Simple endpoints |
-| `"offset"` | Increments `page_param` from `start_page` | REST APIs with `?page=N` |
-| `"cursor"` | Extracts next cursor from `cursor_field` (dot path), sends as `cursor_param` | GraphQL-REST hybrids, Stripe-style |
-| `"link_header"` | Follows RFC 8288 `Link: <url>; rel="next"` | GitHub API, GitLab API |
+| Strategy        | How it works                                                                 | Best for                           |
+| --------------- | ---------------------------------------------------------------------------- | ---------------------------------- |
+| `"none"`        | Single request                                                               | Simple endpoints                   |
+| `"offset"`      | Increments `page_param` from `start_page`                                    | REST APIs with `?page=N`           |
+| `"cursor"`      | Extracts next cursor from `cursor_field` (dot path), sends as `cursor_param` | GraphQL-REST hybrids, Stripe-style |
+| `"link_header"` | Follows RFC 8288 `Link: <url>; rel="next"`                                   | GitHub API, GitLab API             |
 
 #### Offset example
 
@@ -159,7 +184,7 @@ max_pages    = 50
 
 ```json
 {
-  "url":        "https://...",
+  "url": "https://...",
   "page_count": 3
 }
 ```
@@ -203,14 +228,14 @@ let input = ServiceInput {
 
 ### `ServiceInput` contract
 
-| Field | Required | Description |
-| --- | --- | --- |
-| `url` | ✅ | URL of the OpenAPI spec document (`.json` or `.yaml`) |
-| `params.operation` | ✅ | `operationId` (e.g. `"listPets"`) **or** `"METHOD /path"` (e.g. `"GET /pet/findByStatus"`) |
-| `params.args` | — | Key/value map of path, query, and body arguments (all merged; adapter classifies them) |
-| `params.auth` | — | Same shape as [REST API auth](#authentication) |
-| `params.server.url` | — | Override spec's `servers[0].url` at runtime |
-| `params.rate_limit` | — | Proactive rate throttle (see below) |
+| Field               | Required | Description                                                                                |
+| ------------------- | -------- | ------------------------------------------------------------------------------------------ |
+| `url`               | ✅       | URL of the OpenAPI spec document (`.json` or `.yaml`)                                      |
+| `params.operation`  | ✅       | `operationId` (e.g. `"listPets"`) **or** `"METHOD /path"` (e.g. `"GET /pet/findByStatus"`) |
+| `params.args`       | —        | Key/value map of path, query, and body arguments (all merged; adapter classifies them)     |
+| `params.auth`       | —        | Same shape as [REST API auth](#authentication)                                             |
+| `params.server.url` | —        | Override spec's `servers[0].url` at runtime                                                |
+| `params.rate_limit` | —        | Proactive rate throttle (see below)                                                        |
 
 ### Operation resolution
 
@@ -229,11 +254,11 @@ operation = "GET /pet/findByStatus"
 The adapter classifies each key in `params.args` against the operation's declared
 parameters:
 
-| Parameter location | What happens |
-| --- | --- |
-| `in: path` | Value is substituted into the URL template (`{petId}` → `42`) |
-| `in: query` | Value is appended to the query string |
-| `in: body` (requestBody) | All remaining keys are collected into the JSON request body |
+| Parameter location       | What happens                                                  |
+| ------------------------ | ------------------------------------------------------------- |
+| `in: path`               | Value is substituted into the URL template (`{petId}` → `42`) |
+| `in: query`              | Value is appended to the query string                         |
+| `in: body` (requestBody) | All remaining keys are collected into the JSON request body   |
 
 ```toml
 [nodes.params]
@@ -320,14 +345,14 @@ strategy     = "token_bucket"
 
 ```json
 {
-  "url":              "https://...",
-  "page_count":       1,
+  "url": "https://...",
+  "page_count": 1,
   "openapi_spec_url": "https://petstore3.swagger.io/api/v3/openapi.json",
-  "operation_id":     "findPetsByStatus",
-  "method":           "GET",
-  "path_template":    "/pet/findByStatus",
-  "server_url":       "https://petstore3.swagger.io/api/v3",
-  "resolved_url":     "https://petstore3.swagger.io/api/v3/pet/findByStatus"
+  "operation_id": "findPetsByStatus",
+  "method": "GET",
+  "path_template": "/pet/findByStatus",
+  "server_url": "https://petstore3.swagger.io/api/v3",
+  "resolved_url": "https://petstore3.swagger.io/api/v3/pet/findByStatus"
 }
 ```
 
@@ -378,12 +403,12 @@ let adapter = ClaudeAdapter::new(
 
 **Registered service name**: `"ai_claude"`
 
-| Config field | Description |
-| --- | --- |
-| `model` | Model ID (e.g. `claude-3-5-sonnet-20241022`) |
-| `max_tokens` | Max response tokens (default `4096`) |
-| `system_prompt` | Optional system-level instruction |
-| `schema` | JSON schema for structured output |
+| Config field    | Description                                  |
+| --------------- | -------------------------------------------- |
+| `model`         | Model ID (e.g. `claude-3-5-sonnet-20241022`) |
+| `max_tokens`    | Max response tokens (default `4096`)         |
+| `system_prompt` | Optional system-level instruction            |
+| `schema`        | JSON schema for structured output            |
 
 ### OpenAI
 
@@ -593,24 +618,24 @@ All per-request options are passed via `ServiceInput.params`. `account_id` and
 `api_token` are **required**; the rest are optional and forwarded verbatim to the
 Cloudflare API.
 
-| Param key | Required | Default | Description |
-| --- | --- | --- | --- |
-| `account_id` | ✅ | — | Cloudflare account ID |
-| `api_token` | ✅ | — | Cloudflare API token with Browser Rendering permission |
-| `output_format` | — | `"markdown"` | `"markdown"`, `"html"`, or `"raw"` |
-| `max_depth` | — | API default | Maximum crawl depth from the seed URL |
-| `max_pages` | — | API default | Maximum pages to crawl |
-| `url_pattern` | — | API default | Regex or glob restricting which URLs are followed |
-| `modified_since` | — | API default | ISO-8601 timestamp; skip pages not modified since |
-| `max_age_seconds` | — | API default | Skip cached pages older than this many seconds |
-| `static_mode` | — | `false` | Set `"true"` to skip JS execution (faster, static HTML only) |
+| Param key         | Required | Default      | Description                                                  |
+| ----------------- | -------- | ------------ | ------------------------------------------------------------ |
+| `account_id`      | ✅       | —            | Cloudflare account ID                                        |
+| `api_token`       | ✅       | —            | Cloudflare API token with Browser Rendering permission       |
+| `output_format`   | —        | `"markdown"` | `"markdown"`, `"html"`, or `"raw"`                           |
+| `max_depth`       | —        | API default  | Maximum crawl depth from the seed URL                        |
+| `max_pages`       | —        | API default  | Maximum pages to crawl                                       |
+| `url_pattern`     | —        | API default  | Regex or glob restricting which URLs are followed            |
+| `modified_since`  | —        | API default  | ISO-8601 timestamp; skip pages not modified since            |
+| `max_age_seconds` | —        | API default  | Skip cached pages older than this many seconds               |
+| `static_mode`     | —        | `false`      | Set `"true"` to skip JS execution (faster, static HTML only) |
 
 ### Config fields
 
-| Field | Default | Description |
-| --- | --- | --- |
-| `poll_interval` | 2 s | How often to poll for job completion |
-| `job_timeout` | 5 min | Hard timeout per crawl job; returns `ServiceError::Timeout` if exceeded |
+| Field           | Default | Description                                                             |
+| --------------- | ------- | ----------------------------------------------------------------------- |
+| `poll_interval` | 2 s     | How often to poll for job completion                                    |
+| `job_timeout`   | 5 min   | Hard timeout per crawl job; returns `ServiceError::Timeout` if exceeded |
 
 ### Output
 
@@ -619,7 +644,7 @@ Cloudflare API.
 
 ```json
 {
-  "job_id":        "some-uuid",
+  "job_id": "some-uuid",
   "pages_crawled": 12,
   "output_format": "markdown"
 }
@@ -647,12 +672,12 @@ target = "https://docs.example.com"
 
 ### Error mapping
 
-| Condition | `StygianError` variant |
-| --- | --- |
-| Missing `account_id` or `api_token` | `ServiceError::Unavailable` |
-| Cloudflare API non-2xx | `ServiceError::Unavailable` (with CF error code) |
-| Job still pending after `job_timeout` | `ServiceError::Timeout` |
-| Unexpected response shape | `ServiceError::InvalidResponse` |
+| Condition                             | `StygianError` variant                           |
+| ------------------------------------- | ------------------------------------------------ |
+| Missing `account_id` or `api_token`   | `ServiceError::Unavailable`                      |
+| Cloudflare API non-2xx                | `ServiceError::Unavailable` (with CF error code) |
+| Job still pending after `job_timeout` | `ServiceError::Timeout`                          |
+| Unexpected response shape             | `ServiceError::InvalidResponse`                  |
 
 ---
 
@@ -662,9 +687,9 @@ The `SigningPort` trait lets any adapter attach signatures, HMAC tokens,
 device attestation headers, or OAuth material to outbound requests without
 coupling the adapter to the scheme.
 
-| Adapter | Use case |
-| --- | --- |
-| `NoopSigningAdapter` | Passthrough — no headers added; useful as a default or in unit tests |
+| Adapter              | Use case                                                                                     |
+| -------------------- | -------------------------------------------------------------------------------------------- |
+| `NoopSigningAdapter` | Passthrough — no headers added; useful as a default or in unit tests                         |
 | `HttpSigningAdapter` | Delegate to any external sidecar (Frida RPC bridge, AWS SigV4 server, OAuth 1.0a service, …) |
 
 ```rust

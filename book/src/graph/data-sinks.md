@@ -17,11 +17,11 @@ Scraper → Pipeline → DataSinkPort → Backend
 
 Every sink implements three operations:
 
-| Method | Description |
-| --- | --- |
-| `publish(record)` | Validate and send a `SinkRecord` to the backend |
+| Method             | Description                                     |
+| ------------------ | ----------------------------------------------- |
+| `publish(record)`  | Validate and send a `SinkRecord` to the backend |
 | `validate(record)` | Check a record without side effects (preflight) |
-| `health_check()` | Verify the backend is reachable |
+| `health_check()`   | Verify the backend is reachable                 |
 
 ---
 
@@ -58,6 +58,41 @@ let record = SinkRecord::new(
 .with_meta("tenant", "acme-corp");
 ```
 
+### `fetched_at` — required since 0.17.0
+
+Starting with 0.17.0, `SinkRecord::fetched_at` is a required field
+on every record (it was optional metadata before). This closes the
+audit gap where downstream consumers had no reliable "when was this
+data captured?" signal.
+
+`SinkRecord::new(...)` keeps its existing signature and falls back
+to `Utc::now()` for `fetched_at`. For auditable pipelines where the
+transport layer has already timestamped the upstream response, use
+`SinkRecord::with_fetched_at(...)` instead — it lets you record the
+exact moment the data left the origin rather than when your code
+constructed the record:
+
+```rust
+use stygian_graph::ports::data_sink::SinkRecord;
+use chrono::{DateTime, Utc};
+
+let upstream_ts: DateTime<Utc> = /* from response Date / Age headers */;
+let record = SinkRecord::with_fetched_at(
+    upstream_ts,
+    "product-v1",
+    "https://shop.example.com/items/42",
+    json!({ "sku": "ABC-42", "price": 9.99 }),
+);
+```
+
+The new `fetched_at` field is preferred for any pipeline that needs
+to reason about data freshness (sliding-window dedup, "did we
+re-fetch this within the last hour?", provenance for compliance).
+Records that don't supply it explicitly will get `Utc::now()` from
+the construction site, which is correct for most pipelines but
+introduces a millisecond-scale drift between origin capture and
+record creation.
+
 ---
 
 ## SinkReceipt
@@ -79,8 +114,8 @@ pub struct SinkReceipt {
 
 ## Available Sinks
 
-| Adapter | Platform | Feature flag |
-| --- | --- | --- |
+| Adapter                 | Platform                                | Feature flag      |
+| ----------------------- | --------------------------------------- | ----------------- |
 | `ScrapeExchangeAdapter` | [Scrape Exchange](./scrape-exchange.md) | `scrape-exchange` |
 
 ---

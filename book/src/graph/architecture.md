@@ -141,6 +141,38 @@ Adapters implement port traits and handle real I/O. They are **never** imported 
 | `CircuitBreakerImpl` | `CircuitBreaker` | Sliding-window failure threshold |
 | `NoopCircuitBreaker` | `CircuitBreaker` | Passthrough — useful in tests |
 | `NoopRateLimiter` | `RateLimiter` | Always allows — useful in tests |
+| `PermissiveRobotsGuard` (0.17+) | `RobotsPolicyGuard` | Default adapter: returns `Allow` for every URL. See [Robots policy reconciliation](#robots-policy-reconciliation-t111) below |
+
+### Robots policy reconciliation (T111)
+
+Recon and production paths must agree on the robots.txt policy
+applied to every URL they touch. Two parallel "obey vs. ignore"
+policies — one for exploration, one for the deliverable — is the
+[Web Scraping Guide §Recon](https://web-scraping-guide.com/) ninth
+failure mode: the operator approves the deliverable against a
+stricter policy than recon actually used, and the audit trail
+breaks the moment it matters.
+
+0.17 introduces a single source of truth:
+
+| Layer | Type |
+| --- | --- |
+| Domain | `RobotsPolicy` enum — `Obey` (default), `IgnoreWithAudit`, `IgnoreSilently` |
+| Port | `RobotsPolicyGuard` trait — `decide(url) -> Result<RobotsDecision>` |
+| Adapter | `PermissiveRobotsGuard` (default; `permissive_guard()` returns an `Arc<dyn RobotsPolicyGuard>` ready to register) |
+| Reducer | `apply_policy(policy, decision) -> PolicyOutcome` — single mapping from decision to action |
+| Validator | `validate_guard_pair(policy, guard)` — refuses to start if `policy == Obey` and `guard.name() == "permissive"` (since that's an unsafe combination) |
+
+The policy is asserted at pipeline-build time (via
+`validate_guard_pair`) and again at execute time (via
+`apply_policy`). Both recon and production consume the same
+`RobotsPolicy` value through the same `RobotsPolicyGuard`, so the
+two paths can no longer disagree.
+
+`RobotsPolicy::Obey` is the safe default — anything else requires
+explicit operator consent and an audit trail (which is what
+`IgnoreWithAudit` produces; `IgnoreSilently` is the escape hatch
+for cases where the audit overhead would dominate the work).
 
 ### Adding a new adapter
 
