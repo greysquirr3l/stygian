@@ -1158,14 +1158,18 @@ mod tests {
 
     #[test]
     fn diagnostic_hints_no_hint_when_prefer_h3_without_proxy() {
-        let cfg = BrowserConfig {
-            transport: TransportConfig { prefer_h3: true },
-            ..BrowserConfig::default()
-        };
-        assert!(
-            cfg.diagnostic_hints().is_empty(),
-            "prefer_h3 without proxy must not emit a hint"
-        );
+        // Isolate from `STYGIAN_PROXY` leaking in from a concurrent
+        // `temp_env::with_vars` block in another test thread.
+        temp_env::with_vars([("STYGIAN_PROXY", None::<&str>)], || {
+            let cfg = BrowserConfig {
+                transport: TransportConfig { prefer_h3: true },
+                ..BrowserConfig::default()
+            };
+            assert!(
+                cfg.diagnostic_hints().is_empty(),
+                "prefer_h3 without proxy must not emit a hint"
+            );
+        });
     }
 
     #[test]
