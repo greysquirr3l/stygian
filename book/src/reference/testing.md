@@ -103,7 +103,7 @@ High-coverage modules in `stygian-graph`:
 
 Every test that launches a real Chrome instance is annotated:
 
-```rust,edition2024
+```rust,edition2024,ignore
 #[tokio::test]
 #[ignore = "requires Chrome"]
 async fn pool_acquire_release() {

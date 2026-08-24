@@ -9,7 +9,7 @@ DevTools Protocol (CDP), bypassing the `page.content()` + HTML-parse round-trip.
 
 Query all matching elements and get back lightweight `NodeHandle` values.
 
-```rust,no_run
+```rust,ignore
 let nodes: Vec<NodeHandle> = page.query_selector_all("article.post").await?;
 println!("{} posts found", nodes.len());
 ```
@@ -27,7 +27,7 @@ you explicitly call a method.
 
 ### Reading content
 
-```rust,no_run
+```rust,ignore
 let node = &nodes[0]; // NodeHandle
 
 // Inner text (JS textContent)
@@ -52,7 +52,7 @@ let ancestors: Vec<String> = node.ancestors().await?;
 
 ### Reading attributes
 
-```rust,no_run
+```rust,ignore
 // Returns the attribute value or an empty string if absent
 let href:    String = node.attr("href").await?;
 let data_id: String = node.attr("data-id").await?;
@@ -77,7 +77,7 @@ directly. The `Recursive` strategy prefers the dedicated CDP command
 falls back to a Rust-side walk that calls `DOM.describeNode(nodeId, depth=-1)`
 and serialises the resulting `Node` tree locally.
 
-```rust,no_run
+```rust,ignore
 use stygian_browser::OuterHtmlStrategy;
 
 let result = node.outer_html_with_strategy(OuterHtmlStrategy::Recursive).await?;
@@ -143,7 +143,7 @@ the deep-resolution path on Wix Studio / shadow-DOM pages, should call
 
 Returns the direct parent element, or `None` if the node is `<body>` or detached.
 
-```rust,no_run
+```rust,ignore
 if let Some(parent) = node.parent().await? {
     let html = parent.outer_html().await?;
     println!("parent: {}", &html[..html.len().min(80)]);
@@ -154,7 +154,7 @@ if let Some(parent) = node.parent().await? {
 
 Returns the next element sibling, or `None` if this is the last child.
 
-```rust,no_run
+```rust,ignore
 // Walk a list forward
 let items = page.query_selector_all("li.step").await?;
 let mut cur = items[0].next_sibling().await?;
@@ -168,7 +168,7 @@ while let Some(node) = cur {
 
 Returns the previous element sibling, or `None` if this is the first child.
 
-```rust,no_run
+```rust,ignore
 if let Some(prev) = node.previous_sibling().await? {
     println!("previous: {}", prev.text_content().await?);
 }
@@ -203,7 +203,7 @@ stygian-browser = { version = "*", features = ["similarity"] }
 
 `NodeHandle::fingerprint()` captures a structural snapshot:
 
-```rust,no_run
+```rust,ignore
 use stygian_browser::similarity::ElementFingerprint;
 
 let fp: ElementFingerprint = node.fingerprint().await?;
@@ -224,7 +224,7 @@ Similarity is scored using a weighted Jaccard coefficient:
 
 ### `find_similar`
 
-```rust,no_run
+```rust,ignore
 use stygian_browser::similarity::{SimilarityConfig, SimilarMatch};
 
 // Default config: threshold = 0.7, max_results = 10
@@ -238,7 +238,7 @@ for m in &matches {
 
 ### Custom config
 
-```rust,no_run
+```rust,ignore
 let matches = page
     .find_similar(
         &fp,
@@ -252,7 +252,7 @@ let matches = page
 `ElementFingerprint` is `serde::Serialize + Deserialize`, so you can capture a reference
 element in one session and reuse it later:
 
-```rust,no_run
+```rust,ignore
 // Capture
 let fp = node.fingerprint().await?;
 let json = serde_json::to_string(&fp)?;

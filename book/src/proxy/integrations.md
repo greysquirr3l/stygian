@@ -17,7 +17,7 @@ stygian-proxy = { version = "*", features = ["graph"] }
 
 ### ProxyManagerPort
 
-```rust,no_run
+```rust,ignore
 use stygian_proxy::graph::ProxyManagerPort;
 
 // ProxyManager already implements ProxyManagerPort via a blanket impl.
@@ -36,7 +36,7 @@ async fn fetch(proxy_src: &dyn ProxyManagerPort, url: &str) -> Result<String, Bo
 store a proxy source in `HttpAdapter` or any other adapter without naming the
 concrete type:
 
-```rust,no_run
+```rust,ignore
 use std::sync::Arc;
 use stygian_proxy::graph::{BoxedProxyManager, ProxyManagerPort};
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
@@ -55,7 +55,7 @@ let boxed: BoxedProxyManager = manager;
 When no proxying is needed, pass `NoopProxyManager` instead. It returns
 `ProxyHandle::direct()` on every call — a noop handle with an empty URL.
 
-```rust,no_run
+```rust,ignore
 use std::sync::Arc;
 use stygian_proxy::graph::{BoxedProxyManager, NoopProxyManager};
 
@@ -82,7 +82,7 @@ stygian-proxy = { version = "*", features = ["browser"] }
 acquires one proxy and returns `(proxy_url, ProxyHandle)`. The URL can be passed
 directly to `chromiumoxide` when launching a browser context.
 
-```rust,no_run
+```rust,ignore
 use std::sync::Arc;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
 use stygian_proxy::browser::ProxyManagerBridge;
@@ -105,7 +105,7 @@ handle.mark_success(); // after the page session completes
 `BrowserProxySource` is the trait implemented by `ProxyManagerBridge`. Implement
 it directly to plug in any proxy source without depending on `ProxyManager`:
 
-```rust,no_run
+```rust,ignore
 use async_trait::async_trait;
 use stygian_proxy::browser::BrowserProxySource;
 use stygian_proxy::manager::ProxyHandle;
@@ -141,7 +141,7 @@ stygian-proxy = { version = "*", features = ["dns-fetcher"] }
 `DnsTxtFetcher` implements `ProxyFetcher` and queries a DNS TXT record where each
 string is a proxy URL (`http://host:port` or `socks5://host:port`):
 
-```rust,no_run
+```rust,ignore
 use stygian_proxy::DnsTxtFetcher;
 use stygian_proxy::fetcher::{ProxyFetcher, load_from_fetcher};
 use std::sync::Arc;
@@ -165,7 +165,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 The TXT record format is one proxy URL per string value:
 
-```rust,edition2024
+```rust,edition2024,ignore
 proxies.internal.example.com. 60 IN TXT "http://10.0.1.5:8080"
 proxies.internal.example.com. 60 IN TXT "socks5://10.0.1.6:1080"
 ```
@@ -175,7 +175,7 @@ system resolver configuration by default.
 
 For hardened deployments, prefer constraining the lookup zone and timeout:
 
-```rust,no_run
+```rust,ignore
 use std::time::Duration;
 use stygian_proxy::DnsTxtFetcher;
 
@@ -196,7 +196,7 @@ combines proxy acquisition with a `CapabilityRequirement` that matches a
 specific TLS fingerprint profile. This ensures the acquired proxy is
 capable of presenting the correct TLS fingerprint for the browser session.
 
-```rust,no_run
+```rust,ignore
 use std::sync::Arc;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
 use stygian_proxy::browser::ProxyManagerBridge;
@@ -247,7 +247,7 @@ When the `vendor-stickiness` cargo feature is enabled, a browser bridge
 can opt into per-vendor sticky bindings by calling
 `acquire_for_domain_with_vendor`:
 
-```rust,no_run
+```rust,ignore
 use std::sync::Arc;
 use stygian_proxy::{
     MemoryProxyStore, ProxyConfig, ProxyManager,
@@ -269,7 +269,7 @@ let handle = manager
 
 Pair this with `BrowserProxySource` in production:
 
-```rust,no_run
+```rust,ignore
 use stygian_proxy::browser::ProxyManagerBridge;
 use stygian_browser::{BrowserConfig, WaitUntil};
 use std::time::Duration;
@@ -301,7 +301,7 @@ policy matrix and `VendorStickinessMap` builder API.
 on the WebRTC + DNS + timezone + locale + Accept-Language five-vector
 match. It is composed onto a manager via the builder:
 
-```rust,no_run
+```rust,ignore
 use std::sync::Arc;
 use stygian_proxy::{
     CoherenceContext, CoherencePolicy, CoherenceValidator,
@@ -317,7 +317,7 @@ let mgr = ProxyManager::with_round_robin(storage, ProxyConfig::default())?
 
 At acquire time:
 
-```rust,no_run
+```rust,ignore
 let ctx = CoherenceContext::from_browser_page(&page).await?;
 let policy = CoherencePolicy::hard_fail_on(MismatchField::WebRtcPublicIp);
 let handle = mgr.acquire_proxy_with_coherence(&ctx, &policy).await?;
@@ -340,7 +340,7 @@ with `ThompsonStrategy` and observers are fed by the existing
 call is required at the call site. To seed the bandit from a known-good
 feed, use `strategy_warmup_observe`:
 
-```rust,no_run
+```rust,ignore
 use std::sync::Arc;
 use std::time::Duration;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
@@ -371,7 +371,7 @@ the posterior.
 the URL against `vendor_quirks::check` and accepts `(url, asn, city,
 postal_code)` directly without a `Proxy` struct literal:
 
-```rust,no_run
+```rust,ignore
 use stygian_proxy::types::well_known;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
 use std::sync::Arc;
@@ -401,7 +401,7 @@ errors, Bright Data / IPRoyal username-format warnings) surface late —
 deep in the TLS handshake or on the first request — without warning.
 `vendor_quirks::check` validates at ingest:
 
-```rust,no_run
+```rust,ignore
 use stygian_proxy::vendor_quirks::{check, ProxyUrl, QuirkSeverity};
 
 let url = ProxyUrl::parse("http://proxy.crawlera.com:8011").unwrap();

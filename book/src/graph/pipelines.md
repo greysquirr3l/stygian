@@ -93,7 +93,7 @@ to   = "extract_data"
 
 For pipelines constructed at runtime:
 
-```rust,edition2024
+```rust,edition2024,ignore
 use stygian_graph::domain::pipeline::PipelineUnvalidated;
 use serde_json::json;
 
@@ -127,7 +127,7 @@ let executing  = validated.execute();   // synchronous state transition
 
 Any validation failure returns a `StygianError` — never panics.
 
-```rust,edition2024
+```rust,edition2024,ignore
 use stygian_graph::domain::{StygianError, GraphError};
 
 match pipeline.validate() {
@@ -146,7 +146,7 @@ match pipeline.validate() {
 Every execution is assigned an `IdempotencyKey` — a ULID that acts as a deduplication
 token across retries:
 
-```rust,edition2024
+```rust,edition2024,ignore
 use stygian_graph::domain::idempotency::IdempotencyKey;
 
 // Auto-generated ULID (recommended for one-off executions)

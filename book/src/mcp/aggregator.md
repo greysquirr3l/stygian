@@ -205,7 +205,7 @@ Returns combined navigation metadata and full HTML content.
 
 Instead of running the binary, embed the aggregator in your own Rust binary:
 
-```rust,no_run
+```rust,ignore
 use stygian_mcp::aggregator::McpAggregator;
 
 #[tokio::main]

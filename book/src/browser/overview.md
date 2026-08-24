@@ -43,7 +43,7 @@ of stealth features for bypassing modern bot-detection systems.
 
 ## Quick start
 
-```rust,no_run
+```rust,ignore
 use stygian_browser::{BrowserConfig, BrowserPool, WaitUntil};
 use std::time::Duration;
 

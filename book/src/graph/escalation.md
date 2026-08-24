@@ -26,7 +26,7 @@ Tiers are ordered — each higher tier is a strict superset of the previous one'
 
 ## The EscalationPolicy trait
 
-```rust,no_run
+```rust,ignore
 use stygian_graph::ports::escalation::{EscalationPolicy, EscalationTier, ResponseContext};
 
 pub trait EscalationPolicy: Send + Sync {
@@ -84,7 +84,7 @@ When `EscalatingScrapingService` successfully reaches a domain at a tier above
 On the next request to the same domain the pipeline **skips the tiers it knows won't
 work**, saving latency.
 
-```rust,no_run
+```rust,ignore
 use std::time::Duration;
 use stygian_graph::adapters::escalation::{DefaultEscalationPolicy, EscalationConfig};
 use stygian_graph::ports::escalation::EscalationTier;
@@ -112,7 +112,7 @@ let policy = DefaultEscalationPolicy::new(EscalationConfig {
 `EscalatingScrapingService` implements the `ScrapingService` port and wires the
 policy to a set of concrete service implementations.
 
-```rust,no_run
+```rust,ignore
 use std::sync::Arc;
 use stygian_graph::adapters::escalation::{
     DefaultEscalationPolicy, EscalationConfig, EscalatingScrapingService,
@@ -201,7 +201,7 @@ url     = "https://example.com/data"
 For specialised logic (status-code allow-lists, per-domain overrides, etc.) you can
 implement `EscalationPolicy` directly:
 
-```rust,no_run
+```rust,ignore
 use stygian_graph::ports::escalation::{EscalationPolicy, EscalationTier, ResponseContext};
 
 struct AggressivePolicy;

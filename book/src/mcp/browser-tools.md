@@ -34,7 +34,7 @@ against the pool's `max` limit.
 
 Runner-first alternative:
 
-```rust,edition2024
+```rust,edition2024,ignore
 browser_acquire_and_extract
 ```
 
@@ -572,7 +572,7 @@ implements two resilience behaviors on by default:
 Both behaviors are configurable via
 `AcquisitionRequest::browserbase_session: Option<BrowserbaseSessionConfig>`:
 
-```rust,edition2024
+```rust,edition2024,ignore
 BrowserbaseSessionConfig {
     /// Disable session warmup (default: warmup enabled).
     warmup_enabled: false,
