@@ -108,7 +108,7 @@ serde_yaml = "0.9"
 indexmap = "2"
 
 # Proc-macro support
-syn         = { version = "2", features = ["full"] }
+syn         = { version = "3", features = ["full"] }
 quote       = "1"
 proc-macro2 = "1"
 
