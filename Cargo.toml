@@ -17,7 +17,7 @@ exclude = ["crates/stygian-charon/fuzz"]
 [workspace.package]
 version = "0.17.0"
 edition = "2024"
-rust-version = "1.94.0"
+rust-version = "1.95.0"
 authors = ["Nick Campbell <s0ma@protonmail.com>"]
 license = "AGPL-3.0-only OR LicenseRef-Commercial"
 repository = "https://github.com/greysquirr3l/stygian"
