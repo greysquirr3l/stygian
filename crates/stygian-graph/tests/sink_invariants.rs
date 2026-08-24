@@ -52,7 +52,7 @@ fn every_sink_record_construction_supplies_fetched_at() {
     let transport_supplied = chrono::Utc
         .with_ymd_and_hms(2026, 8, 22, 12, 0, 0)
         .single()
-        .unwrap_or_else(|| chrono::Utc::now());
+        .unwrap_or_else(chrono::Utc::now);
 
     let record = SinkRecord::with_fetched_at(
         "schema-v1",

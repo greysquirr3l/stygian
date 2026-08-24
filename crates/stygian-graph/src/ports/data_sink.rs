@@ -391,7 +391,7 @@ mod tests {
         let fetched_at = chrono::Utc
             .with_ymd_and_hms(2026, 8, 22, 12, 0, 0)
             .single()
-            .unwrap_or_else(|| chrono::Utc::now());
+            .unwrap_or_else(chrono::Utc::now);
         let r = SinkRecord::with_fetched_at(
             "schema-v1",
             "https://example.com",
@@ -407,7 +407,7 @@ mod tests {
         let supplied = chrono::Utc
             .with_ymd_and_hms(2026, 1, 1, 0, 0, 0)
             .single()
-            .unwrap_or_else(|| chrono::Utc::now());
+            .unwrap_or_else(chrono::Utc::now);
         let r = SinkRecord::fetched_at_or_default(
             "schema-v1",
             "https://example.com",
@@ -423,7 +423,7 @@ mod tests {
         let before = chrono::Utc
             .with_ymd_and_hms(1970, 1, 1, 0, 0, 0)
             .single()
-            .unwrap_or_else(|| chrono::Utc::now());
+            .unwrap_or_else(chrono::Utc::now);
         let r = SinkRecord::new("schema-v1", "https://example.com", json!({}));
         let after = chrono::Utc::now() + chrono::Duration::seconds(1);
         assert!(
@@ -439,7 +439,7 @@ mod tests {
         let fetched_at = chrono::Utc
             .with_ymd_and_hms(2026, 8, 22, 12, 0, 0)
             .single()
-            .unwrap_or_else(|| chrono::Utc::now());
+            .unwrap_or_else(chrono::Utc::now);
         let record = SinkRecord::with_fetched_at(
             "schema-v1",
             "https://example.com",
@@ -457,7 +457,7 @@ mod tests {
         let r = SinkRecord::new("s", "https://x.com", json!({}))
             .with_meta("run_id", "abc123")
             .with_meta("tenant", "acme");
-        assert_eq!(r.metadata["run_id"], "abc123");
-        assert_eq!(r.metadata["tenant"], "acme");
+        assert_eq!(r.metadata.get("run_id").map(String::as_str), Some("abc123"));
+        assert_eq!(r.metadata.get("tenant").map(String::as_str), Some("acme"));
     }
 }

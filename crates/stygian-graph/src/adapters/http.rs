@@ -137,7 +137,11 @@ impl CatalogueFingerprint {
             return false;
         }
         // Last byte of the pattern determines the boundary rule.
-        let last = prefix.as_bytes()[prefix.len() - 1];
+        // `.last()` is the safe form of `&v[len - 1]` — returns
+        // `None` if the slice is empty (won't happen here because
+        // `prefix.len() >= 1` is checked above, but the bound is
+        // explicit).
+        let last = *prefix.as_bytes().last().unwrap_or(&0);
         if !last.is_ascii_digit() {
             return true;
         }
@@ -230,7 +234,7 @@ pub enum HttpAdapterError {
 /// to reqwest's defaults.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum StealthProfile {
-    /// Chrome 131 (Linux x86_64) — the canonical Chrome-131 profile.
+    /// Chrome 131 (Linux `x86_64`) — the canonical Chrome-131 profile.
     Chrome131,
     /// Chrome 136 — the Chrome-136 family.
     Chrome136,
@@ -254,7 +258,7 @@ impl StealthProfile {
             .iter()
             .find(|ua| ua.contains(needle))
             .copied()
-            .unwrap_or_else(|| USER_AGENTS[0])
+            .unwrap_or("")
     }
 }
 

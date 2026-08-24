@@ -434,10 +434,7 @@ impl DefaultPromptInjectionGuard {
         let close = format!("</{tag}>");
         let mut cleaned = String::with_capacity(input.len());
         let mut last = 0usize;
-        loop {
-            let Some(rel_idx) = input[last..].find(&open) else {
-                break;
-            };
+        while let Some(rel_idx) = input[last..].find(&open) {
             let absolute = last + rel_idx;
             match input[absolute..].find(&close) {
                 Some(close_rel) => {
@@ -500,8 +497,9 @@ impl DefaultPromptInjectionGuard {
                 search_from = end;
             }
         }
-        // Sort by start descending so we can splice in place.
-        ranges.sort_by(|a, b| b.0.cmp(&a.0));
+        // Sort by start descending so we can splice in place (in-place
+        // redaction requires sorted order).
+        ranges.sort_by_key(|r| std::cmp::Reverse(r.0));
         let original = input.clone();
         for (start, end, phrase, severity) in ranges {
             findings.push(InjectionFinding {
@@ -523,10 +521,7 @@ impl DefaultPromptInjectionGuard {
 
     fn redact_css_exfil(input: &mut String, findings: &mut Vec<InjectionFinding>) {
         for needle in ["url(http", "url('http", "url(\"http"] {
-            loop {
-                let Some(rel_idx) = input.find(needle) else {
-                    break;
-                };
+            while let Some(rel_idx) = input.find(needle) {
                 let end = rel_idx + needle.len();
                 findings.push(InjectionFinding {
                     location: rel_idx..end,
@@ -541,10 +536,7 @@ impl DefaultPromptInjectionGuard {
 
     fn redact_markdown_traps(input: &mut String, findings: &mut Vec<InjectionFinding>) {
         let needle = "](javascript:";
-        loop {
-            let Some(rel_idx) = input.find(needle) else {
-                break;
-            };
+        while let Some(rel_idx) = input.find(needle) {
             let end = rel_idx + needle.len();
             findings.push(InjectionFinding {
                 location: rel_idx..end,
@@ -611,7 +603,7 @@ mod tests {
 
     #[tokio::test]
     async fn strips_hidden_unicode() {
-        let input: UntrustedText = format!("Hello\u{200B}\u{200B}world").into();
+        let input: UntrustedText = "Hello\u{200B}\u{200B}world".to_string().into();
         let (out, findings) = guard().sanitise(input).await.unwrap();
         assert_eq!(out.as_str(), "Helloworld");
         assert!(findings.iter().any(|f| f.marker == InjectionMarker::HiddenUnicode));
