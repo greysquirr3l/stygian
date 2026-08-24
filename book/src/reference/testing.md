@@ -103,7 +103,7 @@ High-coverage modules in `stygian-graph`:
 
 Every test that launches a real Chrome instance is annotated:
 
-```rust
+```rust,edition2024
 #[tokio::test]
 #[ignore = "requires Chrome"]
 async fn pool_acquire_release() {
@@ -121,7 +121,7 @@ simulator algorithms) is high; only the CDP I/O paths are excluded.
 
 ### Unit test pattern (graph)
 
-```rust
+```rust,edition2024
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -137,7 +137,7 @@ mod tests {
 
 ### Browser test pattern (logic only)
 
-```rust
+```rust,edition2024
 #[cfg(test)]
 mod tests {
     use super::*;

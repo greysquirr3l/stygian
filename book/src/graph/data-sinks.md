@@ -30,7 +30,7 @@ Every sink implements three operations:
 A `SinkRecord` carries the payload and provenance information for a single
 scraped item:
 
-```rust
+```rust,edition2024
 pub struct SinkRecord {
     /// JSON payload conforming to the named schema.
     pub data: serde_json::Value,
@@ -45,7 +45,7 @@ pub struct SinkRecord {
 
 Builder example:
 
-```rust
+```rust,edition2024
 use stygian_graph::ports::data_sink::SinkRecord;
 use serde_json::json;
 
@@ -72,7 +72,7 @@ transport layer has already timestamped the upstream response, use
 exact moment the data left the origin rather than when your code
 constructed the record:
 
-```rust
+```rust,edition2024
 use stygian_graph::ports::data_sink::SinkRecord;
 use chrono::{DateTime, Utc};
 
@@ -99,7 +99,7 @@ record creation.
 
 A successful `publish()` returns a `SinkReceipt`:
 
-```rust
+```rust,edition2024
 pub struct SinkReceipt {
     /// Platform-assigned ID for the published record.
     pub id: String,
@@ -125,7 +125,7 @@ pub struct SinkReceipt {
 Any struct can implement `DataSinkPort`. The trait is object-safe and intended
 for use via `Arc<dyn DataSinkPort>`.
 
-```rust
+```rust,edition2024
 use async_trait::async_trait;
 use stygian_graph::ports::data_sink::{DataSinkPort, SinkRecord, SinkReceipt, DataSinkError};
 
@@ -173,7 +173,7 @@ impl DataSinkPort for MyFileSink {
 `DataSinkError` is `#[non_exhaustive]` — match on variants you care about and
 use a fallback for future additions:
 
-```rust
+```rust,edition2024
 use stygian_graph::ports::data_sink::DataSinkError;
 
 match sink.publish(&record).await {

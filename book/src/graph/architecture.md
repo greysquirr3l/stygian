@@ -55,7 +55,7 @@ Pure Rust. Only `std`, `serde`, and arithmetic/pure-data crates allowed. No `tok
 
 Pipelines enforce their lifecycle at **compile time** using the typestate pattern:
 
-```rust
+```rust,edition2024
 use stygian_graph::domain::pipeline::{
     PipelineUnvalidated, PipelineValidated,
     PipelineExecuting, PipelineComplete,
@@ -80,7 +80,7 @@ Out-of-order transitions are **compiler errors**. Phantom types carry zero runti
 Port traits are the only interface the domain exposes to infrastructure. No adapter code ever
 leaks inward.
 
-```rust
+```rust,edition2024
 /// Any scraping backend — HTTP, browser, Playwright, custom.
 pub trait ScrapingService: Send + Sync + 'static {
     fn name(&self) -> &'static str;

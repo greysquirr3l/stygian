@@ -33,7 +33,7 @@ handles token acquisition and automatic refresh transparently.
 
 Alternatively, build the config directly:
 
-```rust
+```rust,edition2024
 use stygian_graph::adapters::scrape_exchange::ScrapeExchangeConfig;
 
 let config = ScrapeExchangeConfig {
@@ -56,7 +56,7 @@ The low-level client exposes the full API surface:
 | `item_lookup(id)` | Fetch a single record by ID |
 | `health_check()` | Verify the API is reachable |
 
-```rust
+```rust,edition2024
 use stygian_graph::adapters::scrape_exchange::{ScrapeExchangeClient, ScrapeExchangeConfig};
 use serde_json::json;
 
@@ -101,7 +101,7 @@ Records are validated locally before upload:
 
 ### Usage
 
-```rust
+```rust,edition2024
 use stygian_graph::adapters::scrape_exchange::{ScrapeExchangeAdapter, ScrapeExchangeConfig};
 use stygian_graph::ports::data_sink::{DataSinkPort, SinkRecord};
 use serde_json::json;
@@ -143,7 +143,7 @@ endpoint. The feed adapter implements [`StreamSourcePort`].
 Server-side filters reduce bandwidth; client-side filters (`schema_owner`,
 `schema_version`) are applied in-process:
 
-```rust
+```rust,edition2024
 use stygian_graph::adapters::scrape_exchange::{FeedFilter, FeedConfig};
 
 let config = FeedConfig {
@@ -167,7 +167,7 @@ and capped at 30 seconds.
 
 ### Usage
 
-```rust
+```rust,edition2024
 use stygian_graph::adapters::scrape_exchange::{ScrapeExchangeFeed, FeedConfig};
 use stygian_graph::ports::stream_source::StreamSourcePort;
 
@@ -189,7 +189,7 @@ for event in &events {
 Use `with_bearer_token()` to connect to authenticated endpoints (obtain the
 JWT from `ScrapeExchangeClient::get_token()` first):
 
-```rust
+```rust,edition2024
 use stygian_graph::adapters::scrape_exchange::{
     ScrapeExchangeFeed, ScrapeExchangeClient, ScrapeExchangeConfig, FeedConfig,
 };

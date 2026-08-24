@@ -76,7 +76,7 @@ Available features:
 
 ## Quick start — scraping pipeline
 
-```rust
+```rust,edition2024
 use stygian_graph::domain::graph::{Pipeline, Node};
 use serde_json::json;
 
@@ -97,7 +97,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Quick start — browser automation
 
-```rust
+```rust,edition2024
 use stygian_browser::{BrowserConfig, BrowserPool, WaitUntil};
 use std::time::Duration;
 

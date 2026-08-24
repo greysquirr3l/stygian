@@ -371,7 +371,7 @@ graph LR
 When `secret` is configured, the adapter requires an `X-Hub-Signature-256`
 header (GitHub-compatible format):
 
-```
+```rust,edition2024
 X-Hub-Signature-256: sha256=<hex-encoded-hmac>
 ```
 

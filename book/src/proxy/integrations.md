@@ -165,7 +165,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 The TXT record format is one proxy URL per string value:
 
-```
+```rust,edition2024
 proxies.internal.example.com. 60 IN TXT "http://10.0.1.5:8080"
 proxies.internal.example.com. 60 IN TXT "socks5://10.0.1.6:1080"
 ```

@@ -37,7 +37,7 @@ traits defined in `src/ports.rs`. The domain never imports adapters — only por
 
 Create `src/adapters/playwright.rs`:
 
-```rust
+```rust,edition2024
 //! Playwright browser adapter.
 
 use std::time::Duration;
@@ -125,7 +125,7 @@ impl ScrapingService for PlaywrightService {
 
 Add a `pub mod playwright;` line to `src/adapters/mod.rs`:
 
-```rust
+```rust,edition2024
 // src/adapters/mod.rs
 pub mod http;
 pub mod browser;
@@ -140,7 +140,7 @@ pub mod playwright;   // ← add this line
 
 In your binary entry point or `application/executor.rs` startup code:
 
-```rust
+```rust,edition2024
 use std::sync::Arc;
 use stygian_graph::adapters::playwright::{PlaywrightConfig, PlaywrightService};
 use stygian_graph::application::registry::ServiceRegistry;
@@ -167,7 +167,7 @@ Pipelines can now reference the adapter with `service = "playwright"` in any nod
 
 Wrap before registering to get circuit-breaker and retry behaviour for free:
 
-```rust
+```rust,edition2024
 use std::sync::Arc;
 use std::time::Duration;
 use stygian_graph::adapters::resilience::{CircuitBreakerImpl, RetryPolicy, retry};
@@ -193,7 +193,7 @@ let policy = RetryPolicy::new(
 
 Use stygian's built-in mock transport for unit tests that don't require a real server:
 
-```rust
+```rust,edition2024
 #[cfg(test)]
 mod tests {
     use super::*;
