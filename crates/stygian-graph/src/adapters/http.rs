@@ -96,7 +96,7 @@ impl CatalogueFingerprint {
     /// matches if the UA starts with the pattern. This avoids the
     /// `curl/8.10.1` ↔ `curl/8.1` ambiguity that substring matching
     /// would cause.
-    const PATTERNS: &'static [(CatalogueFingerprint, &'static str)] = &[
+    const PATTERNS: &'static [(Self, &'static str)] = &[
         (Self::Requests, "python-requests/"),
         (Self::Requests, "python-requests "),
         (Self::Urllib3, "Python-urllib3/"),

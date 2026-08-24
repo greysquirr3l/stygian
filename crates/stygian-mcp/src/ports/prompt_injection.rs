@@ -13,10 +13,10 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Text that has *not* been validated against the prompt-injection
-/// guard. Newtype-wrapping `String` so the type system enforces the
-/// invariant: [`UntrustedText`] cannot be passed to an LLM-emitting
-/// sink without first flowing through [`PromptInjectionGuard::sanitise`].
+/// Untrusted text wrapper.
+///
+/// Must pass through [`PromptInjectionGuard::sanitise`] before
+/// becoming [`SanitisedText`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct UntrustedText(pub String);
@@ -170,7 +170,7 @@ pub enum PromptInjectionError {
 ///
 /// The split between `scan` and `sanitise` is deliberate:
 /// - `scan` returns the full list of findings so the aggregator can
-///   log them on the audit_log (per the brief) without re-running the
+///   log them on the `audit_log` (per the brief) without re-running the
 ///   detector.
 /// - `sanitise` runs the same scan and *applies* the rules — strips
 ///   hidden text, removes `<script>` blocks, etc. — returning a
@@ -198,7 +198,7 @@ pub trait PromptInjectionGuard: Send + Sync {
     /// The returned [`SanitisedText`] is safe to emit to an
     /// LLM-consuming sink. The accompanying findings list is the
     /// same as [`scan`] would have returned for the same input;
-    /// callers should log them on the audit_log.
+    /// callers should log them on the `audit_log`.
     ///
     /// # Errors
     ///
@@ -212,10 +212,12 @@ pub trait PromptInjectionGuard: Send + Sync {
 
 // ── Default guard implementation ────────────────────────────────────────────
 
-/// Default rule-based guard — strips `<script>` and `<style>` blocks,
-/// removes hidden unicode, flags known injection phrases, and detects
-/// markdown link traps / CSS exfiltration. Designed to ship as the
-/// default `PromptInjectionGuard` in the aggregator.
+/// Default rule-based guard.
+///
+/// Strips `<script>` and `<style>` blocks, removes hidden unicode,
+/// flags known injection phrases, and detects markdown link traps
+/// / CSS exfiltration. Designed to ship as the default
+/// `PromptInjectionGuard` in the aggregator.
 #[derive(Debug, Default, Clone)]
 pub struct DefaultPromptInjectionGuard;
 
@@ -436,29 +438,26 @@ impl DefaultPromptInjectionGuard {
         let mut last = 0usize;
         while let Some(rel_idx) = input[last..].find(&open) {
             let absolute = last + rel_idx;
-            match input[absolute..].find(&close) {
-                Some(close_rel) => {
-                    let end = absolute + close_rel + close.len();
-                    cleaned.push_str(&input[last..absolute]);
-                    findings.push(InjectionFinding {
-                        location: absolute..end,
-                        marker,
-                        severity: Severity::Error,
-                        reason: format!("<{tag}>...</{tag}> block"),
-                    });
-                    last = end;
-                }
-                None => {
-                    cleaned.push_str(&input[last..]);
-                    findings.push(InjectionFinding {
-                        location: absolute..input.len(),
-                        marker,
-                        severity: Severity::Error,
-                        reason: format!("<{tag}>...</{tag}> block (unclosed)"),
-                    });
-                    last = input.len();
-                    break;
-                }
+            if let Some(close_rel) = input[absolute..].find(&close) {
+                let end = absolute + close_rel + close.len();
+                cleaned.push_str(&input[last..absolute]);
+                findings.push(InjectionFinding {
+                    location: absolute..end,
+                    marker,
+                    severity: Severity::Error,
+                    reason: format!("<{tag}>...</{tag}> block"),
+                });
+                last = end;
+            } else {
+                cleaned.push_str(&input[last..]);
+                findings.push(InjectionFinding {
+                    location: absolute..input.len(),
+                    marker,
+                    severity: Severity::Error,
+                    reason: format!("<{tag}>...</{tag}> block (unclosed)"),
+                });
+                last = input.len();
+                break;
             }
         }
         if last < input.len() {
