@@ -34,7 +34,7 @@ against the pool's `max` limit.
 
 Runner-first alternative:
 
-```rust,edition2024,ignore
+```text
 browser_acquire_and_extract
 ```
 
@@ -50,13 +50,13 @@ The `mode` field accepts `fast`, `resilient`, `hostile`, and `investigate`.
 Acquire a browser session from the warm pool. Returns within ~100 ms for warm pools, ~2 s for
 cold launch.
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `stealth_level` | string | | `none` \| `basic` \| `advanced` (default: `advanced`) |
-| `tls_profile` | string | | TLS fingerprint profile name — e.g. `chrome131`, `firefox133`, `safari18`, `edge131` |
-| `webrtc_policy` | string | | `allow_all` \| `disable_non_proxied` \| `block_all` (default from pool config) |
-| `cdp_fix_mode` | string | | CDP leak mitigation mode: `addBinding` \| `isolatedWorld` \| `enableDisable` \| `none` |
-| `proxy` | string | | Proxy URL for this session — e.g. `http://user:pass@proxy:8080` |
+| Parameter       | Type   | Required | Description                                                                            |
+| --------------- | ------ | -------- | -------------------------------------------------------------------------------------- |
+| `stealth_level` | string |          | `none` \| `basic` \| `advanced` (default: `advanced`)                                  |
+| `tls_profile`   | string |          | TLS fingerprint profile name — e.g. `chrome131`, `firefox133`, `safari18`, `edge131`   |
+| `webrtc_policy` | string |          | `allow_all` \| `disable_non_proxied` \| `block_all` (default from pool config)         |
+| `cdp_fix_mode`  | string |          | CDP leak mitigation mode: `addBinding` \| `isolatedWorld` \| `enableDisable` \| `none` |
+| `proxy`         | string |          | Proxy URL for this session — e.g. `http://user:pass@proxy:8080`                        |
 
 **Returns:**
 
@@ -76,11 +76,11 @@ cold launch.
 
 Navigate the browser to a URL and wait for the page to load.
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `session_id` | string | ✓ | Session ID from `browser_acquire` |
-| `url` | string | ✓ | Target URL |
-| `timeout_secs` | integer | | Navigation timeout in seconds (default: 30) |
+| Parameter      | Type    | Required | Description                                 |
+| -------------- | ------- | -------- | ------------------------------------------- |
+| `session_id`   | string  | ✓        | Session ID from `browser_acquire`           |
+| `url`          | string  | ✓        | Target URL                                  |
+| `timeout_secs` | integer |          | Navigation timeout in seconds (default: 30) |
 
 **Returns:**
 
@@ -97,10 +97,10 @@ Navigate the browser to a URL and wait for the page to load.
 
 Evaluate arbitrary JavaScript in the page context and return the result.
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `session_id` | string | ✓ | Session ID |
-| `script` | string | ✓ | JavaScript expression to evaluate |
+| Parameter    | Type   | Required | Description                       |
+| ------------ | ------ | -------- | --------------------------------- |
+| `session_id` | string | ✓        | Session ID                        |
+| `script`     | string | ✓        | JavaScript expression to evaluate |
 
 **Returns:**
 
@@ -122,9 +122,9 @@ Evaluate arbitrary JavaScript in the page context and return the result.
 
 Capture a full-page screenshot as a base64-encoded PNG.
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `session_id` | string | ✓ | Session ID |
+| Parameter    | Type   | Required | Description |
+| ------------ | ------ | -------- | ----------- |
+| `session_id` | string | ✓        | Session ID  |
 
 **Returns:**
 
@@ -141,9 +141,9 @@ writing directly to a `.png` file.
 
 Retrieve the current page's full outer HTML.
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `session_id` | string | ✓ | Session ID |
+| Parameter    | Type   | Required | Description |
+| ------------ | ------ | -------- | ----------- |
+| `session_id` | string | ✓        | Session ID  |
 
 **Returns:**
 
@@ -153,17 +153,17 @@ Retrieve the current page's full outer HTML.
 
 ---
 
-### `browser_attach` *(requires `mcp-attach` feature)*
+### `browser_attach` _(requires `mcp-attach` feature)_
 
 Attach an MCP session to an existing DevTools websocket endpoint (`cdp_ws`) or
 use the extension bridge contract path (`extension_bridge`, currently not implemented).
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `mode` | string | ✓ | `cdp_ws` \| `extension_bridge` |
-| `endpoint` | string | | Required for `cdp_ws`; DevTools websocket URL |
-| `profile_hint` | string | | Optional label for external profile identity |
-| `target_profile` | string | | Optional tuning profile: `default` \| `reddit` |
+| Parameter        | Type   | Required | Description                                    |
+| ---------------- | ------ | -------- | ---------------------------------------------- |
+| `mode`           | string | ✓        | `cdp_ws` \| `extension_bridge`                 |
+| `endpoint`       | string |          | Required for `cdp_ws`; DevTools websocket URL  |
+| `profile_hint`   | string |          | Optional label for external profile identity   |
+| `target_profile` | string |          | Optional tuning profile: `default` \| `reddit` |
 
 `cdp_ws` returns a new MCP `session_id` that can be used with the normal
 browser lifecycle tools (`browser_navigate`, `browser_eval`, `browser_content`,
@@ -187,14 +187,14 @@ High-level auth/session wrapper for common login workflows. This tool orchestrat
 `browser_session_save` and `browser_session_restore`, with optional post-step
 human-like interaction via `browser_humanize`.
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `session_id` | string | ✓ | Session ID |
-| `mode` | string | ✓ | `capture` \| `resume` |
-| `file_path` | string | | Optional snapshot file path |
-| `ttl_secs` | integer | | Optional TTL in seconds when `mode = capture` |
-| `navigate_to_origin` | boolean | | When resuming, navigate to snapshot origin first (default: `true`) |
-| `interaction_level` | string | | Optional interaction pass: `none` \| `low` \| `medium` \| `high` |
+| Parameter            | Type    | Required | Description                                                        |
+| -------------------- | ------- | -------- | ------------------------------------------------------------------ |
+| `session_id`         | string  | ✓        | Session ID                                                         |
+| `mode`               | string  | ✓        | `capture` \| `resume`                                              |
+| `file_path`          | string  |          | Optional snapshot file path                                        |
+| `ttl_secs`           | integer |          | Optional TTL in seconds when `mode = capture`                      |
+| `navigate_to_origin` | boolean |          | When resuming, navigate to snapshot origin first (default: `true`) |
+| `interaction_level`  | string  |          | Optional interaction pass: `none` \| `low` \| `medium` \| `high`   |
 
 **Capture example:**
 
@@ -226,12 +226,12 @@ human-like interaction via `browser_humanize`.
 Capture the current page auth/session state (cookies + localStorage) and store
 it in memory and optionally on disk.
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `session_id` | string | ✓ | Session ID |
-| `ttl_secs` | integer | | Optional snapshot TTL |
-| `file_path` | string | | Optional output path for snapshot JSON |
-| `include_snapshot` | boolean | | Include full snapshot payload in response (default: `false`) |
+| Parameter          | Type    | Required | Description                                                  |
+| ------------------ | ------- | -------- | ------------------------------------------------------------ |
+| `session_id`       | string  | ✓        | Session ID                                                   |
+| `ttl_secs`         | integer |          | Optional snapshot TTL                                        |
+| `file_path`        | string  |          | Optional output path for snapshot JSON                       |
+| `include_snapshot` | boolean |          | Include full snapshot payload in response (default: `false`) |
 
 **Returns:**
 
@@ -253,13 +253,13 @@ it in memory and optionally on disk.
 Restore session state from one of three sources: inline snapshot payload,
 snapshot file, or the in-memory snapshot saved previously for the same session.
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `session_id` | string | ✓ | Session ID |
-| `snapshot` | object | | Inline `SessionSnapshot` JSON |
-| `file_path` | string | | Path to snapshot JSON file |
-| `use_saved` | boolean | | Use in-memory saved snapshot if no inline/file source provided (default: `true`) |
-| `navigate_to_origin` | boolean | | Navigate to snapshot origin before applying state (default: `true`) |
+| Parameter            | Type    | Required | Description                                                                      |
+| -------------------- | ------- | -------- | -------------------------------------------------------------------------------- |
+| `session_id`         | string  | ✓        | Session ID                                                                       |
+| `snapshot`           | object  |          | Inline `SessionSnapshot` JSON                                                    |
+| `file_path`          | string  |          | Path to snapshot JSON file                                                       |
+| `use_saved`          | boolean |          | Use in-memory saved snapshot if no inline/file source provided (default: `true`) |
+| `navigate_to_origin` | boolean |          | Navigate to snapshot origin before applying state (default: `true`)              |
 
 **Returns:**
 
@@ -281,12 +281,12 @@ snapshot file, or the in-memory snapshot saved previously for the same session.
 Run a human-like interaction sequence on the current page (scroll, mouse, key
 activity) to reduce robotic behavior patterns.
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `session_id` | string | ✓ | Session ID |
-| `level` | string | | `none` \| `low` \| `medium` \| `high` (default: `low`) |
-| `viewport_width` | number | | Viewport width used for interaction simulation (default: `1366`) |
-| `viewport_height` | number | | Viewport height used for interaction simulation (default: `768`) |
+| Parameter         | Type   | Required | Description                                                      |
+| ----------------- | ------ | -------- | ---------------------------------------------------------------- |
+| `session_id`      | string | ✓        | Session ID                                                       |
+| `level`           | string |          | `none` \| `low` \| `medium` \| `high` (default: `low`)           |
+| `viewport_width`  | number |          | Viewport width used for interaction simulation (default: `1366`) |
+| `viewport_height` | number |          | Viewport height used for interaction simulation (default: `768`) |
 
 **Returns:**
 
@@ -307,12 +307,12 @@ activity) to reduce robotic behavior patterns.
 Query all elements matching a CSS selector and return their text content (and optionally named
 attributes) as a structured list. Does not require deserialising the full page HTML.
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `session_id` | string | ✓ | Session ID from `browser_acquire` |
-| `url` | string | ✓ | URL to navigate to before querying |
-| `selector` | string | ✓ | CSS selector — e.g. `"article.post h2"` |
-| `fields` | object | | Map of `{ "name": "attr_name" }` pairs — extra attribute values to include per node |
+| Parameter    | Type   | Required | Description                                                                         |
+| ------------ | ------ | -------- | ----------------------------------------------------------------------------------- |
+| `session_id` | string | ✓        | Session ID from `browser_acquire`                                                   |
+| `url`        | string | ✓        | URL to navigate to before querying                                                  |
+| `selector`   | string | ✓        | CSS selector — e.g. `"article.post h2"`                                             |
+| `fields`     | object |          | Map of `{ "name": "attr_name" }` pairs — extra attribute values to include per node |
 
 **Returns:**
 
@@ -332,30 +332,30 @@ When `fields` is omitted, each item contains only `"text"` (the element's `textC
 Extract structured records from a page using a root selector + per-field schema. Equivalent
 to calling `page.extract_all::<T>()` with an inline schema definition.
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `session_id` | string | ✓ | Session ID |
-| `url` | string | ✓ | URL to navigate to before extracting |
-| `root_selector` | string | ✓ | CSS selector for the repeating container element |
-| `schema` | object | ✓ | Map of field name to `{ selector, attr?, required? }` field descriptor |
+| Parameter       | Type   | Required | Description                                                            |
+| --------------- | ------ | -------- | ---------------------------------------------------------------------- |
+| `session_id`    | string | ✓        | Session ID                                                             |
+| `url`           | string | ✓        | URL to navigate to before extracting                                   |
+| `root_selector` | string | ✓        | CSS selector for the repeating container element                       |
+| `schema`        | object | ✓        | Map of field name to `{ selector, attr?, required? }` field descriptor |
 
 **Schema field descriptor:**
 
-| Key | Type | Required | Description |
-| --- | ---- | -------- | ----------- |
-| `selector` | string | ✓ | CSS selector scoped to the root element |
-| `attr` | string | | If present, captures this attribute instead of `textContent` |
-| `required` | boolean | | `true` (default) — omit or set to `false` for optional fields |
+| Key        | Type    | Required | Description                                                   |
+| ---------- | ------- | -------- | ------------------------------------------------------------- |
+| `selector` | string  | ✓        | CSS selector scoped to the root element                       |
+| `attr`     | string  |          | If present, captures this attribute instead of `textContent`  |
+| `required` | boolean |          | `true` (default) — omit or set to `false` for optional fields |
 
 **Returns:**
 
 ```json
 [
   {
-    "title":  "Example post",
-    "url":    "https://example.com/post-1",
+    "title": "Example post",
+    "url": "https://example.com/post-1",
     "author": "Alice",
-    "date":   "2025-01-15"
+    "date": "2025-01-15"
   }
 ]
 ```
@@ -364,14 +364,14 @@ to calling `page.extract_all::<T>()` with an inline schema definition.
 
 ```json
 {
-  "session_id":    "01HV4...",
-  "url":           "https://news.example.com",
+  "session_id": "01HV4...",
+  "url": "https://news.example.com",
   "root_selector": "article.story",
   "schema": {
-    "title":  { "selector": "h2" },
-    "url":    { "selector": "h2 a", "attr": "href" },
+    "title": { "selector": "h2" },
+    "url": { "selector": "h2 a", "attr": "href" },
     "author": { "selector": "span.author" },
-    "date":   { "selector": "time", "attr": "datetime", "required": false }
+    "date": { "selector": "time", "attr": "datetime", "required": false }
   }
 }
 ```
@@ -383,13 +383,13 @@ to calling `page.extract_all::<T>()` with an inline schema definition.
 Structured extraction with multiple root selectors. Selectors are tried in order,
 and the first selector that yields results is used.
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `session_id` | string | ✓ | Session ID |
-| `url` | string | ✓ | URL to navigate to before extracting |
-| `root_selectors` | array[string] | ✓ | Candidate root selectors in priority order |
-| `schema` | object | ✓ | Same schema object used by `browser_extract` |
-| `timeout_secs` | number | | Navigation/extraction timeout (default: 30) |
+| Parameter        | Type          | Required | Description                                  |
+| ---------------- | ------------- | -------- | -------------------------------------------- |
+| `session_id`     | string        | ✓        | Session ID                                   |
+| `url`            | string        | ✓        | URL to navigate to before extracting         |
+| `root_selectors` | array[string] | ✓        | Candidate root selectors in priority order   |
+| `schema`         | object        | ✓        | Same schema object used by `browser_extract` |
+| `timeout_secs`   | number        |          | Navigation/extraction timeout (default: 30)  |
 
 **Returns:** same structured `results` array as `browser_extract`, plus the selected root selector.
 
@@ -400,13 +400,13 @@ and the first selector that yields results is used.
 Structured extraction mode that tolerates partial records by skipping invalid root
 nodes instead of failing the full extraction call.
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `session_id` | string | ✓ | Session ID |
-| `url` | string | ✓ | URL to navigate to before extracting |
-| `root_selector` | string | ✓ | Root selector for repeated record containers |
-| `schema` | object | ✓ | Same schema object used by `browser_extract` |
-| `timeout_secs` | number | | Navigation/extraction timeout (default: 30) |
+| Parameter       | Type   | Required | Description                                  |
+| --------------- | ------ | -------- | -------------------------------------------- |
+| `session_id`    | string | ✓        | Session ID                                   |
+| `url`           | string | ✓        | URL to navigate to before extracting         |
+| `root_selector` | string | ✓        | Root selector for repeated record containers |
+| `schema`        | object | ✓        | Same schema object used by `browser_extract` |
+| `timeout_secs`  | number |          | Navigation/extraction timeout (default: 30)  |
 
 **Returns:**
 
@@ -416,9 +416,7 @@ nodes instead of failing the full extraction call.
   "root_selector": "article.story",
   "count": 42,
   "skipped": 3,
-  "results": [
-    { "title": "...", "url": "..." }
-  ]
+  "results": [{ "title": "...", "url": "..." }]
 }
 ```
 
@@ -432,19 +430,22 @@ depth differ across page versions. Uses a weighted Jaccard similarity score (tag
 
 > **Note:** Requires the `similarity` feature to be enabled on `stygian-browser`.
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `session_id` | string | ✓ | Session ID |
-| `url` | string | ✓ | URL to navigate to before searching |
-| `fingerprint` | object | ✓ | `ElementFingerprint` JSON — capture with `node.fingerprint()` in the Rust API |
-| `threshold` | number | | Minimum similarity score 0–1 (default: `0.7`) |
-| `max_results` | integer | | Maximum number of matches to return (default: `10`) |
+| Parameter     | Type    | Required | Description                                                                   |
+| ------------- | ------- | -------- | ----------------------------------------------------------------------------- |
+| `session_id`  | string  | ✓        | Session ID                                                                    |
+| `url`         | string  | ✓        | URL to navigate to before searching                                           |
+| `fingerprint` | object  | ✓        | `ElementFingerprint` JSON — capture with `node.fingerprint()` in the Rust API |
+| `threshold`   | number  |          | Minimum similarity score 0–1 (default: `0.7`)                                 |
+| `max_results` | integer |          | Maximum number of matches to return (default: `10`)                           |
 
 **Returns:**
 
 ```json
 [
-  { "score": 0.92, "outer_html": "<div class=\"post post-featured\">...</div>" },
+  {
+    "score": 0.92,
+    "outer_html": "<div class=\"post post-featured\">...</div>"
+  },
   { "score": 0.81, "outer_html": "<div class=\"post\">...</div>" }
 ]
 ```
@@ -459,11 +460,11 @@ fingerprint, etc.).
 
 > **Note:** Requires the `stealth` feature to be enabled on `stygian-browser`.
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `session_id` | string | ✓ | Session ID |
-| `url` | string | ✓ | URL to navigate to before running diagnostics (e.g. `https://bot.sannysoft.com`) |
-| `timeout_secs` | integer | | Navigation timeout (default: 15) |
+| Parameter      | Type    | Required | Description                                                                      |
+| -------------- | ------- | -------- | -------------------------------------------------------------------------------- |
+| `session_id`   | string  | ✓        | Session ID                                                                       |
+| `url`          | string  | ✓        | URL to navigate to before running diagnostics (e.g. `https://bot.sannysoft.com`) |
+| `timeout_secs` | integer |          | Navigation timeout (default: 15)                                                 |
 
 **Returns:** A `DiagnosticReport` JSON object:
 
@@ -474,7 +475,11 @@ fingerprint, etc.).
     { "id": "ChromeObject", "passed": true, "details": "present" },
     { "id": "PluginCount", "passed": true, "details": "5" },
     { "id": "LanguagesPresent", "passed": true, "details": "en-US,en" },
-    { "id": "CanvasConsistency", "passed": true, "details": "data:image/png;..." },
+    {
+      "id": "CanvasConsistency",
+      "passed": true,
+      "details": "data:image/png;..."
+    },
     { "id": "WebGlVendor", "passed": true, "details": "Intel Inc. -- ANGLE" },
     { "id": "AutomationGlobals", "passed": true, "details": "none" },
     { "id": "OuterWindowSize", "passed": true, "details": "1920x1080" },
@@ -482,7 +487,11 @@ fingerprint, etc.).
     { "id": "NotificationPermission", "passed": true, "details": "default" },
     { "id": "MatchMediaPresent", "passed": true, "details": "function" },
     { "id": "ElementFromPointPresent", "passed": true, "details": "function" },
-    { "id": "RequestAnimationFramePresent", "passed": true, "details": "function" },
+    {
+      "id": "RequestAnimationFramePresent",
+      "passed": true,
+      "details": "function"
+    },
     { "id": "GetComputedStylePresent", "passed": true, "details": "function" },
     { "id": "CssSupportsPresent", "passed": true, "details": "function" },
     { "id": "SendBeaconPresent", "passed": true, "details": "function" },
@@ -501,9 +510,9 @@ fingerprint, etc.).
 
 Release a browser session back to the pool.
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `session_id` | string | ✓ | Session ID to release |
+| Parameter    | Type   | Required | Description           |
+| ------------ | ------ | -------- | --------------------- |
+| `session_id` | string | ✓        | Session ID to release |
 
 **Returns:**
 
@@ -521,8 +530,8 @@ Return current browser pool statistics. No parameters required.
 
 ```json
 {
-  "active":    2,
-  "max":       8,
+  "active": 2,
+  "max": 8,
   "available": 6
 }
 ```
@@ -533,16 +542,16 @@ Return current browser pool statistics. No parameters required.
 
 Run the opinionated acquisition ladder and return extraction/content output from one call.
 
-| Parameter | Type | Required | Description |
-| --------- | ---- | -------- | ----------- |
-| `url` | string | ✓ | Target URL |
-| `mode` | string | ✓ | `fast` \| `resilient` \| `hostile` \| `investigate` |
-| `wait_for_selector` | string | | Optional selector gate for browser-stage success |
-| `selector_wait` | string | | Alias for `wait_for_selector` |
-| `extraction_js` | string | | Optional JavaScript extraction expression |
-| `total_timeout_secs` | number | | Optional wall-clock timeout for full run (must be > 0) |
-| `browserbase_enabled` | boolean | | Optional Browserbase stage opt-in (requires `stygian-browser` feature `browserbase`) |
-| `use_browserbase` | boolean | | Alias for `browserbase_enabled` |
+| Parameter             | Type    | Required | Description                                                                          |
+| --------------------- | ------- | -------- | ------------------------------------------------------------------------------------ |
+| `url`                 | string  | ✓        | Target URL                                                                           |
+| `mode`                | string  | ✓        | `fast` \| `resilient` \| `hostile` \| `investigate`                                  |
+| `wait_for_selector`   | string  |          | Optional selector gate for browser-stage success                                     |
+| `selector_wait`       | string  |          | Alias for `wait_for_selector`                                                        |
+| `extraction_js`       | string  |          | Optional JavaScript extraction expression                                            |
+| `total_timeout_secs`  | number  |          | Optional wall-clock timeout for full run (must be > 0)                               |
+| `browserbase_enabled` | boolean |          | Optional Browserbase stage opt-in (requires `stygian-browser` feature `browserbase`) |
+| `use_browserbase`     | boolean |          | Alias for `browserbase_enabled`                                                      |
 
 `browserbase_enabled`/`use_browserbase` require runtime environment variables
 `BROWSERBASE_API_KEY` and `BROWSERBASE_PROJECT_ID`.
@@ -573,19 +582,16 @@ Both behaviors are configurable via
 `AcquisitionRequest::browserbase_session: Option<BrowserbaseSessionConfig>`:
 
 ```rust,edition2024,ignore
-BrowserbaseSessionConfig {
-    /// Disable session warmup (default: warmup enabled).
-    warmup_enabled: false,
-    /// Override the retry policy (default: 3 attempts, 500 ms base,
-    /// exponential backoff capped at 30 s).
-    retry: BrowserbaseRetryPolicy::new(/* max_attempts */ 5, /* base */ 250),
-    /// Reuse an existing session instead of minting a new one per call.
-    /// Equivalent to setting the BROWSERBASE_SESSION_ID environment
-    /// variable but scoped to a single acquire request. A reused
-    /// session is never deleted by the stage — the caller owns its
-    /// lifecycle.
-    session_id: Some("sess_existing_123"),
-}
+use stygian_browser::acquisition::BrowserbaseSessionConfig;
+
+let session = BrowserbaseSessionConfig {
+    warmup: false,
+    warmup_stabilize_ms: 500,
+    max_retries: 5,
+    backoff_base_ms: 250,
+    session_id: Some("sess_existing_123".to_string()),
+};
+let _ = session;
 ```
 
 Setting `BROWSERBASE_SESSION_ID` in the environment has the same
@@ -706,8 +712,8 @@ If `STYGIAN_ATTACH_WS_ENDPOINT` is not set, the live attach test is skipped.
 
 The browser MCP exposes active sessions as MCP resources, readable via `resources/read`.
 
-| URI pattern | Description |
-| ----------- | ----------- |
+| URI pattern                      | Description                         |
+| -------------------------------- | ----------------------------------- |
 | `browser://session/{session_id}` | State of a specific browser session |
 
 **Example `resources/read` request:**
