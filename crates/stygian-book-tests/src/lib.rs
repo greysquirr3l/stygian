@@ -29,12 +29,12 @@
 // `std::result::Result<(), Box<dyn std::error::Error>>` — a small doc
 // fix tracked in #131's doc-rot cleanup PR.
 
-pub use stygian_graph;
 pub use stygian_browser;
-pub use stygian_proxy;
 pub use stygian_charon;
+pub use stygian_graph;
 pub use stygian_mcp;
 pub use stygian_plugin;
+pub use stygian_proxy;
 
 pub mod graph {
     pub use ::stygian_graph::*;
