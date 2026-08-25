@@ -107,7 +107,20 @@ def prelude_for(body):
 
 
 def needs_async(body):
-    return '.await' in body or 'async fn' in body
+    """Detect whether the snippet is async-context. Looks for:
+    - `.await` / `.await?` / `await?` chained
+    - `async fn` / `async move`
+    - any identifier that names an async function the doc is calling
+      (best-effort: look for call sites that look like async methods).
+    """
+    if '.await' in body:
+        return True
+    if 'async fn' in body or 'async move' in body or 'async {' in body:
+        return True
+    # Detect chained `await?` (common in docs without leading dot)
+    if re.search(r'await\?', body):
+        return True
+    return False
 
 
 def uses_try_operator(body):

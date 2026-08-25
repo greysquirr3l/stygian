@@ -4441,6 +4441,7 @@ dependencies = [
  "stygian-plugin",
  "stygian-proxy",
  "tokio",
+ "tracing",
  "uuid",
 ]
 

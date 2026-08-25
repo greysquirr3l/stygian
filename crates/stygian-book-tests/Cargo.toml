@@ -25,6 +25,9 @@ stygian-mcp.workspace = true
 stygian-plugin.workspace = true
 stygian-extract-derive.workspace = true
 tokio = { workspace = true, features = ["full"] }
+# `tracing` is referenced in proxy + browser docs as `tracing::info!` etc.
+# It's a transitive workspace dep, but doc snippets reference it directly.
+tracing.workspace = true
 serde_json.workspace = true
 serde.workspace = true
 anyhow.workspace = true
