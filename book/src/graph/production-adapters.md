@@ -12,12 +12,12 @@ feature-gated to keep the default build minimal.
 
 ## Feature Flags
 
-| Feature flag | Crate dependency | Adapters enabled |
-| --- | --- | --- |
-| `redis` | `redis`, `deadpool-redis` | Redis/Valkey cache, Redis Streams work queue |
-| `object-storage` | `rust-s3` | S3-compatible object storage |
-| `api` | `axum`, `hmac`, `sha2` | Webhook trigger (HTTP listener) |
-| `full` | all of the above | Everything |
+| Feature flag     | Crate dependency          | Adapters enabled                             |
+| ---------------- | ------------------------- | -------------------------------------------- |
+| `redis`          | `redis`, `deadpool-redis` | Redis/Valkey cache, Redis Streams work queue |
+| `object-storage` | `rust-s3`                 | S3-compatible object storage                 |
+| `api`            | `axum`, `hmac`, `sha2`    | Webhook trigger (HTTP listener)              |
+| `full`           | all of the above          | Everything                                   |
 
 Enable features in your `Cargo.toml`:
 
@@ -49,12 +49,12 @@ graph LR
 
 ### Configuration
 
-| Parameter | Type | Default | Description |
-| --- | --- | --- | --- |
-| `url` | `String` | `"redis://127.0.0.1:6379"` | Redis connection URL |
-| `key_prefix` | `Option<String>` | `None` | Key namespace prefix for isolation |
-| `pool_size` | `usize` | `8` | Connection pool size |
-| `default_ttl` | `Option<Duration>` | `None` | Default TTL when `set()` receives `ttl = None` |
+| Parameter     | Type               | Default                    | Description                                    |
+| ------------- | ------------------ | -------------------------- | ---------------------------------------------- |
+| `url`         | `String`           | `"redis://127.0.0.1:6379"` | Redis connection URL                           |
+| `key_prefix`  | `Option<String>`   | `None`                     | Key namespace prefix for isolation             |
+| `pool_size`   | `usize`            | `8`                        | Connection pool size                           |
+| `default_ttl` | `Option<Duration>` | `None`                     | Default TTL when `set()` receives `ttl = None` |
 
 ### Operations
 
@@ -112,10 +112,10 @@ graph LR
 
 ### `ServiceInput.params`
 
-| Parameter | Type | Default | Description |
-| --- | --- | --- | --- |
-| `lastmod_after` | `String` (ISO 8601) | none | Only include URLs modified after this date |
-| `max_depth` | `usize` | `3` | Max recursion depth for sitemap index |
+| Parameter       | Type                | Default | Description                                |
+| --------------- | ------------------- | ------- | ------------------------------------------ |
+| `lastmod_after` | `String` (ISO 8601) | none    | Only include URLs modified after this date |
+| `max_depth`     | `usize`             | `3`     | Max recursion depth for sitemap index      |
 
 ### Output format
 
@@ -151,11 +151,11 @@ feed items as structured JSON with feed-level metadata.
 
 ### `ServiceInput.params`
 
-| Parameter | Type | Default | Description |
-| --- | --- | --- | --- |
-| `since` | `String` | none | Only include entries newer than this (ISO 8601 or duration like `"24h"`) |
-| `limit` | `u32` | none | Maximum number of items to return |
-| `categories` | `Array<String>` | none | Filter to items matching these categories |
+| Parameter    | Type            | Default | Description                                                              |
+| ------------ | --------------- | ------- | ------------------------------------------------------------------------ |
+| `since`      | `String`        | none    | Only include entries newer than this (ISO 8601 or duration like `"24h"`) |
+| `limit`      | `u32`           | none    | Maximum number of items to return                                        |
+| `categories` | `Array<String>` | none    | Filter to items matching these categories                                |
 
 ### Output format
 
@@ -200,11 +200,11 @@ graph LR
 
 ### `ServiceInput.params`
 
-| Parameter | Type | Default | Description |
-| --- | --- | --- | --- |
-| `max_messages` | `u32` | `100` | Stop after collecting N messages |
-| `timeout_secs` | `u64` | `60` | Max seconds to wait for messages |
-| `subscribe_message` | `String` | none | JSON message sent on connect (e.g. channel subscription) |
+| Parameter           | Type     | Default | Description                                              |
+| ------------------- | -------- | ------- | -------------------------------------------------------- |
+| `max_messages`      | `u32`    | `100`   | Stop after collecting N messages                         |
+| `timeout_secs`      | `u64`    | `60`    | Max seconds to wait for messages                         |
+| `subscribe_message` | `String` | none    | JSON message sent on connect (e.g. channel subscription) |
 
 ---
 
@@ -221,12 +221,12 @@ and row pagination.
 
 ### `ServiceInput.params`
 
-| Parameter | Type | Default | Description |
-| --- | --- | --- | --- |
-| `delimiter` | `String` | auto-detect | Column delimiter (`,`, `\t`, `;`, `\|`) |
-| `has_headers` | `bool` | `true` | Whether the first row contains column names |
-| `skip` | `usize` | `0` | Skip N rows before the header |
-| `limit` | `Option<u64>` | none | Limit number of rows processed |
+| Parameter     | Type          | Default     | Description                                 |
+| ------------- | ------------- | ----------- | ------------------------------------------- |
+| `delimiter`   | `String`      | auto-detect | Column delimiter (`,`, `\t`, `;`, `\|`)     |
+| `has_headers` | `bool`        | `true`      | Whether the first row contains column names |
+| `skip`        | `usize`       | `0`         | Skip N rows before the header               |
+| `limit`       | `Option<u64>` | none        | Limit number of rows processed              |
 
 ---
 
@@ -249,15 +249,15 @@ graph LR
 
 ### Configuration
 
-| Parameter | Type | Default | Description |
-| --- | --- | --- | --- |
-| `bucket` | `String` | required | S3 bucket name |
-| `region` | `String` | `"us-east-1"` | AWS region or compatible region string |
-| `endpoint` | `String` | none | Custom endpoint URL (required for MinIO, R2) |
-| `prefix` | `String` | `""` | Key prefix for all stored objects |
-| `path_style` | `bool` | `false` | Use path-style URLs (required for MinIO) |
-| `access_key` | `String` | env var | S3 access key (or `AWS_ACCESS_KEY_ID` env) |
-| `secret_key` | `String` | env var | S3 secret key (or `AWS_SECRET_ACCESS_KEY` env) |
+| Parameter    | Type     | Default       | Description                                    |
+| ------------ | -------- | ------------- | ---------------------------------------------- |
+| `bucket`     | `String` | required      | S3 bucket name                                 |
+| `region`     | `String` | `"us-east-1"` | AWS region or compatible region string         |
+| `endpoint`   | `String` | none          | Custom endpoint URL (required for MinIO, R2)   |
+| `prefix`     | `String` | `""`          | Key prefix for all stored objects              |
+| `path_style` | `bool`   | `false`       | Use path-style URLs (required for MinIO)       |
+| `access_key` | `String` | env var       | S3 access key (or `AWS_ACCESS_KEY_ID` env)     |
+| `secret_key` | `String` | env var       | S3 secret key (or `AWS_SECRET_ACCESS_KEY` env) |
 
 ### Key structure
 
@@ -268,11 +268,11 @@ graph LR
 
 ### ScrapingService actions
 
-| `params.action` | Description |
-| --- | --- |
-| `"store"` | Store upstream data as a JSON object |
-| `"get"` | Retrieve a specific object by ID |
-| `"list"` | List objects under a pipeline prefix |
+| `params.action` | Description                          |
+| --------------- | ------------------------------------ |
+| `"store"`       | Store upstream data as a JSON object |
+| `"get"`         | Retrieve a specific object by ID     |
+| `"list"`        | List objects under a pipeline prefix |
 
 Objects larger than 5 MiB use multipart upload automatically.
 
@@ -308,16 +308,16 @@ graph TB
 
 ### Configuration
 
-| Parameter | Type | Default | Description |
-| --- | --- | --- | --- |
-| `url` | `String` | `"redis://127.0.0.1:6379"` | Redis connection URL |
-| `stream_name` | `String` | `"stygian:tasks"` | Redis stream key |
-| `group_name` | `String` | `"stygian-workers"` | Consumer group name |
-| `consumer_name` | `String` | `"{hostname}:{pid}"` | Unique consumer name (auto-generated) |
-| `max_retries` | `u32` | `3` | Max retries before dead-letter |
-| `block_timeout_ms` | `usize` | `1000` | Block timeout for XREADGROUP |
-| `idle_threshold_ms` | `usize` | `30000` | Reclaim stuck tasks after this duration |
-| `pool_size` | `usize` | `8` | Connection pool size |
+| Parameter           | Type     | Default                    | Description                             |
+| ------------------- | -------- | -------------------------- | --------------------------------------- |
+| `url`               | `String` | `"redis://127.0.0.1:6379"` | Redis connection URL                    |
+| `stream_name`       | `String` | `"stygian:tasks"`          | Redis stream key                        |
+| `group_name`        | `String` | `"stygian-workers"`        | Consumer group name                     |
+| `consumer_name`     | `String` | `"{hostname}:{pid}"`       | Unique consumer name (auto-generated)   |
+| `max_retries`       | `u32`    | `3`                        | Max retries before dead-letter          |
+| `block_timeout_ms`  | `usize`  | `1000`                     | Block timeout for XREADGROUP            |
+| `idle_threshold_ms` | `usize`  | `30000`                    | Reclaim stuck tasks after this duration |
+| `pool_size`         | `usize`  | `8`                        | Connection pool size                    |
 
 ### Operations
 
@@ -352,26 +352,26 @@ graph LR
 
 ### Configuration
 
-| Parameter | Type | Default | Description |
-| --- | --- | --- | --- |
-| `bind_address` | `String` | `"127.0.0.1:3001"` | Address to bind the HTTP listener |
-| `path_prefix` | `String` | `"/webhooks"` | URL path prefix for routes |
-| `secret` | `String` | none | HMAC-SHA256 secret for signature verification |
-| `max_body_size` | `usize` | `1048576` (1 MiB) | Maximum request body size |
+| Parameter       | Type     | Default            | Description                                   |
+| --------------- | -------- | ------------------ | --------------------------------------------- |
+| `bind_address`  | `String` | `"127.0.0.1:3001"` | Address to bind the HTTP listener             |
+| `path_prefix`   | `String` | `"/webhooks"`      | URL path prefix for routes                    |
+| `secret`        | `String` | none               | HMAC-SHA256 secret for signature verification |
+| `max_body_size` | `usize`  | `1048576` (1 MiB)  | Maximum request body size                     |
 
 ### Endpoints
 
-| Method | Path | Description |
-| --- | --- | --- |
-| `POST` | `/{prefix}/trigger` | Accept webhook payload |
-| `GET` | `/{prefix}/health` | Health check (returns 200 OK) |
+| Method | Path                | Description                   |
+| ------ | ------------------- | ----------------------------- |
+| `POST` | `/{prefix}/trigger` | Accept webhook payload        |
+| `GET`  | `/{prefix}/health`  | Health check (returns 200 OK) |
 
 ### Signature verification
 
 When `secret` is configured, the adapter requires an `X-Hub-Signature-256`
 header (GitHub-compatible format):
 
-```rust,edition2024,ignore
+```
 X-Hub-Signature-256: sha256=<hex-encoded-hmac>
 ```
 
@@ -379,11 +379,11 @@ Requests without a valid signature receive `401 Unauthorized`.
 
 ### ScrapingService params
 
-| Parameter | Type | Default | Description |
-| --- | --- | --- | --- |
-| `path_prefix` | `String` | `"/webhooks"` | URL path prefix |
-| `secret` | `String` | none | HMAC secret |
-| `timeout_secs` | `u64` | `60` | Max seconds to wait for an event |
+| Parameter      | Type     | Default       | Description                      |
+| -------------- | -------- | ------------- | -------------------------------- |
+| `path_prefix`  | `String` | `"/webhooks"` | URL path prefix                  |
+| `secret`       | `String` | none          | HMAC secret                      |
+| `timeout_secs` | `u64`    | `60`          | Max seconds to wait for an event |
 
 ---
 
@@ -401,22 +401,22 @@ graph TD
     P -->|No| S[Single Redis instance]
 ```
 
-| Backend | Best for | Persistence | Shared |
-| --- | --- | --- | --- |
-| In-memory | Development, single-worker | No | No |
-| Redis/Valkey | Production, multi-worker | Optional (AOF/RDB) | Yes |
+| Backend      | Best for                   | Persistence        | Shared |
+| ------------ | -------------------------- | ------------------ | ------ |
+| In-memory    | Development, single-worker | No                 | No     |
+| Redis/Valkey | Production, multi-worker   | Optional (AOF/RDB) | Yes    |
 
 ### Storage backends
 
-| Backend | Best for | Cloud-native | Feature flag |
-| --- | --- | --- | --- |
-| File system | Development, local runs | No | none |
-| PostgreSQL | Transactional workloads | Partial | `postgres` |
-| S3-compatible | Cloud production, large objects | Yes | `object-storage` |
+| Backend       | Best for                        | Cloud-native | Feature flag     |
+| ------------- | ------------------------------- | ------------ | ---------------- |
+| File system   | Development, local runs         | No           | none             |
+| PostgreSQL    | Transactional workloads         | Partial      | `postgres`       |
+| S3-compatible | Cloud production, large objects | Yes          | `object-storage` |
 
 ### Work queue backends
 
-| Backend | Best for | Distributed | Feature flag |
-| --- | --- | --- | --- |
-| Local queue | Development, single-process | No | none |
-| Redis Streams | Production, multi-worker | Yes | `redis` |
+| Backend       | Best for                    | Distributed | Feature flag |
+| ------------- | --------------------------- | ----------- | ------------ |
+| Local queue   | Development, single-process | No          | none         |
+| Redis Streams | Production, multi-worker    | Yes         | `redis`      |

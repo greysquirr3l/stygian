@@ -5,7 +5,7 @@ require TLS fingerprint matching to pass network-layer checks. A still-smaller s
 need a real browser to execute JavaScript and render the page. Running a full browser
 for every request wastes CPU and memory.
 
-*Tiered escalation* starts cheap and only pays the higher cost when the site
+_Tiered escalation_ starts cheap and only pays the higher cost when the site
 actively blocks the lighter approach. The pipeline tries tiers in order and
 stops as soon as a satisfactory response is obtained.
 
@@ -13,12 +13,12 @@ stops as soon as a satisfactory response is obtained.
 
 ## Escalation tiers
 
-| Tier | Name | When to use |
-| --- | --- | --- |
-| 0 — `HttpPlain` | Standard HTTP | Most sites; lowest overhead |
-| 1 — `HttpTlsProfiled` | HTTP + TLS fingerprint | Sites that JA3/JA4-fingerprint at the TCP layer |
-| 2 — `BrowserBasic` | Headless Chrome, basic CDP stealth | JS-heavy sites without advanced anti-bot |
-| 3 — `BrowserAdvanced` | Full stealth browser (all patches) | Cloudflare, DataDome, PerimeterX, Akamai |
+| Tier                  | Name                               | When to use                                     |
+| --------------------- | ---------------------------------- | ----------------------------------------------- |
+| 0 — `HttpPlain`       | Standard HTTP                      | Most sites; lowest overhead                     |
+| 1 — `HttpTlsProfiled` | HTTP + TLS fingerprint             | Sites that JA3/JA4-fingerprint at the TCP layer |
+| 2 — `BrowserBasic`    | Headless Chrome, basic CDP stealth | JS-heavy sites without advanced anti-bot        |
+| 3 — `BrowserAdvanced` | Full stealth browser (all patches) | Cloudflare, DataDome, PerimeterX, Akamai        |
 
 Tiers are ordered — each higher tier is a strict superset of the previous one's capabilities and cost.
 
@@ -27,9 +27,9 @@ Tiers are ordered — each higher tier is a strict superset of the previous one'
 ## The EscalationPolicy trait
 
 ```rust,ignore
-use stygian_graph::ports::escalation::{EscalationPolicy, EscalationTier, ResponseContext};
+use stygian_graph::ports::escalation::{EscalationTier, ResponseContext};
 
-pub trait EscalationPolicy: Send + Sync {
+pub trait MyCustomPolicy: stygian_graph::ports::escalation::EscalationPolicy {
     /// The tier to attempt first.
     fn initial_tier(&self) -> EscalationTier;
 
@@ -48,12 +48,12 @@ pub trait EscalationPolicy: Send + Sync {
 
 `ResponseContext` carries the signals the policy uses to decide:
 
-| Field | Description |
-| --- | --- |
-| `status` | HTTP status code |
-| `body_empty` | Response body is empty |
+| Field                      | Description                                            |
+| -------------------------- | ------------------------------------------------------ |
+| `status`                   | HTTP status code                                       |
+| `body_empty`               | Response body is empty                                 |
 | `has_cloudflare_challenge` | Cloudflare, DataDome, or PerimeterX challenge detected |
-| `has_captcha` | reCAPTCHA, hCaptcha, or Turnstile widget detected |
+| `has_captcha`              | reCAPTCHA, hCaptcha, or Turnstile widget detected      |
 
 ---
 
@@ -67,12 +67,12 @@ It combines automatic challenge detection with a per-domain learning cache.
 `DefaultEscalationPolicy::context_from_body(status, body)` inspects the response
 body for well-known markers from all major vendors:
 
-| Vendor | Detected by |
-| --- | --- |
-| Cloudflare | `"Just a moment"`, `cf-browser-verification`, `__cf_bm` |
-| DataDome | `"datadome"`, `dd_referrer` |
-| PerimeterX | `_pxParam`, `_px.js`, `blockScript` |
-| reCAPTCHA / hCaptcha / Turnstile | Script tag markers |
+| Vendor                           | Detected by                                             |
+| -------------------------------- | ------------------------------------------------------- |
+| Cloudflare                       | `"Just a moment"`, `cf-browser-verification`, `__cf_bm` |
+| DataDome                         | `"datadome"`, `dd_referrer`                             |
+| PerimeterX                       | `_pxParam`, `_px.js`, `blockScript`                     |
+| reCAPTCHA / hCaptcha / Turnstile | Script tag markers                                      |
 
 All anti-bot challenges map to `has_cloudflare_challenge: true`, which triggers
 escalation on status 403, 429, or any challenge/CAPTCHA detected.
@@ -99,11 +99,11 @@ let policy = DefaultEscalationPolicy::new(EscalationConfig {
 });
 ```
 
-| Config field | Default | Description |
-| --- | --- | --- |
-| `max_tier` | `BrowserAdvanced` | Highest tier the policy may attempt |
-| `base_tier` | `HttpPlain` | Starting tier for unknown domains |
-| `cache_ttl` | 3 600 s (1 h) | How long domain-tier cache entries live |
+| Config field | Default           | Description                             |
+| ------------ | ----------------- | --------------------------------------- |
+| `max_tier`   | `BrowserAdvanced` | Highest tier the policy may attempt     |
+| `base_tier`  | `HttpPlain`       | Starting tier for unknown domains       |
+| `cache_ttl`  | 3 600 s (1 h)     | How long domain-tier cache entries live |
 
 ---
 
@@ -140,9 +140,9 @@ automatically — you do not need to configure every tier.
 
 On success the service annotates the `ServiceOutput` metadata with two fields:
 
-| Key | Example value |
-| --- | --- |
-| `escalation_tier` | `"browser_basic"` |
+| Key               | Example value                        |
+| ----------------- | ------------------------------------ |
+| `escalation_tier` | `"browser_basic"`                    |
 | `escalation_path` | `["http_plain","http_tls_profiled"]` |
 
 These are useful for observability dashboards and for diagnosing why a particular
@@ -237,15 +237,15 @@ impl EscalationPolicy for AggressivePolicy {
 
 Which escalation tier handles which detection vector:
 
-| Detection vector | `HttpPlain` | `HttpTlsProfiled` | `BrowserBasic` | `BrowserAdvanced` |
-| --- | :---: | :---: | :---: | :---: |
-| IP reputation / rate limit | — | — | — | — |
-| TLS fingerprint (JA3/JA4) | ✗ | ✓ | ✓ | ✓ |
-| Missing JavaScript execution | ✗ | ✗ | ✓ | ✓ |
-| `navigator.webdriver` flag | ✗ | ✗ | ✓ | ✓ |
-| Canvas/WebGL fingerprint | ✗ | ✗ | ✗ | ✓ |
-| CDP detection | ✗ | ✗ | partial | ✓ |
-| Behavioural analysis | ✗ | ✗ | ✗ | ✓ |
+| Detection vector             | `HttpPlain` | `HttpTlsProfiled` | `BrowserBasic` | `BrowserAdvanced` |
+| ---------------------------- | :---------: | :---------------: | :------------: | :---------------: |
+| IP reputation / rate limit   |      —      |         —         |       —        |         —         |
+| TLS fingerprint (JA3/JA4)    |      ✗      |         ✓         |       ✓        |         ✓         |
+| Missing JavaScript execution |      ✗      |         ✗         |       ✓        |         ✓         |
+| `navigator.webdriver` flag   |      ✗      |         ✗         |       ✓        |         ✓         |
+| Canvas/WebGL fingerprint     |      ✗      |         ✗         |       ✗        |         ✓         |
+| CDP detection                |      ✗      |         ✗         |    partial     |         ✓         |
+| Behavioural analysis         |      ✗      |         ✗         |       ✗        |         ✓         |
 
 IP reputation is orthogonal to tier — use sticky-session proxy rotation (see
 [Sticky Sessions](../proxy/sticky-sessions.md)) in combination with escalation.

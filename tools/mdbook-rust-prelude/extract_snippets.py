@@ -61,6 +61,10 @@ def prelude_for(body):
     referenced, where `<mod>` is the wrapper module that scopes the
     crate-local `Result` alias.
 
+    Skip emitting a `use` line for a crate when the snippet already
+    has a `use stygian_<crate>::...;` (or `use crate::...;` re-export)
+    inside its body, to avoid the `unused_imports` lint.
+
     Test snippets can also use `pub use stygian_book_tests::*;` to get
     every crate accessible at root, but that brings in the local
     `Result` aliases. The wrapper-module form keeps `Result` scoped to
@@ -81,8 +85,21 @@ def prelude_for(body):
         'stygian_mcp': 'mcp',
         'stygian_plugin': 'plugin',
     }
+    # Skip a crate if the snippet already has an explicit `use` of it
+    # at the top level. The `use ...::{...}` form counts too. We don't
+    # try to be clever about nested scopes.
+    def snippet_uses(crate_name):
+        # Match either `use stygian_graph::...;` or `use crate::...::*;
+        # re-exports the same crate.
+        return bool(re.search(
+            rf'\buse\b\s+(?:crate::|stygian_book_tests::)?\s*'
+            rf'{re.escape(crate_name)}\b',
+            body,
+        ))
     lines = []
     for c in sorted(used):
+        if snippet_uses(c):
+            continue
         mod_name = mod_names.get(c)
         if mod_name:
             lines.append(f'pub use stygian_book_tests::{mod_name}::*;')

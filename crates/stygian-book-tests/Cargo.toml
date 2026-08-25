@@ -14,8 +14,10 @@ path = "src/lib.rs"
 
 [dependencies]
 # Workspace crates are normal deps so the lib can re-export them for
-# the test snippets.
-stygian-graph.workspace = true
+# the test snippets. Enable the same feature flags mdbook docs reference
+# (escalation, redis, object-storage, etc.) so snippets gated behind
+# those features resolve.
+stygian-graph = { workspace = true, features = ["full"] }
 stygian-browser.workspace = true
 stygian-proxy.workspace = true
 stygian-charon.workspace = true

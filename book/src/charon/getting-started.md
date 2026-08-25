@@ -99,18 +99,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Quick start: classify one transaction
 
-```rust,edition2024,ignore
+```rust,edition2024
 use stygian_charon::{TransactionView, classify_transaction};
 use std::collections::BTreeMap;
 
 fn main() {
     let transaction = TransactionView {
         url: "https://example.com".to_string(),
-        host: "example.com".to_string(),
         status: 403,
-        resource_type: Some("document".to_string()),
         response_headers: BTreeMap::new(),
-        response_body_excerpt: Some("captcha-delivery.com".to_string()),
+        response_body_snippet: Some("captcha-delivery.com".to_string()),
     };
 
     let detection = classify_transaction(&transaction);
