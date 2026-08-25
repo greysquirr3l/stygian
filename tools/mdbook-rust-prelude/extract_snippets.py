@@ -57,16 +57,35 @@ def extract():
 
 
 def prelude_for(body):
-    """Add `pub use stygian_*::*;` for any workspace crate referenced."""
+    """Add `pub use <this_crate>::<mod>::*;` for any workspace crate
+    referenced, where `<mod>` is the wrapper module that scopes the
+    crate-local `Result` alias.
+
+    Test snippets can also use `pub use stygian_book_tests::*;` to get
+    every crate accessible at root, but that brings in the local
+    `Result` aliases. The wrapper-module form keeps `Result` scoped to
+    the module, so `Result<(), Box<dyn std::error::Error>>` resolves
+    to `std::result::Result` (the 2-generic std type).
+    """
     used = set()
     for c in WORKSPACE_CRATES:
         if re.search(rf'\b{c}::', body):
             used.add(c)
     if re.search(r'\banyhow::', body):
         used.add('anyhow')
+    mod_names = {
+        'stygian_graph': 'graph',
+        'stygian_browser': 'browser',
+        'stygian_proxy': 'proxy',
+        'stygian_charon': 'charon',
+        'stygian_mcp': 'mcp',
+        'stygian_plugin': 'plugin',
+    }
     lines = []
     for c in sorted(used):
-        lines.append(f'pub use {c}::*;')
+        mod_name = mod_names.get(c)
+        if mod_name:
+            lines.append(f'pub use stygian_book_tests::{mod_name}::*;')
     return lines
 
 

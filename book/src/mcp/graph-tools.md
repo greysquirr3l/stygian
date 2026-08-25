@@ -25,7 +25,8 @@ use stygian_graph::mcp::McpGraphServer;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    McpGraphServer::new().run().await
+    let _server = McpGraphServer::new();
+    McpGraphServer::run().await
 }
 ```
 
