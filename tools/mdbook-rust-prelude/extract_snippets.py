@@ -37,20 +37,30 @@ def extract():
                 if not in_block and line.startswith('```'):
                     lang = line[3:].strip()
                     if lang.startswith('rust'):
+                        # Skip blocks the doc author marked `no_run` —
+                        # these are intentionally not executable in
+                        # isolation (typically example APIs that need
+                        # infrastructure not present in the test crate).
+                        # `rust,ignore` is just an mdbook renderer
+                        # directive (don't render/test in the book) and
+                        # we still try to compile those.
+                        block_skipped = 'no_run' in lang
                         block_lang = lang
                         block_lines = [line]
                         block_start = i
                         in_block = True
                 elif in_block and line.startswith('```'):
-                    snippets.append({
-                        'path': rel,
-                        'start': block_start,
-                        'lang': block_lang,
-                        'lines': block_lines,
-                    })
+                    if not block_skipped:
+                        snippets.append({
+                            'path': rel,
+                            'start': block_start,
+                            'lang': block_lang,
+                            'lines': block_lines,
+                        })
                     block_lang = ''
                     block_lines = []
                     in_block = False
+                    block_skipped = False
                 elif in_block:
                     block_lines.append(line)
     return snippets
@@ -106,19 +116,67 @@ def prelude_for(body):
     return lines
 
 
+def _strip_comments(body):
+    """Strip // line comments and /* ... */ block comments from a
+    snippet body. Doc snippets often show intended code as a
+    commented-out hint, and we don't want those hints to flip the
+    detection of async/try-operator/etc.
+
+    Caveat: `//` inside a string literal or URL (e.g. `https://`)
+    is NOT a comment. We only strip `//` when it is preceded by
+    whitespace OR start-of-line, AND not preceded by `:`.
+    """
+    # Remove block comments first (they can span lines).
+    no_block = re.sub(r'/\*.*?\*/', '', body, flags=re.DOTALL)
+    # Line comments: `//` not inside a string, not preceded by `:` (URL).
+    # Naive but effective for mdbook snippets: strip from ` // ` or
+    # leading `//` only (requires a whitespace or line-start before).
+    # We approximate by stripping ` // ...` through end-of-line.
+    lines = no_block.split('\n')
+    cleaned = []
+    for line in lines:
+        # Find ` // ` (space-slash-slash-space) or leading `//`.
+        idx = -1
+        i = 0
+        while i < len(line) - 1:
+            if line[i] == '/' and line[i + 1] == '/' and (
+                i == 0 or line[i - 1] in ' \t'
+            ):
+                idx = i
+                break
+            # Skip string literals.
+            if line[i] in ('"', "'"):
+                quote = line[i]
+                i += 1
+                while i < len(line) and line[i] != quote:
+                    if line[i] == '\\':
+                        i += 1
+                    i += 1
+            i += 1
+        if idx >= 0:
+            cleaned.append(line[:idx].rstrip())
+        else:
+            cleaned.append(line)
+    return '\n'.join(cleaned)
+
+
 def needs_async(body):
     """Detect whether the snippet is async-context. Looks for:
     - `.await` / `.await?` / `await?` chained
     - `async fn` / `async move`
     - any identifier that names an async function the doc is calling
       (best-effort: look for call sites that look like async methods).
+
+    Comments (// and /* */) are stripped first so commented-out
+    `// let x = foo().await?;` hint lines don't trigger detection.
     """
-    if '.await' in body:
+    stripped = _strip_comments(body)
+    if '.await' in stripped:
         return True
-    if 'async fn' in body or 'async move' in body or 'async {' in body:
+    if 'async fn' in stripped or 'async move' in stripped or 'async {' in stripped:
         return True
     # Detect chained `await?` (common in docs without leading dot)
-    if re.search(r'await\?', body):
+    if re.search(r'await\?', stripped):
         return True
     return False
 
@@ -127,14 +185,15 @@ def uses_try_operator(body):
     """Detect `?` at end-of-line OR `.await?` chained expressions in
     the snippet body. If the snippet doesn't define its own `fn` to
     anchor `?` to, the wrapper needs to return Result so `?` works."""
-    has_own_fn = bool(re.search(r'\bfn\s+\w', body))
+    stripped = _strip_comments(body)
+    has_own_fn = bool(re.search(r'\bfn\s+\w', stripped))
     if has_own_fn:
         return False
     # Trailing `?` on its own line (the common case in docs).
-    if re.search(r'\?\s*$', body, re.MULTILINE):
+    if re.search(r'\?\s*$', stripped, re.MULTILINE):
         return True
     # `.await?` chained form.
-    if re.search(r'\.await\s*\?', body):
+    if re.search(r'\.await\s*\?', stripped):
         return True
     return False
 
@@ -191,15 +250,19 @@ fn {test_name}() {{
 
     if async_ and try_:
         attr = '#[tokio::test]'
+        kw = 'async'
         ret = ' -> Result<(), Box<dyn std::error::Error>>'
     elif async_:
         attr = '#[tokio::test]'
+        kw = 'async'
         ret = ''
     elif try_:
         attr = '#[test]'
+        kw = ''
         ret = ' -> Result<(), Box<dyn std::error::Error>>'
     else:
         attr = '#[test]'
+        kw = ''
         ret = ''
 
     indented_body = '\n'.join(
@@ -210,7 +273,7 @@ fn {test_name}() {{
 {prelude}
 
 {attr}
-fn {test_name}(){ret} {{
+{kw} fn {test_name}(){ret} {{
 {indented_body}
 }}
 '''
