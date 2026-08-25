@@ -4424,6 +4424,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
+name = "stygian-book-tests"
+version = "0.17.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "futures",
+ "serde",
+ "serde_json",
+ "stygian-browser",
+ "stygian-charon",
+ "stygian-extract-derive",
+ "stygian-graph",
+ "stygian-mcp",
+ "stygian-plugin",
+ "stygian-proxy",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "stygian-browser"
 version = "0.17.0"
 dependencies = [
