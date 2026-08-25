@@ -1,0 +1,32 @@
+[package]
+name = "stygian-book-tests"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Compile-test crate for code blocks in the mdbook. The book is documentation; this crate pulls the same workspace dependencies so each fence can be type-checked against the real APIs."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Workspace crates are normal deps so the lib can re-export them for
+# the test snippets.
+stygian-graph.workspace = true
+stygian-browser.workspace = true
+stygian-proxy.workspace = true
+stygian-charon.workspace = true
+stygian-mcp.workspace = true
+stygian-plugin.workspace = true
+stygian-extract-derive.workspace = true
+tokio = { workspace = true, features = ["full"] }
+serde_json.workspace = true
+serde.workspace = true
+anyhow.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+uuid.workspace = true

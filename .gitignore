@@ -108,3 +108,7 @@ PROGRESS.md
 .claude/
 .github/copilot-instructions.md
 .github/hooks/rtk-rewrite.json
+
+# Auto-generated mdbook snippet tests. Regenerate via:
+#   python3 tools/mdbook-rust-prelude/extract_snippets.py
+crates/stygian-book-tests/tests/snip_*.rs
