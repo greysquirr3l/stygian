@@ -18,7 +18,7 @@ path = "src/lib.rs"
 # (escalation, redis, object-storage, etc.) so snippets gated behind
 # those features resolve.
 stygian-graph = { workspace = true, features = ["full"] }
-stygian-browser.workspace = true
+stygian-browser = { workspace = true, features = ["full"] }
 stygian-proxy.workspace = true
 stygian-charon.workspace = true
 stygian-mcp.workspace = true
