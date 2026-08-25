@@ -24,7 +24,10 @@ your own binary:
 use stygian_graph::mcp::McpGraphServer;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    // McpGraphServer has its own constructor and a free-standing `run`
+    // associated function. Constructing the server is optional (it
+    // sets up internal state); `run` reads stdin/stdout regardless.
     let _server = McpGraphServer::new();
     McpGraphServer::run().await
 }
