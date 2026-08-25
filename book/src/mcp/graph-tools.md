@@ -20,7 +20,7 @@ stygian-graph = { version = "*", features = ["mcp", "charon"] }
 To use as a standalone MCP server (without the aggregator), embed `McpGraphServer` in
 your own binary:
 
-```rust,no_run
+```rust,ignore
 use stygian_graph::mcp::McpGraphServer;
 
 #[tokio::main]

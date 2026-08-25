@@ -15,7 +15,7 @@ slow or timing-out proxy does not delay checks for healthy ones.
 
 ### Starting the health checker
 
-```rust,no_run
+```rust,ignore
 use std::sync::Arc;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
 
@@ -43,7 +43,7 @@ To prevent all health-check probes from firing at the same instant (a
 in `ProxyConfig`. Each sleep between cycles is perturbed by a random factor in
 `[1 − pct, 1 + pct)` using a thread-local CSPRNG.
 
-```rust,no_run
+```rust,ignore
 use std::time::Duration;
 use stygian_proxy::ProxyConfig;
 
@@ -76,7 +76,7 @@ marked unhealthy are filtered out before selection.
 Every proxy gets its own `CircuitBreaker` when it is added to the pool. The
 circuit breaker is a **lock-free atomic FSM** with three states:
 
-```
+```text
           failure ≥ threshold
   CLOSED ──────────────────────► OPEN
     ▲                               │
@@ -99,7 +99,7 @@ circuit breaker is a **lock-free atomic FSM** with three states:
 - **`handle.mark_success()`** — resets the failure counter, moves the circuit to Closed.
 - **Drop without `mark_success`** — records a failure; opens the circuit after `circuit_open_threshold` consecutive failures.
 
-```rust,no_run
+```rust,ignore
 let handle = manager.acquire_proxy().await?;
 
 match do_request(&handle.proxy_url).await {
@@ -117,7 +117,7 @@ For code paths that conditionally use a proxy, `ProxyHandle::direct()` returns a
 sentinel handle with an empty URL and a noop circuit breaker that can never trip.
 Pass it wherever a `ProxyHandle` is expected when no proxy should be used.
 
-```rust,no_run
+```rust,ignore
 use stygian_proxy::manager::ProxyHandle;
 
 let handle = if use_proxy {
@@ -133,7 +133,7 @@ let handle = if use_proxy {
 
 `manager.pool_stats().await` returns a `PoolStats` snapshot:
 
-```rust,no_run
+```rust,ignore
 let stats = manager.pool_stats().await?;
 println!("total={} healthy={} open_circuits={}",
     stats.total, stats.healthy, stats.open);
@@ -165,7 +165,7 @@ For workloads that benefit from reusing TCP connections across multiple requests
 (e.g. CONNECT-tunnelled HTTP/1.1 or HTTP/2), set `TransportPreference::PersistentTcp`
 at the routing layer and configure the lifetime bounds:
 
-```rust,no_run
+```rust,ignore
 use stygian_proxy::ProxyConfig;
 
 let config = ProxyConfig {

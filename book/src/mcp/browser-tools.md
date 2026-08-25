@@ -25,7 +25,7 @@ When using the [aggregator](./aggregator.md), tools keep their `browser_` prefix
 
 Browser sessions are identified by a `session_id` (ULID string). The lifecycle is:
 
-```
+```text
 browser_acquire → browser_navigate → browser_eval / browser_screenshot / browser_content → browser_release
 ```
 
@@ -34,7 +34,7 @@ against the pool's `max` limit.
 
 Runner-first alternative:
 
-```
+```rust,edition2024,ignore
 browser_acquire_and_extract
 ```
 
@@ -546,6 +546,54 @@ Run the opinionated acquisition ladder and return extraction/content output from
 
 `browserbase_enabled`/`use_browserbase` require runtime environment variables
 `BROWSERBASE_API_KEY` and `BROWSERBASE_PROJECT_ID`.
+
+#### Browserbase session warmup and rate-limit resilience (T114)
+
+Starting with 0.17, the Browserbase-managed acquisition stage
+implements two resilience behaviors on by default:
+
+1. **Session warmup** — a settled navigation before the real one.
+   Browserbase spins up the session, lands on a known landing page,
+   then performs the real navigation. The warmup lets the session's
+   fingerprint cookies, TLS session resumption state, and Browserbase
+   internal monitoring surface attach before the target sees any
+   request, so the first real navigation carries a fully-warm
+   fingerprint rather than a cold one.
+2. **Rate-limit retry with exponential backoff** (default 3 attempts,
+   500 ms base) — on a `429` response from Browserbase's session
+   creation endpoint, the stage retries with exponential backoff. If
+   the response includes a `Retry-After` header, its value is honored
+   in place of the computed backoff. New error variants
+   `BrowserError::RateLimited` and `StageFailureKind::RateLimited`
+   distinguish exhausted rate-limit retries from generic transport
+   failures, so the runner can decide whether to back off the whole
+   pipeline or just retry the Browserbase stage.
+
+Both behaviors are configurable via
+`AcquisitionRequest::browserbase_session: Option<BrowserbaseSessionConfig>`:
+
+```rust,edition2024,ignore
+BrowserbaseSessionConfig {
+    /// Disable session warmup (default: warmup enabled).
+    warmup_enabled: false,
+    /// Override the retry policy (default: 3 attempts, 500 ms base,
+    /// exponential backoff capped at 30 s).
+    retry: BrowserbaseRetryPolicy::new(/* max_attempts */ 5, /* base */ 250),
+    /// Reuse an existing session instead of minting a new one per call.
+    /// Equivalent to setting the BROWSERBASE_SESSION_ID environment
+    /// variable but scoped to a single acquire request. A reused
+    /// session is never deleted by the stage — the caller owns its
+    /// lifecycle.
+    session_id: Some("sess_existing_123"),
+}
+```
+
+Setting `BROWSERBASE_SESSION_ID` in the environment has the same
+effect as `BrowserbaseSessionConfig::session_id = Some(...)`: it
+reuses the named session instead of creating a new one. Use the
+explicit config form when you want the session reuse scoped to a
+single `browser_acquire_and_extract` call rather than the whole
+process.
 
 **Returns:**
 

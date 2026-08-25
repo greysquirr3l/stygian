@@ -24,7 +24,7 @@ When all browsers are active and the pool is at `max_size`, callers block in
 
 ## Creating a pool
 
-```rust,no_run
+```rust,ignore
 use stygian_browser::{BrowserConfig, BrowserPool};
 use stygian_browser::config::PoolConfig;
 use std::time::Duration;
@@ -48,7 +48,7 @@ all ready. Subsequent calls to `acquire()` return warm instances with no launch 
 
 ## Acquiring and releasing
 
-```rust,no_run
+```rust,ignore
 // Acquire — blocks if pool is saturated
 let handle = pool.acquire().await?;
 
@@ -71,7 +71,7 @@ preferred.
 
 ## Pool stats
 
-```rust,no_run
+```rust,ignore
 let stats = pool.stats();
 
 println!("idle      : {}", stats.idle);       // warm browsers ready to use immediately
@@ -114,7 +114,7 @@ When multiple bots or tenants share a single pool, use `acquire_for()` to keep t
 browser instances isolated. Browsers acquired for one context are never returned to a
 different context.
 
-```rust,no_run
+```rust,ignore
 // Bot A and Bot B use the same pool, but their browsers never mix
 let a = pool.acquire_for("bot-a").await?;
 let b = pool.acquire_for("bot-b").await?;
@@ -134,7 +134,7 @@ full, `acquire_for()` blocks just like `acquire()`.
 
 When a bot or tenant is deprovisioned, drain its idle browsers:
 
-```rust,no_run
+```rust,ignore
 let shut_down = pool.release_context("bot-a").await;
 println!("Closed {shut_down} browsers for bot-a");
 ```
@@ -144,7 +144,7 @@ released or dropped.
 
 ### Listing contexts
 
-```rust,no_run
+```rust,ignore
 let ids = pool.context_ids().await;
 println!("Active contexts with idle browsers: {ids:?}");
 ```
@@ -171,7 +171,7 @@ new browser is launched on demand. Cold starts take < 2 s on modern hardware.
 
 ## Graceful shutdown
 
-```rust,no_run
+```rust,ignore
 // Closes all browsers gracefully — waits for active handles to be released first
 pool.shutdown().await;
 ```

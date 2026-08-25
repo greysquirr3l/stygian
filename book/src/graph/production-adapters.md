@@ -261,7 +261,7 @@ graph LR
 
 ### Key structure
 
-```
+```text
 {prefix}/{pipeline_id}/{node_name}/{record_id}.json   ← data objects
 {prefix}/_index/{id}                                    ← index for O(1) lookups
 ```
@@ -371,7 +371,7 @@ graph LR
 When `secret` is configured, the adapter requires an `X-Hub-Signature-256`
 header (GitHub-compatible format):
 
-```
+```rust,edition2024,ignore
 X-Hub-Signature-256: sha256=<hex-encoded-hmac>
 ```
 

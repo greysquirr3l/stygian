@@ -21,13 +21,13 @@ your crate; there is no dedicated binary target for the proxy server alone.
 
 Proxy handles are tracked across tool calls by a `handle_token` (a ULID string):
 
-```
+```text
 proxy_add → proxy_acquire / proxy_acquire_for_domain → [use proxy] → proxy_release
 ```
 
 Capability-aware acquisition adds one more path:
 
-```
+```text
 proxy_add → proxy_acquire_with_capabilities → [use proxy] → proxy_release
 ```
 
@@ -248,7 +248,7 @@ The proxy MCP exposes pool statistics as an MCP resource:
 
 Each proxy has an independent lock-free circuit breaker with three states:
 
-```
+```text
 Closed (healthy)
   │  failure threshold exceeded
   ▼

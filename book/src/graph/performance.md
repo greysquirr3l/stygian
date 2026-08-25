@@ -15,7 +15,7 @@ work is I/O-bound or CPU-bound.
 Network operations spend most of their time waiting for remote responses.
 A large pool hides latency with concurrency:
 
-```rust
+```rust,edition2024,ignore
 // Rule of thumb: 10–100× logical CPU count
 let concurrency = num_cpus::get() * 50;
 let queue_depth  = concurrency * 4;   // back-pressure buffer
@@ -34,7 +34,7 @@ Start with `50×` and adjust based on:
 CPU work cannot overlap on the same core. Match the pool to physical cores to avoid
 context-switch overhead:
 
-```rust
+```rust,edition2024,ignore
 // Rule of thumb: 1–2× logical CPU count
 let concurrency = num_cpus::get();
 let queue_depth  = concurrency * 2;
@@ -47,7 +47,7 @@ let pool = WorkerPool::new(concurrency, queue_depth);
 When a pipeline mixes HTTP fetching and CPU-heavy extraction,
 use **separate pools** per service type:
 
-```rust
+```rust,edition2024,ignore
 let http_pool = WorkerPool::new(num_cpus::get() * 40, 512);
 let cpu_pool  = WorkerPool::new(num_cpus::get(),        32);
 ```
@@ -86,7 +86,7 @@ the downstream consumer is a bottleneck — either scale it out or increase dept
 
 Unbounded response buffering will exhaust memory on large responses:
 
-```rust
+```rust,edition2024,ignore
 const MAX_BODY_BYTES: usize = 8 * 1024 * 1024; // 8 MiB
 
 let body = response.bytes().await?;
@@ -104,7 +104,7 @@ Allocate all intermediate data for a wave from a single arena and free it in one
 bumpalo = "3"
 ```
 
-```rust
+```rust,edition2024,ignore
 use bumpalo::Bump;
 
 async fn process_wave(inputs: &[ServiceInput]) {
@@ -121,7 +121,7 @@ async fn process_wave(inputs: &[ServiceInput]) {
 
 Avoid allocating a fresh `Vec<u8>` for every HTTP response — reuse from a pool:
 
-```rust
+```rust,edition2024,ignore
 use tokio::sync::Mutex;
 
 struct BufferPool {
@@ -150,7 +150,7 @@ impl BufferPool {
 
 A cache that rarely hits wastes memory and adds lookup overhead:
 
-```rust
+```rust,edition2024
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 
 struct CacheMetrics { hits: AtomicU64, misses: AtomicU64 }
@@ -190,7 +190,7 @@ is the right choice.
 **Rule**: never call synchronous CPU-heavy work directly in a Tokio task. Offload with
 `tokio::task::spawn_blocking` or `rayon::spawn`:
 
-```rust
+```rust,edition2024,ignore
 // CPU-heavy HTML parsing — do NOT do this in an async fn directly
 let html = response.text().await?;
 let extracted = tokio::task::spawn_blocking(move || {

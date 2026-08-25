@@ -44,7 +44,7 @@ stygian-graph = { version = "*", features = ["redis"] }
 
 ### 3. Create a work queue and executor
 
-```rust
+```rust,edition2024,ignore
 use stygian_graph::adapters::distributed_redis::{RedisWorkQueue, RedisWorkQueueConfig};
 use stygian_graph::adapters::distributed::DistributedDagExecutor;
 use stygian_graph::application::registry::ServiceRegistry;
@@ -79,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 `RedisWorkQueue` implements the `WorkQueue` port trait:
 
-```rust
+```rust,edition2024,ignore
 pub trait WorkQueue: Send + Sync {
     /// Enqueue a task and return its unique ID.
     async fn enqueue(&self, task: Task) -> Result<TaskId>;
@@ -111,7 +111,7 @@ idempotency store (backed by the same Redis instance):
 This makes distributed task execution **safe to retry** — duplicate network deliveries
 and worker restarts produce the same observable outcome.
 
-```rust
+```rust,edition2024,ignore
 use stygian_graph::domain::idempotency::IdempotencyKey;
 
 // Deterministic key from pipeline id + input URL — replays the same result

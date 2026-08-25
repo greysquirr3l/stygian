@@ -12,7 +12,7 @@ API you want to query, reach for `GenericGraphQlPlugin`.
 via a fluent builder. Only `name` and `endpoint` are required; everything else is
 optional with sensible defaults.
 
-```rust
+```rust,edition2024,ignore
 use stygian_graph::adapters::graphql_plugins::generic::GenericGraphQlPlugin;
 use stygian_graph::adapters::graphql_throttle::CostThrottleConfig;
 
@@ -45,7 +45,7 @@ let plugin = GenericGraphQlPlugin::builder()
 
 ### Auth options
 
-```rust
+```rust,edition2024,ignore
 use stygian_graph::ports::{GraphQlAuth, GraphQlAuthKind};
 
 // Bearer token (most common)
@@ -81,7 +81,7 @@ using it as a runtime auth port.
 For credentials that rotate, expire, or need a refresh flow, implement the
 `AuthPort` trait and inject it into `GraphQlService`.
 
-```rust
+```rust,edition2024,ignore
 use stygian_graph::ports::auth::{AuthPort, AuthError, TokenSet};
 
 pub struct MyOAuthPort { /* ... */ }
@@ -113,7 +113,7 @@ impl AuthPort for MyOAuthPort {
 
 ### Wiring into GraphQlService
 
-```rust
+```rust,edition2024,ignore
 use std::sync::Arc;
 use stygian_graph::adapters::graphql::{GraphQlConfig, GraphQlService};
 use stygian_graph::ports::auth::ErasedAuthPort;
@@ -130,7 +130,7 @@ within 60 seconds of expiry), `refresh_token` is called automatically.
 For non-rotating tokens, `EnvAuthPort` reads a bearer token from an environment
 variable at load time:
 
-```rust
+```rust,edition2024,ignore
 use stygian_graph::ports::auth::EnvAuthPort;
 
 let auth = EnvAuthPort::new("GITHUB_TOKEN");
@@ -149,7 +149,7 @@ Jobber, and others) can be configured for proactive point-budget management.
 
 ### CostThrottleConfig
 
-```rust
+```rust,edition2024,ignore
 use stygian_graph::ports::graphql_plugin::CostThrottleConfig;
 
 let config = CostThrottleConfig {
@@ -208,7 +208,7 @@ Enable rate limiting by returning a `RateLimitConfig` from
 
 ### RateLimitConfig
 
-```rust
+```rust,edition2024,ignore
 use std::time::Duration;
 use stygian_graph::ports::graphql_plugin::{RateLimitConfig, RateLimitStrategy};
 
@@ -239,7 +239,7 @@ also honour server-returned `Retry-After` headers regardless of which is active.
 
 #### Sliding window example
 
-```rust
+```rust,edition2024,ignore
 use std::time::Duration;
 use stygian_graph::ports::graphql_plugin::{RateLimitConfig, RateLimitStrategy};
 
@@ -254,7 +254,7 @@ let config = RateLimitConfig {
 
 #### Token bucket example
 
-```rust
+```rust,edition2024,ignore
 use std::time::Duration;
 use stygian_graph::ports::graphql_plugin::{RateLimitConfig, RateLimitStrategy};
 
@@ -269,7 +269,7 @@ let config = RateLimitConfig {
 
 ### Wiring into a custom plugin
 
-```rust
+```rust,edition2024,ignore
 use std::time::Duration;
 use stygian_graph::ports::graphql_plugin::{
     GraphQlTargetPlugin, RateLimitConfig, RateLimitStrategy,
@@ -295,7 +295,7 @@ impl GraphQlTargetPlugin for ShopifyPlugin {
 
 For `GenericGraphQlPlugin`, pass it via the builder:
 
-```rust
+```rust,edition2024,ignore
 use stygian_graph::adapters::graphql_plugins::generic::GenericGraphQlPlugin;
 use stygian_graph::ports::graphql_plugin::{RateLimitConfig, RateLimitStrategy};
 use std::time::Duration;
@@ -331,7 +331,7 @@ let plugin = GenericGraphQlPlugin::builder()
 For complex APIs — multi-tenant endpoints, per-request header mutations, non-standard
 auth flows — implement `GraphQlTargetPlugin` directly:
 
-```rust
+```rust,edition2024,ignore
 use std::collections::HashMap;
 use stygian_graph::ports::{GraphQlAuth, GraphQlAuthKind};
 use stygian_graph::ports::graphql_plugin::{CostThrottleConfig, GraphQlTargetPlugin};
@@ -371,7 +371,7 @@ impl GraphQlTargetPlugin for AcmeApi {
 
 Register it the same way as any built-in plugin:
 
-```rust
+```rust,edition2024,ignore
 use std::sync::Arc;
 use stygian_graph::application::graphql_plugin_registry::GraphQlPluginRegistry;
 

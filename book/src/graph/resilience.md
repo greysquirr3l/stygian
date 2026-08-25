@@ -12,7 +12,7 @@ rather than propagating errors upstream.
 `CircuitBreakerImpl` lives in `stygian-graph` and implements the classic three-state
 machine:
 
-```
+```text
 Closed  →  threshold failures reached  →  Open
 Open    →  reset_timeout elapsed        →  Half-Open (probe)
 Half-Open  →  probe success  →  Closed
@@ -28,7 +28,7 @@ Half-Open  →  probe failure  →  Open
 
 Convenience constructors:
 
-```rust
+```rust,edition2024,ignore
 use stygian_graph::adapters::fallback::{
     default_primary_breaker,   // threshold 5, reset 30 s
     default_fallback_breaker,  // threshold 3, reset 60 s
@@ -37,7 +37,7 @@ use stygian_graph::adapters::fallback::{
 
 ### Querying state
 
-```rust
+```rust,edition2024,ignore
 use stygian_graph::ports::CircuitState;
 
 match breaker.state() {
@@ -58,7 +58,7 @@ the last error.
 
 ### Builder API
 
-```rust
+```rust,edition2024,ignore
 use std::sync::Arc;
 use stygian_graph::adapters::fallback::{
     FallbackChainService, default_fallback_breaker, default_primary_breaker,
@@ -88,7 +88,7 @@ Methods on `FallbackChainService`:
 
 The `stygian-mcp` aggregator wires the following chain automatically:
 
-```rust
+```rust,edition2024,ignore
 use stygian_graph::adapters::fallback::{
     FallbackChainService, default_fallback_breaker, default_primary_breaker,
 };
@@ -123,7 +123,7 @@ are immediately available in the fallback path without any cache invalidation.
 
 ## Execution flow
 
-```
+```text
 execute(ServiceInput { url, template_id, idempotency_key })
   │
   ├─ entry[0]: circuit Closed

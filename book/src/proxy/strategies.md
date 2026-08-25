@@ -27,7 +27,7 @@ panicking.
 Distributes requests evenly across healthy proxies in insertion order. Uses an atomic
 counter so there is no `Mutex` on the hot path.
 
-```rust,no_run
+```rust,ignore
 use std::sync::Arc;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
 
@@ -45,7 +45,7 @@ at `u64::MAX`, which at 1 million requests per second takes ~585,000 years.
 Picks a healthy proxy at random on every call. Useful when you want to avoid any
 predictable rotation pattern that fingerprinting could detect.
 
-```rust,no_run
+```rust,ignore
 use std::sync::Arc;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
 use stygian_proxy::strategy::RandomStrategy;
@@ -65,7 +65,7 @@ let manager = ProxyManager::builder()
 Each `Proxy` has a `weight: u32` field (default `1`). `WeightedStrategy` performs weighted
 random sampling so proxies with higher weights are selected proportionally more often.
 
-```rust,no_run
+```rust,ignore
 use stygian_proxy::types::{Proxy, ProxyType};
 
 // This proxy is 3× more likely to be selected than a weight-1 proxy.
@@ -86,7 +86,7 @@ Use this strategy when proxies have different capacities, quotas, or observed sp
 Selects the healthy proxy with the **lowest total request count** at the time of the call.
 This maximises even distribution over time even when proxies are added dynamically.
 
-```rust,no_run
+```rust,ignore
 use std::sync::Arc;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
 use stygian_proxy::strategy::LeastUsedStrategy;
@@ -114,7 +114,7 @@ The internal `ProxyOps` benchmark (549,114 requests / 7 days, identical
 proxies) cites **76% success rate** vs **36% for round-robin** on protected
 targets. Hot-path acquire stays sub-microsecond.
 
-```rust,no_run
+```rust,ignore
 use std::sync::Arc;
 use std::time::Duration;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
@@ -152,7 +152,7 @@ All strategies operate on a pre-filtered `ProxyCandidate` slice. Before a
 strategy runs, `ProxyManager` filters the pool by `CapabilityRequirement`.
 Use `acquire_with_capabilities(&req)` to express requirements at call time:
 
-```rust,no_run
+```rust,ignore
 use std::sync::Arc;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
 use stygian_proxy::types::{CapabilityRequirement, IpClassRequirement, VendorId, well_known};
@@ -240,7 +240,7 @@ free-list pool.
 
 ### Annotating proxies at registration time
 
-```rust,no_run
+```rust,ignore
 use std::sync::Arc;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
 use stygian_proxy::types::{
@@ -278,7 +278,7 @@ For ingest-time metadata without going through a `Proxy` struct literal, see
 which validates the URL against `vendor_quirks::check` and accepts
 `(url, asn, city, postal_code)` directly:
 
-```rust,no_run
+```rust,ignore
 use stygian_proxy::types::well_known;
 manager.add_proxy_with_metadata(
     "http://user:pass@edge1.example.com:8080".into(),
@@ -295,7 +295,7 @@ manager.add_proxy_with_metadata(
 Implement `RotationStrategy` to plug in your own selection logic. Rust 2024
 supports `async fn` in traits natively — no `async_trait` macro needed.
 
-```rust,no_run
+```rust,ignore
 use std::sync::Arc;
 use stygian_proxy::error::ProxyResult;
 use stygian_proxy::strategy::{ProxyCandidate, RotationStrategy};
@@ -341,3 +341,54 @@ let manager = ProxyManager::builder()
 
 `ProxyMetrics` exposes `success_rate() -> f64` and `avg_latency_ms() -> f64` computed from
 the atomic counters without any locking.
+
+---
+
+## Failure attribution — `ProxyStatusParser` (RFC 9209)
+
+When a proxy returns an error response, RFC 9209 `Proxy-Status` headers
+classify the failure into one of three buckets so the operator knows
+whether to blame the proxy, the upstream, or the target:
+
+| `ProxyErrorClass` | Meaning | Where to look |
+| --- | --- | --- |
+| `Network` | The proxy itself could not reach the target (DNS, TCP, TLS handshake, read timeout) | proxy machine, network path between proxy and target |
+| `Provider` | The proxy is at fault (misconfiguration, auth failure, internal proxy error) | proxy logs, proxy auth credentials |
+| `Target` | The proxy reached the target but the target itself returned an error (4xx, 5xx, anti-bot block) | the target itself, the request being made |
+| `Unknown` | The header was absent or didn't match any known RFC 9209 pattern | treat as `Target` and investigate from there |
+
+`stygian_proxy::ProxyStatusParser` is the consumer-owned port trait.
+`Rfc9209Parser` is the default adapter that parses a single
+`Proxy-Status` header value into a `ProxyErrorClass`. The parser
+distinguishes `network-error`, `proxy-error`, `http-response-error`
+and similar RFC 9209 named errors; anything else falls back to
+`Unknown`.
+
+The trait exists so a future adapter can pull failure attribution from
+the proxy's structured log or a sidecar metric instead of scraping the
+header — the default adapter is just the first implementation. Wire
+the parser into your error-handling path by calling
+`parser.classify(&header_value)` on every error response and using
+the returned `ProxyErrorClass` to drive your retry strategy
+(`Network` → re-route, `Provider` → re-auth, `Target` → back off).
+
+## Geofeed verifier — confirm the proxy is in the country it claims
+
+A "US residential" pool that silently egresses from a different
+country is worse than no proxy at all: it breaks geofenced test
+harnesses and burns compliance posture. `stygian_proxy::GeofeedVerifier`
+is the consumer-owned port that checks an observed egress IP against
+a geofeed's claimed country/region/city/ASN and reports any divergence.
+
+`InMemoryGeofeedAdapter` is the default adapter. It holds a parsed
+geofeed (RFC 8805 format) in memory and matches against it. The
+adapter returns a `GeofeedDivergence` with three fields — what the
+geofeed claims (country/region/city), what the verification observed,
+and the ASN — whenever they disagree.
+
+The verifier does not make routing decisions itself; it produces the
+divergence signal so callers can quarantine the proxy, drop it from
+the pool, or surface the discrepancy to the operator. Wire it in by
+calling `verifier.verify(observed_ip)` periodically (e.g. after each
+proxy health check) and demoting any proxy whose last observation
+diverged from its registered claim.

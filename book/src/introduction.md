@@ -3,13 +3,13 @@
 **stygian** is a high-performance web scraping toolkit for Rust, delivered as five complementary
 crates in a single workspace.
 
-| Crate | Purpose |
-| --- | --- |
-| [`stygian-graph`](./graph/architecture.md) | Graph-based scraping engine — DAG pipelines, AI extraction, distributed execution |
-| [`stygian-browser`](./browser/overview.md) | Anti-detection browser automation — stealth profiles, browser pooling, CDP automation |
-| [`stygian-proxy`](./proxy/overview.md) | Proxy pool management — rotation strategies, circuit breakers, sticky sessions |
-| [`stygian-charon`](./charon/overview.md) | Diagnostics and policy planning — HAR forensics, SLO assessment, runtime acquisition guidance |
-| [`stygian-mcp`](./mcp/overview.md) | Unified [Model Context Protocol](./mcp/overview.md) server — LLM agent integration |
+| Crate                                      | Purpose                                                                                       |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| [`stygian-graph`](./graph/architecture.md) | Graph-based scraping engine — DAG pipelines, AI extraction, distributed execution             |
+| [`stygian-browser`](./browser/overview.md) | Anti-detection browser automation — stealth profiles, browser pooling, CDP automation         |
+| [`stygian-proxy`](./proxy/overview.md)     | Proxy pool management — rotation strategies, circuit breakers, sticky sessions                |
+| [`stygian-charon`](./charon/overview.md)   | Diagnostics and policy planning — HAR forensics, SLO assessment, runtime acquisition guidance |
+| [`stygian-mcp`](./mcp/overview.md)         | Unified [Model Context Protocol](./mcp/overview.md) server — LLM agent integration            |
 
 All crates share a common philosophy: **zero-cost abstractions, extreme composability, and
 secure defaults**.
@@ -59,24 +59,24 @@ stygian-graph = { version = "*", features = ["browser", "redis", "mcp"] }
 
 Available features:
 
-| Feature | Includes |
-| --- | --- |
-| `browser` | `BrowserAdapter` backed by `stygian-browser` (default) |
-| `redis` | Redis/Valkey cache and distributed work queue adapters |
-| `object-storage` | S3-compatible object storage adapter |
-| `api` | REST API server binary |
-| `postgres` | PostgreSQL storage adapter |
-| `cloudflare-crawl` | Cloudflare Browser Rendering crawl adapter |
-| `escalation` | Default tiered escalation policy adapter |
-| `wasm-plugins` | WASM plugin system via wasmtime |
-| `mcp` | MCP server — exposes scraping & pipeline tools over JSON-RPC 2.0 |
-| `full` | All of the above |
+| Feature            | Includes                                                         |
+| ------------------ | ---------------------------------------------------------------- |
+| `browser`          | `BrowserAdapter` backed by `stygian-browser` (default)           |
+| `redis`            | Redis/Valkey cache and distributed work queue adapters           |
+| `object-storage`   | S3-compatible object storage adapter                             |
+| `api`              | REST API server binary                                           |
+| `postgres`         | PostgreSQL storage adapter                                       |
+| `cloudflare-crawl` | Cloudflare Browser Rendering crawl adapter                       |
+| `escalation`       | Default tiered escalation policy adapter                         |
+| `wasm-plugins`     | WASM plugin system via wasmtime                                  |
+| `mcp`              | MCP server — exposes scraping & pipeline tools over JSON-RPC 2.0 |
+| `full`             | All of the above                                                 |
 
 ---
 
 ## Quick start — scraping pipeline
 
-```rust
+```rust,edition2024,ignore
 use stygian_graph::domain::graph::{Pipeline, Node};
 use serde_json::json;
 
@@ -97,7 +97,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Quick start — browser automation
 
-```rust
+```rust,edition2024,ignore
 use stygian_browser::{BrowserConfig, BrowserPool, WaitUntil};
 use std::time::Duration;
 
@@ -123,7 +123,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Repository layout
 
-```
+```text
 stygian/
 ├── crates/
 │   ├── stygian-graph/     # Scraping engine
@@ -144,12 +144,12 @@ Source, issues, and pull requests live at
 
 ## Documentation
 
-| Resource | URL |
-| --- | --- |
-| This guide | [greysquirr3l.github.io/stygian](https://greysquirr3l.github.io/stygian/) |
-| API reference (`stygian-graph`) | [greysquirr3l.github.io/stygian/api/stygian_graph](https://greysquirr3l.github.io/stygian/api/stygian_graph/index.html) |
+| Resource                          | URL                                                                                                                         |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| This guide                        | [greysquirr3l.github.io/stygian](https://greysquirr3l.github.io/stygian/)                                                   |
+| API reference (`stygian-graph`)   | [greysquirr3l.github.io/stygian/api/stygian_graph](https://greysquirr3l.github.io/stygian/api/stygian_graph/index.html)     |
 | API reference (`stygian-browser`) | [greysquirr3l.github.io/stygian/api/stygian_browser](https://greysquirr3l.github.io/stygian/api/stygian_browser/index.html) |
-| API reference (`stygian-charon`) | [greysquirr3l.github.io/stygian/api/stygian_charon](https://greysquirr3l.github.io/stygian/api/stygian_charon/index.html) |
-| crates.io (`stygian-graph`) | [crates.io/crates/stygian-graph](https://crates.io/crates/stygian-graph) |
-| crates.io (`stygian-browser`) | [crates.io/crates/stygian-browser](https://crates.io/crates/stygian-browser) |
-| crates.io (`stygian-charon`) | [crates.io/crates/stygian-charon](https://crates.io/crates/stygian-charon) |
+| API reference (`stygian-charon`)  | [greysquirr3l.github.io/stygian/api/stygian_charon](https://greysquirr3l.github.io/stygian/api/stygian_charon/index.html)   |
+| crates.io (`stygian-graph`)       | [crates.io/crates/stygian-graph](https://crates.io/crates/stygian-graph)                                                    |
+| crates.io (`stygian-browser`)     | [crates.io/crates/stygian-browser](https://crates.io/crates/stygian-browser)                                                |
+| crates.io (`stygian-charon`)      | [crates.io/crates/stygian-charon](https://crates.io/crates/stygian-charon)                                                  |

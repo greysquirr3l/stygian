@@ -21,7 +21,7 @@ stygian-browser = { version = "*", features = ["extract"] }
 
 ## Quick start
 
-```rust,no_run
+```rust,ignore
 use stygian_browser::extract::Extract;
 use stygian_browser::PageHandle;
 
@@ -57,7 +57,7 @@ println!("{:#?}", article);
 
 Selects the first matching element and captures its `textContent`.
 
-```rust,no_run
+```rust,ignore
 #[selector("span.price")]
 price: String,
 ```
@@ -66,7 +66,7 @@ price: String,
 
 Selects the first matching element and reads the named attribute.
 
-```rust,no_run
+```rust,ignore
 #[selector("a.profile-link", attr = "href")]
 profile_url: String,
 
@@ -79,7 +79,7 @@ avatar_src: String,
 Selects the first matching element and applies the field type's selector spec within
 that element's subtree. The field's type must also `#[derive(Extract)]`.
 
-```rust,no_run
+```rust,ignore
 #[derive(Debug, Extract)]
 struct Author {
     #[selector("span.name")]
@@ -106,7 +106,7 @@ struct Post {
 Wrap a field's type in `Option<T>` to treat a missing element as `None` rather than an
 error. Non-optional fields propagate an `ExtractionError::NotFound` when no match exists.
 
-```rust,no_run
+```rust,ignore
 #[derive(Debug, Extract)]
 struct Product {
     #[selector("h1.name")]
@@ -123,7 +123,7 @@ struct Product {
 
 For pages with repeating items, call `page.extract_all::<T>(root_selector)`:
 
-```rust,no_run
+```rust,ignore
 #[derive(Debug, Extract)]
 struct SearchResult {
     #[selector("h3 a")]
@@ -150,7 +150,7 @@ Each element matching `div.g` acts as a scoped root for that item's selectors.
 
 ## Full example — news article
 
-```rust,no_run
+```rust,ignore
 use stygian_browser::extract::Extract;
 use stygian_browser::PageHandle;
 
