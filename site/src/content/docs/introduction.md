@@ -35,7 +35,7 @@ secure defaults**.
 
 ### Minimum supported Rust version
 
-`1.99.1` — Rust 2024 edition. Requires stable toolchain only.
+`1.95.0` — Rust 2024 edition. Requires stable toolchain only.
 
 ---
 

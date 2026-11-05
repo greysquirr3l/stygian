@@ -35,16 +35,12 @@ The `+ Send` bound on the returned future is preserved from the previous
 `async fn` form, so downstream code that requires a `Send` future (for
 example `tokio::spawn`) continues to compile unchanged.
 
-### MSRV bumped from 1.95.0 to 1.99.1
+### MSRV unchanged at 1.95.0
 
-The workspace MSRV is now rustc **1.99.1**. The MSRV job in CI installs
-toolchain 1.99.1; local development against the workspace needs the
-same. No public API or behavioural change accompanies this bump — the
-workspace compiles and tests clean under 1.99.1 with `--all-features`.
-
-Consumers pinned to a toolchain older than 1.99.1 must upgrade before
-pulling this release. There is no opt-out: `rust-version` is declared
-once in `[workspace.package]` and inherited by every crate.
+The workspace MSRV stays at rustc **1.95.0**, confirmed with `cargo msrv find`
+(1.94.1 fails to build the `wasmtime` dependency). Linting in CI and local
+development uses a newer stable toolchain; that does not raise the floor
+for consumers.
 
 ---
 

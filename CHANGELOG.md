@@ -27,12 +27,8 @@ and CI action updates, and the documentation site migration.
 - Updated the GitHub Actions group (dependabot #145) and refreshed
   `Cargo.lock` to current compatible releases (supersedes #147 and #134).
 - Workspace version `0.17.0` → `0.17.1`.
-- Bumped workspace MSRV from 1.95.0 → 1.99.1 in `Cargo.toml`
-  (`workspace.package`), the MSRV CI job name + toolchain pin in
-  `.github/workflows/ci.yml`, and the toolchain references in
-  the introduction and testing doc pages, and
-  `crates/stygian-proxy/AGENTS.md`. No source changes were required
-  to make the workspace compile under 1.99.1.
+- MSRV stays at 1.95.0, verified with `cargo msrv find` (1.94.1 fails in
+  the `wasmtime` dependency).
 
 ### Fixed
 
@@ -40,7 +36,7 @@ and CI action updates, and the documentation site migration.
   `clippy::suboptimal_flops` in the plugin reliability scorer
   (`stygian-plugin`); `clippy::multiple_crate_versions` allowed on
   `stygian-book-tests`.
-- Rust 1.99.1 lint remediation (clippy `-D warnings` gate now clean across
+- Rust 1.99.1 clippy lint remediation (clippy `-D warnings` gate now clean across
   the workspace):
   - `clippy::unused_async_trait_impl` (4 sites) — replaced `async fn` trait
     impl bodies that contained no `.await` with `fn ... -> impl Future<Output
