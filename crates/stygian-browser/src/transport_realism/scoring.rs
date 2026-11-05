@@ -533,6 +533,7 @@ fn round4(v: f64) -> f64 {
 }
 
 #[cfg(test)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
     use crate::tls_validation::{CHROME_136_HTTP2_SETTINGS, CHROME_136_JA4};

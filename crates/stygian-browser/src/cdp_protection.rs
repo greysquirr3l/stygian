@@ -345,6 +345,7 @@ const ENABLE_DISABLE_NOTE: &str = r"
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
 

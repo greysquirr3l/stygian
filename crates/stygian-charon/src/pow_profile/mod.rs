@@ -67,8 +67,8 @@
 //!
 //! The persistence layer reuses the same
 //! `LruTtlStore` primitive
-//! the T83 [`ChallengeMemory`][crate::challenge_feedback::ChallengeMemory]
-//! and the T91 [`NonceBook`][crate::token_lifecycle::NonceBook]
+//! the T83 [`ChallengeMemory`]
+//! and the T91 [`NonceBook`]
 //! use. That keeps eviction + expiry semantics consistent
 //! across all three short-horizon stores and satisfies the
 //! "no new cache store" requirement. The key namespace is

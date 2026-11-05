@@ -787,6 +787,7 @@ impl SchemaDiscoveryService {
     clippy::float_cmp,
     clippy::unnecessary_map_or
 )]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
     use serde_json::json;

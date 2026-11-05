@@ -1,0 +1,32 @@
+{
+  "name": "stygian-site",
+  "type": "module",
+  "version": "0.0.1",
+  "private": true,
+  "packageManager": "pnpm@11.18.0",
+  "description": "Documentation site for stygian, deployed to greysquirr3l.github.io",
+  "scripts": {
+    "dev": "npx astro dev",
+    "start": "npx astro dev",
+    "build": "npx astro build",
+    "preview": "npx astro preview",
+    "astro": "npx astro",
+    "deploy": "bash scripts/deploy-docs.sh",
+    "deploy:dry": "bash scripts/deploy-docs.sh --no-push"
+  },
+  "deploy-docs": {
+    "pagesRepo": "../../../greysquirr3l.github.io",
+    "subdir": "stygian",
+    "liveUrl": "https://greysquirr3l.github.io/stygian/",
+    "sourceRepo": "greysquirr3l/stygian"
+  },
+  "dependencies": {
+    "@astrojs/check": "^0.9.4",
+    "@astrojs/starlight": "^0.42.6",
+    "astro": "^7.2.8",
+    "astro-mermaid": "^2.2.0",
+    "mermaid": "^12.3.0",
+    "sharp": "^0.35.5",
+    "typescript": "^5.7.0"
+  }
+}

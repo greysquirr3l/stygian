@@ -781,6 +781,7 @@ impl ScrapingService for RestApiAdapter {
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
     use serde_json::json;

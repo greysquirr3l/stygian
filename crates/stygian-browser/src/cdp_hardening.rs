@@ -257,6 +257,7 @@ const CONSOLE_DEBUG_SECTION: &str = r"  // ── 3. console.debug getter-trap h
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
 

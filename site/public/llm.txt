@@ -1,0 +1,65 @@
+# stygian
+
+> High-performance web scraping toolkit for Rust.
+
+- [Introduction](https://greysquirr3l.github.io/stygian/introduction/)
+
+## The Graph Engine
+
+- [Architecture](https://greysquirr3l.github.io/stygian/graph/architecture/)
+- [Building Pipelines](https://greysquirr3l.github.io/stygian/graph/pipelines/)
+- [Built-in Adapters](https://greysquirr3l.github.io/stygian/graph/adapters/)
+- [Production Adapters](https://greysquirr3l.github.io/stygian/graph/production-adapters/)
+- [Request Signing](https://greysquirr3l.github.io/stygian/graph/signing/)
+- [GraphQL Plugins](https://greysquirr3l.github.io/stygian/graph/graphql-plugins/)
+- [Custom Adapters](https://greysquirr3l.github.io/stygian/graph/custom-adapters/)
+- [Distributed Execution](https://greysquirr3l.github.io/stygian/graph/distributed/)
+- [Tiered Escalation Pipeline](https://greysquirr3l.github.io/stygian/graph/escalation/)
+- [Resilience & Fallback Chains](https://greysquirr3l.github.io/stygian/graph/resilience/)
+- [Data Sinks (DataSinkPort)](https://greysquirr3l.github.io/stygian/graph/data-sinks/)
+- [Scrape Exchange Integration](https://greysquirr3l.github.io/stygian/graph/scrape-exchange/)
+- [Observability](https://greysquirr3l.github.io/stygian/graph/observability/)
+- [Performance Tuning](https://greysquirr3l.github.io/stygian/graph/performance/)
+
+## Browser Automation
+
+- [Browser Automation Overview](https://greysquirr3l.github.io/stygian/browser/overview/)
+- [Configuration](https://greysquirr3l.github.io/stygian/browser/configuration/)
+- [Stealth, TLS Fingerprints, and Diagnostics](https://greysquirr3l.github.io/stygian/browser/stealth/)
+- [Browser Pool](https://greysquirr3l.github.io/stygian/browser/pool/)
+- [Page Operations](https://greysquirr3l.github.io/stygian/browser/page-operations/)
+- [DOM Query API](https://greysquirr3l.github.io/stygian/browser/dom-query/)
+- [Structured Extraction \u2014 `#[derive(Extract)]`](https://greysquirr3l.github.io/stygian/browser/extract/)
+
+## Proxy Rotation
+
+- [Proxy Rotation Overview](https://greysquirr3l.github.io/stygian/proxy/overview/)
+- [Rotation Strategies](https://greysquirr3l.github.io/stygian/proxy/strategies/)
+- [Sticky Sessions](https://greysquirr3l.github.io/stygian/proxy/sticky-sessions/)
+- [Health Checking & Circuit Breaker](https://greysquirr3l.github.io/stygian/proxy/health-circuit-breaker/)
+- [Ecosystem Integrations](https://greysquirr3l.github.io/stygian/proxy/integrations/)
+
+## Charon Diagnostics
+
+- [Charon Overview](https://greysquirr3l.github.io/stygian/charon/overview/)
+- [Getting Started](https://greysquirr3l.github.io/stygian/charon/getting-started/)
+- [SLO & Policy Planning](https://greysquirr3l.github.io/stygian/charon/slo-policy/)
+- [Operations & Runbooks](https://greysquirr3l.github.io/stygian/charon/operations/)
+
+## Reference
+
+- [Charon Release Notes](https://greysquirr3l.github.io/stygian/reference/charon-release/)
+- [Backwards Compatibility Policy](https://greysquirr3l.github.io/stygian/reference/backwards-compatibility/)
+- [Environment Variables](https://greysquirr3l.github.io/stygian/reference/env-vars/)
+- [Security Policy](https://greysquirr3l.github.io/stygian/reference/security-policy/)
+- [Testing & Coverage](https://greysquirr3l.github.io/stygian/reference/testing/)
+
+## MCP — Model Context Protocol
+
+- [MCP \u2014 Model Context Protocol](https://greysquirr3l.github.io/stygian/mcp/overview/)
+- [Graph MCP Tools](https://greysquirr3l.github.io/stygian/mcp/graph-tools/)
+- [Browser MCP Tools](https://greysquirr3l.github.io/stygian/mcp/browser-tools/)
+- [Proxy MCP Tools](https://greysquirr3l.github.io/stygian/mcp/proxy-tools/)
+- [Plugin MCP Tools](https://greysquirr3l.github.io/stygian/mcp/plugin-tools/)
+- [Plugin Persistence Pattern](https://greysquirr3l.github.io/stygian/mcp/plugin-persistence-pattern/)
+- [The stygian-mcp Aggregator](https://greysquirr3l.github.io/stygian/mcp/aggregator/)

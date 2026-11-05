@@ -127,6 +127,7 @@ impl From<chromiumoxide::error::CdpError> for BrowserError {
 }
 
 #[cfg(test)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
 

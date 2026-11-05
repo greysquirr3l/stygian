@@ -31,7 +31,7 @@ unlocked via feature flags.
 
 ## Rules
 
-- Rust edition 2024, stable toolchain (1.94.0).
+- Rust edition 2024, stable toolchain (1.99.1).
 
 - All error types use 'thiserror'; 'anyhow' only in examples/tests/binary entry points.
 
@@ -61,7 +61,7 @@ unlocked via feature flags.
 
 - All public APIs must have doc comments with a runnable '#[doc(test)]' example.
 
-- Use Rust 1.94.0 features: async closures, LazyLock for static defaults, let chains.
+- Use Rust 1.99.1 features: async closures, LazyLock for static defaults, let chains.
 
 - Performance targets: proxy acquisition < 1 µs in the common (healthy pool) case.
 

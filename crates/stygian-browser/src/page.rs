@@ -2613,6 +2613,7 @@ fn escape_attr_value(out: &mut String, value: &str) {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
 
@@ -2745,10 +2746,8 @@ mod tests {
             "container".to_string(),
         ];
         let mut map = std::collections::HashMap::with_capacity(flat.len() / 2);
-        for pair in flat.chunks_exact(2) {
-            if let [name, value] = pair {
-                map.insert(name.clone(), value.clone());
-            }
+        for [name, value] in flat.as_chunks::<2>().0 {
+            map.insert(name.clone(), value.clone());
         }
         assert_eq!(map.get("id").map(String::as_str), Some("main"));
         assert_eq!(map.get("data-ux").map(String::as_str), Some("Section"));
@@ -2761,10 +2760,8 @@ mod tests {
     fn attr_map_chunking_ignores_odd_trailing() {
         let flat = ["orphan".to_string()]; // no value
         let mut map = std::collections::HashMap::new();
-        for pair in flat.chunks_exact(2) {
-            if let [name, value] = pair {
-                map.insert(name.clone(), value.clone());
-            }
+        for [name, value] in flat.as_chunks::<2>().0 {
+            map.insert(name.clone(), value.clone());
         }
         assert!(map.is_empty());
     }
@@ -2774,13 +2771,12 @@ mod tests {
     fn attr_map_chunking_empty_input() {
         let flat: Vec<String> = vec![];
         let map: std::collections::HashMap<String, String> = flat
-            .chunks_exact(2)
-            .filter_map(|pair| {
-                if let [name, value] = pair {
-                    Some((name.clone(), value.clone()))
-                } else {
-                    None
-                }
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| {
+                let [name, value] = pair;
+                (name.clone(), value.clone())
             })
             .collect();
         assert!(map.is_empty());

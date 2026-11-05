@@ -178,6 +178,7 @@ impl ScrapingService for AgentSource {
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
     use crate::adapters::mock_ai::MockAIProvider;

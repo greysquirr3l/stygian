@@ -593,6 +593,7 @@ setInterval(loadPipelines, 10_000);
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
     use axum::{

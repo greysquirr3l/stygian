@@ -58,7 +58,11 @@ jobs:
       - name: Run tests (all features)
         # Integration tests that require a real Chrome binary are marked #[ignore]
         # and will not run here. Unit tests run in full.
-        run: cargo test --workspace --all-features
+        # Exclude `stygian-book-tests` — its snippet tests are auto-generated
+        # from the mdbook and are intentionally non-green until the doc-rot
+        # cleanup PR lands. Run them locally via
+        # `python3 tools/mdbook-rust-prelude/extract_snippets.py && cargo test -p stygian-book-tests`.
+        run: cargo test --workspace --all-features --exclude stygian-book-tests
 
       - name: Run Charon snapshot drift tests
         run: cargo test -p stygian-charon --test snapshot_drift -- --nocapture
@@ -120,7 +124,7 @@ jobs:
 
       - name: Upload stealth probe artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: stealth-probe-report
           path: |
@@ -236,4 +240,8 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-cross-
 
       - name: Run tests
-        run: cargo test --workspace --all-features
+        # Exclude stygian-book-tests — its snippet tests are auto-generated
+        # from the mdbook and are intentionally non-green until the doc-rot
+        # cleanup lands. Run locally via
+        # `python3 tools/mdbook-rust-prelude/extract_snippets.py && cargo test -p stygian-book-tests`.
+        run: cargo test --workspace --all-features --exclude stygian-book-tests

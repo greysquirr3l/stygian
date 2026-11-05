@@ -329,7 +329,7 @@ impl StatisticalFieldAnomalyDetector {
     /// Trim a window to `max` entries from the front.
     ///
     /// Not `const` because `VecDeque::len` / `pop_front` are not
-    /// const-stable yet (Rust 1.96).
+    /// const-stable yet (as of Rust 1.99.1).
     fn cap_window<T>(window: &mut VecDeque<T>, max: usize) {
         while window.len() > max {
             window.pop_front();

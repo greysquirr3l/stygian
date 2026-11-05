@@ -345,6 +345,7 @@ impl ScrapingService for AxumWebhookTrigger {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
     use std::fmt::Write as _;

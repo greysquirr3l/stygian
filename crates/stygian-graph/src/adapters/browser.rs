@@ -397,6 +397,7 @@ impl ScrapingService for BrowserAdapter {
     clippy::panic,
     clippy::redundant_closure_for_method_calls
 )]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
 

@@ -417,6 +417,7 @@ impl ScrapingService for EscalatingScrapingService {
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
 

@@ -67,8 +67,13 @@ use crate::ports::signing::ErasedSigningPort;
 pub struct NoopSigningAdapter;
 
 impl SigningPort for NoopSigningAdapter {
-    async fn sign(&self, _input: SigningInput) -> Result<SigningOutput, SigningError> {
-        Ok(SigningOutput::default())
+    fn sign(
+        &self,
+        _input: SigningInput,
+    ) -> impl Future<Output = Result<SigningOutput, SigningError>> + Send {
+        // The no-op signer never performs I/O, so the result is produced eagerly
+        // rather than being deferred to a first poll.
+        std::future::ready(Ok(SigningOutput::default()))
     }
 }
 
@@ -345,6 +350,7 @@ fn base64_decode(input: &str) -> Result<Vec<u8>, String> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
     use serde_json::json;

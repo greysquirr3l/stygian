@@ -1246,6 +1246,12 @@ pub const POSTAL_CODE_MAX_LEN: usize = 16;
 /// IANA and `u32::MAX` is the RFC-defined "private use / reserved"
 /// placeholder, neither of which is meaningful on the wire.
 ///
+/// # Errors
+///
+/// Returns [`crate::error::ProxyError::InvalidGeoMetadata`] when `asn` is
+/// `0` (reserved by IANA) or `u32::MAX` (the RFC private-use placeholder).
+/// The error's `field` is `"asn"` and its `reason` names the rejected bound.
+///
 /// # Example
 ///
 /// ```
@@ -1277,6 +1283,12 @@ pub fn validate_asn(asn: u32) -> Result<(), crate::error::ProxyError> {
 /// `city` must be 1-100 characters (UTF-8 byte length). The format is
 /// operator-defined; common conventions include `"San Francisco"`,
 /// `"São Paulo"`, `"Saint-Étienne"`.
+///
+/// # Errors
+///
+/// Returns [`crate::error::ProxyError::InvalidGeoMetadata`] when `city` is
+/// empty or longer than [`CITY_MAX_LEN`] bytes. The error's `field` is
+/// `"city"` and its `reason` names the rejected bound.
 pub fn validate_city(city: &str) -> Result<(), crate::error::ProxyError> {
     use crate::error::ProxyError;
     if city.is_empty() {
@@ -1305,6 +1317,13 @@ pub fn validate_city(city: &str) -> Result<(), crate::error::ProxyError> {
 /// (e.g. `"94110"` for US ZIP, `"SW1A 1AA"` for UK, `"100-0001"` for
 /// Japan); the validator only enforces a length ceiling and rejects
 /// empty strings.
+///
+/// # Errors
+///
+/// Returns [`crate::error::ProxyError::InvalidGeoMetadata`] when
+/// `postal_code` is empty or longer than [`POSTAL_CODE_MAX_LEN`] bytes. The
+/// error's `field` is `"postal_code"` and its `reason` names the rejected
+/// bound.
 pub fn validate_postal_code(postal_code: &str) -> Result<(), crate::error::ProxyError> {
     use crate::error::ProxyError;
     if postal_code.is_empty() {

@@ -227,8 +227,7 @@ impl ServiceRegistry {
     ///
     /// Panics if the internal `RwLock` is poisoned (i.e. another thread panicked
     /// while holding the lock). Treat this as unrecoverable.
-    #[allow(clippy::unused_async)]
-    pub async fn health_check_all(&self) -> HashMap<String, ServiceStatus> {
+    pub fn health_check_all(&self) -> impl Future<Output = HashMap<String, ServiceStatus>> + Send {
         let entries_snapshot: Vec<(String, Arc<dyn ScrapingService>)> = {
             let guard = self.entries.read().unwrap();
             guard
@@ -251,7 +250,7 @@ impl ServiceRegistry {
             results.insert(name, status);
         }
 
-        results
+        std::future::ready(results)
     }
 
     /// Probe a single service by calling its `name()` method and marking it

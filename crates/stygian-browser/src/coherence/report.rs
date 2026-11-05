@@ -610,6 +610,7 @@ pub fn signature_field_names() -> &'static BTreeSet<&'static str> {
     clippy::panic,
     clippy::indexing_slicing
 )]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
     use crate::freshness::{

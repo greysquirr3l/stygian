@@ -619,6 +619,7 @@ impl WorkQueuePort for RedisWorkQueue {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
     use serde_json::json;

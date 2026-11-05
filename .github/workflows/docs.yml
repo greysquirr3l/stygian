@@ -4,88 +4,35 @@ on:
   push:
     branches: [main]
     paths:
-      - "book/**"
+      - "site/**"
       - "docs/**"
-      - "crates/**"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
-    name: Build mdBook + rustdoc
+    name: Build Astro site
     runs-on: ubuntu-latest
-    env:
-      MDBOOK_VERSION: "0.4.43"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
-
-      - name: Cache cargo
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v5
+      - uses: pnpm/action-setup@v4
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-doc-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-doc-
+          package_json_file: site/package.json
 
-      - name: Install mdBook
-        run: |
-          curl -sSL \
-            "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
-            | tar -xz -C /usr/local/bin mdbook
-          mdbook --version
-
-      - name: Build book
-        run: mdbook build book
-
-      - name: Build rustdoc
-        run: cargo doc --workspace --no-deps --all-features
-        env:
-          RUSTDOCFLAGS: "-Dwarnings"
-
-      - name: Merge rustdoc into book output
-        run: |
-          mkdir -p book/book/api
-          cp -r target/doc/. book/book/api/
-          # redirect /api/ → stygian_graph crate index
-          cat > book/book/api/index.html << 'HTML'
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="utf-8">
-            <meta http-equiv="refresh" content="0; url=stygian_graph/index.html">
-            <title>stygian API docs</title>
-          </head>
-          <body><p><a href="stygian_graph/index.html">stygian_graph</a></p></body>
-          </html>
-          HTML
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+      - uses: actions/setup-node@v4
         with:
-          path: book/book
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: site/pnpm-lock.yaml
 
-  deploy:
-    name: Deploy to GitHub Pages
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
+      - name: Build site
+        working-directory: site
+        run: pnpm install --frozen-lockfile && pnpm build

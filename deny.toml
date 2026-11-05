@@ -17,6 +17,7 @@ allow = [
     "Zlib",
     "OpenSSL",
     "MPL-2.0",
+    "BSL-1.0",
     "CDLA-Permissive-2.0",
     "AGPL-3.0-only",
 ]
@@ -57,4 +58,5 @@ ignore = [
     { id = "RUSTSEC-2026-0194", reason = "Transitive via rust-s3->aws-creds; upstream pinned to quick-xml 0.38, no newer release available" },
     # quick-xml DoS (unbounded namespace allocation) — same transitive path as above.
     { id = "RUSTSEC-2026-0195", reason = "Transitive via rust-s3->aws-creds; upstream pinned to quick-xml 0.38, no newer release available" },
+    { id = "RUSTSEC-2024-0449", reason = "Transitive via serde_yaml (stygian-graph); unmaintained, no patched release; migrate off serde_yaml separately" },
 ]

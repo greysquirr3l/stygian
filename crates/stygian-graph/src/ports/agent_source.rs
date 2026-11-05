@@ -1,7 +1,7 @@
 //! Agent source port trait for LLM-as-data-source.
 //!
 //! Defines the interface for using an AI agent (LLM) as a data source
-//! within the pipeline.  Unlike [`AIProvider`](crate::ports::AIProvider),
+//! within the pipeline.  Unlike [`AIProvider`],
 //! which extracts structured data from existing content, an agent source
 //! *generates* content by executing a prompt — making it suitable for
 //! summarisation, enrichment, or synthetic data generation steps in a DAG.

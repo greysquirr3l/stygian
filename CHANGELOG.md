@@ -7,13 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-11-05
+
+Hotfix release: security advisories, toolchain/lint compliance, dependency
+and CI action updates, and the documentation site migration.
+
 ### Added
+
+- `stygian-book-tests` workspace crate and
+  `tools/mdbook-rust-prelude/extract_snippets.py`: every Rust fence in the
+  docs is extracted into a compile-tested integration test (closes the
+  doc-rot tracking issues #128, #129, #130, #131; supersedes #132).
 
 ### Changed
 
+- Documentation moved from mdBook to an Astro + Starlight site in `site/`,
+  deployed with `site/scripts/deploy-docs.sh`. API reference is served from
+  docs.rs.
+- Updated the GitHub Actions group (dependabot #145) and refreshed
+  `Cargo.lock` to current compatible releases (supersedes #147 and #134).
+- Workspace version `0.17.0` → `0.17.1`.
+- MSRV stays at 1.95.0, verified with `cargo msrv find` (1.94.1 fails in
+  the `wasmtime` dependency).
+
 ### Fixed
 
+- `clippy::branches_sharing_code` in `Selector::validate` and
+  `clippy::suboptimal_flops` in the plugin reliability scorer
+  (`stygian-plugin`); `clippy::multiple_crate_versions` allowed on
+  `stygian-book-tests`.
+- Rust 1.99.1 clippy lint remediation (clippy `-D warnings` gate now clean across
+  the workspace):
+  - `clippy::unused_async_trait_impl` (4 sites) — replaced `async fn` trait
+    impl bodies that contained no `.await` with `fn ... -> impl Future<Output
+    = ...> + Send` returning `std::future::ready(...)`, matching the trait
+    declarations' native-RPITIT shape: `EnvAuthPort::load_token` and
+    `EnvAuthPort::refresh_token`
+    (`crates/stygian-graph/src/ports/auth.rs`),
+    `NoopSigningAdapter::sign`
+    (`crates/stygian-graph/src/adapters/signing.rs`), and
+    `ServiceRegistry::health_check_all`
+    (`crates/stygian-graph/src/application/registry.rs`).
+  - `clippy::missing_errors_doc` (4 sites) — added `# Errors` rustdoc
+    sections to `validate_guard_pair`
+    (`crates/stygian-graph/src/ports/robots_policy.rs`) and the
+    `validate_asn` / `validate_city` / `validate_postal_code` validators
+    (`crates/stygian-proxy/src/types.rs`).
+  - `clippy::missing_panics_doc` (2 sites) — added `# Panics` rustdoc
+    sections to `BetaStats::counts_for` and `BetaStats::apply_decay`
+    (`crates/stygian-proxy/src/strategy/thompson.rs`), documenting the
+    `Mutex`-poisoning precondition.
+  - `clippy::assert_is_empty` (103 sites across 54 files) — added a
+    module-level `#[allow(clippy::assert_is_empty)]` on each affected
+    `mod tests` block (and crate-level `#![allow(clippy::assert_is_empty)]`
+    on the integration-test crates that have no test module). The
+    `assert!(x.is_empty())` assertions were left untouched: rewriting them
+    as `assert_eq!(x, [])` breaks type inference for `Vec<T>`.
+
 ### Security
+
+- Patched dependencies flagged by `cargo audit` / `cargo deny`: `tokio`
+  (RUSTSEC-2026-0386), `rustls`, `rustls-webpki` (RUSTSEC-2026-0382),
+  `quinn-proto`, `wasmtime` (RUSTSEC-2026-0356), `ctutils`
+  (RUSTSEC-2026-0385), `webpki-roots` / `webpki-root-certs`
+  (RUSTSEC-2026-0381 / 0383), `zstd` (RUSTSEC-2026-0391), and the yanked
+  `chacha20`.
+- Ignored RUSTSEC-2024-0449 (`unsafe-libyaml`, unmaintained, no patched
+  release; reached through `serde_yaml` in `stygian-graph`) in `deny.toml` and
+  the audit job. Allowed the permissive `BSL-1.0` license (`xxhash-rust`).
 
 ## [0.17.0] - 2026-08-24
 
