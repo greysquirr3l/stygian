@@ -168,6 +168,7 @@ impl stygian_browser::proxy::ProxySource for ProxyManagerBridge {
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use std::sync::Arc;
 

@@ -19,6 +19,7 @@
 //! - `ScrapingService` adapter integration
 
 #[cfg(test)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use serde_json::json;
     use std::sync::Arc;

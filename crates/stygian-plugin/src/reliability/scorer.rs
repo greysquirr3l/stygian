@@ -214,9 +214,13 @@ impl ReliabilityScorer {
             capped / Self::MAX_RETRIES_FOR_PENALTY as f32
         };
 
-        let weighted = schema_completeness * self.weights.schema
-            + transformation_success * self.weights.transformation
-            - retry_penalty * self.weights.retry;
+        let weighted = retry_penalty.mul_add(
+            -self.weights.retry,
+            transformation_success.mul_add(
+                self.weights.transformation,
+                schema_completeness * self.weights.schema,
+            ),
+        );
         let overall = clamp_unit(weighted);
 
         let reasons = build_reasons(

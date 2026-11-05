@@ -11,6 +11,7 @@
 //! `cargo test --workspace --test <file>` builds and runs the test
 //! against the real workspace deps.
 
+#![allow(clippy::multiple_crate_versions)]
 #![allow(dead_code)]
 #![allow(unused_imports)]
 #![allow(unused_variables)]

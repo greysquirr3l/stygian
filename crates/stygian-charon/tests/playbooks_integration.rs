@@ -1,4 +1,5 @@
 #![allow(
+    clippy::assert_is_empty,
     clippy::unwrap_used,
     clippy::expect_used,
     clippy::panic,

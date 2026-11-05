@@ -1105,6 +1105,7 @@ impl Default for DagExecutor {
 }
 
 #[cfg(test)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
     use crate::domain::error::Result;

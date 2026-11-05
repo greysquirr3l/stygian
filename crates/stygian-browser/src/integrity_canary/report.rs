@@ -491,6 +491,7 @@ pub struct MitigationHint {
     clippy::float_cmp,
     clippy::indexing_slicing
 )]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
     use crate::integrity_canary::probes::{

@@ -613,6 +613,7 @@ fn extract_cookies(headers: &BTreeMap<String, String>) -> Vec<String> {
     clippy::panic,
     clippy::indexing_slicing
 )]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use std::collections::BTreeMap;
 

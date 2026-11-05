@@ -874,6 +874,7 @@ static LIMITATION_PROBES: &[LimitationProbe] = &[
     clippy::panic,
     clippy::indexing_slicing
 )]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
     use std::collections::HashSet;

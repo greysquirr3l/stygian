@@ -78,7 +78,6 @@ impl Selector {
                         reason: "Invalid CSS pseudo-element".to_string(),
                     });
                 }
-                Ok(())
             }
             Self::XPath(s) => {
                 if s.is_empty() {
@@ -94,14 +93,13 @@ impl Selector {
                         reason: "XPath expression has unbalanced brackets".to_string(),
                     });
                 }
-                Ok(())
             }
             Self::Both { css, xpath } => {
                 Self::Css(css.clone()).validate()?;
                 Self::XPath(xpath.clone()).validate()?;
-                Ok(())
             }
         }
+        Ok(())
     }
 }
 

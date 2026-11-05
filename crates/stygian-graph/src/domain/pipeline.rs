@@ -615,6 +615,7 @@ fn collect_node_urls(config: &serde_json::Value) -> Vec<(String, String)> {
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
     use serde_json::json;

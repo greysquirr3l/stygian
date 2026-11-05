@@ -302,8 +302,10 @@ impl EnvAuthPort {
 }
 
 impl AuthPort for EnvAuthPort {
-    async fn load_token(&self) -> std::result::Result<Option<TokenSet>, AuthError> {
-        match std::env::var(&self.var_name) {
+    fn load_token(
+        &self,
+    ) -> impl Future<Output = std::result::Result<Option<TokenSet>, AuthError>> + Send {
+        std::future::ready(match std::env::var(&self.var_name) {
             Ok(token) if !token.is_empty() => Ok(Some(TokenSet {
                 access_token: token,
                 refresh_token: None,
@@ -311,12 +313,14 @@ impl AuthPort for EnvAuthPort {
                 scopes: vec![],
             })),
             Ok(_) | Err(_) => Ok(None),
-        }
+        })
     }
 
-    async fn refresh_token(&self) -> std::result::Result<TokenSet, AuthError> {
+    fn refresh_token(
+        &self,
+    ) -> impl Future<Output = std::result::Result<TokenSet, AuthError>> + Send {
         // Static env-var tokens don't support refresh.
-        Err(AuthError::TokenNotFound)
+        std::future::ready(Err(AuthError::TokenNotFound))
     }
 }
 
@@ -332,29 +336,39 @@ mod tests {
     struct FixedToken(String);
 
     impl AuthPort for FixedToken {
-        async fn load_token(&self) -> std::result::Result<Option<TokenSet>, AuthError> {
-            Ok(Some(TokenSet {
+        fn load_token(
+            &self,
+        ) -> impl Future<Output = std::result::Result<Option<TokenSet>, AuthError>> + Send {
+            std::future::ready(Ok(Some(TokenSet {
                 access_token: self.0.clone(),
                 refresh_token: None,
                 expires_at: None,
                 scopes: vec![],
-            }))
+            })))
         }
 
-        async fn refresh_token(&self) -> std::result::Result<TokenSet, AuthError> {
-            Err(AuthError::RefreshFailed("no refresh token".to_string()))
+        fn refresh_token(
+            &self,
+        ) -> impl Future<Output = std::result::Result<TokenSet, AuthError>> + Send {
+            std::future::ready(Err(AuthError::RefreshFailed(
+                "no refresh token".to_string(),
+            )))
         }
     }
 
     struct NoToken;
 
     impl AuthPort for NoToken {
-        async fn load_token(&self) -> std::result::Result<Option<TokenSet>, AuthError> {
-            Ok(None)
+        fn load_token(
+            &self,
+        ) -> impl Future<Output = std::result::Result<Option<TokenSet>, AuthError>> + Send {
+            std::future::ready(Ok(None))
         }
 
-        async fn refresh_token(&self) -> std::result::Result<TokenSet, AuthError> {
-            Err(AuthError::TokenNotFound)
+        fn refresh_token(
+            &self,
+        ) -> impl Future<Output = std::result::Result<TokenSet, AuthError>> + Send {
+            std::future::ready(Err(AuthError::TokenNotFound))
         }
     }
 
@@ -363,22 +377,26 @@ mod tests {
     }
 
     impl AuthPort for ExpiredToken {
-        async fn load_token(&self) -> std::result::Result<Option<TokenSet>, AuthError> {
-            Ok(Some(TokenSet {
+        fn load_token(
+            &self,
+        ) -> impl Future<Output = std::result::Result<Option<TokenSet>, AuthError>> + Send {
+            std::future::ready(Ok(Some(TokenSet {
                 access_token: "old_token".to_string(),
                 refresh_token: Some("ref".to_string()),
                 expires_at: SystemTime::now().checked_sub(Duration::from_hours(1)),
                 scopes: vec![],
-            }))
+            })))
         }
 
-        async fn refresh_token(&self) -> std::result::Result<TokenSet, AuthError> {
-            Ok(TokenSet {
+        fn refresh_token(
+            &self,
+        ) -> impl Future<Output = std::result::Result<TokenSet, AuthError>> + Send {
+            std::future::ready(Ok(TokenSet {
                 access_token: self.new_token.clone(),
                 refresh_token: None,
                 expires_at: None,
                 scopes: vec![],
-            })
+            }))
         }
     }
 

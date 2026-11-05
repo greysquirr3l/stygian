@@ -1,7 +1,7 @@
 //! Vendor-to-playbook auto-resolution (T90).
 //!
-//! This module bridges the [`vendor_classifier`][crate::vendor_classifier]
-//! (T89) and the [`playbooks`][crate::playbooks] resolver (T85):
+//! This module bridges the [`vendor_classifier`]
+//! (T89) and the [`playbooks`] resolver (T85):
 //! given a [`VendorClassification`], it picks the right codified
 //! [`Playbook`][crate::playbooks::Playbook] for the runner and
 //! ships a rationale bundle the diagnostic payload can render.
@@ -28,7 +28,7 @@
 //! ## Multi-vendor precedence + merge
 //!
 //! The classifier emits a ranked scoreboard (top vendor first,
-//! ties broken by [`VendorId`][crate::vendor_classifier::VendorId]
+//! ties broken by [`VendorId`]
 //! discriminant order). When the scoreboard lists multiple
 //! vendors that match the fired rule, the
 //! [`MergeStrategy`]

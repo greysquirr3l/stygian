@@ -170,6 +170,13 @@ pub fn permissive_guard() -> std::sync::Arc<dyn RobotsPolicyGuard> {
 /// the pipeline claims to obey robots.txt but cannot, since it has no
 /// data source to check against. The intent is to surface this at
 /// pipeline-build time rather than silently passing every URL through.
+///
+/// # Errors
+///
+/// Returns [`StygianError::Graph`] wrapping [`GraphError::InvalidPipeline`]
+/// when `policy` is [`RobotsPolicy::Obey`] and `guard` is the permissive
+/// guard — the pipeline would claim to honour `robots.txt` while having no
+/// data source to check it against.
 pub fn validate_guard_pair(policy: RobotsPolicy, guard: &dyn RobotsPolicyGuard) -> Result<()> {
     if matches!(policy, RobotsPolicy::Obey) && guard.name() == "permissive" {
         return Err(StygianError::Graph(GraphError::InvalidPipeline(

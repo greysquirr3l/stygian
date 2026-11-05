@@ -45,7 +45,7 @@
 //! Per-issuance nonces are tracked by a [`NonceBook`] — a
 //! capacity-bounded LRU+TTL store that reuses the same
 //! `LruTtlStore` primitive the
-//! [`ChallengeMemory`][crate::challenge_feedback::ChallengeMemory]
+//! [`ChallengeMemory`]
 //! uses (T83). That keeps eviction + expiry semantics consistent
 //! across both short-horizon stores and satisfies the
 //! "no new cache store" constraint.

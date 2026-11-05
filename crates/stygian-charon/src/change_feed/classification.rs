@@ -693,6 +693,7 @@ fn build_event(
     clippy::panic,
     clippy::indexing_slicing
 )]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
 

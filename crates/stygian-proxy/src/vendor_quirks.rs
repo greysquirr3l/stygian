@@ -666,6 +666,7 @@ fn host_suffix_matches(host: &str, suffix: &str) -> bool {
     clippy::panic,
     clippy::indexing_slicing
 )] // deterministic test fixtures for URL parsing + quirk matching
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
 

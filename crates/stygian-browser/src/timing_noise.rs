@@ -218,6 +218,7 @@ pub fn timing_noise_script(config: &TimingNoiseConfig) -> String {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
     use crate::noise::NoiseSeed;

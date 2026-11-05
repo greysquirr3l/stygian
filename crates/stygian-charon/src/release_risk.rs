@@ -448,6 +448,7 @@ fn trailing_degrading_streak(points: &[ReleaseTrendPoint]) -> usize {
     clippy::panic,
     clippy::indexing_slicing
 )]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
 

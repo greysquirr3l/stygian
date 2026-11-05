@@ -2388,6 +2388,7 @@ mod tests {
     // ── rustls integration tests ─────────────────────────────────────────
 
     #[cfg(feature = "tls-config")]
+    #[allow(clippy::assert_is_empty)]
     mod rustls_tests {
         use super::super::*;
 

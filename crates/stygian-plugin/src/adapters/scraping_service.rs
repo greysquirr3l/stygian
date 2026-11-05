@@ -229,6 +229,7 @@ fn extract_html_from_input(input: &ServiceInput) -> Result<String> {
 }
 
 #[cfg(test)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
     use crate::storage::{FileTemplateStore, MemoryIdempotencyStore};

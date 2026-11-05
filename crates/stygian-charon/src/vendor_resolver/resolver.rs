@@ -708,6 +708,7 @@ impl PlaybookResolverExt for PlaybookResolver {
     clippy::indexing_slicing,
     clippy::similar_names
 )]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
     use crate::vendor_classifier::{Evidence, EvidenceBundle, EvidenceSource};

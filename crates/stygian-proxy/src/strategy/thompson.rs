@@ -527,6 +527,11 @@ impl ThompsonStrategy {
     /// Returns `(0, 0)` when the proxy has never been observed. Public
     /// for use by integration tests and observability hooks — read-only
     /// and cheap (one `Mutex` acquisition + two atomic loads).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal beta map `Mutex` is poisoned (i.e. another
+    /// thread panicked while holding the lock). Treat this as unrecoverable.
     #[must_use]
     pub fn counts_for(&self, id: Uuid) -> (u64, u64) {
         self.betas
@@ -544,6 +549,11 @@ impl ThompsonStrategy {
     /// Apply decay to every tracked proxy. Intended to be called from a
     /// background timer; the [`BayesianObserver`] `observe()` path also
     /// calls it lazily so callers don't need to wire their own timer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal beta map `Mutex` is poisoned (i.e. another
+    /// thread panicked while holding the lock). Treat this as unrecoverable.
     pub fn apply_decay(&self) {
         let now = now_ms();
         let factor = self.decay_factor;

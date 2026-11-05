@@ -8,6 +8,7 @@
 //! ```
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
+#![allow(clippy::assert_is_empty)]
 
 use serde_json::json;
 use stygian_graph::adapters::openapi::OpenApiAdapter;

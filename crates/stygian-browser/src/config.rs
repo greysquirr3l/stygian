@@ -1033,6 +1033,7 @@ fn env_usize(key: &str, default: usize) -> usize {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
 

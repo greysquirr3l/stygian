@@ -1309,6 +1309,7 @@ fn battery_spoof_script() -> String {
 // ── tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
 

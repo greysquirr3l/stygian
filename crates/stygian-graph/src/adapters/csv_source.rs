@@ -305,6 +305,7 @@ impl ScrapingService for CsvSource {
 
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::indexing_slicing)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use super::*;
     use std::io::Cursor;

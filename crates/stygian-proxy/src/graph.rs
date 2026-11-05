@@ -88,6 +88,7 @@ impl ProxyManagerPort for NoopProxyManager {
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::assert_is_empty)]
 mod tests {
     use std::sync::Arc;
 
