@@ -21,7 +21,7 @@ members = [
 exclude = ["crates/stygian-charon/fuzz"]
 
 [workspace.package]
-version = "0.17.0"
+version = "0.17.1"
 edition = "2024"
 rust-version = "1.99.1"
 authors = ["Nick Campbell <s0ma@protonmail.com>"]
@@ -31,13 +31,13 @@ repository = "https://github.com/greysquirr3l/stygian"
 [workspace.dependencies]
 # Workspace crates — added so doc-test crates (e.g. stygian-book-tests)
 # can `dev-dependencies = { stygian-graph.workspace = true }`.
-stygian-graph = { path = "crates/stygian-graph", version = "0.17.0" }
-stygian-browser = { path = "crates/stygian-browser", version = "0.17.0" }
-stygian-extract-derive = { path = "crates/stygian-extract-derive", version = "0.17.0" }
-stygian-proxy = { path = "crates/stygian-proxy", version = "0.17.0" }
-stygian-mcp = { path = "crates/stygian-mcp", version = "0.17.0" }
-stygian-charon = { path = "crates/stygian-charon", version = "0.17.0" }
-stygian-plugin = { path = "crates/stygian-plugin", version = "0.17.0" }
+stygian-graph = { path = "crates/stygian-graph", version = "0.17.1" }
+stygian-browser = { path = "crates/stygian-browser", version = "0.17.1" }
+stygian-extract-derive = { path = "crates/stygian-extract-derive", version = "0.17.1" }
+stygian-proxy = { path = "crates/stygian-proxy", version = "0.17.1" }
+stygian-mcp = { path = "crates/stygian-mcp", version = "0.17.1" }
+stygian-charon = { path = "crates/stygian-charon", version = "0.17.1" }
+stygian-plugin = { path = "crates/stygian-plugin", version = "0.17.1" }
 
 # Core async runtime
 tokio = { version = "1.49", features = ["full"] }
