@@ -1,4 +1,6 @@
-# Security Policy
+---
+title: "Security Policy"
+---
 
 Stygian uses coordinated vulnerability disclosure and tracks support windows by release line.
 

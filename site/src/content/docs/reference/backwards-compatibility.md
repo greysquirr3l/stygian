@@ -1,4 +1,6 @@
-# Backwards Compatibility Policy
+---
+title: "Backwards Compatibility Policy"
+---
 
 This page tracks API and behavioural compatibility guarantees for the
 stygian workspace, plus migration guidance for consumers upgrading
@@ -10,6 +12,39 @@ breaking changes are allowed in minor releases but should be:
 - documented in the PR description,
 - called out in `PROGRESS.md` accumulated learnings,
 - covered with migration steps in this guide.
+
+---
+
+## Unreleased
+
+### `ServiceRegistry::health_check_all` returns `impl Future`
+
+`stygian-graph`'s `ServiceRegistry::health_check_all` previously had the
+signature `pub async fn health_check_all(&self) -> HashMap<String, ServiceStatus>`.
+It is now `pub fn health_check_all(&self) -> impl Future<Output = HashMap<String, ServiceStatus>> + Send`.
+
+The observable behaviour is unchanged: callers still write
+`registry.health_check_all().await` and get the same `HashMap`. The change
+removes an `async` state machine from a function that never suspended, which
+the Rust 1.99.1 clippy `unused_async_trait_impl` lint flags. Because the
+body performs no I/O — it reads and writes a `std::sync::RwLock` and probes
+already-registered services — the result is computed eagerly and handed back
+through `std::future::ready`.
+
+The `+ Send` bound on the returned future is preserved from the previous
+`async fn` form, so downstream code that requires a `Send` future (for
+example `tokio::spawn`) continues to compile unchanged.
+
+### MSRV bumped from 1.95.0 to 1.99.1
+
+The workspace MSRV is now rustc **1.99.1**. The MSRV job in CI installs
+toolchain 1.99.1; local development against the workspace needs the
+same. No public API or behavioural change accompanies this bump — the
+workspace compiles and tests clean under 1.99.1 with `--all-features`.
+
+Consumers pinned to a toolchain older than 1.99.1 must upgrade before
+pulling this release. There is no opt-out: `rust-version` is declared
+once in `[workspace.package]` and inherited by every crate.
 
 ---
 
@@ -45,14 +80,14 @@ default features is unaffected.
   `SinkRecord::new(...)` keeps its signature and falls back to
   `Utc::now()`; the auditable constructor is now
   `SinkRecord::with_fetched_at(...)`. See the [SinkRecord
-  §fetched_at](../graph/data-sinks.md#fetched_at--required-since-0170)
+  §fetched_at](/stygian/graph/data-sinks/#fetched_at--required-since-0170)
   section in the data-sinks chapter for the migration shape.
 - `stygian-graph`: `HttpAdapter::HttpConfig::allow_plain_http` now
   defaults to `false`. Library-banner User-Agents are refused before
   hitting the wire. Set `allow_plain_http: true` to opt in
   explicitly, or set `stealth_profile` to pick a matching browser
   UA. See the [HTTP Adapter
-  §Catalogue-fingerprint rejection](../graph/adapters.md#catalogue-fingerprint-rejection-t112)
+  §Catalogue-fingerprint rejection](/stygian/graph/adapters/#catalogue-fingerprint-rejection-t112)
   section in the adapters chapter.
 
 ### New types (additive, no signature breaks)
@@ -63,14 +98,14 @@ the headline new types are:
 
 | Crate | New type / port | Reference |
 | --- | --- | --- |
-| `stygian-browser` | `tls::Ja4q` | [browser/stealth.md §JA4Q](../browser/stealth.md#ja4q--quic-initial-packet-fingerprint) |
-| `stygian-browser` | `diagnostic::DiagnosticHint` + `BrowserConfig::diagnostic_hints()` | [browser/stealth.md §Diagnostic hints](../browser/stealth.md#diagnostic-hints--runtime-configuration-warnings) |
-| `stygian-proxy` | `ProxyStatusParser` port + `Rfc9209Parser` | [proxy/strategies.md §Failure attribution](../proxy/strategies.md#failure-attribution--proxystatusparser-rfc-9209) |
-| `stygian-proxy` | `GeofeedVerifier` port + `InMemoryGeofeedAdapter` | [proxy/strategies.md §Geofeed verifier](../proxy/strategies.md#geofeed-verifier--confirm-the-proxy-is-in-the-country-it-claims) |
-| `stygian-charon` | `ContentTypeShiftDetector` port + `RollingBaselineDetector` | [charon/operations.md §Cloaking detector](../charon/operations.md#cloaking-detector--contenttypeshiftdetector-t104) |
-| `stygian-charon` | `FieldAnomalyDetector` port + `StatisticalFieldAnomalyDetector` (feature `field-anomaly`) | [charon/operations.md §Poisoned-data detector](../charon/operations.md#poisoned-data-detector--fieldanomalydetector-t107) |
-| `stygian-graph` | `RobotsPolicy` + `RobotsPolicyGuard` port + `PermissiveRobotsGuard` | [graph/architecture.md §Robots policy reconciliation](../graph/architecture.md#robots-policy-reconciliation-t111) |
-| `stygian-mcp` | `PromptInjectionGuard` port + `DefaultPromptInjectionGuard` (wired into aggregator `tools/call` dispatch) | [mcp/aggregator.md §Response sanitisation seam](../mcp/aggregator.md#response-sanitisation-seam-t109) |
+| `stygian-browser` | `tls::Ja4q` | [browser/stealth.md §JA4Q](/stygian/browser/stealth/#ja4q--quic-initial-packet-fingerprint) |
+| `stygian-browser` | `diagnostic::DiagnosticHint` + `BrowserConfig::diagnostic_hints()` | [browser/stealth.md §Diagnostic hints](/stygian/browser/stealth/#diagnostic-hints--runtime-configuration-warnings) |
+| `stygian-proxy` | `ProxyStatusParser` port + `Rfc9209Parser` | [proxy/strategies.md §Failure attribution](/stygian/proxy/strategies/#failure-attribution--proxystatusparser-rfc-9209) |
+| `stygian-proxy` | `GeofeedVerifier` port + `InMemoryGeofeedAdapter` | [proxy/strategies.md §Geofeed verifier](/stygian/proxy/strategies/#geofeed-verifier--confirm-the-proxy-is-in-the-country-it-claims) |
+| `stygian-charon` | `ContentTypeShiftDetector` port + `RollingBaselineDetector` | [charon/operations.md §Cloaking detector](/stygian/charon/operations/#cloaking-detector--contenttypeshiftdetector-t104) |
+| `stygian-charon` | `FieldAnomalyDetector` port + `StatisticalFieldAnomalyDetector` (feature `field-anomaly`) | [charon/operations.md §Poisoned-data detector](/stygian/charon/operations/#poisoned-data-detector--fieldanomalydetector-t107) |
+| `stygian-graph` | `RobotsPolicy` + `RobotsPolicyGuard` port + `PermissiveRobotsGuard` | [graph/architecture.md §Robots policy reconciliation](/stygian/graph/architecture/#robots-policy-reconciliation-t111) |
+| `stygian-mcp` | `PromptInjectionGuard` port + `DefaultPromptInjectionGuard` (wired into aggregator `tools/call` dispatch) | [mcp/aggregator.md §Response sanitisation seam](/stygian/mcp/aggregator/#response-sanitisation-seam-t109) |
 
 ### CodeQL / supply chain
 
@@ -320,7 +355,7 @@ lesson learned during Phase 13 (see `PROGRESS.md`
 
 ## Related
 
-- [Security Policy](./security-policy.md)
-- [Environment Variables](./env-vars.md)
-- [Testing & Coverage](./testing.md)
-- [Charon Release Notes](./charon-release.md)
+- [Security Policy](/stygian/reference/security-policy/)
+- [Environment Variables](/stygian/reference/env-vars/)
+- [Testing & Coverage](/stygian/reference/testing/)
+- [Charon Release Notes](/stygian/reference/charon-release/)

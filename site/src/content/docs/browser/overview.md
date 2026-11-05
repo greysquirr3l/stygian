@@ -1,4 +1,6 @@
-# Browser Automation Overview
+---
+title: "Browser Automation Overview"
+---
 
 `stygian-browser` is a high-performance, anti-detection browser automation library for Rust.
 It is built on the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/)
@@ -43,7 +45,7 @@ of stealth features for bypassing modern bot-detection systems.
 
 ## Quick start
 
-```rust,ignore
+```rust ignore
 use stygian_browser::{BrowserConfig, BrowserPool, WaitUntil};
 use std::time::Duration;
 

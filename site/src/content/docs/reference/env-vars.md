@@ -1,4 +1,6 @@
-# Environment Variables
+---
+title: "Environment Variables"
+---
 
 All configuration values for both crates can be overridden at runtime via environment
 variables. No recompilation required.

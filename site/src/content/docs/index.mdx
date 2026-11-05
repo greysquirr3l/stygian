@@ -1,0 +1,48 @@
+---
+title: stygian
+description: High-performance web scraping toolkit for Rust
+template: splash
+hero:
+  title: stygian
+  tagline: >-
+    A web scraping toolkit for Rust, delivered as five crates: DAG pipelines,
+    anti-detection browser automation, proxy rotation, diagnostics, and an MCP server.
+  image:
+    file: ../../../public/logo.png
+  actions:
+    - text: Read the introduction
+      link: /stygian/introduction/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/greysquirr3l/stygian
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+## What you get
+
+<CardGrid>
+  <Card title="Graph engine" icon="random">
+    Scraping pipelines are directed acyclic graphs. Nodes run concurrently within each
+    topological wave, behind port traits injected via adapters.
+  </Card>
+  <Card title="Browser automation" icon="laptop">
+    Stealth profiles, browser pooling, and CDP automation that target Cloudflare,
+    DataDome, PerimeterX, and Akamai checks.
+  </Card>
+  <Card title="Fault tolerance" icon="approve-check">
+    Circuit breakers, retry policies, and idempotency keys sit in the execution path.
+  </Card>
+</CardGrid>
+
+## Where to next
+
+<CardGrid>
+  <LinkCard title="The graph engine" description="Architecture, pipelines, adapters, distributed execution." href="/stygian/graph/architecture/" />
+  <LinkCard title="Browser automation" description="Configuration, stealth, pooling, page operations." href="/stygian/browser/overview/" />
+  <LinkCard title="Proxy rotation" description="Strategies, sticky sessions, health checking." href="/stygian/proxy/overview/" />
+  <LinkCard title="MCP" description="Expose graph, browser, and proxy tools to LLM agents." href="/stygian/mcp/overview/" />
+</CardGrid>

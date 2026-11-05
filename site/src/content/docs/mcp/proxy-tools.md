@@ -1,4 +1,6 @@
-# Proxy MCP Tools
+---
+title: "Proxy MCP Tools"
+---
 
 `stygian-proxy` exposes nine tools for managing a proxy pool plus a readable pool-stats resource.
 
@@ -11,7 +13,7 @@
 stygian-proxy = { version = "*", features = ["mcp"] }
 ```
 
-The proxy MCP server is primarily designed to be used through the [aggregator](./aggregator.md),
+The proxy MCP server is primarily designed to be used through the [aggregator](/stygian/mcp/aggregator/),
 which layers it with graph and browser tools. When running standalone, start it directly from
 your crate; there is no dedicated binary target for the proxy server alone.
 

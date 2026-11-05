@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Local validation of mdbook snippets against real workspace APIs.
 #
-# Extracts every ```rust fence from book/src/*.md into per-fence
+# Extracts every ```rust fence from site/src/content/docs/**/*.md into per-fence
 # integration tests in crates/stygian-book-tests/tests/, then runs
 # `cargo test -p stygian-book-tests`. This replaces mdbook-test as
 # the snippet compile-validation strategy.
@@ -31,5 +31,5 @@ echo ""
 echo "==> Summary:"
 echo "    Total snippet tests: $(ls crates/stygian-book-tests/tests/snip_*.rs 2>/dev/null | wc -l | tr -d ' ')"
 echo ""
-echo "If any test files fail to compile, edit the corresponding book/src/*.md"
+echo "If any test files fail to compile, edit the corresponding site/src/content/docs/**/*.md"
 echo "file (and re-run this script) to fix the snippet."

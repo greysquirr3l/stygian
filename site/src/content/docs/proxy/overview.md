@@ -1,4 +1,6 @@
-# Proxy Rotation Overview
+---
+title: "Proxy Rotation Overview"
+---
 
 `stygian-proxy` is a high-performance, resilient proxy rotation library for the Stygian
 scraping ecosystem. It manages a pool of proxy endpoints, tracks per-proxy health and
@@ -45,7 +47,7 @@ stygian-proxy = { version = "0.14", features = ["graph"] }
 
 Build a pool and make a request:
 
-```rust,ignore
+```rust ignore
 use std::sync::Arc;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
 use stygian_proxy::types::{Proxy, ProxyType, IpClass, TargetVendorCompatibility};
@@ -179,7 +181,7 @@ field per constraint; all fields are independently `#[serde(default,
 skip_serializing_if = "Option::is_none")]` so a serialised requirement with
 no filters round-trips cleanly.
 
-```rust,ignore
+```rust ignore
 use std::sync::Arc;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
 use stygian_proxy::types::{
@@ -219,7 +221,7 @@ filter on: `asn: Option<u32>`, `city: Option<String>`,
 `postal_code: Option<String>`. `Proxy` carries the same fields so operators
 can curate metadata at ingest time without going through `ProxyCapabilities`.
 
-```rust,ignore
+```rust ignore
 use stygian_proxy::types::well_known;
 use std::sync::Arc;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
@@ -278,7 +280,7 @@ describing any quirks that apply to a parsed `ProxyUrl`. Error-severity quirks
 are rejected outright (the proxy never enters the pool); warning-severity
 quirks are accepted and logged.
 
-```rust,ignore
+```rust ignore
 use stygian_proxy::vendor_quirks::{check, ProxyUrl, Scheme, QuirkSeverity};
 
 let url = ProxyUrl::parse("http://proxy.crawlera.com:8011").unwrap();
@@ -314,7 +316,7 @@ leak cited by the 2026 scraping guide. `CoherencePort` + `DefaultCoherenceValida
 checks the five-vector match at the orchestration layer before any request is
 sent.
 
-```rust,ignore
+```rust ignore
 use std::sync::Arc;
 use stygian_proxy::adapters::coherence::DefaultCoherenceValidator;
 use stygian_proxy::{
@@ -365,7 +367,7 @@ Cites **76% success** vs **36% round-robin** on identical proxies in the
 internal `ProxyOps` benchmark (549,114 requests over 7 days). Per-proxy
 counters use `AtomicU64`; the hot-path acquire stays sub-microsecond.
 
-```rust,ignore
+```rust ignore
 use std::sync::Arc;
 use std::time::Duration;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};

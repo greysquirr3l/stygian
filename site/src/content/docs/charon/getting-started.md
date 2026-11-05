@@ -1,4 +1,6 @@
-# Getting Started
+---
+title: "Getting Started"
+---
 
 ---
 
@@ -19,7 +21,7 @@ stygian-charon = { version = "*", features = ["metrics", "caching"] }
 
 ## Quick start: investigate HAR and build policy
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_charon::{
     TargetClass,
     build_runtime_policy,
@@ -99,7 +101,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Quick start: classify one transaction
 
-```rust,edition2024
+```rust edition2024
 use stygian_charon::{TransactionView, classify_transaction};
 use std::collections::BTreeMap;
 

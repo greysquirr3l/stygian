@@ -1,4 +1,6 @@
-# Scrape Exchange Integration
+---
+title: "Scrape Exchange Integration"
+---
 
 [Scrape Exchange](https://scrape.exchange) is a platform for sharing and
 monetising scraped datasets. Stygian's `scrape-exchange` feature provides:
@@ -33,7 +35,7 @@ handles token acquisition and automatic refresh transparently.
 
 Alternatively, build the config directly:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::scrape_exchange::ScrapeExchangeConfig;
 
 let config = ScrapeExchangeConfig {
@@ -56,7 +58,7 @@ The low-level client exposes the full API surface:
 | `item_lookup(id)` | Fetch a single record by ID |
 | `health_check()` | Verify the API is reachable |
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::scrape_exchange::{ScrapeExchangeClient, ScrapeExchangeConfig};
 use serde_json::json;
 
@@ -79,7 +81,7 @@ println!("Uploaded: {}", result["id"]);
 
 ## DataSinkPort Adapter (`ScrapeExchangeAdapter`)
 
-`ScrapeExchangeAdapter` implements [`DataSinkPort`](./data-sinks.md), enabling
+`ScrapeExchangeAdapter` implements [`DataSinkPort`](/stygian/graph/data-sinks/), enabling
 pipelines to publish scraped records without knowing the destination backend.
 
 ### Schema Validation
@@ -101,7 +103,7 @@ Records are validated locally before upload:
 
 ### Usage
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::scrape_exchange::{ScrapeExchangeAdapter, ScrapeExchangeConfig};
 use stygian_graph::ports::data_sink::{DataSinkPort, SinkRecord};
 use serde_json::json;
@@ -143,7 +145,7 @@ endpoint. The feed adapter implements [`StreamSourcePort`].
 Server-side filters reduce bandwidth; client-side filters (`schema_owner`,
 `schema_version`) are applied in-process:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::scrape_exchange::{FeedFilter, FeedConfig};
 
 let config = FeedConfig {
@@ -167,7 +169,7 @@ and capped at 30 seconds.
 
 ### Usage
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::scrape_exchange::{ScrapeExchangeFeed, FeedConfig};
 use stygian_graph::ports::stream_source::StreamSourcePort;
 
@@ -189,7 +191,7 @@ for event in &events {
 Use `with_bearer_token()` to connect to authenticated endpoints (obtain the
 JWT from `ScrapeExchangeClient::get_token()` first):
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::scrape_exchange::{
     ScrapeExchangeFeed, ScrapeExchangeClient, ScrapeExchangeConfig, FeedConfig,
 };

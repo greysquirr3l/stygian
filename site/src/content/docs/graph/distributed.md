@@ -1,4 +1,6 @@
-# Distributed Execution
+---
+title: "Distributed Execution"
+---
 
 `stygian-graph` supports horizontal scaling via a Redis/Valkey-backed work queue.
 Multiple worker processes can consume from the same queue, enabling throughput that
@@ -44,7 +46,7 @@ stygian-graph = { version = "*", features = ["redis"] }
 
 ### 3. Create a work queue and executor
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::distributed_redis::{RedisWorkQueue, RedisWorkQueueConfig};
 use stygian_graph::adapters::distributed::DistributedDagExecutor;
 use stygian_graph::application::registry::ServiceRegistry;
@@ -79,7 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 `RedisWorkQueue` implements the `WorkQueue` port trait:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 pub trait WorkQueue: Send + Sync {
     /// Enqueue a task and return its unique ID.
     async fn enqueue(&self, task: Task) -> Result<TaskId>;
@@ -111,7 +113,7 @@ idempotency store (backed by the same Redis instance):
 This makes distributed task execution **safe to retry** — duplicate network deliveries
 and worker restarts produce the same observable outcome.
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::domain::idempotency::IdempotencyKey;
 
 // Deterministic key from pipeline id + input URL — replays the same result

@@ -1,4 +1,6 @@
-# Request Signing
+---
+title: "Request Signing"
+---
 
 The `SigningPort` trait decouples request signing from the adapters that make HTTP calls.
 Any adapter that needs signed outbound requests holds an `Arc<dyn ErasedSigningPort>` and
@@ -30,7 +32,7 @@ Python sidecar.
 
 The request material passed to the signer:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::ports::signing::SigningInput;
 use serde_json::json;
 
@@ -55,7 +57,7 @@ let input = SigningInput {
 
 The material to merge into the request:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::ports::signing::SigningOutput;
 use std::collections::HashMap;
 
@@ -87,7 +89,7 @@ All fields default to empty — a default `SigningOutput` is a valid no-op.
 Passes requests through unsigned. Use as a default when signing is
 optional, or to disable signing in tests:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::signing::NoopSigningAdapter;
 use stygian_graph::ports::signing::{SigningPort, SigningInput};
 use serde_json::json;
@@ -114,7 +116,7 @@ assert!(output.headers.is_empty());
 Delegates signing to any external HTTP sidecar. The sidecar receives a JSON payload describing the request and returns the headers / query params /
 body override to apply.
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::signing::{HttpSigningAdapter, HttpSigningConfig};
 use std::time::Duration;
 
@@ -225,7 +227,7 @@ Forward the port and point the adapter at it:
 adb forward tcp:27042 tcp:27042
 ```
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::signing::{HttpSigningAdapter, HttpSigningConfig};
 
 let signer = HttpSigningAdapter::new(HttpSigningConfig {
@@ -240,7 +242,7 @@ let signer = HttpSigningAdapter::new(HttpSigningConfig {
 
 For pure-Rust schemes, implement `SigningPort` directly — no sidecar needed:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use stygian_graph::ports::signing::{SigningError, SigningInput, SigningOutput, SigningPort};
@@ -267,7 +269,7 @@ impl SigningPort for TimestampNonceAdapter {
 }
 ```
 
-Follow the [Custom Adapters](./custom-adapters.md) guide for the full checklist.
+Follow the [Custom Adapters](/stygian/graph/custom-adapters/) guide for the full checklist.
 
 ---
 
@@ -275,7 +277,7 @@ Follow the [Custom Adapters](./custom-adapters.md) guide for the full checklist.
 
 Use `Arc<dyn ErasedSigningPort>` to hold any signer at runtime:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use std::sync::Arc;
 use stygian_graph::adapters::signing::{HttpSigningAdapter, HttpSigningConfig};
 use stygian_graph::ports::signing::ErasedSigningPort;

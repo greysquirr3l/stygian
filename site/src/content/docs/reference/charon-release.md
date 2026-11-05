@@ -1,4 +1,6 @@
-# Charon Release Notes
+---
+title: "Charon Release Notes"
+---
 
 `stygian-charon` is now part of the published Stygian documentation set.
 
@@ -42,17 +44,17 @@ No migration action required for consumers upgrading from 0.13.x.
 
 Initial published release of `stygian-charon` as part of the Stygian
 documentation set. See the crate-level rustdoc for the full type
-catalogue and the [Charon overview](../charon/overview.md) chapter for
+catalogue and the [Charon overview](/stygian/charon/overview/) chapter for
 the workflow.
 
 ---
 
 ## Start here
 
-- [Charon Overview](../charon/overview.md)
-- [Getting Started](../charon/getting-started.md)
-- [SLO & Policy Planning](../charon/slo-policy.md)
-- [Operations & Runbooks](../charon/operations.md)
+- [Charon Overview](/stygian/charon/overview/)
+- [Getting Started](/stygian/charon/getting-started/)
+- [SLO & Policy Planning](/stygian/charon/slo-policy/)
+- [Operations & Runbooks](/stygian/charon/operations/)
 
 ---
 

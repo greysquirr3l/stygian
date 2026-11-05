@@ -1,4 +1,6 @@
-# Data Sinks (DataSinkPort)
+---
+title: "Data Sinks (DataSinkPort)"
+---
 
 A **data sink** is the outbound counterpart to a data source. Where scrapers
 pull data in, sinks push structured records out — to an external platform,
@@ -30,7 +32,7 @@ Every sink implements three operations:
 A `SinkRecord` carries the payload and provenance information for a single
 scraped item:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 pub struct SinkRecord {
     /// JSON payload conforming to the named schema.
     pub data: serde_json::Value,
@@ -45,7 +47,7 @@ pub struct SinkRecord {
 
 Builder example:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::ports::data_sink::SinkRecord;
 use serde_json::json;
 
@@ -72,7 +74,7 @@ transport layer has already timestamped the upstream response, use
 exact moment the data left the origin rather than when your code
 constructed the record:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::ports::data_sink::SinkRecord;
 use chrono::{DateTime, Utc};
 
@@ -99,7 +101,7 @@ record creation.
 
 A successful `publish()` returns a `SinkReceipt`:
 
-```rust,edition2024
+```rust edition2024
 pub struct SinkReceipt {
     /// Platform-assigned ID for the published record.
     pub id: String,
@@ -116,7 +118,7 @@ pub struct SinkReceipt {
 
 | Adapter                 | Platform                                | Feature flag      |
 | ----------------------- | --------------------------------------- | ----------------- |
-| `ScrapeExchangeAdapter` | [Scrape Exchange](./scrape-exchange.md) | `scrape-exchange` |
+| `ScrapeExchangeAdapter` | [Scrape Exchange](/stygian/graph/scrape-exchange/) | `scrape-exchange` |
 
 ---
 
@@ -125,7 +127,7 @@ pub struct SinkReceipt {
 Any struct can implement `DataSinkPort`. The trait is object-safe and intended
 for use via `Arc<dyn DataSinkPort>`.
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use async_trait::async_trait;
 use stygian_graph::ports::data_sink::{DataSinkPort, SinkRecord, SinkReceipt, DataSinkError};
 
@@ -173,7 +175,7 @@ impl DataSinkPort for MyFileSink {
 `DataSinkError` is `#[non_exhaustive]` — match on variants you care about and
 use a fallback for future additions:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::ports::data_sink::DataSinkError;
 
 match sink.publish(&record).await {

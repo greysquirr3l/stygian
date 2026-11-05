@@ -1,4 +1,6 @@
-# Plugin MCP Tools
+---
+title: "Plugin MCP Tools"
+---
 
 `stygian-plugin` exposes recorded-template extraction tools for interactive fallback scraping.
 Use this surface when direct graph/browser extraction is insufficient and you need a reusable
@@ -18,7 +20,7 @@ stygian-plugin = "*"
 ```
 
 Embed as an MCP server in your binary using `McpPluginServer`, or consume these tools through
-the [aggregator](./aggregator.md), where names are prefixed with `plugin_`.
+the [aggregator](/stygian/mcp/aggregator/), where names are prefixed with `plugin_`.
 
 ---
 
@@ -32,7 +34,7 @@ plugin_create_template → plugin_add_region (repeat) → plugin_apply_template
 
 Optional operations:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 plugin_inspect_selector, plugin_get_template, plugin_list_templates,
 plugin_extract_batch, plugin_delete_template
 ```
@@ -208,7 +210,7 @@ invalidation is required.
 
 ### Programmatic construction
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use std::sync::Arc;
 use stygian_graph::adapters::fallback::{
     FallbackChainService, default_fallback_breaker, default_primary_breaker,
@@ -340,7 +342,7 @@ The reference extension now also includes:
 - richer results summaries with JSON and CSV export
 
 For an end-to-end persistence pattern (extension extraction -> MCP routing -> sink/database
-ingestion), see [Plugin Persistence Pattern](./plugin-persistence-pattern.md).
+ingestion), see [Plugin Persistence Pattern](/stygian/mcp/plugin-persistence-pattern/).
 
 ### Error responses
 

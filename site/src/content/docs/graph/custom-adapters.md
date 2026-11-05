@@ -1,4 +1,6 @@
-# Custom Adapters
+---
+title: "Custom Adapters"
+---
 
 This guide walks through building a production-quality custom adapter from scratch.
 The worked example implements a hypothetical `PlaywrightService` — a browser automation
@@ -15,7 +17,7 @@ By the end you will know how to:
 
 ## Prerequisites
 
-Read [Architecture](./architecture.md) first. Adapters live in `src/adapters/` and implement
+Read [Architecture](/stygian/graph/architecture/) first. Adapters live in `src/adapters/` and implement
 traits defined in `src/ports.rs`. The domain never imports adapters — only ports.
 
 ---
@@ -37,7 +39,7 @@ traits defined in `src/ports.rs`. The domain never imports adapters — only por
 
 Create `src/adapters/playwright.rs`:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 //! Playwright browser adapter.
 
 use std::time::Duration;
@@ -125,7 +127,7 @@ impl ScrapingService for PlaywrightService {
 
 Add a `pub mod playwright;` line to `src/adapters/mod.rs`:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 // src/adapters/mod.rs
 pub mod http;
 pub mod browser;
@@ -140,7 +142,7 @@ pub mod playwright;   // ← add this line
 
 In your binary entry point or `application/executor.rs` startup code:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use std::sync::Arc;
 use stygian_graph::adapters::playwright::{PlaywrightConfig, PlaywrightService};
 use stygian_graph::application::registry::ServiceRegistry;
@@ -167,7 +169,7 @@ Pipelines can now reference the adapter with `service = "playwright"` in any nod
 
 Wrap before registering to get circuit-breaker and retry behaviour for free:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use std::sync::Arc;
 use std::time::Duration;
 use stygian_graph::adapters::resilience::{CircuitBreakerImpl, RetryPolicy, retry};
@@ -193,7 +195,7 @@ let policy = RetryPolicy::new(
 
 Use stygian's built-in mock transport for unit tests that don't require a real server:
 
-```rust,edition2024
+```rust edition2024
 #[cfg(test)]
 mod tests {
     use super::*;

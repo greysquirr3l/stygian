@@ -1,8 +1,10 @@
-# Stealth v2 (Moved)
+---
+title: "Stealth v2 (Moved)"
+---
 
 This content has been consolidated into:
 
-- [Stealth, TLS Fingerprints, and Diagnostics](./stealth.md)
+- [Stealth, TLS Fingerprints, and Diagnostics](/stygian/browser/stealth/)
 
 Use that page as the authoritative guide for:
 

@@ -1,4 +1,6 @@
-# Rotation Strategies
+---
+title: "Rotation Strategies"
+---
 
 `stygian-proxy` ships five built-in rotation strategies. Four — `RoundRobin`,
 `Random`, `Weighted`, `LeastUsed` — are always compiled. A fifth,
@@ -27,7 +29,7 @@ panicking.
 Distributes requests evenly across healthy proxies in insertion order. Uses an atomic
 counter so there is no `Mutex` on the hot path.
 
-```rust,ignore
+```rust ignore
 use std::sync::Arc;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
 
@@ -45,7 +47,7 @@ at `u64::MAX`, which at 1 million requests per second takes ~585,000 years.
 Picks a healthy proxy at random on every call. Useful when you want to avoid any
 predictable rotation pattern that fingerprinting could detect.
 
-```rust,ignore
+```rust ignore
 use std::sync::Arc;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
 use stygian_proxy::strategy::RandomStrategy;
@@ -65,7 +67,7 @@ let manager = ProxyManager::builder()
 Each `Proxy` has a `weight: u32` field (default `1`). `WeightedStrategy` performs weighted
 random sampling so proxies with higher weights are selected proportionally more often.
 
-```rust,ignore
+```rust ignore
 use stygian_proxy::types::{Proxy, ProxyType};
 
 // This proxy is 3× more likely to be selected than a weight-1 proxy.
@@ -86,7 +88,7 @@ Use this strategy when proxies have different capacities, quotas, or observed sp
 Selects the healthy proxy with the **lowest total request count** at the time of the call.
 This maximises even distribution over time even when proxies are added dynamically.
 
-```rust,ignore
+```rust ignore
 use std::sync::Arc;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
 use stygian_proxy::strategy::LeastUsedStrategy;
@@ -114,7 +116,7 @@ The internal `ProxyOps` benchmark (549,114 requests / 7 days, identical
 proxies) cites **76% success rate** vs **36% for round-robin** on protected
 targets. Hot-path acquire stays sub-microsecond.
 
-```rust,ignore
+```rust ignore
 use std::sync::Arc;
 use std::time::Duration;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
@@ -152,7 +154,7 @@ All strategies operate on a pre-filtered `ProxyCandidate` slice. Before a
 strategy runs, `ProxyManager` filters the pool by `CapabilityRequirement`.
 Use `acquire_with_capabilities(&req)` to express requirements at call time:
 
-```rust,ignore
+```rust ignore
 use std::sync::Arc;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
 use stygian_proxy::types::{CapabilityRequirement, IpClassRequirement, VendorId, well_known};
@@ -240,7 +242,7 @@ free-list pool.
 
 ### Annotating proxies at registration time
 
-```rust,ignore
+```rust ignore
 use std::sync::Arc;
 use stygian_proxy::{MemoryProxyStore, ProxyConfig, ProxyManager};
 use stygian_proxy::types::{
@@ -278,7 +280,7 @@ For ingest-time metadata without going through a `Proxy` struct literal, see
 which validates the URL against `vendor_quirks::check` and accepts
 `(url, asn, city, postal_code)` directly:
 
-```rust,ignore
+```rust ignore
 use stygian_proxy::types::well_known;
 manager.add_proxy_with_metadata(
     "http://user:pass@edge1.example.com:8080".into(),
@@ -295,7 +297,7 @@ manager.add_proxy_with_metadata(
 Implement `RotationStrategy` to plug in your own selection logic. Rust 2024
 supports `async fn` in traits natively — no `async_trait` macro needed.
 
-```rust,ignore
+```rust ignore
 use std::sync::Arc;
 use stygian_proxy::error::ProxyResult;
 use stygian_proxy::strategy::{ProxyCandidate, RotationStrategy};

@@ -1,4 +1,6 @@
-# Browser MCP Tools
+---
+title: "Browser MCP Tools"
+---
 
 `stygian-browser` exposes browser automation tools including a runner-first acquisition path plus pool stats.
 
@@ -17,7 +19,7 @@ To run as a standalone MCP server:
 cargo run --example mcp_server -p stygian-browser --features mcp
 ```
 
-When using the [aggregator](./aggregator.md), tools keep their `browser_` prefix.
+When using the [aggregator](/stygian/mcp/aggregator/), tools keep their `browser_` prefix.
 
 ---
 
@@ -581,7 +583,7 @@ implements two resilience behaviors on by default:
 Both behaviors are configurable via
 `AcquisitionRequest::browserbase_session: Option<BrowserbaseSessionConfig>`:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_browser::acquisition::BrowserbaseSessionConfig;
 
 let session = BrowserbaseSessionConfig {

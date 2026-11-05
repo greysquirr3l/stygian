@@ -1,4 +1,6 @@
-# Sticky Sessions
+---
+title: "Sticky Sessions"
+---
 
 Without session stickiness, every proxy-rotation call may select a different exit IP.
 Most sites treat the IP as part of the session identity. A login flow that acquires a
@@ -38,7 +40,7 @@ per-domain path still applies its TTL on top.
 
 Sticky-session behaviour is controlled by `ProxyConfig::sticky_policy`:
 
-```rust,ignore
+```rust ignore
 use std::time::Duration;
 use stygian_proxy::{ProxyConfig, session::StickyPolicy};
 
@@ -59,7 +61,7 @@ The default TTL for `StickyPolicy::domain_default()` is **5 minutes**.
 
 Once the policy is set, use `acquire_for_domain` instead of `acquire_proxy`:
 
-```rust,ignore
+```rust ignore
 use std::{sync::Arc, time::Duration};
 use stygian_proxy::{
     ProxyConfig, ProxyManager, ProxyType, Proxy,
@@ -130,7 +132,7 @@ when you have a strong opinion.
 
 ### Customising the map
 
-```rust,ignore
+```rust ignore
 use std::time::Duration;
 use stygian_proxy::stickiness::{StickinessPolicy, VendorStickinessMap};
 use stygian_proxy::types::VendorId;
@@ -150,7 +152,7 @@ that has no entry — that is the **safest default** and matches the
 
 ### Installing on a `ProxyManager`
 
-```rust,ignore
+```rust ignore
 use std::sync::Arc;
 use stygian_proxy::{
     MemoryProxyStore, ProxyConfig, ProxyManager,
@@ -172,7 +174,7 @@ calling `acquire_for_domain_with_vendor` returns
 
 ### Acquiring with a vendor tag
 
-```rust,ignore
+```rust ignore
 use stygian_proxy::types::VendorId;
 
 // Akamai's 30-minute sticky policy applies for this call.
@@ -238,7 +240,7 @@ through `AcquireFresh`.
 the sticky session for that domain is **automatically invalidated** and the circuit
 breaker records a failure:
 
-```rust,ignore
+```rust ignore
 let handle = mgr.acquire_for_domain("shop.example.com").await?;
 
 // If the request fails or the guard is dropped without mark_success(),
@@ -259,7 +261,7 @@ if resp.status().is_success() {
 `SessionMap` can also be used standalone, outside of `ProxyManager`, when you need
 fine-grained control:
 
-```rust,ignore
+```rust ignore
 use std::time::Duration;
 use uuid::Uuid;
 use stygian_proxy::session::SessionMap;
@@ -296,7 +298,7 @@ sessions.unbind("login.example.com");
 
 `ProxyManager::pool_stats()` includes sticky session state:
 
-```rust,ignore
+```rust ignore
 let stats = mgr.pool_stats().await?;
 println!("total proxies:    {}", stats.total);
 println!("healthy proxies:  {}", stats.healthy);
@@ -312,7 +314,7 @@ When you scrape many domains concurrently, each gets its own independent binding
 The `ProxyManager` session map is an `Arc<RwLock<HashMap<String, ...>>>` so concurrent
 lookups never block each other:
 
-```rust,ignore
+```rust ignore
 // Different domains → different proxies, each bound separately.
 let h1 = mgr.acquire_for_domain("shop-a.com").await?;
 let h2 = mgr.acquire_for_domain("shop-b.com").await?;

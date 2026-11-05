@@ -1,4 +1,6 @@
-# Plugin Persistence Pattern
+---
+title: "Plugin Persistence Pattern"
+---
 
 Use this page as a practical pattern for moving data extracted by the browser plugin into the
 MCP server, then routing it to downstream systems (data sinks, ingestion APIs, or database
@@ -121,8 +123,8 @@ For production persistence flows, apply these controls:
 
 ## Related docs
 
-- [Plugin Tools](./plugin-tools.md)
-- [Aggregator (stygian-mcp)](./aggregator.md)
-- [Graph Tools](./graph-tools.md)
-- [Data Sinks](../graph/data-sinks.md)
-- [Extension README](../../crates/stygian-plugin/extension/README.md)
+- [Plugin Tools](/stygian/mcp/plugin-tools/)
+- [Aggregator (stygian-mcp)](/stygian/mcp/aggregator/)
+- [Graph Tools](/stygian/mcp/graph-tools/)
+- [Data Sinks](/stygian/graph/data-sinks/)
+- [Extension README](https://github.com/greysquirr3l/stygian/blob/main/crates/stygian-plugin/extension/README.md)

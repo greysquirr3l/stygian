@@ -1,4 +1,6 @@
-# Tiered Escalation Pipeline
+---
+title: "Tiered Escalation Pipeline"
+---
 
 Most sites can be scraped with a fast, lightweight HTTP client. A smaller percentage
 require TLS fingerprint matching to pass network-layer checks. A still-smaller set
@@ -26,7 +28,7 @@ Tiers are ordered — each higher tier is a strict superset of the previous one'
 
 ## The EscalationPolicy trait
 
-```rust,ignore
+```rust ignore
 use stygian_graph::ports::escalation::{EscalationTier, ResponseContext};
 
 pub trait MyCustomPolicy: stygian_graph::ports::escalation::EscalationPolicy {
@@ -84,7 +86,7 @@ When `EscalatingScrapingService` successfully reaches a domain at a tier above
 On the next request to the same domain the pipeline **skips the tiers it knows won't
 work**, saving latency.
 
-```rust,ignore
+```rust ignore
 use std::time::Duration;
 use stygian_graph::adapters::escalation::{DefaultEscalationPolicy, EscalationConfig};
 use stygian_graph::ports::escalation::EscalationTier;
@@ -112,7 +114,7 @@ let policy = DefaultEscalationPolicy::new(EscalationConfig {
 `EscalatingScrapingService` implements the `ScrapingService` port and wires the
 policy to a set of concrete service implementations.
 
-```rust,ignore
+```rust ignore
 use std::sync::Arc;
 use stygian_graph::adapters::escalation::{
     DefaultEscalationPolicy, EscalationConfig, EscalatingScrapingService,
@@ -201,7 +203,7 @@ url     = "https://example.com/data"
 For specialised logic (status-code allow-lists, per-domain overrides, etc.) you can
 implement `EscalationPolicy` directly:
 
-```rust,ignore
+```rust ignore
 use stygian_graph::ports::escalation::{EscalationPolicy, EscalationTier, ResponseContext};
 
 struct AggressivePolicy;
@@ -248,4 +250,4 @@ Which escalation tier handles which detection vector:
 | Behavioural analysis         |      ✗      |         ✗         |       ✗        |         ✓         |
 
 IP reputation is orthogonal to tier — use sticky-session proxy rotation (see
-[Sticky Sessions](../proxy/sticky-sessions.md)) in combination with escalation.
+[Sticky Sessions](/stygian/proxy/sticky-sessions/)) in combination with escalation.

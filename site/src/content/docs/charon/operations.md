@@ -1,4 +1,6 @@
-# Operations & Runbooks
+---
+title: "Operations & Runbooks"
+---
 
 This section collects the release-day and production references for `stygian-charon`.
 

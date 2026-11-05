@@ -1,4 +1,6 @@
-# Stealth, TLS Fingerprints, and Diagnostics
+---
+title: "Stealth, TLS Fingerprints, and Diagnostics"
+---
 
 This page is the single source of truth for stygian-browser anti-detection behavior.
 It consolidates browser stealth, TLS fingerprint control, and runtime verification.
@@ -12,7 +14,7 @@ stygian-browser now provides two reusable high-stealth constructors:
 
 ### Direct integration without proxy
 
-```rust,ignore
+```rust ignore
 use stygian_browser::{BrowserConfig, BrowserPool};
 
 let config = BrowserConfig::stealth_profile_without_proxy();
@@ -21,7 +23,7 @@ let pool = BrowserPool::new(config).await?;
 
 ### Direct integration with proxy
 
-```rust,ignore
+```rust ignore
 use stygian_browser::{BrowserConfig, BrowserPool};
 
 let config = BrowserConfig::stealth_profile_with_proxy("http://user:pass@proxy:8080");
@@ -69,7 +71,7 @@ already configured using one of the profile constructors above.
 
 Example server boot (non-proxy):
 
-```rust,ignore
+```rust ignore
 use stygian_browser::{BrowserConfig, BrowserPool};
 use stygian_browser::mcp::McpBrowserServer;
 
@@ -79,7 +81,7 @@ McpBrowserServer::new(pool).run().await?;
 
 Example server boot (proxy):
 
-```rust,ignore
+```rust ignore
 use stygian_browser::{BrowserConfig, BrowserPool};
 use stygian_browser::mcp::McpBrowserServer;
 
@@ -123,7 +125,7 @@ When stealth_level is advanced, stygian-browser injects the following at new-doc
 
 Use HeadlessMode::New unless you are forced onto old Chromium builds.
 
-```rust,ignore
+```rust ignore
 use stygian_browser::{BrowserConfig, HeadlessMode};
 
 let cfg = BrowserConfig::builder()
@@ -184,7 +186,7 @@ Built-in profiles:
 3. SAFARI_18
 4. EDGE_131
 
-```rust,ignore
+```rust ignore
 use stygian_browser::tls::{build_profiled_client, CHROME_131};
 
 let client = build_profiled_client(&CHROME_131, None)?;
@@ -251,7 +253,7 @@ misconfigured `prefer_h3` would have been silently ignored.
 
 Run diagnostics from a live page handle:
 
-```rust,ignore
+```rust ignore
 let report = page.verify_stealth().await?;
 let report_with_transport = page.verify_stealth_with_transport(None).await?;
 ```

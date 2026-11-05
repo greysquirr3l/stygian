@@ -1,4 +1,6 @@
-# Observability
+---
+title: "Observability"
+---
 
 `stygian-graph` exposes structured metrics and distributed tracing out of the box.
 Both are opt-in: neither requires code changes to your adapters or domain logic.
@@ -15,7 +17,7 @@ stygian-graph = { version = "*", features = ["metrics"] }
 
 ### Creating a collector
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::application::MetricsCollector;
 
 let metrics = MetricsCollector::new();
@@ -28,7 +30,7 @@ registry automatically. It is `Clone + Send + Sync` and safe to share across thr
 
 Attach the Prometheus scrape handler to any HTTP server. Example with Axum:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use axum::{Router, routing::get};
 use stygian_graph::application::MetricsCollector;
 
@@ -64,7 +66,7 @@ Any compatible subscriber (JSON, OTLP, Jaeger) receives full span trees.
 
 ### Basic JSON logging
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 tracing_subscriber::registry()
@@ -86,7 +88,7 @@ opentelemetry-otlp     = { version = "0.15", features = ["grpc-tonic"] }
 tracing-opentelemetry  = "0.23"
 ```
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use opentelemetry_otlp::WithExportConfig;
 use tracing_opentelemetry::OpenTelemetryLayer;
 
@@ -123,7 +125,7 @@ tracing_subscriber::registry()
 `MetricsCollector` exposes a health-check endpoint that reports the state of every
 registered service:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 let health_json = metrics.health_check(&registry).await;
 // {"status":"ok","services":{"http":"healthy","ai_claude":"healthy"}}
 ```

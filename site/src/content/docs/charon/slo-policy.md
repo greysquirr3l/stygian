@@ -1,4 +1,6 @@
-# SLO & Policy Planning
+---
+title: "SLO & Policy Planning"
+---
 
 Charon turns diagnostic evidence into target-aware SLO outcomes and runtime-policy decisions.
 

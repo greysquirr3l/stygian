@@ -1,4 +1,6 @@
-# Charon Overview
+---
+title: "Charon Overview"
+---
 
 `stygian-charon` is the diagnostics and planning crate for anti-bot operations in the Stygian
 stack. It converts request/response evidence into reproducible assessments and actionable runtime
@@ -56,6 +58,6 @@ This keeps diagnostics deterministic and portable across teams and environments.
 
 ## Next steps
 
-- Continue with [Getting Started](./getting-started.md).
-- Review [SLO & Policy Planning](./slo-policy.md).
-- Use [Operations & Runbooks](./operations.md) for rollout and incident response.
+- Continue with [Getting Started](/stygian/charon/getting-started/).
+- Review [SLO & Policy Planning](/stygian/charon/slo-policy/).
+- Use [Operations & Runbooks](/stygian/charon/operations/) for rollout and incident response.

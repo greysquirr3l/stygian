@@ -1,4 +1,6 @@
-# MCP — Model Context Protocol
+---
+title: "MCP \u2014 Model Context Protocol"
+---
 
 All Stygian MCP servers expose capabilities over the
 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/). The standalone
@@ -88,10 +90,10 @@ When using the aggregator, all tools are namespaced:
 
 | Prefix | Sub-server |
 | ------ | ---------- |
-| `graph_` | [stygian-graph](./graph-tools.md) — e.g. `graph_scrape`, `graph_pipeline_run`, `graph_charon_analyze_and_plan` |
-| `browser_` | [stygian-browser](./browser-tools.md) — e.g. `browser_acquire`, `browser_navigate` |
-| `proxy_` | [stygian-proxy](./proxy-tools.md) — e.g. `proxy_add`, `proxy_acquire` |
-| `plugin_` | [stygian-plugin](./plugin-tools.md) — e.g. `plugin_create_template`, `plugin_apply_template` |
+| `graph_` | [stygian-graph](/stygian/mcp/graph-tools/) — e.g. `graph_scrape`, `graph_pipeline_run`, `graph_charon_analyze_and_plan` |
+| `browser_` | [stygian-browser](/stygian/mcp/browser-tools/) — e.g. `browser_acquire`, `browser_navigate` |
+| `proxy_` | [stygian-proxy](/stygian/mcp/proxy-tools/) — e.g. `proxy_add`, `proxy_acquire` |
+| `plugin_` | [stygian-plugin](/stygian/mcp/plugin-tools/) — e.g. `plugin_create_template`, `plugin_apply_template` |
 | *(none)* | Aggregator cross-crate — `scrape_proxied`, `browser_proxied` |
 
 When using a per-crate MCP server standalone, graph tools are *un-prefixed* (e.g. `scrape`

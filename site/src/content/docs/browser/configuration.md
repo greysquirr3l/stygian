@@ -1,4 +1,6 @@
-# Configuration
+---
+title: "Configuration"
+---
 
 All browser behaviour is controlled through `BrowserConfig`. Every field can be set
 programmatically or overridden at runtime via environment variables — no recompilation needed.
@@ -7,7 +9,7 @@ programmatically or overridden at runtime via environment variables — no recom
 
 ## Builder pattern
 
-```rust,ignore
+```rust ignore
 use stygian_browser::{BrowserConfig, HeadlessMode, StealthLevel};
 use stygian_browser::config::PoolConfig;
 use stygian_browser::webrtc::{WebRtcConfig, WebRtcPolicy};
@@ -111,7 +113,7 @@ All config values can be overridden without touching source code:
 
 ### Minimal — fast text scraping
 
-```rust,ignore
+```rust ignore
 use stygian_browser::{BrowserConfig, StealthLevel};
 
 let config = BrowserConfig::builder()
@@ -122,7 +124,7 @@ let config = BrowserConfig::builder()
 
 ### Headed debugging session
 
-```rust,ignore
+```rust ignore
 let config = BrowserConfig::builder()
     .headless(false)
     .stealth_level(StealthLevel::Basic)
@@ -131,7 +133,7 @@ let config = BrowserConfig::builder()
 
 ### Proxy with full stealth
 
-```rust,ignore
+```rust ignore
 use stygian_browser::webrtc::{WebRtcConfig, WebRtcPolicy};
 
 let config = BrowserConfig::builder()
@@ -148,7 +150,7 @@ let config = BrowserConfig::builder()
 configuration. `HeadlessMode::New` is the **default** since v0.1.11 — existing code
 elevates automatically.
 
-```rust,ignore
+```rust ignore
 use stygian_browser::{BrowserConfig, HeadlessMode, StealthLevel};
 use stygian_browser::webrtc::{WebRtcConfig, WebRtcPolicy};
 
@@ -164,7 +166,7 @@ For Chromium ≥ 112 (all modern Chrome / Chromium builds), `New` is the right
 choice. `Legacy` falls back to the classic `--headless` flag which uses an older
 rendering pipeline — use it only when targeting Chromium < 112.
 
-```rust,ignore
+```rust ignore
 // Only needed for Chromium < 112
 let config = BrowserConfig::builder()
     .headless_mode(HeadlessMode::Legacy)

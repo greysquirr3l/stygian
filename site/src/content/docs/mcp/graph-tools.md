@@ -1,4 +1,6 @@
-# Graph MCP Tools
+---
+title: "Graph MCP Tools"
+---
 
 `stygian-graph` exposes scraping, graph inspection, and optional Charon diagnostics tools.
 
@@ -20,7 +22,7 @@ stygian-graph = { version = "*", features = ["mcp", "charon"] }
 To use as a standalone MCP server (without the aggregator), embed `McpGraphServer` in
 your own binary:
 
-```rust,ignore
+```rust ignore
 use stygian_graph::mcp::McpGraphServer;
 
 #[tokio::main]
@@ -33,7 +35,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-When using the [aggregator](./aggregator.md), all tools are prefixed with `graph_`
+When using the [aggregator](/stygian/mcp/aggregator/), all tools are prefixed with `graph_`
 (e.g. `graph_scrape` instead of `scrape`).
 
 ---

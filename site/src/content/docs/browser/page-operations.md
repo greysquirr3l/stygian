@@ -1,9 +1,11 @@
-# Page Operations
+---
+title: "Page Operations"
+---
 
 A `PageHandle` represents a single browser tab. You get one by calling `new_page()` on a
 `BrowserInstance`, accessed via `BrowserHandle::browser()`:
 
-```rust,ignore
+```rust ignore
 let browser = handle
     .browser()
     .ok_or_else(|| std::io::Error::other("browser handle already released"))?;
@@ -14,7 +16,7 @@ let mut page = browser.new_page().await?;
 
 ## Navigation
 
-```rust,ignore
+```rust ignore
 use stygian_browser::WaitUntil;
 use std::time::Duration;
 
@@ -40,7 +42,7 @@ page.navigate("https://example.com", WaitUntil::NetworkIdle, Duration::from_secs
 
 ## Reading page content
 
-```rust,ignore
+```rust ignore
 // Full page HTML
 let html  = page.content().await?;
 
@@ -62,7 +64,7 @@ if let Some(status) = page.status_code()? {
 
 ## JavaScript evaluation
 
-```rust,ignore
+```rust ignore
 // Evaluate an expression; return type must implement serde::DeserializeOwned
 let title:   String = page.eval("document.title").await?;
 let is_auth: bool   = page.eval("!!document.cookie.match(/session=/)").await?;
@@ -78,10 +80,10 @@ page.eval::<serde_json::Value>("window.scrollTo(0, document.body.scrollHeight)")
 
 High-level click/type helpers are provided by the **human behaviour** module
 (`stygian_browser::behavior`) when the `stealth` feature is enabled. These simulate
-realistic mouse paths and typing cadence. See the [Stealth & Anti-Detection](stealth.md)
+realistic mouse paths and typing cadence. See the [Stealth & Anti-Detection](/stygian/browser/stealth/)
 page for full usage.
 
-```rust,ignore
+```rust ignore
 use stygian_browser::behavior::{MouseSimulator, TypingSimulator};
 
 let mouse = MouseSimulator::new();
@@ -99,7 +101,7 @@ page.wait_for_selector(".results", Duration::from_secs(10)).await?;
 
 ## Screenshots
 
-```rust,ignore
+```rust ignore
 // Full-page screenshot — returns raw PNG bytes
 let png: Vec<u8> = page.screenshot().await?;
 tokio::fs::write("screenshot.png", &png).await?;
@@ -111,7 +113,7 @@ tokio::fs::write("screenshot.png", &png).await?;
 
 Block resource types to reduce bandwidth and speed up text-only scraping:
 
-```rust,ignore
+```rust ignore
 use stygian_browser::page::{ResourceFilter, ResourceType};
 
 // Block images, fonts, CSS, and media
@@ -139,7 +141,7 @@ Session persistence is handled via the `session` module. Save and restore full s
 state (cookies + localStorage) across runs, or inject individual cookies without a full
 round-trip.
 
-```rust,ignore
+```rust ignore
 use stygian_browser::session::{save_session, restore_session, SessionSnapshot, SessionCookie};
 
 // Save full session state after login
@@ -166,7 +168,7 @@ page.inject_cookies(&cookies).await?;
 
 Check whether a saved snapshot is still fresh before restoring:
 
-```rust,ignore
+```rust ignore
 let mut snapshot = SessionSnapshot::load_from_file("session.json")?;
 snapshot.ttl_secs = Some(3600);   // 1-hour TTL
 if snapshot.is_expired() {
@@ -180,7 +182,7 @@ if snapshot.is_expired() {
 
 ## Closing a tab
 
-```rust,ignore
+```rust ignore
 page.close().await?;
 ```
 
@@ -191,7 +193,7 @@ internal tab limit and may degrade performance.
 
 ## Complete example
 
-```rust,ignore
+```rust ignore
 use stygian_browser::{BrowserConfig, BrowserPool, WaitUntil};
 use stygian_browser::page::ResourceFilter;
 use std::time::Duration;

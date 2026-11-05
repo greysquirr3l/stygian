@@ -1,4 +1,6 @@
-# Production Adapters
+---
+title: "Production Adapters"
+---
 
 This chapter covers adapters added beyond the core set, filling production gaps
 in caching, discovery, streaming, storage, distributed execution, and

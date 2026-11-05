@@ -1,4 +1,6 @@
-# Built-in Adapters
+---
+title: "Built-in Adapters"
+---
 
 `stygian-graph` ships adapters for every major scraping and AI workload. All adapters
 implement the port traits defined in `src/ports.rs` and are registered by name in the
@@ -11,7 +13,7 @@ implement the port traits defined in `src/ports.rs` and are registered by name i
 The default content-fetching adapter. Uses `reqwest` with connection pooling, automatic
 redirect following, and configurable retry logic.
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::http::{HttpAdapter, HttpConfig};
 use std::time::Duration;
 
@@ -49,7 +51,7 @@ If you genuinely need to send a library-banner UA (e.g. for a
 debugging session or a target that genuinely serves a different
 shape to that UA), opt in explicitly:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 HttpConfig { allow_plain_http: true, ..Default::default() }
 ```
 
@@ -67,7 +69,7 @@ Purpose-built for structured JSON REST APIs. Handles authentication, automatic
 multi-strategy pagination, JSON response extraction, and retry — without the caller
 needing to manage any of that manually.
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::rest_api::{RestApiAdapter, RestApiConfig};
 use stygian_graph::ports::{ScrapingService, ServiceInput};
 use serde_json::json;
@@ -198,7 +200,7 @@ specification document. At runtime the adapter fetches and caches the spec, reso
 target operation by `operationId` or `"METHOD /path"` syntax, binds arguments to path/
 query/body parameters, and delegates the actual HTTP call to the inner `RestApiAdapter`.
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::openapi::{OpenApiAdapter, OpenApiConfig};
 use stygian_graph::adapters::rest_api::RestApiConfig;
 use stygian_graph::ports::{ScrapingService, ServiceInput};
@@ -363,7 +365,7 @@ strategy     = "token_bucket"
 Delegates to `stygian-browser` for JavaScript-rendered pages. Requires the `browser`
 feature flag and a Chrome binary.
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::{BrowserAdapter, BrowserAdapterConfig};
 use stygian_browser::StealthLevel;
 use std::time::Duration;
@@ -380,7 +382,7 @@ let adapter = BrowserAdapter::with_config(BrowserAdapterConfig {
 
 **Registered service name**: `"browser"`
 
-See the [Browser Automation](../browser/overview.md) section for the full feature set.
+See the [Browser Automation](/stygian/browser/overview/) section for the full feature set.
 
 ---
 
@@ -392,7 +394,7 @@ schema declared in the node config.
 
 ### Claude (Anthropic)
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::ClaudeAdapter;
 
 let adapter = ClaudeAdapter::new(
@@ -412,7 +414,7 @@ let adapter = ClaudeAdapter::new(
 
 ### OpenAI
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::OpenAiAdapter;
 
 let adapter = OpenAiAdapter::new(
@@ -425,7 +427,7 @@ let adapter = OpenAiAdapter::new(
 
 ### Gemini (Google)
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::GeminiAdapter;
 
 let adapter = GeminiAdapter::new(
@@ -440,7 +442,7 @@ let adapter = GeminiAdapter::new(
 
 Uses the Copilot API with your personal access token (PAT) or GitHub App credentials.
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::CopilotAdapter;
 
 let adapter = CopilotAdapter::new(
@@ -455,7 +457,7 @@ let adapter = CopilotAdapter::new(
 
 Run any GGUF model locally without sending data to an external API.
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::OllamaAdapter;
 
 let adapter = OllamaAdapter::new(
@@ -473,7 +475,7 @@ let adapter = OllamaAdapter::new(
 Adapters can be wrapped in a fallback chain. If the primary provider fails (rate-limit,
 outage), the next in the list is tried:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::AiFallbackChain;
 
 let chain = AiFallbackChain::new(vec![
@@ -492,7 +494,7 @@ let chain = AiFallbackChain::new(vec![
 Wrap any `ScrapingService` with circuit breaker and retry logic without touching the
 underlying implementation:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::resilience::{CircuitBreakerImpl, RetryPolicy, retry};
 use std::time::Duration;
 
@@ -521,7 +523,7 @@ Two in-process cache implementations are included. Both implement `CachePort`.
 
 Thread-safe LRU with a hard capacity limit:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::BoundedLruCache;
 use std::num::NonZeroUsize;
 
@@ -532,7 +534,7 @@ let cache = BoundedLruCache::new(NonZeroUsize::new(10_000).unwrap());
 
 Concurrent hash-map backed cache with a background TTL cleanup task:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::DashMapCache;
 use std::time::Duration;
 
@@ -549,7 +551,7 @@ The `GraphQlService` adapter executes queries against any GraphQL endpoint using
 For most APIs, use `GenericGraphQlPlugin` via the fluent builder rather than writing
 a dedicated struct:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::graphql_plugins::generic::GenericGraphQlPlugin;
 use stygian_graph::adapters::graphql_throttle::CostThrottleConfig;
 
@@ -566,7 +568,7 @@ let plugin = GenericGraphQlPlugin::builder()
 
 For runtime-rotating credentials inject an `AuthPort`:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use std::sync::Arc;
 use stygian_graph::adapters::graphql::{GraphQlConfig, GraphQlService};
 use stygian_graph::ports::auth::{EnvAuthPort, ErasedAuthPort};
@@ -575,7 +577,7 @@ let service = GraphQlService::new(GraphQlConfig::default(), Some(Arc::new(regist
     .with_auth_port(Arc::new(EnvAuthPort::new("MY_API_TOKEN")) as Arc<dyn ErasedAuthPort>);
 ```
 
-See the [GraphQL Plugins](./graphql-plugins.md) page for the full builder reference,
+See the [GraphQL Plugins](/stygian/graph/graphql-plugins/) page for the full builder reference,
 `AuthPort` implementation guide, proactive cost throttling, and custom plugin examples.
 
 ---
@@ -597,7 +599,7 @@ explicitly or use `full`).
 stygian-graph = { version = "*", features = ["cloudflare-crawl"] }
 ```
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use stygian_graph::adapters::cloudflare_crawl::{
     CloudflareCrawlAdapter, CloudflareCrawlConfig,
 };
@@ -692,7 +694,7 @@ coupling the adapter to the scheme.
 | `NoopSigningAdapter` | Passthrough — no headers added; useful as a default or in unit tests                         |
 | `HttpSigningAdapter` | Delegate to any external sidecar (Frida RPC bridge, AWS SigV4 server, OAuth 1.0a service, …) |
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 use std::sync::Arc;
 use stygian_graph::adapters::signing::{HttpSigningAdapter, HttpSigningConfig};
 use stygian_graph::ports::signing::ErasedSigningPort;
@@ -705,7 +707,7 @@ let signer: Arc<dyn ErasedSigningPort> = Arc::new(
 );
 ```
 
-See [Request Signing](./signing.md) for the full sidecar wire format, Frida RPC bridge example, and guide to implementing a pure-Rust `SigningPort`.
+See [Request Signing](/stygian/graph/signing/) for the full sidecar wire format, Frida RPC bridge example, and guide to implementing a pure-Rust `SigningPort`.
 
 ---
 
@@ -713,7 +715,7 @@ See [Request Signing](./signing.md) for the full sidecar wire format, Frida RPC 
 
 Beyond the core adapters above, stygian ships production-grade adapters for
 caching, discovery, streaming, cloud storage, distributed queues, and webhooks.
-These are documented in the [Production Adapters](./production-adapters.md)
+These are documented in the [Production Adapters](/stygian/graph/production-adapters/)
 chapter and include:
 
 - **Redis/Valkey Cache** — distributed `CachePort` (feature: `redis`)

@@ -33,7 +33,7 @@ crates/stygian-browser/ @greysquirr3l
 crates/stygian-graph/ @greysquirr3l
 
 # Documentation
-book/src/charon/ @greysquirr3l
+site/src/content/docs/charon/ @greysquirr3l
 docs/ @greysquirr3l
 
 # Testing & CI/CD

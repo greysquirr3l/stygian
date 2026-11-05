@@ -1,4 +1,6 @@
-# The stygian-mcp Aggregator
+---
+title: "The stygian-mcp Aggregator"
+---
 
 `stygian-mcp` is a standalone binary that runs a single MCP server merging graph, browser, proxy,
 and plugin tool surfaces into one JSON-RPC 2.0 endpoint. It is the recommended way to integrate
@@ -205,7 +207,7 @@ Returns combined navigation metadata and full HTML content.
 
 Instead of running the binary, embed the aggregator in your own Rust binary:
 
-```rust,ignore
+```rust ignore
 use stygian_mcp::aggregator::McpAggregator;
 
 #[tokio::main]

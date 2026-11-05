@@ -1,4 +1,6 @@
-# Testing & Coverage
+---
+title: "Testing & Coverage"
+---
 
 ---
 
@@ -103,7 +105,7 @@ High-coverage modules in `stygian-graph`:
 
 Every test that launches a real Chrome instance is annotated:
 
-```rust,edition2024,ignore
+```rust edition2024 ignore
 #[tokio::test]
 #[ignore = "requires Chrome"]
 async fn pool_acquire_release() {
@@ -121,7 +123,7 @@ simulator algorithms) is high; only the CDP I/O paths are excluded.
 
 ### Unit test pattern (graph)
 
-```rust,edition2024
+```rust edition2024
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -137,7 +139,7 @@ mod tests {
 
 ### Browser test pattern (logic only)
 
-```rust,edition2024
+```rust edition2024
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,7 +171,7 @@ The GitHub Actions CI workflow (`.github/workflows/ci.yml`) runs:
 | `clippy` | `ubuntu-latest` | `cargo clippy --workspace --all-features -- -D warnings` |
 | `fmt` | `ubuntu-latest` | `cargo fmt --check` |
 | `docs` | `ubuntu-latest` | `cargo doc --workspace --no-deps --all-features` |
-| `msrv` | `ubuntu-latest` | `cargo +1.94.0 check --workspace` |
+| `msrv` | `ubuntu-latest` | `cargo +1.99.1 check --workspace` |
 | `cross-platform` | `windows-latest`, `macos-latest` | `cargo test --workspace` |
 
 Browser integration tests (`--include-ignored`) are **not** run in CI — they require a
